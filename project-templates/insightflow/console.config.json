@@ -1,0 +1,15 @@
+{
+  "projectName": "InsightFlow",
+  "entries": [
+    {
+      "triggers": ["run insightflow", "start app"],
+      "type": "command",
+      "action": "python main.py"
+    },
+    {
+      "triggers": ["run tests", "pytest"],
+      "type": "command",
+      "action": "pytest"
+    }
+  ]
+}

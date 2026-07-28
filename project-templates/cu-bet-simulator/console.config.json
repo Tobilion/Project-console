@@ -1,0 +1,36 @@
+{
+  "projectName": "CU Bet Simulator",
+  "entries": [
+    {
+      "triggers": ["start dev server", "run dev", "start dev"],
+      "type": "command",
+      "action": "npm run dev"
+    },
+    {
+      "triggers": ["run tests", "test app", "run test suite"],
+      "type": "command",
+      "action": "npm test"
+    },
+    {
+      "triggers": ["build project", "build app", "compile"],
+      "type": "command",
+      "action": "npm run build"
+    },
+    {
+      "triggers": ["deploy to vercel", "push live", "deploy app"],
+      "type": "command",
+      "action": "vercel --prod",
+      "risky": true
+    },
+    {
+      "triggers": ["describe project", "overview", "what is cu bet"],
+      "type": "answer",
+      "response": "CU Bet is a feature-rich football simulation & sportsbook web application featuring live odds generation, a custom bet builder, instant cash out, club ownership management, and 14 interactive casino mini-games."
+    },
+    {
+      "triggers": ["explain more", "architecture", "how it works", "odds engine"],
+      "type": "answer",
+      "response": "### CU Bet Architecture:\n- **Frontend**: React 19 + TypeScript + Vite + Tailwind v4 + Framer Motion.\n- **Odds Engine**: Located in `src/engine/odds.ts`, calculates real-time odds using an implied-probability distribution model with configurable margins.\n- **Casino Engine**: 14 standalone casino mini-games in `src/components/casino` driven by seeded RNG algorithms in `src/engine/casinoLogic.ts`.\n- **Deployment**: Automated Vercel deployments triggered via GitHub production branch pushes."
+    }
+  ]
+}

@@ -1,0 +1,24 @@
+node_modules/
+build/
+dist/
+coverage/
+.DS_Store
+Thumbs.db
+*.log
+npm-debug.log*
+.env*
+!.env.example
+*.tsbuildinfo
+.vite/
+
+# Downloaded embedding model cache (~23MB, re-fetched on first run)
+.cache/
+
+# Runtime-generated usage data (near-misses, telemetry, conversation index) —
+# regenerated per install, not meant to be version-controlled
+data/near-misses/
+data/telemetry/
+data/conversations/
+
+# Local Project Console chat memory (not for git)
+.console/

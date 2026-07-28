@@ -1,0 +1,25 @@
+{
+  "projectName": "Habitline",
+  "entries": [
+    {
+      "triggers": ["start dev server", "run dev"],
+      "type": "command",
+      "action": "npm run dev"
+    },
+    {
+      "triggers": ["run tests", "test app"],
+      "type": "command",
+      "action": "npm test"
+    },
+    {
+      "triggers": ["build project", "build app"],
+      "type": "command",
+      "action": "npm run build"
+    },
+    {
+      "triggers": ["heatmap calculation", "streak logic"],
+      "type": "answer",
+      "response": "Streaks and heatmap intensity are computed client-side using date-range aggregation in src/utils/heatmap.ts."
+    }
+  ]
+}

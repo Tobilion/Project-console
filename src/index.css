@@ -1,0 +1,57 @@
+/* JetBrains Mono - primary font per ui-ux-pro-max "Developer Tool" design tokens */
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,100;0,200;0,300;0,400;0,500;0,600;0,700;0,800;1,100;1,200;1,300;1,400;1,500;1,600;1,700;1,800&display=swap');
+
+@import "tailwindcss";
+@plugin "@tailwindcss/typography";
+
+@theme {
+  --font-sans: 'JetBrains Mono', monospace;
+  --font-mono: 'JetBrains Mono', monospace;
+
+  --color-background: #0F172A;
+  --color-foreground: #F8FAFC;
+  --color-primary: #1E293B;
+  --color-primary-on: #FFFFFF;
+  --color-secondary: #334155;
+  --color-accent: #00d4a3;
+  --color-accent-dim: #00d4a366;
+  --color-blue: #3d6bff;
+  --color-indigo: #6366f1;
+  --color-surface: #12151c;
+  --color-muted: #1f2937;
+  --color-muted-foreground: #94a3b8;
+  --color-border: #334155;
+  --color-input: #334155;
+  --color-destructive: #EF4444;
+  --color-success: #22C55E;
+  --color-ring: #00d4a3;
+}
+
+:root {
+  --bg-navy: #0F172A;
+  --surface-teal: #00d4a3;
+  --text-primary: #F8FAFC;
+}
+
+html, body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  font-family: 'JetBrains Mono', monospace;
+  background-color: var(--bg-navy);
+  color: var(--text-primary);
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+}
+::-webkit-scrollbar-track {
+  background: #0F172A;
+}
+::-webkit-scrollbar-thumb {
+  background: #1f2937;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #334155;
+}

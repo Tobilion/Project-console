@@ -1,0 +1,20 @@
+{
+  "projectName": "NetPulse",
+  "entries": [
+    {
+      "triggers": ["start flask server", "run app", "run python"],
+      "type": "command",
+      "action": "python app.py"
+    },
+    {
+      "triggers": ["run tests", "pytest"],
+      "type": "command",
+      "action": "pytest"
+    },
+    {
+      "triggers": ["check isp status", "run pulse"],
+      "type": "answer",
+      "response": "NetPulse continuously pings target ISP DNS endpoints and logs latency, packet loss, and jitter into local SQLite."
+    }
+  ]
+}

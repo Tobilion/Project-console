@@ -1,0 +1,21 @@
+{
+  "projectName": "Portfolio",
+  "entries": [
+    {
+      "triggers": ["start dev server", "run dev"],
+      "type": "command",
+      "action": "npm run dev"
+    },
+    {
+      "triggers": ["build portfolio", "build app"],
+      "type": "command",
+      "action": "npm run build"
+    },
+    {
+      "triggers": ["deploy portfolio", "push live"],
+      "type": "command",
+      "action": "vercel --prod",
+      "risky": true
+    }
+  ]
+}

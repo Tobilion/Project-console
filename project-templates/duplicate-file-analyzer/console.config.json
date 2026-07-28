@@ -1,0 +1,25 @@
+{
+  "projectName": "Duplicate File Analyzer",
+  "entries": [
+    {
+      "triggers": ["run analyzer", "start python app", "analyze files", "scan duplicates"],
+      "type": "command",
+      "action": "python main.py"
+    },
+    {
+      "triggers": ["run tests", "pytest", "test suite"],
+      "type": "command",
+      "action": "pytest"
+    },
+    {
+      "triggers": ["describe project", "project info", "overview", "what is this"],
+      "type": "answer",
+      "response": "Duplicate File Analyzer is a Python desktop utility designed to scan local storage directories, compute cryptographic file hashes (MD5/SHA-256), identify byte-level duplicate files, and allow safe review or deletion."
+    },
+    {
+      "triggers": ["explain more", "architecture", "how it works", "details", "codebase structure"],
+      "type": "answer",
+      "response": "### Duplicate File Analyzer Architecture:\n- **Core Engine**: `main.py` scans target folders recursively, groups files by size first to minimize hashing, and then computes SHA-256 for identical sizes.\n- **Interface**: Built as a lightweight GUI/CLI tool using standard Python libraries (`hashlib`, `os`, `pathlib`).\n- **Safety**: Generates a preview manifest before executing any file removals or moves."
+    }
+  ]
+}

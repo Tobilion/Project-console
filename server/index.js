@@ -1,0 +1,207 @@
+import express from 'express';
+import compression from 'compression';
+import path from 'path';
+import http from 'http';
+import { fileURLToPath } from 'url';
+import fs from 'fs';
+import { createServer as createViteServer } from 'vite';
+
+import { discoverProjects } from './projectScanner.js';
+import { nlpEngine } from './nlpEngine.js';
+import { semanticMatcher } from './semanticMatcher.js';
+import { watchProjectConfigs } from './fileWatcher.js';
+import { setupMockProjectsIfMissing } from './mockProjects.js';
+import { state, projectsMutex } from './state.js';
+import { autoApplyThresholdsForAll } from './intentTelemetry.js';
+import { autoApplySuggestionsForAll } from './learningEngine.js';
+import { loadLearnedIntents } from './learnedIntents.js';
+import { wss, broadcast } from './wsServer.js';
+import { initWebSocketServer } from './wsHandlers/connection.js';
+import { registerProjectRoutes } from './routes/projectRoutes.js';
+import { registerSessionRoutes } from './routes/sessionRoutes.js';
+import { registerSearchRoutes } from './routes/searchRoutes.js';
+import { registerMonitoringRoutes } from './routes/monitoringRoutes.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+const app = express();
+const PORT = parseInt(process.env.PORT, 10) || 3000;
+// Binds to localhost only by default — this server can execute arbitrary shell commands
+// and (with AI mode on) read/write files, so it should not be reachable from the LAN
+// unless you explicitly opt in via HOST=0.0.0.0.
+const HOST = process.env.HOST || '127.0.0.1';
+
+app.use(compression());
+app.use(express.json());
+
+registerProjectRoutes(app, __dirname);
+registerSessionRoutes(app);
+  registerSearchRoutes(app);
+  registerMonitoringRoutes(app);
+
+initWebSocketServer();
+
+// Created once up front (rather than implicitly via app.listen()) so it can be handed to Vite's
+// dev server below — Vite needs the actual http.Server instance to attach its own HMR websocket
+// upgrade listener to when running in middlewareMode on the same port. Without this, Vite's
+// client never gets a live HMR connection, so the *only* recovery path the browser has after any
+// transient client-side hiccup is a hard full-page reload instead of an in-place patch — which
+// looks exactly like "the whole page goes white and reloads" from a user's perspective.
+const httpServer = http.createServer(app);
+
+async function init() {
+  if (process.env.NODE_ENV !== 'production') {
+    const vite = await createViteServer({
+      server: {
+        middlewareMode: true,
+        hmr: { server: httpServer },
+        // Vite's own file watcher (chokidar) watches the whole project root by default, which
+        // includes `data/` — this app's own runtime-written state (conversation index,
+        // near-miss logs, telemetry, distillation records). Every session created / message
+        // sent / command run rewrites one of those JSON files, and before the HMR websocket fix
+        // above, Vite's resulting "full reload" signal silently failed to reach the browser (so
+        // this went unnoticed). Now that HMR actually works, without this exclusion *any* of
+        // those writes would force a full-page reload — which looked exactly like "clicking New
+        // Chat makes the page go white and reload," since creating a session is one of the things
+        // that writes to `data/conversations/index.json`.
+        watch: { ignored: ['**/data/**', '**/.cache/**', '**/*.console/**'] },
+      },
+      appType: 'spa',
+    });
+    app.use(vite.middlewares);
+  } else {
+    const distPath = path.join(process.cwd(), 'dist');
+    app.use(express.static(distPath));
+    app.get('*', (req, res, next) => {
+      if (req.path.startsWith('/api/') || req.path.startsWith('/stream')) return next();
+      res.sendFile(path.join(distPath, 'index.html'));
+    });
+  }
+
+  // Discover projects and train NLP once, before accepting connections
+  const dirToScan = setupMockProjectsIfMissing(state.currentScanDirectory, __dirname);
+  await projectsMutex.runExclusive(async () => {
+    state.activeProjectsCache = await discoverProjects(dirToScan);
+  });
+  await nlpEngine.train(state.activeProjectsCache);
+  console.log(`NLP training complete. ${state.activeProjectsCache.length} project(s) loaded.`);
+
+  // Restore any phrases learned (and confirmed) in previous runs before the semantic matcher
+  // builds its embeddings, so restarts don't silently forget cross-project learning.
+  loadLearnedIntents();
+
+  // Initialize semantic matcher (embedding + Fuse.js)
+  await semanticMatcher.initialize().catch((err) => console.error('SemanticMatcher init failed:', err.message));
+  semanticMatcher.addProjectIntents(state.activeProjectsCache).catch(() => {});
+
+  // Start file watcher for console.config.json changes
+  try {
+    if (fs.existsSync(dirToScan)) {
+      watchProjectConfigs(dirToScan, async (updated, isNew, removedName) => {
+        await projectsMutex.runExclusive(async () => {
+          if (removedName) {
+            state.activeProjectsCache = state.activeProjectsCache.filter((p) => p.folderName !== removedName);
+          } else if (isNew) {
+            const existing = state.activeProjectsCache.findIndex((p) => p.id === updated.id);
+            if (existing >= 0) state.activeProjectsCache[existing] = updated;
+            else state.activeProjectsCache.push(updated);
+          } else {
+            const idx = state.activeProjectsCache.findIndex((p) => p.id === updated.id);
+            if (idx >= 0) state.activeProjectsCache[idx] = updated;
+          }
+        });
+        nlpEngine.train(state.activeProjectsCache).catch(() => {});
+        semanticMatcher.clearProjectIntents();
+        semanticMatcher.addProjectIntents(state.activeProjectsCache).catch(() => {});
+        broadcast({ type: 'projects_updated', data: state.activeProjectsCache });
+      });
+      console.log('File watcher active for console.config.json changes.');
+    }
+  } catch (err) {
+    console.error('File watcher failed to start:', err.message);
+  }
+
+  // Auto-apply telemetry-based threshold adjustments on startup
+  const autoResults = autoApplyThresholdsForAll();
+  if (autoResults.length > 0) {
+    console.log(`Auto-applied threshold adjustments for ${autoResults.length} project(s):`);
+    for (const r of autoResults) {
+      console.log(`  ${r.projectId}: ${r.applied} adjustment(s)`);
+    }
+  }
+
+  // Auto-promote high-confidence near-miss patterns (5+ occurrences, >=80% acceptance) into
+  // real intent examples on startup, instead of requiring a manual `review learning` +
+  // `approve suggestions` round trip for patterns the engine is already sure about.
+  const learningResults = autoApplySuggestionsForAll();
+  if (learningResults.length > 0) {
+    console.log(`Auto-applied near-miss learning for ${learningResults.length} project(s):`);
+    for (const r of learningResults) {
+      console.log(`  ${r.projectId}: ${r.applied}/${r.total} suggestion(s) promoted`);
+    }
+  }
+
+  // Port fallback: try PORT through PORT+10 like start.bat does. Reuses the single `httpServer`
+  // created above (rather than a fresh server per attempt) so Vite's HMR upgrade listener,
+  // already attached to it, stays valid once we actually bind.
+  const MAX_PORT_ATTEMPTS = 10;
+  let server = null;
+  for (let attempt = 0; attempt < MAX_PORT_ATTEMPTS; attempt++) {
+    const tryPort = PORT + attempt;
+    try {
+      await new Promise((resolve, reject) => {
+        const onListening = () => {
+          httpServer.removeListener('error', onError);
+          console.log(`Console Server running on http://${HOST}:${tryPort}`);
+          console.log(`Default scan path: ${state.currentScanDirectory}`);
+          if (HOST === '0.0.0.0') {
+            console.log('WARNING: bound to 0.0.0.0 — reachable from your LAN. This server can run shell commands with no authentication.');
+          }
+          resolve();
+        };
+        const onError = (err) => {
+          httpServer.removeListener('listening', onListening);
+          if (err.code === 'EADDRINUSE') {
+            console.log(`Port ${tryPort} in use, trying ${tryPort + 1}...`);
+          }
+          reject(err);
+        };
+        httpServer.once('listening', onListening);
+        httpServer.once('error', onError);
+        httpServer.listen(tryPort, HOST);
+      });
+      server = httpServer;
+      break; // succeeded
+    } catch (err) {
+      if (err.code !== 'EADDRINUSE' || attempt >= MAX_PORT_ATTEMPTS - 1) {
+        console.error(`Failed to start server: ${err.message}`);
+        process.exit(1);
+      }
+      // continue to next port — httpServer isn't listening yet, so it's safe to retry .listen()
+    }
+  }
+
+  if (server) {
+    server.on('upgrade', (request, socket, head) => {
+      // Origin check: only allow connections from the local server itself
+      const origin = request.headers.origin;
+      if (origin && !origin.startsWith('http://127.0.0.1') && !origin.startsWith('http://localhost')) {
+        socket.destroy();
+        return;
+      }
+      const pathname = new URL(request.url, `http://${request.headers.host}`).pathname;
+      if (pathname === '/stream' || pathname === '/stream/') {
+        wss.handleUpgrade(request, socket, head, (ws) => {
+          wss.emit('connection', ws, request);
+        });
+      }
+      // Anything else (notably Vite's own HMR websocket, which registers its own 'upgrade'
+      // listener on this same httpServer via `hmr: { server: httpServer }` above) is left alone
+      // instead of being unconditionally destroyed — this used to kill Vite's HMR socket, so the
+      // dev client had no live-reload path and fell back to a full page reload on any hiccup.
+    });
+  }
+}
+
+init();

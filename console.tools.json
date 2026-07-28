@@ -1,0 +1,40 @@
+{
+  "tools": [
+    {
+      "name": "open_in_vscode",
+      "description": "Open the current project in Visual Studio Code",
+      "command": "code .",
+      "risky": false
+    },
+    {
+      "name": "count_loc",
+      "description": "Count lines of code in the project, grouped by file extension",
+      "command": "powershell -Command \"Get-ChildItem -Recurse -File -Exclude node_modules,.git,dist,build | Where-Object { $_.Extension -in '.js','.ts','.tsx','.jsx','.css','.html','.py','.json','.md','.yml','.yaml' } | Group-Object Extension | Select-Object Name, @{N='Files';E={$_.Count}}, @{N='Lines';E={($_.Group | ForEach-Object { (Get-Content $_.FullName | Measure-Object -Line).Lines } | Measure-Object -Sum).Sum }} | Format-Table -AutoSize\"",
+      "risky": false
+    },
+    {
+      "name": "find_todos",
+      "description": "Search the project for TODO, FIXME, HACK, and XXX comments",
+      "command": "powershell -Command \"Get-ChildItem -Recurse -File -Exclude node_modules,.git,dist,build | Select-String -Pattern 'TODO|FIXME|HACK|XXX' -CaseSensitive | Group-Object Filename | ForEach-Object { $_.Group | ForEach-Object { \\\"$($_.Filename):$($_.LineNumber) $($_.Line.Trim())\\\" } }\"",
+      "risky": false
+    },
+    {
+      "name": "check_disk_usage",
+      "description": "Show disk usage of the project directory",
+      "command": "powershell -Command \"Get-ChildItem -Directory | ForEach-Object { $dir = $_.FullName; $size = (Get-ChildItem $dir -Recurse -File | Measure-Object -Property Length -Sum).Sum; if ($size -gt 0) { \\\"{0:N2} MB — {1}\\\" -f ($size / 1MB), $_.Name } } | Sort-Object -Descending\"",
+      "risky": false
+    },
+    {
+      "name": "git_quick_log",
+      "description": "Show a colorful, compact git log with graph",
+      "command": "git log --oneline --graph --all -20",
+      "risky": false
+    },
+    {
+      "name": "show_uncommitted",
+      "description": "Show detailed diff of uncommitted changes",
+      "command": "git diff --stat && echo --- && git diff",
+      "risky": false
+    }
+  ]
+}

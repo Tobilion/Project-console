@@ -1,0 +1,31 @@
+{
+  "projectName": "StudyFlash",
+  "entries": [
+    {
+      "triggers": ["start dev server", "run dev"],
+      "type": "command",
+      "action": "npm run dev"
+    },
+    {
+      "triggers": ["start backend server", "run server"],
+      "type": "command",
+      "action": "node server.js"
+    },
+    {
+      "triggers": ["run tests", "test app"],
+      "type": "command",
+      "action": "npm test"
+    },
+    {
+      "triggers": ["reset database", "clear sqlite"],
+      "type": "command",
+      "action": "npm run db:reset",
+      "risky": true
+    },
+    {
+      "triggers": ["spaced repetition algorithm", "supermemo logic"],
+      "type": "answer",
+      "response": "StudyFlash implements an adapted SM-2 spaced repetition algorithm storing card intervals and ease factors in SQLite."
+    }
+  ]
+}

@@ -1,0 +1,31 @@
+{
+  "projectName": "SportSim Pro",
+  "entries": [
+    {
+      "triggers": ["start dev server", "run dev", "start dev"],
+      "type": "command",
+      "action": "npm run dev"
+    },
+    {
+      "triggers": ["run tests", "test app"],
+      "type": "command",
+      "action": "npm test"
+    },
+    {
+      "triggers": ["build project", "build app"],
+      "type": "command",
+      "action": "npm run build"
+    },
+    {
+      "triggers": ["deploy to vercel", "push live"],
+      "type": "command",
+      "action": "vercel --prod",
+      "risky": true
+    },
+    {
+      "triggers": ["match engine logic", "how match sim works"],
+      "type": "answer",
+      "response": "Match simulation generates minute-by-minute events based on team tactics, player ratings, and stamina curve algorithms."
+    }
+  ]
+}

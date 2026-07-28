@@ -1,0 +1,20 @@
+{
+  "projectName": "Dream Kick",
+  "entries": [
+    {
+      "triggers": ["start local server", "run dev", "start dev"],
+      "type": "command",
+      "action": "npx http-server -p 8080"
+    },
+    {
+      "triggers": ["build pwa", "build app"],
+      "type": "command",
+      "action": "npm run build"
+    },
+    {
+      "triggers": ["check offline assets", "audit assets"],
+      "type": "answer",
+      "response": "Dream Kick uses zero external asset downloads. All 3D meshes and graphics are generated procedurally in Three.js and cached via ServiceWorker."
+    }
+  ]
+}

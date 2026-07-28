@@ -1,0 +1,20 @@
+{
+  "projectName": "Log Analyzer",
+  "entries": [
+    {
+      "triggers": ["run python cli", "analyze log"],
+      "type": "command",
+      "action": "python main.py"
+    },
+    {
+      "triggers": ["start web UI", "run dev"],
+      "type": "command",
+      "action": "npm run dev"
+    },
+    {
+      "triggers": ["run tests", "pytest"],
+      "type": "command",
+      "action": "pytest"
+    }
+  ]
+}
