@@ -2,7 +2,23 @@ import { semanticMatcher } from './semanticMatcher.js';
 import { nlpEngine } from './nlpEngine.js';
 import { logMatch, getEffectiveThreshold } from './intentTelemetry.js';
 import { metrics } from './metrics.js';
+import { routeViaLocalModel } from './localRouter.js';
+import { formatRepoMap } from './codebaseIndexer.js';
 
+// Much smaller than ollamaContext.js's system-prompt cap (6000 chars) — the router is a single
+// bounded classification call on CPU-only hardware (LOCAL_ROUTER_UPGRADE_PROMPT.md's hard
+// constraints), not a full conversation, so it only gets enough of the repo map to disambiguate
+// a loose file reference, not the whole project.
+const ROUTER_REPO_MAP_CHARS = 1200;
+
+// NOTE: file_append, file_read, and git_remote_add were previously missing from this set even
+// though builtinIntents.js has real handlers for all three, and git_remote_add's whole reason
+// for existing was a PRE_SEMANTIC_OVERRIDES literal-keyword hit in semanticMatcher.js (source:
+// 'keyword', confidence 0.9) — but that override's result still had to pass this Set's gate at
+// step 1b below to actually dispatch, so it silently died here and fell through to the generic
+// fallback every time despite CLAUDE.md documenting it as "fixed". Found while wiring the new
+// local-router tier (which also reads this Set as its allowed-intent list) — added all three so
+// both the existing fast path and the new router tier can actually reach them.
 const BUILTIN_INTENTS = new Set([
   'system.chit_chat.greeting', 'system.chit_chat.status', 'system.chit_chat.gratitude',
   'system.chit_chat.clear', 'system.chit_chat.help', 'system.chit_chat.git_status',
@@ -16,10 +32,16 @@ const BUILTIN_INTENTS = new Set([
   'run_project',
   'git_push', 'git_commit', 'git_commit_push', 'git_add',
   'git_init', 'git_ignore_add', 'git_rm_cached', 'npm_install',
-  'npm_build', 'npm_run', 'file_create', 'file_delete', 'project_scan',
+  'npm_build', 'npm_run', 'file_create', 'file_delete', 'file_append', 'file_read',
+  'git_remote_add', 'project_scan',
   'git_log', 'git_branch', 'git_checkout', 'git_pull',
   'system.monitoring.metrics',
 ]);
+
+// Exported so localRouter.js's allowed-intent list is always drawn from exactly the same set
+// that gates dispatch below — a router result naming an intent outside this set could never be
+// executed, so there's no reason for the two lists to risk drifting apart.
+export { BUILTIN_INTENTS };
 
 const FALLBACK_SUGGESTIONS = ['help', 'overview', 'what are the commands', 'project structure', 'git status', 'monitoring'];
 
@@ -57,7 +79,7 @@ function captureTelemetry(projectId, input, telemetry) {
  *  2. NLP.js (trained classifier — legacy fallback)
  *  3. Fuzzy (Fuse.js suggestion — weakest, only for fallback text)
  */
-export async function matchInput(input, project, projectIndex) {
+export async function matchInput(input, project, projectIndex, options = {}) {
   metrics.inc('matching.total');
   const t0 = Date.now();
 
@@ -180,7 +202,37 @@ export async function matchInput(input, project, projectIndex) {
     }
   }
 
-  // 3. Fuzzy fallback (lowest confidence — just for suggestion chips)
+  // 4. Local router tier — one bounded local-model call for phrasings the embedding/NLP/fuzzy
+  // stages above didn't confidently resolve, before giving up and falling to commandGuesser's
+  // naive regex guess (in connection.js) / the plain suggestion-chip fallback below. Additive
+  // only: any failure, timeout, or low-confidence result from routeViaLocalModel() returns null
+  // and execution falls straight through to exactly the same fallback as before this tier
+  // existed — Ollama being off or slow causes zero behavior change to trigger mode.
+  const tRouter = Date.now();
+  let routerResult = null;
+  try {
+    routerResult = await routeViaLocalModel(input, {
+      model: options.model,
+      allowedIntents: [...BUILTIN_INTENTS],
+      repoMapSlice: formatRepoMap(project?.codebaseIndex?.repoMap, ROUTER_REPO_MAP_CHARS) || undefined,
+    });
+  } catch {
+    routerResult = null;
+  }
+  metrics.observe('matching.stage.router', Date.now() - tRouter);
+  if (routerResult) {
+    metrics.event({ type: 'match_result', input: input.slice(0, 80), outcome: 'router', duration: Date.now() - t0 });
+    return {
+      match: null,
+      builtin: routerResult.intent,
+      suggestions: [],
+      telemetryId,
+      routedByModel: true,
+      routerConfidence: routerResult.confidence,
+    };
+  }
+
+  // 5. Fuzzy fallback (lowest confidence — just for suggestion chips)
   metrics.observe('matching.total_time', Date.now() - t0);
   metrics.event({ type: 'match_result', input: input.slice(0, 80), outcome: 'fallback', duration: Date.now() - t0 });
   return {

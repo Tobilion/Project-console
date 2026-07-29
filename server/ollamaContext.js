@@ -1,8 +1,17 @@
+import { formatRepoMap } from './codebaseIndexer.js';
+
+// Full AI mode can afford a larger repo-map slice than the router tier's single bounded call
+// (see localRouter.js) since it's a real multi-turn conversation the user opted into, not a
+// fast-path classification — but still capped, since this whole system prompt already includes
+// CLAUDE.md content (up to MAX_DOC_CHARS below) and needs to leave room for actual conversation.
+const MAX_SYSTEM_PROMPT_REPO_MAP_CHARS = 6000;
+
 const BUILTIN_TOOL_DEFS = [
   { name: 'readFile', desc: 'Read a file from the current project.', args: { path: 'string (path relative to the project root)' } },
   { name: 'writeFile', desc: 'Write content to a file (overwrites existing). Requires user confirmation before it runs.', args: { path: 'string', content: 'string' } },
-  { name: 'editFile', desc: 'Edit a file by replacing oldString with newString. Requires user confirmation before it runs.', args: { path: 'string', oldString: 'string', newString: 'string' } },
+  { name: 'editFile', desc: 'Edit a file by replacing oldString with newString. oldString must reflect the file\'s ACTUAL current content byte-for-byte — call findFiles/readFile immediately before this call (not from memory or an earlier turn) and copy oldString directly from what it returns, including exact indentation. There is a whitespace-normalized fallback match if the exact text isn\'t found, but it only tolerates spacing/indentation differences, not wrong wording — if editFile still fails, re-read the file rather than guessing at oldString again. Requires user confirmation before it runs.', args: { path: 'string', oldString: 'string', newString: 'string' } },
   { name: 'insertAtLine', desc: 'Insert a new line at a specific 1-indexed line number, without replacing anything (unlike editFile, which needs existing text to match against). Use this for "add X as the Nth line" requests. Requires user confirmation before it runs.', args: { path: 'string', line: 'number (1-indexed)', content: 'string (the line to insert)' } },
+  { name: 'appendToFile', desc: 'Append content to the end of a file, creating it if it doesn\'t exist. Prefer this over insertAtLine for "add this to the end of X" / "append X to Y" requests where you don\'t already know the file\'s current line count. Requires user confirmation before it runs.', args: { path: 'string', content: 'string' } },
   { name: 'findFiles', desc: 'Find files by filename/path fragment (not file contents — use searchCode for that). Use this BEFORE writeFile/editFile/insertAtLine whenever the user names a file loosely (e.g. "the Claude.md file", "the config") instead of an exact path — if it returns more than one match, list them and ask the user which one they meant rather than guessing.', args: { pattern: 'string (filename or path fragment to search for)' } },
   { name: 'searchCode', desc: 'Search for a regex pattern in the current project\'s files.', args: { pattern: 'string (regex)', include: 'string? (e.g. .ts)' } },
   { name: 'listFiles', desc: 'List files in a directory of the current project.', args: { path: 'string? (default: project root)', pattern: 'string? (substring filter)' } },
@@ -50,6 +59,13 @@ function formatIndex(idx) {
     for (const [file, snippet] of Object.entries(idx.entrySnippets)) {
       lines.push(`\n--- ${file} (excerpt) ---\n${snippet}`);
     }
+  }
+  // Repo map: whole-project export/function/class names, not just the 1-2 entry-point files
+  // above — lets the model resolve "the config file" / "that component" with real project
+  // awareness instead of guessing or always reaching for readFile first. See codebaseIndexer.js.
+  const repoMapText = formatRepoMap(idx.repoMap, MAX_SYSTEM_PROMPT_REPO_MAP_CHARS);
+  if (repoMapText) {
+    lines.push(`\n--- Project signature map (exports/functions/classes by file) ---\n${repoMapText}`);
   }
   return lines.join('\n');
 }

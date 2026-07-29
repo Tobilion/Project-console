@@ -58,6 +58,14 @@ AI-mode input bar (real file upload via `FileReader`, Search/Reason/Deep Researc
 - `server/codebaseIndexer.js` snippets the first couple of entry-point files (`entrySnippets`);
   entry-point detection searches the whole tree (most Vite/CRA projects have `App.tsx` under
   `src/`, not at the root).
+- `server/codebaseIndexer.js` also builds a whole-project **repo map** (`idx.repoMap`) — a
+  regex-based, capped list of top-level export/function/class names per file (JS/TS + Python),
+  mtime-cached per file. `formatRepoMap(repoMap, maxChars)` renders a capped text slice; used by
+  `ollamaContext.js` (6000-char slice in the full AI-mode system prompt, alongside — not
+  replacing — the entry-point excerpts) and by `matcher.js`'s router stage (1200-char slice,
+  context only, passed into `localRouter.js`'s prompt). This is what lets even a small local model
+  resolve "the config file" or "that component" instead of guessing or always reaching for
+  `readFile` first — see `LOCAL_ROUTER_UPGRADE_PROMPT.md` piece 2.
 - `server/scriptEntries.js` auto-derives `console.config.json`-style command entries from a
   project's `package.json` `scripts`, merged in during discovery. Hand-authored entries always
   win on an exact-action collision; auto entries are tagged `auto: true`.
@@ -83,9 +91,19 @@ AI-mode input bar (real file upload via `FileReader`, Search/Reason/Deep Researc
 - AI mode is off by default. The AI ON/OFF toggle in the terminal header is the **sole** opt-in
   gesture — flipping it on sends every subsequent message in that session straight to Ollama, no
   per-query re-confirmation (the old `consent_request` double-gate was removed as pure friction).
-- `writeFile`, `editFile`, `insertAtLine`, and any `executeCommand` with `risky: true` from the AI
-  path require explicit user approval (`tool_confirm_prompt` → user clicks Approve/Reject) before
-  they run — the model cannot self-approve. See `isGatedToolCall()` in `server/tools.js`.
+- `writeFile`, `editFile`, `insertAtLine`, `appendToFile`, and any `executeCommand` with
+  `risky: true` from the AI path require explicit user approval (`tool_confirm_prompt` → user
+  clicks Approve/Reject) before they run — the model cannot self-approve. See `isGatedToolCall()`
+  in `server/tools.js`.
+- **Trigger mode (2026-07-28) can now also create/append files without AI mode or Ollama at
+  all** — "create a file called X with the text '...'" / "append to X the text '...'" /
+  "read file X" in `builtinIntents.js` parse the filename + quoted content directly with regex
+  (deliberately conservative: asks instead of guessing if either piece is missing) and call the
+  same sandboxed `tools.js` functions the AI path uses. Writes/appends still go through the exact
+  same confirm-before-execute flow as every risky shell command (`queueFileOpConfirmation` →
+  `pending.fileOp` branch in `connection.js`'s `handleConfirmResponse`) — reads are unguarded
+  since they're non-destructive. This only covers unambiguous, explicitly-quoted content; anything
+  open-ended still needs AI mode.
 - File tools cannot resolve outside the active project's directory.
 - Server binds to `127.0.0.1` by default (`HOST=0.0.0.0` env var to change — this server executes
   shell commands with no auth, so don't do that on an untrusted network).
@@ -117,6 +135,23 @@ AI-mode input bar (real file upload via `FileReader`, Search/Reason/Deep Researc
   in this app's domain to always win outright. Keep this list short; it's a targeted fix for
   confirmed traps, not a general reordering of the pipeline. If you find more confirmed
   misclassifications like this, add them here rather than retuning the floor blindly.
+- **Confirmed live 2026-07-28, two more `PRE_SEMANTIC_OVERRIDES` traps found from real exported
+  chat transcripts**: (1) "add a file" / "can you help me add a file" (tobi-portfolio, no
+  filename, no git context) resolved to `git_add` instead of `file_create` both times it was
+  tried — added an override requiring an add/create/make/write/generate verb + "file" with *no*
+  git-context word anywhere in the input, so "add files to git" / "stage all files" still resolve
+  to `git_add` normally. (2) "Can I attach the github link" (Project console) had no matching
+  intent at all — there was no way to set a git remote — and fell through to an unrelated generic
+  help response. Added a real `git_remote_add` intent + handler in `builtinIntents.js`: parses a
+  URL out of the input (asks for one if missing), then confirms `git remote add origin <url> ||
+  git remote set-url origin <url>` (works whether "origin" already exists or not).
+- **Confirmed live 2026-07-28: "push the site with the comment 'bug fixes'" silently dropped the
+  comment.** `git_push` and `system.chit_chat.deploy` have heavily overlapping example phrases
+  (both full of "push ..." variants), and only `deploy`'s handler parsed a `with the comment/
+  message "..."` clause — the plain `git_push` branch always pushed bare. When a "push ..." input
+  happened to match `git_push` instead of `deploy`, the user's comment vanished with no error.
+  Fixed by parsing the same comment clause in the `git_push` branch too, so the outcome no longer
+  depends on which of the two intents wins the match.
 - `semanticMatcher.match()` internally runs 3 sub-stages (semantic → fuzzy → keyword), each
   self-gated against its own floor before returning. `matcher.js` used to re-apply the semantic
   0.6 floor to *every* returned result regardless of source — since keyword-tier confidences are
@@ -130,6 +165,23 @@ AI-mode input bar (real file upload via `FileReader`, Search/Reason/Deep Researc
   `fuzzyFloor` check even runs).
 - `server/ollama.js` `NUM_CTX` is 16384 (env override: `OLLAMA_NUM_CTX`) since the system prompt
   now includes CLAUDE.md content + entry-point snippets.
+- **Local router tier (2026-07-29, `LOCAL_ROUTER_UPGRADE_PROMPT.md` phase 1):** `matcher.js` now
+  has a stage 4 between the semantic/NLP/fuzzy pipeline and the plain suggestion-chip fallback —
+  one bounded, non-streaming Ollama call (`server/localRouter.js`'s `routeViaLocalModel()`, via
+  the new `chatOnce()` in `server/ollama.js`) that classifies novel phrasings into one of
+  `BUILTIN_INTENTS` instead of giving up. Low `num_predict`, temperature 0, 7s timeout; any
+  failure/timeout/low-confidence/unknown-intent result returns `null` and falls through to
+  exactly today's existing behavior (`commandGuesser` → suggestions) — zero regression when
+  Ollama is off. `connection.js` passes `sessionContext.aiModel` through so it uses whatever model
+  the user already picked, independent of the `aiEnabled` toggle. A router hit dispatches through
+  the same `handleBuiltinIntent()` every other stage uses (it only decides *which* intent fired,
+  never bypasses the confirm-before-write flow) and is logged as a near-miss with `source:
+  'router'`. Found and fixed a real bug while wiring this: `BUILTIN_INTENTS` was missing
+  `file_append`, `file_read`, and `git_remote_add` — despite real handlers existing for all three
+  and `git_remote_add` having a dedicated `PRE_SEMANTIC_OVERRIDES` literal-keyword hit, any match
+  on those three intents from *any* stage (not just the new router) silently died at this Set's
+  gate and fell through to the generic fallback. The "attach the github link" fix documented below
+  was therefore not actually reachable end-to-end until this fix.
 
 ## Ollama Cloud (online fallback)
 
@@ -188,6 +240,38 @@ AI-mode input bar (real file upload via `FileReader`, Search/Reason/Deep Researc
   for any future explicit "move this chat to a different project" feature, but nothing calls it
   today.
 
+## Self-learning (4 layers) — improvements 2026-07-28
+
+All four layers now run at least partly unattended instead of requiring a manual review command:
+
+- **Layer 1 (near-miss → `learningEngine.js`)**: added `autoApplySuggestions()` /
+  `autoApplySuggestionsForAll()`, called on server startup in `index.js` right alongside the
+  existing `autoApplyThresholdsForAll()` call. Any near-miss pattern already at `confidence:
+  'high'` (5+ occurrences, ≥80% acceptance) is promoted into a real intent example automatically
+  — no more waiting on `review learning` + `approve suggestions` for patterns the engine is
+  already sure about. Lower-confidence suggestions still require manual review as before.
+- **Cross-project persistence**: `INTENTS` (from `intentsData.js`) is a single module-level
+  object shared by the whole Node process, not per-project — so `applySuggestions()` promoting a
+  phrase in one project's near-miss log was already generalizing to every other project
+  immediately, in memory. The real gap was that this mutation was never written to disk, so a
+  server restart silently forgot everything ever learned, everywhere, at once. New
+  `server/learnedIntents.js`: `loadLearnedIntents()` merges `data/learned-intents.json` into
+  `INTENTS` before `semanticMatcher.initialize()` builds its embeddings (called in `index.js`),
+  and `persistLearnedPhrases()` (called from `applySuggestions()`) writes newly-applied phrases
+  back to that file so they survive restarts.
+- **Distillation noise cleanup** (`distillation.js`): removed the `file_pattern` suggestion type
+  entirely — it was logged on every `writeFile`/`editFile` but never applied to anything ("just
+  logged for now" per its own old comment), and is now fully covered by the Layer 4 file-edit-
+  frequency nudge below. Also de-duped `knowledge_entry` suggestions (re-reading the same file
+  across sessions no longer logs a duplicate pending record for the same trigger) and added
+  `pruneStalePending()`, which drops pending records older than 30 days on each
+  `analyzeAIExchange()` call so the `.jsonl` log doesn't grow unbounded.
+- **Adaptive thresholds** (`projectMemory.js`): `QUESTION_THRESHOLD`/`COMMAND_THRESHOLD`/
+  `FILE_EDIT_THRESHOLD` were fixed constants (3/20/10) applied identically to every project
+  regardless of how active it is. New `adaptiveThreshold(base, totalActivity)` scales them down
+  for quiet/new projects (<15 total tracked events — surface patterns sooner) and up for heavily
+  used ones (>150 — raise the bar so routine high-volume activity doesn't spam a nudge).
+
 ## Known gotchas
 
 - **Fixed 2026-07-28: `memory_suggestion` (Layer 4 adaptive project memory) was silently
@@ -245,6 +329,15 @@ AI-mode input bar (real file upload via `FileReader`, Search/Reason/Deep Researc
 - **Silent truncation**: on large file writes, verify the file tail after edits — `writeFile` in
   `server/tools.js` re-reads and compares length as a cheap check, but a hash compare would catch
   more. Not yet hardened further.
+- **`editFile` whitespace-tolerant fallback (2026-07-29, `LOCAL_ROUTER_UPGRADE_PROMPT.md` piece
+  3):** `editFile` in `server/tools.js` tries an exact `oldString` substring match first
+  (unchanged); if that fails, it now falls back to a whitespace-normalized line-range match
+  (`normalizeLine`/`findNormalizedLineMatch` — trims + collapses internal whitespace per line
+  before comparing) before giving up, since smaller local models frequently fail to reproduce a
+  file's exact indentation/spacing byte-for-byte. Only tolerates spacing differences, not wrong
+  wording. On total failure the error now names both things it tried and tells the caller to
+  re-read the file rather than re-guessing. `ollamaContext.js`'s `editFile` tool description was
+  tightened to match (call `findFiles`/`readFile` immediately before proposing `oldString`).
 - `update_index2.cjs` is a leftover one-off migration script at the repo root — its logic is fully
   superseded by the current `server/` modules. Left in place because file deletion was declined
   once; safe to delete whenever.

@@ -25,6 +25,37 @@ const IGNORE_DIRS = new Set([
   '.next', '.cache', '__pycache__', 'env', '.vscode'
 ]);
 
+/** Collapse a line's leading/trailing whitespace and internal whitespace runs to one space, so
+ * two lines that differ only in indentation or spacing compare equal. Used by editFile's
+ * whitespace-tolerant fallback below. */
+function normalizeLine(line) {
+  return line.trim().replace(/\s+/g, ' ');
+}
+
+/**
+ * Finds a contiguous block of `contentLines` whose normalized form matches `oldLines`'
+ * normalized form exactly, returning the starting index or -1. This is a fallback for
+ * editFile's exact-substring match — small local models frequently fail to reproduce a file's
+ * exact whitespace/quoting when they compose an `oldString`, and normalized-line matching
+ * recovers the common case (same text, different indentation/spacing) without falling back to
+ * something as loose as fuzzy/similarity matching that could silently edit the wrong block.
+ */
+function findNormalizedLineMatch(contentLines, oldLines) {
+  if (oldLines.length === 0 || oldLines.length > contentLines.length) return -1;
+  const normOld = oldLines.map(normalizeLine);
+  for (let i = 0; i <= contentLines.length - normOld.length; i++) {
+    let matched = true;
+    for (let j = 0; j < normOld.length; j++) {
+      if (normalizeLine(contentLines[i + j]) !== normOld[j]) {
+        matched = false;
+        break;
+      }
+    }
+    if (matched) return i;
+  }
+  return -1;
+}
+
 async function walkDir(dirPath, maxDepth = 6) {
   const results = [];
   let entries;
@@ -214,17 +245,70 @@ export async function createProjectTools(project) {
     try {
       const resolved = resolveSafe(filePath);
       const content = await fs.readFile(resolved, 'utf-8');
-      if (!content.includes(oldString)) {
-        return { success: false, error: `Text not found in ${filePath}.` };
+
+      if (content.includes(oldString)) {
+        const newContent = content.replace(oldString, newString);
+        if (newContent === content) {
+          return { success: false, error: 'No changes made (replacement identical to original).' };
+        }
+        await fs.writeFile(resolved, newContent, 'utf-8');
+        return { success: true, data: `Edited ${filePath}` };
       }
-      const newContent = content.replace(oldString, newString);
+
+      // LOCAL_ROUTER_UPGRADE_PROMPT.md piece 3: exact match failed — a common failure mode for
+      // smaller local models that don't reproduce a file's exact whitespace/quoting when they
+      // compose oldString. Before giving up, try a whitespace-normalized line-range match: if a
+      // contiguous block of the file's real lines matches oldString's lines once each line is
+      // trimmed and its internal whitespace collapsed, replace that exact original block with
+      // newString (verbatim, as given) rather than silently failing.
+      const contentLines = content.split('\n');
+      const oldLines = oldString.split('\n');
+      const startLine = findNormalizedLineMatch(contentLines, oldLines);
+      if (startLine === -1) {
+        return {
+          success: false,
+          error: `Text not found in ${filePath} (checked an exact match and a whitespace-tolerant fallback). ` +
+            `The file may have changed since it was last read, or oldString doesn't reflect its real content — ` +
+            `call readFile("${filePath}") again and copy oldString directly from the current contents before retrying.`,
+        };
+      }
+      const before = contentLines.slice(0, startLine);
+      const after = contentLines.slice(startLine + oldLines.length);
+      const newContent = [...before, ...newString.split('\n'), ...after].join('\n');
       if (newContent === content) {
         return { success: false, error: 'No changes made (replacement identical to original).' };
       }
       await fs.writeFile(resolved, newContent, 'utf-8');
-      return { success: true, data: `Edited ${filePath}` };
+      return { success: true, data: `Edited ${filePath} (matched via whitespace-normalized fallback — verify the result looks right)` };
     } catch (err) {
       return { success: false, error: `Failed to edit file: ${err.message}` };
+    }
+  }
+
+  /**
+   * Appends content to the end of a file (creating it if it doesn't exist yet) without needing
+   * to know the existing content or line count — for trigger-mode "append X to file Y" requests
+   * where there's no AI in the loop to compute an insertAtLine target. Gated the same as
+   * writeFile/editFile since it mutates a file on disk.
+   */
+  async function appendToFile({ path: filePath, content } = {}) {
+    if (!filePath) return { success: false, error: 'path is required.' };
+    if (typeof content !== 'string') return { success: false, error: 'content is required.' };
+    try {
+      const resolved = resolveSafe(filePath);
+      let existing = '';
+      try {
+        existing = await fs.readFile(resolved, 'utf-8');
+      } catch (err) {
+        if (err.code !== 'ENOENT') throw err;
+      }
+      const separator = existing && !existing.endsWith('\n') ? '\n' : '';
+      const newContent = existing + separator + content + '\n';
+      await fs.mkdir(path.dirname(resolved), { recursive: true });
+      await fs.writeFile(resolved, newContent, 'utf-8');
+      return { success: true, data: `Appended to ${path.relative(root, resolved) || path.basename(resolved)}` };
+    } catch (err) {
+      return { success: false, error: `Failed to append to file: ${err.message}` };
     }
   }
 
@@ -369,6 +453,7 @@ export async function createProjectTools(project) {
     editFile,
     findFiles,
     insertAtLine,
+    appendToFile,
     searchCode,
     listFiles,
     getProjectInfo,
@@ -394,7 +479,7 @@ export async function createProjectTools(project) {
 }
 
 /** Tool names whose effects are destructive/irreversible-ish and must be confirmed by the user before running. */
-export const GATED_TOOLS = new Set(['writeFile', 'editFile', 'insertAtLine']);
+export const GATED_TOOLS = new Set(['writeFile', 'editFile', 'insertAtLine', 'appendToFile']);
 
 /**
  * Per-project risky custom plugin tools. Populated by createProjectTools() when loading

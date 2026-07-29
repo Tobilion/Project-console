@@ -3,6 +3,62 @@ import { injectContext } from '../contextInjector.js';
 import { executeCommand } from '../executor.js';
 import { performUndo, isGitRepo } from '../gitSafety.js';
 import { pendingConfirmations } from '../state.js';
+import { createProjectTools } from '../tools.js';
+
+/**
+ * Pulls a filename and (optionally) quoted content out of a natural-language trigger-mode
+ * request, e.g. "add file Tobijagz to folder with text 'I am the goat'" or "create a file
+ * called notes.md with the text 'Hello World'". Deliberately conservative — if either piece
+ * can't be found with reasonable confidence, the caller asks the user instead of guessing,
+ * same policy this app already follows for ambiguous file targets on the AI path.
+ */
+function parseFileNameAndContent(input) {
+  const fileName = parseFileNameOnly(input);
+
+  // Content: prefer an explicit "with/containing/saying (the) text/content/message ... '...'"
+  // clause; fall back to the first quoted string anywhere in the input.
+  const withClause = input.match(/\b(?:with|containing|saying)\b\s*(?:the\s+)?(?:text|content|message)?\s*[:]?\s*["']([^"']+)["']/i);
+  const anyQuoted = input.match(/["']([^"']{1,2000})["']/);
+  const content = (withClause?.[1] ?? anyQuoted?.[1])?.trim() || null;
+
+  return { fileName, content };
+}
+
+/**
+ * Just the filename half of parseFileNameAndContent, for read-only requests. Tries an explicit
+ * filename with an extension first ("notes.md", "src/utils/helpers.js" — the reliable case,
+ * doesn't require the word "file" to appear at all), then falls back to whatever follows the
+ * literal word "file" for extensionless names like "add file Tobijagz to folder...".
+ */
+function parseFileNameOnly(input) {
+  const withExt = input.match(/\b([\w.\-/\\]+\.[a-zA-Z0-9]{1,10})\b/);
+  if (withExt) return withExt[1];
+  const afterFileWord = input.match(/\bfile\b\s+(?:called\s+|named\s+)?["'`]?([^\s"'`]+?)["'`]?(?=\s+(?:to|in|with|containing|saying|that|and|$)|$)/i);
+  return afterFileWord?.[1] || null;
+}
+
+/**
+ * Queues a direct file-tool call (writeFile/appendToFile/etc.) behind the same
+ * confirm-before-execute flow risky shell commands already use, instead of routing it through
+ * executeCommand — there's no shell command to run here, just a sandboxed tools.js function.
+ * See handleConfirmResponse's `pending.fileOp` branch in connection.js for the execution side.
+ */
+function queueFileOpConfirmation(ws, project, input, { tool, args, summary }) {
+  const token = crypto.randomUUID();
+  pendingConfirmations.set(token, {
+    projectId: project.id,
+    fileOp: { tool, args },
+    command: summary, // so the generic "Cancelled: ..." path (keyed off pending.command) still works
+    trigger: input,
+    createdAt: Date.now(),
+  });
+  ws.send(JSON.stringify({
+    type: 'confirm_prompt',
+    token,
+    command: summary,
+    trigger: tool,
+  }));
+}
 
 /** Enrich a plain-text response with a summary of the project's codebase index, if present. */
 export function enrichWithIndex(baseMsg, idx) {
@@ -42,6 +98,10 @@ function buildHelpMessage(project, sessionContext) {
     `  - "show dependencies" / "show config" — package.json, .env, etc.`,
     `  - "git status" — uncommitted changes`,
     `  - "deploy" / "push live" — commits everything and pushes (asks to confirm first)`,
+    `  - "attach the github link <url>" — sets/updates the git remote origin`,
+    `  - "create a file called X with the text '...'" — creates a file (asks to confirm first)`,
+    `  - "append to X the text '...'" — adds to the end of a file (asks to confirm first)`,
+    `  - "read file X" / "what's in X" — shows a file's contents`,
     `  - "run the site" / "run the project" — detects project type, shows runnable suggestions`,
     `  - "where is the link" / "link?" / "url?" — shows dev server URL if running`,
     `  - "stop server" / "kill server" — stops a running dev server`,
@@ -234,17 +294,58 @@ export async function handleBuiltinIntent(ws, action, input, project, sessionCon
     if (!(await isGitRepo(project.path))) {
       ws.send(JSON.stringify({ type: 'answer', data: `**[${project.name}]** isn't a git repository yet. Run \`git init\` first, then add a remote origin.` }));
     } else {
+      // "push the site with the comment 'bug fixes'" can match this plain git_push intent
+      // instead of system.chit_chat.deploy (their example phrases overlap heavily — both are
+      // full of "push ..." variants), and this branch used to always push bare, silently
+      // dropping any comment the user typed. Parse it the same way deploy does so the comment
+      // isn't lost regardless of which of the two intents wins the match.
+      const msgMatch = input.match(/(?:with (?:the )?(?:comment|message) ["']?|(?:comment|message):?\s*["']?)(.+?)(?:["']?\s*$|["']?\s+and)/i);
+      const commitMsg = msgMatch ? msgMatch[1].trim() : null;
       const token = crypto.randomUUID();
+      const command = commitMsg
+        ? `git add -A && git commit -m "${commitMsg.replace(/"/g, '\\"')}" && git push`
+        : 'git push';
       pendingConfirmations.set(token, {
         projectId: project.id,
-        command: 'git push',
+        command,
         trigger: input,
         createdAt: Date.now()
       });
       ws.send(JSON.stringify({
         type: 'confirm_prompt', token,
-        command: 'git push (pushes local commits to the remote repository)',
+        command: commitMsg
+          ? `git add -A && git commit -m "${commitMsg}" && git push  (commits with your comment, then pushes)`
+          : 'git push (pushes local commits to the remote repository)',
         trigger: 'git_push'
+      }));
+    }
+  } else if (action === 'git_remote_add') {
+    // "Can I attach the github link" had nowhere to go before — no intent existed for setting
+    // up a remote at all, so it fell through to an unrelated generic help response. Parse a
+    // URL out of the input; if there isn't one, ask for it instead of guessing.
+    const urlMatch = input.match(/(https?:\/\/\S+|git@[\w.-]+:\S+)/i);
+    if (!urlMatch) {
+      ws.send(JSON.stringify({
+        type: 'answer',
+        data: `Paste the GitHub repository URL (e.g. \`https://github.com/you/repo.git\`) and I'll set it as the remote.`
+      }));
+    } else if (!(await isGitRepo(project.path))) {
+      ws.send(JSON.stringify({ type: 'answer', data: `**[${project.name}]** isn't a git repository yet. Run \`git init\` first, then I can add the remote.` }));
+    } else {
+      const url = urlMatch[1].replace(/["').,]+$/, '');
+      const token = crypto.randomUUID();
+      // Works whether "origin" already exists or not, without needing an extra round trip to check.
+      const command = `git remote add origin ${url} || git remote set-url origin ${url}`;
+      pendingConfirmations.set(token, {
+        projectId: project.id,
+        command,
+        trigger: input,
+        createdAt: Date.now()
+      });
+      ws.send(JSON.stringify({
+        type: 'confirm_prompt', token,
+        command: `${command}  (sets "origin" to ${url})`,
+        trigger: 'git_remote_add'
       }));
     }
   } else if (action === 'git_commit') {
@@ -385,7 +486,66 @@ export async function handleBuiltinIntent(ws, action, input, project, sessionCon
     projectTypeSuggestions(ws, project, scripts);
     return true;
   } else if (action === 'file_create') {
-    ws.send(JSON.stringify({ type: 'answer', data: `I can create files in **AI mode** — turn AI ON (top-right toggle) and say something like "write a file called notes.md with Hello World as the content" or "create a file src/utils/helpers.js".` }));
+    // Trigger mode never had a route to actually create a file — "add a file" always bounced
+    // to "turn on AI mode", which meant the whole feature was blocked on having Ollama running.
+    // Reading/writing/appending a file for an unambiguous, explicitly-named request doesn't need
+    // an LLM's judgment at all — it's the same deterministic sandboxed tools.js functions the AI
+    // path already uses, just invoked directly from a regex-parsed request instead of a model's
+    // tool call. Still gated behind the same confirm-before-write flow as every other mutation.
+    const parsed = parseFileNameAndContent(input);
+    if (!parsed.fileName) {
+      ws.send(JSON.stringify({
+        type: 'answer',
+        data: `What should I name the file, and what should it contain? Try: "create a file called notes.md with the text 'Hello World'".`
+      }));
+    } else if (!parsed.content) {
+      ws.send(JSON.stringify({
+        type: 'answer',
+        data: `What should **${parsed.fileName}** contain? Try: "create a file called ${parsed.fileName} with the text '...'" — or turn AI mode ON for open-ended content.`
+      }));
+    } else {
+      queueFileOpConfirmation(ws, project, input, {
+        tool: 'writeFile',
+        args: { path: parsed.fileName, content: parsed.content },
+        summary: `Write "${parsed.fileName}" (${parsed.content.length} chars)`,
+      });
+    }
+  } else if (action === 'file_append') {
+    const parsed = parseFileNameAndContent(input);
+    if (!parsed.fileName || !parsed.content) {
+      ws.send(JSON.stringify({
+        type: 'answer',
+        data: `Tell me the file and the text to add, e.g. "append to notes.md the text 'remember to test this'".`
+      }));
+    } else {
+      queueFileOpConfirmation(ws, project, input, {
+        tool: 'appendToFile',
+        args: { path: parsed.fileName, content: parsed.content },
+        summary: `Append to "${parsed.fileName}" (${parsed.content.length} chars)`,
+      });
+    }
+  } else if (action === 'file_read') {
+    const fileName = parseFileNameOnly(input);
+    if (!fileName) {
+      ws.send(JSON.stringify({ type: 'answer', data: `Which file would you like me to read?` }));
+    } else {
+      const tools = await createProjectTools(project);
+      const result = await tools.readFile({ path: fileName });
+      if (result.success) {
+        const body = result.data.length > 3000 ? result.data.slice(0, 3000) + '\n… (truncated)' : result.data;
+        ws.send(JSON.stringify({ type: 'answer', data: `**${fileName}**\n\`\`\`\n${body}\n\`\`\`` }));
+      } else {
+        // Ambiguous or missing file — suggest real matches instead of just failing, same
+        // convention the AI path already follows (findFiles before guessing at the wrong file).
+        const matches = await tools.findFiles({ pattern: fileName });
+        if (matches.success && matches.data.length > 0) {
+          const list = matches.data.slice(0, 8).map(f => `  - ${f}`).join('\n');
+          ws.send(JSON.stringify({ type: 'answer', data: `Couldn't find "${fileName}" exactly. Did you mean one of these?\n${list}` }));
+        } else {
+          ws.send(JSON.stringify({ type: 'answer', data: result.error }));
+        }
+      }
+    }
   } else if (action === 'file_delete') {
     ws.send(JSON.stringify({ type: 'answer', data: `To delete files, turn **AI mode** ON and say "delete the file X" or "remove file Y" — I'll ask for confirmation before making destructive changes.` }));
   } else if (action === 'project_scan') {

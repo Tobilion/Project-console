@@ -18,7 +18,7 @@ import { generateSuggestions, applySuggestions } from '../learningEngine.js';
 import { logMatch, getIntentStats, suggestThresholds, getThresholdOverrides, setThresholdOverride, removeThresholdOverride, clearTelemetry, updateTelemetryEntry, autoApplyThresholds, autoApplyThresholdsForAll } from '../intentTelemetry.js';
 import { semanticMatcher } from '../semanticMatcher.js';
 import { readDistillations, generateDistillationSuggestions, applyDistillation, clearDistillations } from '../distillation.js';
-import { trackCommand, trackQuestion, addCandidateAddition, getMemorySummary, addToClaudeMd } from '../projectMemory.js';
+import { trackCommand, trackFileEdit, trackQuestion, addCandidateAddition, getMemorySummary, addToClaudeMd } from '../projectMemory.js';
 import { state, pendingConfirmations, pendingToolConfirmations, sweepExpiredConfirmations } from '../state.js';
 import { wss } from '../wsServer.js';
 
@@ -575,7 +575,24 @@ async function handleExecute(ws, parsed, sessionContext) {
   }
 
   const projectIndex = state.activeProjectsCache.findIndex((p) => p.id === projectId);
-  const matchResult = await matchInput(input, project, projectIndex);
+  // Router tier (matcher.js stage 4) reuses whatever model the user has selected for full AI
+  // mode, if any — it works independently of the aiEnabled toggle (that flag only gates the
+  // multi-turn tool-call loop in aiQuery.js) and falls back to its own default model if unset.
+  const matchResult = await matchInput(input, project, projectIndex, { model: sessionContext.aiModel });
+
+  if (matchResult.routedByModel) {
+    // Observability parity with the 'guess'/'fallback' near-miss sources already logged below —
+    // lets `review learning` surface phrasings the fast pipeline is missing so they can be
+    // promoted into real examples later, same as any other near-miss.
+    logNearMiss(project.id, {
+      input,
+      resolvedCommand: null,
+      description: `router -> ${matchResult.builtin} (${matchResult.routerConfidence})`,
+      source: 'router',
+      intentSuggestion: matchResult.builtin,
+      telemetryEntryId: matchResult.telemetryId || undefined,
+    });
+  }
 
   const isMatched = !!(matchResult.multi || matchResult.builtin || matchResult.match);
   sessionContext.conversationHistory.push({
@@ -746,6 +763,33 @@ async function handleConfirmResponse(ws, parsed) {
   const project = state.activeProjectsCache.find((p) => p.id === pending.projectId);
   if (!project) {
     ws.send(JSON.stringify({ type: 'error_output', data: 'Project not found.\n' }));
+    ws.send(JSON.stringify({ type: 'end' }));
+    return;
+  }
+
+  // Direct file-tool confirmations from trigger mode (file_create/file_append — see
+  // queueFileOpConfirmation in builtinIntents.js) — there's no shell command here, just a
+  // sandboxed tools.js function call, so this skips the shell allow/block checks entirely.
+  if (pending.fileOp) {
+    const cp = await createCheckpoint(project.path, pending.trigger);
+    ws.send(JSON.stringify({ type: 'start', data: `[GIT SAFETY] ${cp.message}\n` }));
+    const tools = await createProjectTools(project);
+    const fn = tools[pending.fileOp.tool];
+    if (!fn) {
+      ws.send(JSON.stringify({ type: 'error_output', data: `Unknown file operation: ${pending.fileOp.tool}\n` }));
+    } else {
+      const result = await fn(pending.fileOp.args);
+      if (result.success) {
+        ws.send(JSON.stringify({ type: 'answer', data: `✅ ${result.data || 'Done.'}` }));
+        const suggestion = trackFileEdit(project.path, pending.fileOp.args?.path || 'unknown');
+        if (suggestion) {
+          pendingMemorySuggestions.set(project.id, suggestion);
+          ws.send(JSON.stringify({ type: 'memory_suggestion', data: suggestion }));
+        }
+      } else {
+        ws.send(JSON.stringify({ type: 'error_output', data: `${result.error}\n` }));
+      }
+    }
     ws.send(JSON.stringify({ type: 'end' }));
     return;
   }

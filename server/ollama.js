@@ -154,6 +154,39 @@ export async function getModelInfo(modelName, hostOverride) {
   }
 }
 
+/**
+ * One bounded, non-streaming /api/chat call — used by the local-router tier (server/localRouter.js)
+ * for its single classify+extract call. Deliberately not `chatStream()`: the router needs one
+ * short blocking response to parse as JSON, not a token stream, and wants its own low
+ * temperature/num_predict regardless of whatever the user's full-AI-mode chat is configured with.
+ * Caller is expected to pass an AbortSignal.timeout(...) so a stalled/unreachable Ollama can't
+ * block the trigger-mode fallback chain — on any failure this throws and the caller falls through
+ * to today's existing behavior.
+ */
+export async function chatOnce(model, messages, options = {}, signal, hostOverride) {
+  const host = hostOverride || OLLAMA_HOST;
+  const res = await fetch(`${host}/api/chat`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model,
+      messages,
+      stream: false,
+      options: {
+        num_ctx: NUM_CTX,
+        temperature: options.temperature ?? 0,
+        num_predict: options.num_predict ?? 200,
+      },
+    }),
+    signal,
+  });
+  if (!res.ok) {
+    throw new Error(`Ollama error (${res.status}): ${res.statusText}`);
+  }
+  const data = await res.json();
+  return data.message?.content || '';
+}
+
 export async function* chatStream(model, messages, signal, hostOverride) {
   const host = hostOverride || OLLAMA_HOST;
   const res = await fetch(`${host}/api/chat`, {

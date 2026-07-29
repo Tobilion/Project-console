@@ -364,6 +364,17 @@ export const INTENTS = {
       'make a commit and push', 'do the full git flow',
     ],
   },
+  'git_remote_add': {
+    examples: [
+      'add the github link', 'attach the github link', 'add a remote',
+      'set the remote url', 'add remote origin', 'connect this to github',
+      'link this to a github repo', 'add my repo url', 'set the github link',
+      'attach github', 'connect to github repo', 'add the github repo url',
+      'set up the remote', 'point this at my github repo', 'add remote origin url',
+      'attach my repository link', 'link to github', 'set remote origin',
+      'can i attach the github link', 'add the repo link',
+    ],
+  },
   'git_add': {
     examples: [
       'stage changes', 'add files', 'git add', 'stage my changes',
@@ -479,6 +490,26 @@ export const INTENTS = {
       'create a config file', 'make a new file called',
       'generate a file named', 'write a file',
       'create a source file', 'add a new document',
+    ],
+  },
+  'file_read': {
+    examples: [
+      'read file', 'read this file', 'show me the file', 'open file',
+      'show me the contents of', 'what is in this file', "what's in the file",
+      'display the file', 'view the file', 'cat this file', 'print the file',
+      'show the contents of', 'read the contents of', 'open this file',
+      'what does the file say', 'show me what is in', 'read me the file',
+      'can you read this file', 'can you show me this file',
+    ],
+  },
+  'file_append': {
+    examples: [
+      'append to file', 'add a line to the file', 'add this to the file',
+      'add a line to', 'append this to the file', 'add to the end of the file',
+      'append text to the file', 'add a note to the file',
+      'add this line to', 'append a line to', 'add to the bottom of the file',
+      'tack this onto the file', 'add this to the end of',
+      'append content to', 'add another line to the file',
     ],
   },
   'file_delete': {

@@ -251,6 +251,21 @@ class SemanticMatcher {
       { intent: 'git_init', pattern: /\bgit\s+init\b|\b(initialize|init)\b.*\brepo(sitory)?\b|\b(initialize|init)\b.*\bgit\b/i },
       { intent: 'git_ignore_add', pattern: /\bgiti?gnore\b/i },
       { intent: 'system.chit_chat.deploy', pattern: /\bdeploy\b|\bpush\s+live\b/i },
+      // Confirmed live: "add a file" / "can you help me add a file" (no filename, no git
+      // context) was resolving to git_add instead of file_create — both intents' example
+      // phrases share the bag-of-words "add" + "file(s)", and git_add's semantic-embedding
+      // cluster was winning even for plain file-creation requests. Only fires when there's no
+      // git-specific word anywhere in the input, so "add files to git" / "stage all files" /
+      // "add new files to git" still resolve to git_add normally. Also excludes "(add/append)
+      // ... to (the/this) file" phrasing — that's file_append territory ("add this to the
+      // file"), not a new-file request, so it's left to fall through to normal matching instead.
+      { intent: 'file_create', pattern: /^(?!.*\b(git|stage|staging|track|tracking|index|commit|repo|repository)\b)(?!.*\bto\s+(?:the\s+|this\s+|that\s+)?file\b).*\b(add|create|make|write|generate)\b.*\bfile\b/i },
+      // Confirmed live: "Can I attach the github link" had no matching intent at all before
+      // git_remote_add existed, and fell through to an unrelated generic help response. Requires
+      // both a connect-style verb AND a github/remote-url noun so it doesn't collide with
+      // "push to github" / "deploy to github" (system.chit_chat.deploy), which mention github
+      // without asking to attach/set a link.
+      { intent: 'git_remote_add', pattern: /\b(attach|add|set|connect|link|point)\b.{0,20}\b(github|remote)\b.{0,20}\b(link|url|repo|repository|address|origin)\b/i },
     ];
     for (const { intent, pattern } of PRE_SEMANTIC_OVERRIDES) {
       if (pattern.test(inputStr)) {

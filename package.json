@@ -44,5 +44,11 @@
     "tsx": "^4.21.0",
     "typescript": "~5.8.2",
     "vite": "^6.2.3"
+  },
+  "allowScripts": {
+    "re2@1.24.1": true,
+    "sharp@0.32.6": true,
+    "sharp@0.35.3": true,
+    "protobufjs@6.11.6": true
   }
 }
