@@ -35,6 +35,14 @@ export function deriveScriptEntries(scripts) {
       type: 'command',
       action: `npm run ${name}`,
       risky,
+      // Every `npm run <script>` needs the local devDependencies/bins in node_modules to exist
+      // first — without this, a missing-install project just throws a raw "command not found" /
+      // npm error at the user instead of the obvious fix. Generic and automatic: applies to every
+      // npm-based project this deriving from package.json ever runs against, current or future,
+      // with no per-project config needed (see matchedEntry.js's runCommandEntry, which already
+      // supports requires/requiresMessage on any command entry, hand-authored or auto-derived).
+      requires: ['node_modules'],
+      requiresMessage: `Dependencies haven't been installed yet — say "npm install" (or run it yourself), then ask me to run this again.`,
       // Marks this entry as machine-derived from package.json rather than hand-authored in
       // console.config.json, so it's visually distinguishable (and safe to regenerate/drop
       // if the script disappears) without touching what Tobi wrote himself.

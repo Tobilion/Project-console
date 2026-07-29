@@ -2,7 +2,7 @@ import crypto from 'crypto';
 import { injectContext } from '../contextInjector.js';
 import { executeCommand } from '../executor.js';
 import { performUndo, isGitRepo } from '../gitSafety.js';
-import { pendingConfirmations } from '../state.js';
+import { pendingConfirmations, state } from '../state.js';
 import { createProjectTools } from '../tools.js';
 
 /**
@@ -174,15 +174,54 @@ function projectTypeSuggestions(ws, project, scripts) {
   const idx = project.codebaseIndex;
   const langs = idx?.languages || [];
   const entries = idx?.entryPoints || [];
+  const fileSample = idx?.fileSample || [];
   const hasIndexHtml = entries.some(e => e.endsWith('index.html'));
-  const isPython = langs.includes('Python');
-  const isJs = langs.includes('JavaScript') || langs.includes('TypeScript');
+  // Confirmed live 2026-07-29 (survey of every sibling project under Projects/): several small
+  // Python/static projects ship a "Play <Name>.bat" launcher instead of a plain python/npm
+  // entrypoint, and the launcher is frequently interactive (e.g. DuplicateFileAnalyzer's
+  // `set /p TARGET=` folder prompt) or spawns a second detached window (StudyFlash's API server)
+  // — neither of which `executeCommand`'s single non-interactive child process can reproduce.
+  // Detect this pattern first and point the user at the launcher instead of guessing a command
+  // that's likely wrong or would hang forever waiting on stdin nobody can answer. Hand-authored
+  // console.config.json entries still take priority over this — it only fires when nothing
+  // matched there first.
+  const batLauncher = fileSample.find((f) => /^Play .+\.bat$/i.test(f));
+  if (batLauncher) {
+    ws.send(JSON.stringify({
+      type: 'answer',
+      data: `This project ships its own launcher: **${batLauncher}**. It may prompt for input or start more than one process, so double-click it in File Explorer (or run it from a terminal) instead of through this console.`,
+    }));
+    return;
+  }
+  // Confirmed live 2026-07-29 (NetPulse, a real Flask/Python project): this used `langs.includes(
+  // 'Python')`, but codebaseIndexer.js's detectLanguages() always formats each entry as
+  // "Python (4 files)" — never the bare name — so `.includes('Python')` (an exact-match array
+  // check) could never be true for ANY project. Same bug for 'JavaScript'/'TypeScript'. This
+  // silently broke the Python and JS branches below for every project, always falling through to
+  // the generic "entry point" suggestion instead of "python main.py" / npm script suggestions.
+  const isPython = langs.some((l) => l.startsWith('Python'));
+  const isJs = langs.some((l) => l.startsWith('JavaScript') || l.startsWith('TypeScript'));
   const scriptNames = Object.keys(scripts);
   const suggestions = [];
 
   if (isPython) {
+    // Confirmed live 2026-07-29 (survey of every sibling project under Projects/): blindly
+    // suggesting "python main.py" / "python app.py" is wrong more often than not — some projects
+    // have neither file at their root (DuplicateFileAnalyzer's real entry is a package module,
+    // `backend/main.py`, invoked as `-m backend.main`), and some have a real main.py that isn't
+    // the right file to suggest first (NetPulse's main.py is a CLI dispatcher — `python main.py`
+    // alone just prints usage; the actual server command is `python main.py serve`). Prefer
+    // whichever common entry filename actually exists at the project root before falling back to
+    // a guess, so the suggestion chip is at least a file that's really there.
+    const rootPyFiles = fileSample.filter((f) => f.endsWith('.py') && !f.includes('/') && !f.includes('\\'));
+    const commonNames = ['main.py', 'app.py', 'run.py', 'server.py', 'dashboard.py'];
+    const found = commonNames.filter((n) => rootPyFiles.includes(n));
     ws.send(JSON.stringify({ type: 'answer', data: `This appears to be a **Python** project. Click a suggestion to run it:` }));
-    suggestions.push('python main.py', 'python app.py');
+    if (found.length > 0) {
+      found.forEach((n) => suggestions.push(`python ${n}`));
+    } else {
+      suggestions.push('python main.py', 'python app.py');
+    }
   } else if (hasIndexHtml && !scriptNames.length) {
     ws.send(JSON.stringify({ type: 'answer', data: `This is a **static site** (no build step). Click a suggestion to serve it locally:` }));
     suggestions.push('npx serve .', 'python -m http.server 8080');
@@ -391,18 +430,32 @@ export async function handleBuiltinIntent(ws, action, input, project, sessionCon
     executeCommand('git add -A', project.path, ws, project.id);
     return true;
   } else if (action === 'git_init') {
-    const token = crypto.randomUUID();
-    pendingConfirmations.set(token, {
-      projectId: project.id,
-      command: 'git init',
-      trigger: input,
-      createdAt: Date.now()
-    });
-    ws.send(JSON.stringify({
-      type: 'confirm_prompt', token,
-      command: 'git init (creates a new git repository here)',
-      trigger: 'git_init'
-    }));
+    // Confirmed live 2026-07-29: "set up git for this folder" was tried twice in one session —
+    // every other git-setup intent here already checks isGitRepo() before acting (git_push/
+    // git_commit/deploy all tell the user to run git init first if there's *no* repo yet), but
+    // this was the one path that didn't check the other direction. `git init` on an already-
+    // initialized repo is technically harmless (git just reinitializes in place, same .git
+    // folder, no data loss), but there's no reason to even offer a confirm prompt for a no-op —
+    // short-circuit with a clear "already set up" message instead.
+    if (await isGitRepo(project.path)) {
+      ws.send(JSON.stringify({
+        type: 'answer',
+        data: `**[${project.name}]** is already a git repository — nothing to set up. Try "git status" to see its current state.`
+      }));
+    } else {
+      const token = crypto.randomUUID();
+      pendingConfirmations.set(token, {
+        projectId: project.id,
+        command: 'git init',
+        trigger: input,
+        createdAt: Date.now()
+      });
+      ws.send(JSON.stringify({
+        type: 'confirm_prompt', token,
+        command: 'git init (creates a new git repository here)',
+        trigger: 'git_init'
+      }));
+    }
   } else if (action === 'git_ignore_add') {
     // Extract what to ignore from input, default to node_modules
     const ignoreMatch = input.match(/(?:add|ignore)\s+(.+?)\s+(?:to\s+)?gi?ignore/i);
@@ -504,10 +557,20 @@ export async function handleBuiltinIntent(ws, action, input, project, sessionCon
         data: `What should **${parsed.fileName}** contain? Try: "create a file called ${parsed.fileName} with the text '...'" — or turn AI mode ON for open-ended content.`
       }));
     } else {
+      // Confirmed live 2026-07-29, in the same spirit as the git_init fix above: writeFile
+      // overwrites unconditionally with no existence check, and the confirm prompt used to say
+      // the same generic "Write X (N chars)" whether the file was brand new or about to replace
+      // something already there. Check first so an existing file gets an explicit overwrite
+      // warning instead of a silently identical-looking prompt.
+      const tools = await createProjectTools(project);
+      const existing = await tools.readFile({ path: parsed.fileName });
+      const summary = existing.success
+        ? `⚠️ Overwrite existing "${parsed.fileName}" (${existing.data.length} chars) with new content (${parsed.content.length} chars)`
+        : `Write "${parsed.fileName}" (${parsed.content.length} chars)`;
       queueFileOpConfirmation(ws, project, input, {
         tool: 'writeFile',
         args: { path: parsed.fileName, content: parsed.content },
-        summary: `Write "${parsed.fileName}" (${parsed.content.length} chars)`,
+        summary,
       });
     }
   } else if (action === 'file_append') {
@@ -549,7 +612,22 @@ export async function handleBuiltinIntent(ws, action, input, project, sessionCon
   } else if (action === 'file_delete') {
     ws.send(JSON.stringify({ type: 'answer', data: `To delete files, turn **AI mode** ON and say "delete the file X" or "remove file Y" — I'll ask for confirmation before making destructive changes.` }));
   } else if (action === 'project_scan') {
-    ws.send(JSON.stringify({ type: 'answer', data: `To reindex this project, select it again in the project list — that triggers a fresh index. Or restart the console with "npm run dev".` }));
+    ws.send(JSON.stringify({ type: 'answer', data: `To reindex this project, select it again in the project list (web UI) or type "projects" (CLI chat) — either one triggers a fresh index.` }));
+  } else if (action === 'project_list') {
+    // Confirmed live 2026-07-29: this used to fall through to project_scan's reindex answer and
+    // tell people to "restart the console" — wrong on both counts (nothing here is about
+    // reindexing, and switching projects never required a restart). Real fix: a dedicated intent
+    // that lists what's actually available and points at the real switch mechanism for whichever
+    // interface the user is in — a project card click in the web UI, or the CLI's own "projects"
+    // command (added alongside this).
+    const projects = state.activeProjectsCache || [];
+    const list = projects.length > 0
+      ? projects.map((p) => `  - ${p.name}`).join('\n')
+      : '  (none found — is the scan directory set correctly?)';
+    ws.send(JSON.stringify({
+      type: 'answer',
+      data: `**Available projects:**\n${list}\n\nIn the web UI, click a different project card in the sidebar to switch — no restart needed. In CLI chat, type "projects" to rescan and pick a different one.`,
+    }));
   } else if (action === 'git_log') {
     executeCommand('git log --oneline -10', project.path, ws, project.id);
     return true;

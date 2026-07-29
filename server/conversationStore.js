@@ -66,7 +66,10 @@ async function setIndexEntry(session) {
   await writeIndex(idx);
 }
 
-async function ensureGitignored(projectPath) {
+// Exported so memoryStore.js can reuse the same .gitignore-add logic for .console/memory.md —
+// a project that's never created a chat session yet (so this was never called) can still get its
+// first memory entry saved before any session exists.
+export async function ensureGitignored(projectPath) {
   const gitignorePath = path.join(projectPath, '.gitignore');
   try {
     let content = '';

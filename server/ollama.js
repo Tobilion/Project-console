@@ -111,19 +111,26 @@ export async function listModels(hostOverride) {
   }
 }
 
-// Ollama Cloud (":cloud"-suffixed models, e.g. "qwen3-coder-480b:cloud") run on Ollama's own
+// Ollama Cloud (":cloud"-suffixed models, e.g. "kimi-k2.6:cloud") run on Ollama's own
 // GPUs instead of the local machine, but go through the exact same local `ollama serve` daemon
 // and the exact same /api/chat endpoint used by chatStream() below — the daemon detects the
 // ":cloud" suffix and proxies the request once the user has run `ollama signin` and has an
 // internet connection. There is no separate API key or provider integration: this is still
 // "just Ollama," which is why it's the natural online fallback for this app rather than wiring
-// up a real Anthropic/OpenAI client. Curated list below is the catalog as of mid-2026 (ollama.com
-// adds/retires cloud models over time — this is a best-effort seed list, not an exhaustive
-// registry browse, since Ollama doesn't expose a "list available cloud models" API).
+// up a real Anthropic/OpenAI client. Curated list below is a best-effort seed list, not an
+// exhaustive registry browse, since Ollama doesn't expose a "list available cloud models" API —
+// the full current catalog is at ollama.com/search?c=cloud and DOES drift over time (models get
+// added/retired), so a name here can go stale and start 404ing even though sign-in is fine.
+// Confirmed live 2026-07-29: "qwen3-coder-480b:cloud" and "deepseek-v4-pro:cloud" (the previous
+// entries here) returned a plain "404 Not Found" from Ollama's own cloud endpoint despite correct
+// sign-in — those tags no longer resolve to anything in Ollama's catalog. Swapped for tags
+// verified against the live catalog as of this date. If a 404 recurs on one of these, it means
+// Ollama has retired/renamed it again — check ollama.com/search?c=cloud and update this list
+// rather than assuming it's a sign-in/auth problem.
 export const CLOUD_MODELS = [
-  { name: 'qwen3-coder-480b:cloud', label: 'Qwen3 Coder 480B (cloud)' },
+  { name: 'qwen3.5:cloud', label: 'Qwen3.5 (cloud)' },
   { name: 'kimi-k2.6:cloud', label: 'Kimi K2.6 (cloud)' },
-  { name: 'deepseek-v4-pro:cloud', label: 'DeepSeek V4 Pro (cloud)' },
+  { name: 'deepseek-v4-flash:cloud', label: 'DeepSeek V4 Flash (cloud)' },
   { name: 'minimax-m3:cloud', label: 'MiniMax M3 (cloud)' },
   { name: 'gpt-oss:120b-cloud', label: 'GPT-OSS 120B (cloud)' },
 ];

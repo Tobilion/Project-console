@@ -10,16 +10,18 @@ import { createProjectTools, isGatedToolCall, isCommandAllowed, isCustomToolRisk
 import { metrics } from '../metrics.js';
 import { runningProcesses } from '../executor.js';
 import { handleBuiltinIntent } from './builtinIntents.js';
-import { handleMatchedEntry } from './matchedEntry.js';
+import { handleMatchedEntry, runCommandEntry } from './matchedEntry.js';
+import { extractParamValue, isSafeParamValue, substituteParams } from '../paramCommand.js';
 import { handleAIQuery } from './aiQuery.js';
 import { guessCommand } from '../commandGuesser.js';
 import { logNearMiss, updateNearMiss } from '../nearMissLogger.js';
 import { generateSuggestions, applySuggestions } from '../learningEngine.js';
 import { logMatch, getIntentStats, suggestThresholds, getThresholdOverrides, setThresholdOverride, removeThresholdOverride, clearTelemetry, updateTelemetryEntry, autoApplyThresholds, autoApplyThresholdsForAll } from '../intentTelemetry.js';
+import { retrainConfidenceModel, getModelInfo } from '../confidenceModel.js';
 import { semanticMatcher } from '../semanticMatcher.js';
 import { readDistillations, generateDistillationSuggestions, applyDistillation, clearDistillations } from '../distillation.js';
 import { trackCommand, trackFileEdit, trackQuestion, addCandidateAddition, getMemorySummary, addToClaudeMd } from '../projectMemory.js';
-import { state, pendingConfirmations, pendingToolConfirmations, sweepExpiredConfirmations } from '../state.js';
+import { state, pendingConfirmations, pendingToolConfirmations, sweepExpiredConfirmations, withPortCollisionWarning } from '../state.js';
 import { wss } from '../wsServer.js';
 
 const pendingMemorySuggestions = new Map();
@@ -85,6 +87,8 @@ function onConnection(ws) {
     aiModel: null,
     aiMode: 'default',
     conversationHistory: [],
+    // Set by aiQuery.js while an AI query is in flight; read by the 'cancel' handler above.
+    aiAbortController: null,
   };
 
   ws.on('error', (err) => {
@@ -112,6 +116,36 @@ async function routeMessage(ws, parsed, sessionContext) {
     case 'confirm_response':
       await handleConfirmResponse(ws, parsed);
       return;
+    case 'cancel': {
+      // Requested directly (2026-07-29) after an AI query with no bound ran for 5+ minutes with
+      // no way to interrupt it — CPU-only Ollama inference genuinely can take that long with no
+      // GPU. Covers both an in-flight AI query (aborts the fetch via the AbortController stashed
+      // on sessionContext by aiQuery.js) and a still-running trigger-mode shell command (killed
+      // via the same runningProcesses map "stop server" already uses).
+      let didSomething = false;
+      if (sessionContext.aiAbortController) {
+        try { sessionContext.aiAbortController.abort(); } catch {}
+        didSomething = true;
+        // Don't send answer/end here — handleAIQuery's own AbortError branch sends the
+        // "Cancelled" answer and 'end' once the abort actually propagates through the in-flight
+        // fetch, so the busy indicator clears via the normal flow instead of firing twice.
+      }
+      const cancelProjectId = sessionContext.activeProjectId;
+      if (cancelProjectId) {
+        const proc = runningProcesses.get(cancelProjectId);
+        if (proc) {
+          try { proc.child.kill('SIGTERM'); } catch {}
+          didSomething = true;
+          // executeCommand's own 'close' handler sends the final answer/end once the process
+          // actually exits from the signal — same reasoning as above.
+        }
+      }
+      if (!didSomething) {
+        ws.send(JSON.stringify({ type: 'answer', data: 'Nothing is currently running to cancel.' }));
+        ws.send(JSON.stringify({ type: 'end' }));
+      }
+      return;
+    }
     case 'tool_call':
     case 'execute_tool':
       await handleToolCall(ws, parsed, sessionContext);
@@ -246,6 +280,51 @@ async function handleExecute(ws, parsed, sessionContext) {
     appendMessage(sessionContext.currentSessionId, { role: 'user', content: input }).catch(() => {});
   }
 
+  // A parameterized command entry (see paramCommand.js / matchedEntry.js) is waiting on a plain
+  // follow-up answer for this project — e.g. it asked "what interval?" and this message is the
+  // reply. Must be checked before anything else touches `input`, since this message was never
+  // meant to be re-matched against the normal intent pipeline. No AI involved: this is what lets
+  // parameterized trigger-mode commands work with AI mode off.
+  if (sessionContext.pendingParam && sessionContext.pendingParam.projectId === projectId) {
+    const pending = sessionContext.pendingParam;
+    const lower = input.trim().toLowerCase();
+    if (lower === 'cancel' || lower === 'nevermind' || lower === 'never mind') {
+      sessionContext.pendingParam = null;
+      ws.send(JSON.stringify({ type: 'answer', data: 'Cancelled.\n' }));
+      ws.send(JSON.stringify({ type: 'end' }));
+      return;
+    }
+    const param = pending.params.find((p) => p.name === pending.paramName);
+    let extracted = extractParamValue(input, param?.pattern, { anchored: true });
+    // Confirmed live 2026-07-29: this fallback used to accept ANY safe-looking text whenever
+    // the pattern match failed — including when a pattern WAS defined and the reply just didn't
+    // match it (e.g. asked "what interval?", user typed an unrelated new message instead of a
+    // number). That silently substituted the wrong text into the command template — a real
+    // NetPulse run produced "python main.py watch --interval run the network speed" and crashed
+    // with an argparse error. The raw-text fallback should only apply when the entry never
+    // defined a pattern at all (nothing to validate against); if a pattern exists and doesn't
+    // match, that's a genuinely invalid answer and the user should be asked again.
+    if (!extracted && !param?.pattern && isSafeParamValue(input.trim())) extracted = input.trim();
+    if (!extracted || !isSafeParamValue(extracted)) {
+      ws.send(JSON.stringify({ type: 'answer', data: `That doesn't look like a valid value. ${param?.prompt || 'Please try again.'} (or say "cancel" to drop this)\n` }));
+      ws.send(JSON.stringify({ type: 'end' }));
+      return;
+    }
+    pending.values[pending.paramName] = extracted;
+    const nextMissing = pending.params.find((p) => pending.values[p.name] === undefined);
+    if (nextMissing) {
+      pending.paramName = nextMissing.name;
+      ws.send(JSON.stringify({ type: 'answer', data: nextMissing.prompt }));
+      ws.send(JSON.stringify({ type: 'end' }));
+      return;
+    }
+    sessionContext.pendingParam = null;
+    const resolvedEntry = { ...pending.entry, action: substituteParams(pending.entry.action, pending.values) };
+    await runCommandEntry(ws, resolvedEntry, input, pending.matchedTrigger, project);
+    ws.send(JSON.stringify({ type: 'end' }));
+    return;
+  }
+
   // Telemetry commands
   const lowerInput = input.trim().toLowerCase();
   if (lowerInput === 'telemetry review' || lowerInput === 'check telemetry' || lowerInput === 'telemetry stats') {
@@ -260,6 +339,10 @@ async function handleExecute(ws, parsed, sessionContext) {
         reply += `**${intent}** — ${s.matches} matches, avg ${s.avgConfidence.toFixed(2)}, fp ${(s.falsePositiveRate * 100).toFixed(0)}%\n`;
         reply += `  stages: ${stagesStr}  range: ${s.minConfidence.toFixed(2)}–${s.maxConfidence.toFixed(2)}\n`;
       }
+      const modelInfo = getModelInfo();
+      reply += modelInfo.trained
+        ? `\n**Learned confidence model**: active — trained on ${modelInfo.sampleCount} real accept/reject outcomes, last updated ${new Date(modelInfo.trainedAt).toLocaleString()}. Threshold suggestions below now come from this model instead of the fixed heuristic.\n`
+        : `\n**Learned confidence model**: not trained yet — needs ${modelInfo.minRequired}+ real accept/reject outcomes (currently uses the fixed heuristic for suggestions).\n`;
       ws.send(JSON.stringify({ type: 'answer', data: reply }));
     }
     ws.send(JSON.stringify({ type: 'end' }));
@@ -460,7 +543,8 @@ async function handleExecute(ws, parsed, sessionContext) {
     || /^(link|url)\??$/i.test(lowerInput.trim())) {
     const devUrl = state.lastDevUrls.get(project.id);
     if (devUrl) {
-      ws.send(JSON.stringify({ type: 'answer', data: `The dev server is running at **${devUrl}** — open it in your browser.` }));
+      const answer = withPortCollisionWarning(`The dev server is running at **${devUrl}** — open it in your browser.`, devUrl);
+      ws.send(JSON.stringify({ type: 'answer', data: answer }));
     } else {
       const pkgJson = project.codebaseIndex?.keyFiles?.['package.json'];
       let scripts = {};
@@ -470,7 +554,10 @@ async function handleExecute(ws, parsed, sessionContext) {
         ws.send(JSON.stringify({ type: 'answer', data: `**${project.name}** has a dev script configured but I haven't detected a running server yet. Try saying "run the site" to start it.` }));
       } else {
         const langs = project.codebaseIndex?.languages || [];
-        if (langs.includes('Python')) {
+        // Same bug as builtinIntents.js's projectTypeSuggestions() — codebaseIndex.languages
+        // entries are always "Python (N files)", never the bare name, so `.includes('Python')`
+        // could never match. Fixed alongside it (2026-07-29).
+        if (langs.some((l) => l.startsWith('Python'))) {
           ws.send(JSON.stringify({ type: 'answer', data: `**${project.name}** appears to be a Python project — it doesn't run a local web server in the traditional sense. Try "overview" to learn more.` }));
         } else if (project.codebaseIndex?.entryPoints?.some(e => e.endsWith('index.html'))) {
           ws.send(JSON.stringify({ type: 'answer', data: `**${project.name}** is a static HTML project. Open the HTML file directly in your browser, or say "run the site" for instructions.` }));
@@ -737,6 +824,28 @@ async function handleConfirmResponse(ws, parsed) {
   const pending = pendingConfirmations.get(token);
   pendingConfirmations.delete(token);
 
+  // Interactive port-conflict prompt from a still-running dev server (see executor.js's
+  // PORT_PROMPT_RE detection) — there's no new command to run here, just a reply to write into
+  // the already-spawned child's stdin. Handled before the near-miss/telemetry bookkeeping below
+  // since those fields don't apply to this pending-confirmation shape.
+  if (pending.stdinWrite) {
+    const proc = runningProcesses.get(pending.projectId);
+    const reply = confirmed ? pending.stdinWrite.yes : pending.stdinWrite.no;
+    if (proc?.child?.stdin?.writable) {
+      proc.child.stdin.write(reply);
+      ws.send(JSON.stringify({
+        type: 'answer',
+        data: confirmed
+          ? 'Told the dev server to run on another port — watch for the new URL.'
+          : "Told the dev server not to switch ports — it may exit now if the port is still busy.",
+      }));
+    } else {
+      ws.send(JSON.stringify({ type: 'answer', data: "That process isn't running anymore — nothing to respond to." }));
+    }
+    ws.send(JSON.stringify({ type: 'end' }));
+    return;
+  }
+
   // Track near-miss accept/reject + update linked telemetry entry
   if (pending.nearMissId) {
     updateNearMiss(pending.projectId, pending.nearMissId, { accepted: !!confirmed });
@@ -746,6 +855,12 @@ async function handleConfirmResponse(ws, parsed) {
       falsePositive: !confirmed,
       resolvedByGuess: confirmed ? pending.command : null,
     });
+    // Stage 1 ML work (2026-07-29): every confirm/reject response is a fresh labeled example for
+    // confidenceModel.js's logistic regression. Retrain right away rather than waiting for the
+    // next server restart, so the learned floor in suggestThresholds() reflects real usage as it
+    // happens — fire-and-forget since retraining is fast (a few hundred gradient steps over a
+    // small feature vector) but there's no reason to make the user wait on it.
+    Promise.resolve().then(() => retrainConfidenceModel()).catch(() => {});
   }
 
   if (Date.now() - pending.createdAt > 5 * 60 * 1000) {

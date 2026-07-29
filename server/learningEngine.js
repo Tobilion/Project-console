@@ -2,6 +2,7 @@ import { readNearMisses, clearNearMisses, listNearMissProjectIds } from './nearM
 import { semanticMatcher } from './semanticMatcher.js';
 import { INTENTS } from './intentsData.js';
 import { persistLearnedPhrases } from './learnedIntents.js';
+import { nlpEngine } from './nlpEngine.js';
 
 // Minimum occurrences before a pattern is suggested for promotion to an intent
 const MIN_OCCURRENCES = 3;
@@ -136,6 +137,14 @@ export function applySuggestions(suggestionIds, projectId) {
     // Persist to disk so this survives a server restart (INTENTS is shared across every
     // project in memory, but was never written back — this is what makes learning "stick").
     persistLearnedPhrases(added);
+    // Confirmed live 2026-07-29: nlpEngine (a real trained NLP.js classifier, not just curated
+    // examples) used to be trained once at startup and then frozen — it never got these same
+    // confirmed-real phrases, even though the semantic matcher right above it did. Kept as a
+    // fire-and-forget background retrain (not awaited) rather than making this function and both
+    // of its call sites async, since a slightly-delayed classifier refresh is harmless but a
+    // startup path blocking on a full NLP.js retrain is not worth the risk.
+    for (const a of added) nlpEngine.addLearnedPhrase(a.phrase, a.intent);
+    nlpEngine.retrainFromLearned().catch(() => {});
   }
 
   // Clear the near-miss log for this project since we've acted on it

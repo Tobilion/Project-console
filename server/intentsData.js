@@ -537,6 +537,20 @@ export const INTENTS = {
       'refresh index', 'scan the codebase again',
     ],
   },
+  // Confirmed live 2026-07-29 (CLI chat): "change project" had no real intent of its own and was
+  // winning on 'project_scan' by loose semantic similarity (shares "project" + a short imperative
+  // shape), returning reindex advice that told CLI users to "restart the console" — misleading,
+  // since switching projects has nothing to do with restarting. Real intent, separate from scan.
+  'project_list': {
+    examples: [
+      'change project', 'switch project', 'switch projects',
+      'switch to another project', 'change to a different project',
+      'different project', 'select another project', 'select a different project',
+      'choose a different project', 'list projects', 'show projects',
+      'show me the projects', 'what projects are available',
+      'what projects do you have', 'list all projects', 'available projects',
+    ],
+  },
   'git_log': {
     examples: [
       'show commit history', 'git log', 'view commits',

@@ -6,6 +6,7 @@ import { createRequire } from 'module';
 import util from 'util';
 import { performUndo } from './gitSafety.js';
 import { loadPluginManifest, createPluginToolFn } from './pluginTools.js';
+import { appendMemoryEntry } from './memoryStore.js';
 
 const require = createRequire(import.meta.url);
 const RE2 = require('re2');
@@ -92,7 +93,21 @@ export const ALLOWED_COMMANDS = [
 
 export function isCommandAllowed(cmd) {
   if (!cmd || typeof cmd !== 'string') return false;
-  const exe = cmd.trim().split(/\s+/)[0].toLowerCase();
+  let rest = cmd.trim();
+  // Tolerate one leading env-var-assignment prefix (`PORT=3001 npm run dev` on POSIX, or
+  // `set PORT=3001&& npm run dev` on Windows) before checking the actual executable — added for
+  // the port-conflict retry commands executor.js's buildPortRetryCommand() constructs, which
+  // would otherwise get rejected because "PORT=3001"/"set" isn't itself an allowed executable.
+  // Only strips the prefix for the purposes of *this check*; the full original string (env
+  // assignment included) is still what actually gets executed.
+  const winEnvPrefix = /^set\s+[A-Za-z_][A-Za-z0-9_]*=\S*&&\s*/i;
+  const posixEnvPrefix = /^(?:[A-Za-z_][A-Za-z0-9_]*=\S*\s+)+/;
+  if (winEnvPrefix.test(rest)) {
+    rest = rest.replace(winEnvPrefix, '');
+  } else if (posixEnvPrefix.test(rest)) {
+    rest = rest.replace(posixEnvPrefix, '');
+  }
+  const exe = (rest.split(/\s+/)[0] || '').toLowerCase();
   // Normalize Windows backslashes, strip extension, compare basename only
   const normalized = exe.replace(/\\/g, '/');
   const base = path.basename(normalized).replace(/\.(exe|bat|cmd|ps1)$/i, '');
@@ -446,6 +461,23 @@ export async function createProjectTools(project) {
     return await performUndo(root);
   }
 
+  /**
+   * Persists a short, durable fact/preference/project note to this project's cross-session
+   * memory file (.console/memory.md), so it's available in future AI-mode conversations, not
+   * just this one. `importance: 'low'` runs immediately (see isGatedToolCall below — only
+   * 'judgment' requires user approval first), by design: the point is the AI can jot down
+   * low-stakes context (a preference, a project quirk, a correction) without interrupting the
+   * conversation for a confirm click every time, while anything that reads as a real judgment
+   * call about what's worth permanently remembering still gets a human checkpoint.
+   */
+  async function saveMemory({ content, importance } = {}) {
+    if (!content) return { success: false, error: 'content is required.' };
+    if (importance !== 'low' && importance !== 'judgment') {
+      return { success: false, error: 'importance is required and must be "low" or "judgment".' };
+    }
+    return appendMemoryEntry(root, content);
+  }
+
   // Base tools that are always available
   const baseTools = {
     readFile,
@@ -458,7 +490,8 @@ export async function createProjectTools(project) {
     listFiles,
     getProjectInfo,
     getGitStatus,
-    undoLastChange
+    undoLastChange,
+    saveMemory
   };
 
   // Load and merge custom plugin tools from console.tools.json
@@ -490,6 +523,12 @@ export const CUSTOM_RISKY_TOOLS = new Map();
 export function isGatedToolCall(toolName, args) {
   if (GATED_TOOLS.has(toolName)) return true;
   if (toolName === 'executeCommand' && args?.risky) return true;
+  // saveMemory is deliberately NOT in GATED_TOOLS — a flat gate would require approval for every
+  // save, including trivial ones ("user prefers dark mode"), which defeats the point of letting
+  // the AI jot down low-stakes context without interrupting the conversation. Only a call the
+  // model itself flagged as a judgment call (importance: 'judgment' — see ollamaContext.js's
+  // rules for what qualifies) needs a human checkpoint before it's written.
+  if (toolName === 'saveMemory' && args?.importance === 'judgment') return true;
   // Not a built-in tool name — could be a custom plugin tool with risky: true
   // (checked by project root context in runToolCall)
   return false;

@@ -25,6 +25,15 @@ export function useConsole() {
   const [toolHistory, setToolHistory] = useState<ToolCallEntry[]>([]);
   const [showToolHistory, setShowToolHistory] = useState(false);
   const [workspaceProjects, setWorkspaceProjects] = useState<Project[]>([]);
+  // Trigger-mode's equivalent of `aiThinking` — requested directly after a live test where a
+  // slow-starting dev server command ("run the site") gave no visual sign the console was still
+  // working, so there was no way to tell "still running" from "silently done". `aiThinking` only
+  // ever gets set true by AI mode's own 'ai_start' event, so trigger-mode round trips (which are
+  // most of what runs with AI off) had no busy indicator at all. Deliberately a separate state
+  // rather than reusing aiThinking — this needs different semantics (stays true across
+  // intermediate 'start'/'output' chunks, since a still-booting dev server keeps streaming text
+  // without being "done"; only clears on a real end-of-turn signal) and different display text.
+  const [commandPending, setCommandPending] = useState(false);
 
   const addToolCall = useCallback((tool: string, args: Record<string, any>, result: any) => {
     const isGated = ['writeFile', 'editFile', 'insertAtLine'].includes(tool) ||
@@ -136,6 +145,17 @@ export function useConsole() {
   const activeProjectRef = useRef(projects.activeProject);
   activeProjectRef.current = projects.activeProject;
 
+  // Requested directly (2026-07-29) after an AI query ran for 5+ minutes with no way to stop
+  // it — CPU-only Ollama inference has no upper bound, and there was previously no cancel path
+  // at all. Sends a 'cancel' WS message (server aborts the in-flight fetch or kills a running
+  // trigger-mode command — see connection.js); the busy indicators clear themselves once the
+  // server's own response to the cancel arrives, same as any other end-of-turn signal.
+  const handleCancel = useCallback(() => {
+    if (wsHandler.wsRef.current?.readyState === WebSocket.OPEN) {
+      wsHandler.wsRef.current.send(JSON.stringify({ type: 'cancel' }));
+    }
+  }, [wsHandler]);
+
   // Override wsRef in terminal with the real one
   terminal.handleSendMessage.bind = Function.prototype.bind;
   const origHandleSendMessage = terminal.handleSendMessage;
@@ -149,6 +169,10 @@ export function useConsole() {
     }
     if (wsHandler.wsRef.current?.readyState !== WebSocket.OPEN) return;
     sessions.setMessages(prev => [...prev, { id: Date.now().toString(), type: 'user', content }]);
+    // Only trigger mode needs this — AI mode already gets its own busy indicator from the
+    // server's 'ai_start' event (see ai.setAiThinking below), and showing both at once would be
+    // redundant/confusing.
+    if (!ai.aiEnabled) setCommandPending(true);
     wsHandler.wsRef.current.send(JSON.stringify({
       type: 'execute',
       payload: { projectId: projects.activeProject.id, input: content, sessionId: sessions.activeSessionId }
@@ -163,6 +187,11 @@ export function useConsole() {
       case 'start':
       case 'end':
         ai.setAiThinking(false);
+        // 'end' is the one reliable "this turn is fully finished" signal across every
+        // trigger-mode path (including ones with no visible text, e.g. a bare `{type:'end'}`
+        // after a builtin intent) — deliberately NOT cleared on 'start'/'output' alone, since a
+        // still-booting dev server keeps emitting those without actually being done yet.
+        if (payload.type === 'end') setCommandPending(false);
         if (!payload.data?.trim()) break;
         sessions.setMessages(prev => {
           const lastMsg = prev[prev.length - 1];
@@ -178,6 +207,9 @@ export function useConsole() {
         });
         break;
       case 'error_output':
+        // Some paths (a top-level WS parse error) send only this with no 'end' to follow —
+        // don't leave the busy indicator stuck on.
+        setCommandPending(false);
         sessions.setMessages(prev => [...prev, {
           id, type: 'error', content: payload.data,
           switchProjectAction: payload.switchProjectAction,
@@ -195,9 +227,15 @@ export function useConsole() {
         });
         break;
       case 'clear_console':
+        setCommandPending(false);
         sessions.setMessages([]);
         break;
       case 'confirm_prompt':
+        // Some trigger-mode paths (a guessed direct command, an unrecognized-but-guessable
+        // command) send this and nothing else — no 'end' follows, so this has to double as an
+        // end-of-turn signal too or the busy indicator would stay stuck on until the user
+        // approves/cancels.
+        setCommandPending(false);
         terminal.setPendingConfirm({ token: payload.token, command: payload.command });
         break;
       case 'projects_updated':
@@ -218,9 +256,11 @@ export function useConsole() {
         break;
       case 'ai_start':
         ai.setAiThinking(true);
-        // Auto-open the tool trace panel for this round so live command/tool activity is
-        // visible without an extra click — closing it again is still one click away.
-        setShowToolHistory(true);
+        // Used to force the tool trace panel open on every single AI message ("so live activity
+        // is visible without an extra click") — reported directly as an annoyance once AI mode
+        // was actually being used for real (it popped the panel open on every message, including
+        // ones with no tool calls at all, overriding the user's own choice to keep it closed).
+        // The manual toggle button (now reliably visible after the earlier layout fix) is enough.
         break;
       case 'tool_start':
         // Previously sent by the server and silently dropped client-side — the user had no
@@ -326,7 +366,7 @@ export function useConsole() {
     wsHandler.connectWebSocket();
     fetch('/api/ollama/status').then(r => r.ok ? r.json() : null).then(s => { if (s) ai.fetchOllamaStatus(); }).catch(() => {});
     return () => {
-      wsHandler.wsRef.current?.close();
+      wsHandler.disconnect();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -488,6 +528,7 @@ export function useConsole() {
     aiEnabled: ai.aiEnabled,
     ollamaStatus: ai.ollamaStatus,
     aiThinking: ai.aiThinking,
+    commandPending,
     indexingProjectId: projects.indexingProjectId,
     aiModel: ai.aiModel,
     aiMode: ai.aiMode,
@@ -496,6 +537,7 @@ export function useConsole() {
     pendingToolConfirm: terminal.pendingToolConfirm,
     pendingMemorySuggestion: terminal.pendingMemorySuggestion,
     handleSendMessage: terminal.handleSendMessage,
+    handleCancel,
     handleConfirm: terminal.handleConfirm,
     handleToolConfirm: terminal.handleToolConfirm,
     handleMemorySuggestionRespond: terminal.handleMemorySuggestionRespond,

@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
+import { learnedFloor, getModelInfo } from './confidenceModel.js';
 
 const TELEMETRY_DIR = path.join(process.cwd(), 'data', 'telemetry');
 const THRESHOLDS_FILE = path.join(TELEMETRY_DIR, 'thresholds.json');
@@ -113,6 +114,13 @@ export function suggestThresholds(projectId) {
   const stats = getIntentStats(projectId);
   const suggestions = [];
 
+  // Stage 1 ML work (2026-07-29, requested directly): once enough real accept/reject outcomes
+  // have accumulated (see confidenceModel.js), prefer its learned floor over the hardcoded
+  // if/else bump rules below for every intent — a single data-driven number instead of guessed
+  // ±0.03/±0.05 nudges. Below MIN_LABELED examples this returns null and every intent falls
+  // through to exactly the original heuristic, so a fresh install behaves identically to before.
+  const modelFloor = learnedFloor();
+
   for (const [intent, s] of stats) {
     if (s.matches < 5) continue;
 
@@ -124,7 +132,12 @@ export function suggestThresholds(projectId) {
     const fuzzyRatio = (s.stages['fuzzy'] || 0) / s.matches;
     const keywordRatio = (s.stages['keyword'] || 0) / s.matches;
 
-    if (semanticRatio < 0.3 && fuzzyRatio > 0.4 && s.avgConfidence < currentFloor) {
+    if (modelFloor !== null) {
+      if (Math.abs(modelFloor - currentFloor) >= 0.03) {
+        recommendedFloor = modelFloor;
+        reason = `learned from ${getModelInfo().sampleCount} real accept/reject outcomes (replaces the fixed heuristic)`;
+      }
+    } else if (semanticRatio < 0.3 && fuzzyRatio > 0.4 && s.avgConfidence < currentFloor) {
       recommendedFloor = Math.max(0.35, currentFloor - 0.05);
       reason = `low semantic ratio (${(semanticRatio * 100).toFixed(0)}%), relies on fuzzy (${(fuzzyRatio * 100).toFixed(0)}%)`;
     } else if (s.falsePositiveRate > 0.3 && semanticRatio > 0.6) {

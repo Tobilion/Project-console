@@ -1,27 +1,30 @@
 # Local Project Console v4
 
-A local, offline command dispatcher and optional AI assistant for managing multiple software projects from a single web interface. Runs entirely on your machine — zero external API calls, zero data leaves your computer.
+A local, offline command dispatcher and optional AI assistant for managing multiple software projects from a single web interface. Runs entirely on your machine — zero external API calls (beyond an opt-in Ollama Cloud model, which still proxies through your local Ollama daemon), zero data leaves your computer otherwise.
 
 ## Overview
 
-The Console scans `C:\Users\tobil\Desktop\Projects` (or any specified directory) for project folders containing `console.config.json`, `CLAUDE.md`, `README.md`, `ABOUT-TOBI.md`, and `UNIVERSAL_CONTEXT.md`. It exposes a web UI (Express + Vite + React 19) and a WebSocket-based chat interface with two modes:
+The Console scans `C:\Users\tobil\Desktop\Projects` (or any specified directory) for project folders containing `console.config.json`, `CLAUDE.md`, `README.md`, `ABOUT-TOBI.md`, and `UNIVERSAL_CONTEXT.md`. It exposes a web UI (Express + Vite + React 19) and a WebSocket-based chat interface, plus an interactive CLI chat mode, with two modes:
 
-- **Trigger Mode** (default, AI OFF): Fuzzy-matched command dispatcher. Type "run tests" and it executes `npm test`; ask "what's the architecture?" and it reads from CLAUDE.md. All responses are canned — no LLM involved.
-- **AI Mode** (opt-in toggle): Every message goes to a local Ollama model (e.g. `qwen2.5-coder:7b`). The AI has sandboxed file/git tools and can read, write, edit, search, and run commands in the active project.
+- **Trigger Mode** (default, AI OFF): A multi-stage matching pipeline (embeddings → trained classifier → fuzzy/keyword → a single bounded local-model classification call → suggestions) resolves what you typed into a canned command or answer. No LLM conversation involved, but it can still create/append/read files and run parameterized commands without AI.
+- **AI Mode** (opt-in toggle): Every message goes to an Ollama model — local, or an Ollama Cloud model proxied through the same local daemon. The AI has sandboxed file/git tools, persistent cross-session memory, and can read, write, edit, search, and run commands in the active project.
 
 ## Key Features
 
 ### Core Infrastructure
 - **Offline-first**: Node.js + Express backend, React 19 + Vite frontend. No external APIs, no telemetry, no accounts.
 - **WebSocket chat**: Real-time bidirectional communication. Streams AI tokens, command output, and server URLs live.
-- **Port fallback**: `start.bat` auto-selects the first available port from 3000-3010.
-- **CLI client**: `start.bat` also offers an interactive CLI chat mode (no browser needed).
+- **Port fallback**: `start.bat` (and `server/index.js` itself) auto-selects the first available port from 3000-3010; the CLI client and frontend both discover whichever port the server actually bound to.
+- **CLI client**: `start.bat` also offers an interactive CLI chat mode (no browser needed) — see `server/cli-client.js`.
 - **Host binding**: Defaults to `127.0.0.1` (local only). Set `HOST=0.0.0.0` for LAN access — but be aware there is no authentication.
 - **Cross-platform**: built and tested primarily on Windows, but the server, sandboxed file tools, and safety blocklist are all `process.platform`-aware and work on macOS/Linux too. `start.bat` (port-fallback launcher) is Windows-only — on macOS/Linux just run `npm run dev` directly.
+- **Cancellable AI queries**: CPU-only Ollama inference has no built-in time limit — a "Stop" button next to the busy indicator aborts an in-flight AI query or a running trigger-mode shell command mid-stream.
 
 ### Trigger Mode (Dispatcher)
-- **Semantic intent matching**: 4-stage pipeline — embedding cosine similarity (all-MiniLM-L6-v2) → Fuse.js fuzzy → keyword patterns → NLP.js. ~41 intents with ~1,065 example phrases.
+- **Multi-stage intent matching**: embedding cosine similarity (all-MiniLM-L6-v2) → a handful of literal pre-checks for confirmed trap phrases (`git init`, `gitignore`, `deploy`) → Fuse.js fuzzy → keyword patterns → NLP.js trained classifier → a single bounded local-model classification call (`localRouter.js`) for phrasings nothing above resolved → suggestion chips. ~41 intents with ~1,500+ example phrases (`intentsData.js`).
 - **Project-specific triggers**: Commands and answers defined in each project's `console.config.json` are embedded dynamically alongside base intents.
+- **Parameterized commands, no AI required**: a `console.config.json` command entry can declare `{placeholder}` params (e.g. `watch --interval {interval}`) — the console asks for missing values in plain chat and substitutes them safely (shell metacharacters rejected regardless of the entry's own pattern) before running.
+- **Non-AI file operations**: "create a file called X with the text '...'" / "append to X the text '...'" / "read file X" work with AI mode off — parsed with regex, gated behind the same confirm-before-write flow as any risky command.
 - **Multi-intent queries**: "show structure and run tests" is split on conjunctions and both intents are handled.
 - **Conversation context**: Remembers the last 5 turns, resolves pronouns ("it", "the main file") and short queries into full intents.
 - **Risky command confirmation**: Destructive commands require explicit UI approval with one-time security tokens.
@@ -31,57 +34,71 @@ The Console scans `C:\Users\tobil\Desktop\Projects` (or any specified directory)
 - **WebSocket origin check**: WS connections from non-local origins are rejected.
 - **Realpath sandbox**: `resolveSafe` resolves symlinks via `realpathSync.native` before checking path escape, preventing symlink-based sandbox escapes.
 - **SSRF protection**: `deepResearch` only fetches from allowed hosts (duckduckgo.com).
-- **Dev server URL detection**: Command output is scanned for `http://localhost:\d+` URLs and displayed as clickable links in the UI.
-- **Dev server auto-detach**: Long-running processes (`npx serve`, `python -m http.server`, `npm run dev`) auto-detach after URL detection — output stops streaming, the server keeps running in the background. Stop with "stop server".
+- **Dev server URL detection**: Command output is scanned for `http://localhost:\d+` URLs and displayed as clickable links in the UI; if the detected URL happens to share a port with the console itself, a heads-up is appended instead of silent confusion.
+- **Dev server auto-detach**: Long-running/streaming processes force-detach after a timeout (10s for recognized dev-server commands, 20s for anything else that's still running) — output stops streaming into chat, the process keeps running in the background. Stop with "stop server".
+- **Port-in-use handling**: interactive "run on another port?" prompts (CRA/react-scripts) are detected and answered via a normal confirm card; hard `EADDRINUSE` failures get a one-click retry on the next port.
+- **Output summarizer**: after a command finishes, a short heuristic callout (exit code, recognized errors, npm package/vuln counts, git result) is appended for anything long enough to be worth summarizing — no LLM involved. Rapid-fire output (e.g. hundreds of per-file git warnings) is buffered/coalesced instead of flooding chat with one bubble per line.
 
 ### AI Mode
 - **Opt-in toggle**: AI mode is OFF by default. Flipping it ON sends every message in that session to Ollama — no per-query re-consent. Detection order on toggle-on: is Ollama reachable at all → is the internet reachable (prefer an Ollama Cloud model as the default if so) → else fall back to a local model → if neither is available, AI mode fails with a message explaining why. This only picks a *default*; you can always override it via the model picker.
-- **Model selection**: Choose any model available in your local Ollama instance, or an Ollama Cloud model (`:cloud`-suffixed, e.g. `qwen3-coder-480b:cloud`) for heavier requests — cloud models proxy through the same local Ollama daemon (`ollama signin` + internet required), so there's no separate API key or provider integration to configure.
+- **Model selection**: Choose any model available in your local Ollama instance, or an Ollama Cloud model (`:cloud`-suffixed, e.g. `deepseek-v4-flash:cloud`, `qwen3.5:cloud`) for heavier requests — cloud models proxy through the same local Ollama daemon (`ollama signin` + internet required), so there's no separate API key or provider integration to configure.
 - **Mode picker**: Default / Search / Deep Research / Reason modes modify the system prompt for different AI behaviors.
-- **Tool-call loop**: The AI can call sandboxed tools (`readFile`, `writeFile`, `editFile`, `findFiles`, `insertAtLine`, `searchCode`, `listFiles`, `getProjectInfo`, `getGitStatus`, `executeCommand`, `undoLastChange`) with up to 6 rounds of tool calls.
+- **Tool-call loop**: The AI can call sandboxed tools — `readFile`, `writeFile`, `editFile`, `findFiles`, `insertAtLine`, `appendToFile`, `searchCode`, `listFiles`, `getProjectInfo`, `getGitStatus`, `undoLastChange`, `saveMemory`, and `executeCommand` (13 total) — with up to 6 rounds of tool calls.
 - **Token streaming**: AI responses stream token-by-token to the UI. `<tool_call>` JSON blocks are intercepted server-side — the user never sees raw JSON.
-- **Gated tools**: `writeFile`, `editFile`, `insertAtLine`, and risky `executeCommand` require explicit user approval before execution.
+- **Gated tools**: `writeFile`, `editFile`, `insertAtLine`, `appendToFile`, risky `executeCommand`, and judgment-level `saveMemory` calls require explicit user approval before execution; routine `saveMemory` calls run immediately (see Persistent Memory below).
 - **Path sandbox**: All file tools are scoped to the active project's directory. Any attempt to resolve outside the project root is rejected.
 - **File upload**: Real files can be attached via `FileReader` in the AI input bar for the AI to analyze.
-- **Project context injection**: The AI's system prompt includes CLAUDE.md content (~6000 chars), entry-point code snippets, and the project's directory structure.
+- **Project context injection**: The AI's system prompt includes CLAUDE.md content (~6000 chars), entry-point code snippets, a whole-project repo map (top-level export/function/class names per file, so the model can resolve "the config file" without guessing), and anything saved to persistent memory for that project.
+- **Self-documenting**: after the AI works out a real run command through trial and error, it's prompted (and structurally reminded via the tool result) to offer saving it as a permanent `console.config.json` entry, so trigger mode can run it without AI next time.
+
+### Persistent Cross-Session AI Memory
+- `<project>/.console/memory.md` is a short, capped (200 entries) list of durable facts/preferences/project notes the AI itself decides to save mid-conversation via the `saveMemory` tool — available in later, separate chat sessions, not just the current one.
+- Two-tier gating: `importance: "low"` (a stated preference, a project quirk, a correction) writes immediately with no confirmation; `importance: "judgment"` (sensitive, inferred, or uncertain) requires approval through the same confirm-card flow as a file write. Near-duplicate entries are deduplicated automatically.
+- Doesn't depend on any locally-running model to decide what's worth saving — it's a plain tool call inside whatever AI-mode conversation is already happening, driven by the system prompt. If AI mode is never used, memory.md stays empty.
 
 ### Matching Intelligence (Self-Learning)
-- **Near-miss logging** (Layer 1): Every input that hits the command guesser or fallback text is recorded in `data/near-misses/<projectId>.jsonl`. When the user confirms/rejects a guessed command, the entry is marked accepted/rejected.
-- **Learning engine**: When a guess pattern fires 3+ times for the same resolved command, a suggestion is generated to promote the input phrases into the intent's example list. The user reviews via "review learning" and approves via "approve suggestions".
-- **Intent telemetry** (Layer 2): Every match logs which pipeline stage won (embedding/fuzzy/keyword) and at what confidence — stored in `data/telemetry/<projectId>.jsonl`. Per-intent statistics are aggregated.
-- **Threshold auto-tuning**: Telemetry analysis can suggest per-intent CONFIDENCE_FLOOR adjustments. Suggestions are auto-applied on startup when enough data exists (10+ matches per intent). Manual override with `threshold set <intent> <floor>`.
-- **False-positive feedback**: When the user rejects a guessed command, the linked telemetry entry is marked `falsePositive`, which feeds into the threshold suggestion engine.
+- **Near-miss logging** (Layer 1): Every input that hits the command guesser or fallback text is recorded in `data/near-misses/<projectId>.jsonl`. When the user confirms/rejects a guessed command, the entry is marked accepted/rejected. High-confidence patterns (5+ occurrences, ≥80% acceptance) are auto-promoted into real intent examples on every server startup; lower-confidence ones still need `review learning` + `approve suggestions`. Promoted phrases persist to disk (`data/learned-intents.json`) so they survive restarts, and also retrain `nlpEngine.js`'s trained classifier, not just the embedding matcher.
+- **Intent telemetry** (Layer 2): Every match logs which pipeline stage won and at what confidence — stored in `data/telemetry/<projectId>.jsonl`. Per-intent statistics are aggregated.
+- **Threshold auto-tuning**: Once 12+ real accept/reject outcomes exist, a small trained logistic-regression model (`server/confidenceModel.js` — see "Learned Confidence Model" below) recommends per-intent confidence floors instead of a fixed heuristic; suggestions auto-apply on startup when enough data exists (10+ matches per intent). Manual override with `threshold set <intent> <floor>`.
+- **False-positive feedback**: When the user rejects a guessed/gated action, the linked telemetry entry is marked `falsePositive` — this is the real accept/reject label both the heuristic and the learned model train on.
 - **Intent collision detection**: `check collisions` compares all intent embedding vectors pairwise and reports any with cosine similarity ≥0.9 — these intents may be hard for the model to distinguish.
+
+### Learned Confidence Model ("Stage 1" ML)
+- `server/confidenceModel.js` is a real trained model — logistic regression via plain-JS batch gradient descent, no library, no GPU, no AI model involved. Features: winning stage's confidence, its margin over the runner-up, which stage won, normalized input length. Labels: real accept/reject outcomes from confirm/reject responses.
+- Retrains automatically on every server startup and immediately (fire-and-forget) after each new labeled outcome. Below 12 labeled examples it's inactive and everything falls back to the original hardcoded heuristic — zero behavior change for a fresh install.
+- Runs independently of Ollama/AI mode entirely — it's supervised learning over data the trigger-mode dispatcher already collects. Check its status any time with `telemetry review` (reports whether it's trained, sample count, last update).
 
 ### AI Distillation (Layer 3)
 After every AI tool-call loop completes, `server/distillation.js` analyzes the exchange and logs suggestions for trigger-mode improvements:
 - **Command entry**: If the AI ran an `npm run <script>` command, suggests adding it as a trigger-mode entry in `console.config.json`.
 - **Knowledge entry**: If the AI read a file and produced a substantive explanation (>200 chars), suggests a canned answer entry extracted from that explanation.
-- **File pattern**: If the AI created/edited a file, logs the path for future pattern detection.
 
 Review with `review distillations`, apply with `apply distillation <n>` or `apply all distillations`. Approved entries are written directly to `console.config.json` — the file watcher auto-reloads them.
 
 ### Adaptive Context (Layer 4)
-`<project>/.console/project-memory.json` accumulates multi-session usage patterns:
-- **Command frequency**: Tracks every shell command run. When a command hits 20 executions, the system offers to make it a quick trigger.
-- **File edit frequency**: Tracks every file the AI writes/edits. When a file hits 10 edits, the system offers to note it in CLAUDE.md.
-- **Repeated questions**: Tracks questions the user asks. When a topic appears 3+ times, the system offers to add a `## <topic>` section to CLAUDE.md.
+`<project>/.console/project-memory.json` accumulates multi-session usage patterns (thresholds scale to how active the project actually is):
+- **Command frequency**: Tracks every shell command run. When a command crosses its threshold, the system offers to make it a quick trigger.
+- **File edit frequency**: Tracks every file the AI writes/edits. When a file crosses its threshold, the system offers to note it in CLAUDE.md.
+- **Repeated questions**: Tracks questions the user asks. When a topic repeats enough, the system offers to add a `## <topic>` section to CLAUDE.md.
 - **Candidate additions**: The AI's best answers (>300 chars) are stored as potential CLAUDE.md content.
 
-Review with `review memory`. When thresholds trigger, the system sends a `memory_suggestion` WS event; the user responds "yes"/"sure" in chat or via a UI button to append the section.
+Review with `review memory`. When thresholds trigger, the system sends a `memory_suggestion` WS event and shows a confirmation card in the UI; the user approves or rejects to append the section.
 
-### Chat Memory
+### Chat Memory (per-session history)
 - **Per-project storage**: Session messages are stored inside each project's `.console/sessions/<id>.json` (not a central app-data folder).
 - **Human-readable log**: `.console/chat-log.md` is an append-only transcript with `## Title (timestamp)` blocks per session.
-- **Git-safe**: `.console/` is automatically added to the project's `.gitignore` when the first session is created.
+- **Git-safe**: `.console/` is automatically added to the project's `.gitignore` when the first session (or memory entry) is created.
 - **Central index**: `data/conversations/index.json` is a lightweight lookup table for session listing — no message content, just id/projectPath/title/updatedAt/messageCount.
 - **Session migration**: Sessions created before a project was selected fall back to `data/conversations/<id>.json` until a project is known, then migrate into the project's `.console/` folder.
+- **Session ↔ project locking**: a session is permanently tied to the project it was created for — always trust the small `projectName` subtitle in the sidebar over the session's title, which can drift from what it's actually about.
+
+This is distinct from the persistent cross-session memory above — session history is per-chat and only visible within that one conversation; `.console/memory.md` is durable facts visible across every future session.
 
 ### Project Discovery
 - **Auto-detect**: Scans the base directory for project folders containing `console.config.json`, `CLAUDE.md`, `README.md`, `ABOUT-TOBI.md`, or `UNIVERSAL_CONTEXT.md`.
 - **CLAUDE.md priority**: `CLAUDE.md` is always sorted first as the "main doc" regardless of readdir order.
-- **Script auto-derivation**: `package.json` scripts are automatically converted into trigger entries (`npm run dev`, `npm run test`, etc.) without needing a `console.config.json`. Hand-authored entries always win on exact action collision.
-- **Codebase indexing**: On project select, `POST /api/projects/:id/index` builds a directory tree, detects languages and entry points (Vite/CRA React apps auto-detect `src/App.tsx`), and reads key config files.
+- **Script auto-derivation**: `package.json` scripts are automatically converted into trigger entries (`npm run dev`, `npm run test`, etc.) without needing a `console.config.json`, each gated on `node_modules` existing first (clear "run npm install first" message instead of a raw npm error). Hand-authored entries always win on exact action collision.
+- **Codebase indexing**: On project select, `POST /api/projects/:id/index` builds a directory tree, detects languages and entry points (Vite/CRA React apps auto-detect `src/App.tsx`), reads key config files, and builds a whole-project repo map of top-level exports/functions/classes.
 - **File watcher**: Changes to `console.config.json` on disk are live-reloaded — NLP is retrained and the semantic matcher is rebuilt automatically.
 
 ### Web Search / Deep Research
@@ -109,8 +126,8 @@ npm run lint    # tsc --noEmit
 ## AI Setup (Optional)
 
 1. Install Ollama from [ollama.com/download/windows](https://ollama.com/download/windows)
-2. Pull a model: `ollama pull qwen2.5-coder:7b`
-3. Toggle AI ON in the terminal header
+2. Pull a model: `ollama pull qwen2.5-coder:7b` — or, for Ollama Cloud (no download, runs on Ollama's GPUs), run `ollama signin` and pick a `:cloud` model from the dropdown once AI mode is on.
+3. Toggle AI ON in the terminal header.
 
 The embedding model (all-MiniLM-L6-v2, ~23MB) downloads automatically on first trigger-mode match and caches at `.cache/xenova/` — no manual setup needed.
 
@@ -130,8 +147,8 @@ The embedding model (all-MiniLM-L6-v2, ~23MB) downloads automatically on first t
 "review learning" / "check learning"       — see near-miss suggestions
 "approve suggestions"                      — add all suggested phrases
 "approve suggestions 1 3"                  — approve specific ones by index
-"telemetry review" / "telemetry stats"     — intent match statistics
-"telemetry suggest" / "suggest thresholds" — get threshold tuning recommendations
+"telemetry review" / "telemetry stats"     — intent match statistics + learned confidence model status
+"telemetry suggest" / "suggest thresholds" — get threshold tuning recommendations (learned or heuristic)
 "threshold set <intent> <floor>"           — override confidence floor (e.g. 0.5)
 "threshold reset <intent>"                 — restore default (0.6)
 "telemetry auto-apply"                     — auto-apply suggestions for this project
@@ -170,40 +187,54 @@ server/
 ├── index.js                  — Orchestrator. Routes, WS init, project discovery. Shares one
 │                                http.Server between Express and Vite's dev middleware so Vite's
 │                                own HMR websocket isn't destroyed by the app's WS upgrade filter.
+│                                Also runs the confidence-model retrain + threshold/near-miss
+│                                auto-apply sweeps on startup.
 ├── state.js                  — Shared mutable state + confirmation TTL sweeps.
-├── wsServer.js               — WebSocket singleton + broadcast().
-├── matcher.js                — matchInput() pipeline: multi-intent → semantic → NLP → fallback.
-├── semanticMatcher.js        — Embedding + Fuse.js matching engine.
-├── intentsData.js            — 41 intents, ~1,065 example phrases (single source of truth).
-├── nlpEngine.js              — NLP.js classifier (legacy fallback).
-├── commandGuesser.js         — 12 regex patterns for best-guess fallback.
-├── contextResolver.js        — Last-5-turn pronoun resolution.
-├── contextInjector.js        — Codebase context enrichment per intent type.
-├── tools.js                  — 11 sandboxed file/git tools for AI mode.
-├── ollama.js                 — REST client for localhost:11434.
-├── ollamaContext.js          — System prompt builder with 9 tool defs, 5 AI modes.
-├── projectScanner.js         — Discovers projects, reads CLAUDE.md/README.md/context files.
-├── scriptEntries.js          — Auto-derives config entries from package.json scripts.
-├── codebaseIndexer.js        — Directory tree, language/entry-point detection.
-├── conversationStore.js      — Session CRUD + .console/ management.
-├── executor.js               — Shell command spawner, URL detection, output streaming.
-├── dangerousPatterns.js       — Hard blocklist (force-push, rm -rf, shutdown, etc.).
-├── gitSafety.js              — Checkpoint commits + undo.
-├── webSearch.js              — DuckDuckGo HTML scraping.
-├── fileWatcher.js            — chokidar watcher for console.config.json changes.
-├── nearMissLogger.js         — Layer 1: near-miss recording.
-├── learningEngine.js         — Layer 1: suggestion generation, phrase injection.
-├── intentTelemetry.js        — Layer 2: match-stage logging, threshold overrides, auto-tune.
-├── distillation.js           — Layer 3: AI exchange analysis, config entry suggestions.
-├── projectMemory.js          — Layer 4: usage tracking, CLAUDE.md augmentation.
-├── mockProjects.js           — Fake project seeder for non-Windows dev.
-├── routes/                   — projectRoutes, sessionRoutes, searchRoutes.
-└── wsHandlers/               — connection.js, builtinIntents.js, matchedEntry.js,
-                                aiQuery.js, aiStream.js.
+├── wsServer.js                — WebSocket singleton + broadcast().
+├── matcher.js                 — matchInput() pipeline: multi-intent → semantic → NLP → local
+│                                router → fallback.
+├── semanticMatcher.js         — Embedding + Fuse.js matching engine + PRE_SEMANTIC_OVERRIDES.
+├── localRouter.js             — Bounded, single-call local-model classification tier (last
+│                                resort before giving up, independent of the AI-mode toggle).
+├── intentsData.js             — 41 intents, ~1,500+ example phrases (single source of truth).
+├── nlpEngine.js                — NLP.js classifier; retrains from confirmed near-miss promotions.
+├── learnedIntents.js           — Persists near-miss-promoted phrases across restarts.
+├── commandGuesser.js           — Regex-pattern best-guess fallback (OS-aware).
+├── contextResolver.js          — Last-5-turn pronoun resolution.
+├── contextInjector.js          — Codebase context enrichment per intent type.
+├── paramCommand.js             — Parameterized trigger-mode commands ({placeholder} params,
+│                                safe substitution, no AI needed).
+├── tools.js                    — 12 sandboxed file/git/memory tools for AI mode.
+├── memoryStore.js              — Persistent cross-session AI memory (.console/memory.md).
+├── confidenceModel.js          — Learned confidence model (Stage 1 ML — logistic regression).
+├── ollama.js                   — REST client for localhost:11434, local + Cloud models.
+├── ollamaContext.js            — System prompt builder: tool defs, 5 AI modes, repo map,
+│                                memory injection.
+├── projectScanner.js           — Discovers projects, reads CLAUDE.md/README.md/context files.
+├── scriptEntries.js            — Auto-derives config entries from package.json scripts.
+├── codebaseIndexer.js          — Directory tree, language/entry-point detection, repo map.
+├── conversationStore.js        — Session CRUD + .console/ management + gitignore helper.
+├── executor.js                 — Shell command spawner, URL detection, port-retry, buffered
+│                                output streaming.
+├── outputSummarizer.js         — Post-command heuristic summary (errors/warnings/results).
+├── dangerousPatterns.js        — Hard blocklist (force-push, rm -rf, shutdown, etc.).
+├── gitSafety.js                — Checkpoint commits + undo.
+├── webSearch.js                — DuckDuckGo HTML scraping.
+├── fileWatcher.js               — chokidar watcher for console.config.json changes.
+├── nearMissLogger.js            — Layer 1: near-miss recording.
+├── learningEngine.js            — Layer 1: suggestion generation, phrase injection.
+├── intentTelemetry.js           — Layer 2: match-stage logging, threshold overrides, auto-tune
+│                                (now backed by confidenceModel.js when enough data exists).
+├── distillation.js              — Layer 3: AI exchange analysis, config entry suggestions.
+├── projectMemory.js             — Layer 4: usage tracking, CLAUDE.md augmentation.
+├── mockProjects.js              — Fake project seeder for non-Windows dev.
+├── routes/                      — projectRoutes, sessionRoutes, searchRoutes.
+└── wsHandlers/                  — connection.js, builtinIntents.js, matchedEntry.js,
+                                 aiQuery.js, aiStream.js.
 
 src/                          — React 19 + Vite frontend.
 ├── hooks/useConsole.ts       — All state + WS/fetch handlers.
-├── App.tsx                   — Render root, folder picker, WebSocket init.
+├── App.tsx                   — Render root, folder picker, WebSocket init, fullscreen chat.
 ├── components/ErrorBoundary.tsx — Top-level safety net; catches render-time exceptions instead
 │                                of letting the whole app unmount to a blank white page.
 ├── components/               — Terminal, WelcomeScreen, BentoGrid, SpotlightCard.
@@ -211,5 +242,5 @@ src/                          — React 19 + Vite frontend.
 └── types.ts                  — Project, TerminalMessage, ChatSession, etc.
 
 start.bat                     — Launcher with mode selection + port fallback.
-server/cli-client.js          — Interactive CLI chat mode (no browser).
+server/cli-client.js          — Interactive CLI chat mode (no browser), with server auto-discovery.
 ```

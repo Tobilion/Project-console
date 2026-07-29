@@ -13,6 +13,7 @@ import { watchProjectConfigs } from './fileWatcher.js';
 import { setupMockProjectsIfMissing } from './mockProjects.js';
 import { state, projectsMutex } from './state.js';
 import { autoApplyThresholdsForAll } from './intentTelemetry.js';
+import { retrainConfidenceModel } from './confidenceModel.js';
 import { autoApplySuggestionsForAll } from './learningEngine.js';
 import { loadLearnedIntents } from './learnedIntents.js';
 import { wss, broadcast } from './wsServer.js';
@@ -122,6 +123,17 @@ async function init() {
     console.error('File watcher failed to start:', err.message);
   }
 
+  // Stage 1 ML work (2026-07-29, requested directly): retrain the learned confidence model from
+  // every project's accept/reject telemetry before the threshold auto-apply sweep below runs, so
+  // that sweep uses the freshest learned floor (see confidenceModel.js / intentTelemetry.js's
+  // suggestThresholds()) rather than whatever was cached from the last server run. Below
+  // MIN_LABELED examples this is a fast no-op and the sweep falls back to the original heuristic,
+  // so a fresh install / low-usage project sees zero behavior change from this.
+  const modelResult = retrainConfidenceModel();
+  if (modelResult.trained) {
+    console.log(`Confidence model retrained from ${modelResult.sampleCount} labeled outcomes.`);
+  }
+
   // Auto-apply telemetry-based threshold adjustments on startup
   const autoResults = autoApplyThresholdsForAll();
   if (autoResults.length > 0) {
@@ -153,6 +165,7 @@ async function init() {
       await new Promise((resolve, reject) => {
         const onListening = () => {
           httpServer.removeListener('error', onError);
+          state.serverPort = tryPort;
           console.log(`Console Server running on http://${HOST}:${tryPort}`);
           console.log(`Default scan path: ${state.currentScanDirectory}`);
           if (HOST === '0.0.0.0') {

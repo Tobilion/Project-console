@@ -26,23 +26,25 @@ if /i "!MODE!"=="w" goto :WEB_MODE
 goto :MODE_SELECT
 
 :CLI_MODE
-set PORT=3000
-echo Starting server on port !PORT! (port fallback handled by server)...
-set PORT=!PORT!
-
+:: `start /B` shares this same console window's stdout with whatever it launches — so without
+:: redirecting it, the background server's own startup logs (dotenvx env injection, NLP training,
+:: semanticMatcher's embedding-model loading, etc.) print directly into this window, interleaved
+:: with the interactive CLI chat itself (confirmed live 2026-07-29 — very confusing to read).
+:: Redirected to a log file instead; check server.log if something needs debugging.
+echo Starting server in the background (log: server.log)...
 IF EXIST "dist\server.js" (
-    start /B "" npm start
+    start /B "" npm start > server.log 2>&1
 ) ELSE (
-    start /B "" npm run dev
+    start /B "" npm run dev > server.log 2>&1
 )
 
-echo Waiting for server...
-:WAIT_SERVER
-timeout /t 1 /nobreak >nul
-netstat -an 2>nul | find ":!PORT! " >nul
-if !errorlevel! neq 0 goto :WAIT_SERVER
-
-echo Server is ready. Starting CLI chat...
+:: Previously waited here for `netstat` to show port 3000 as listening before starting the CLI
+:: client — but that only confirms *something* is bound to that exact port, not that this app's
+:: server is actually the one there or that it's finished starting (route registration / Vite
+:: middleware setup / semanticMatcher's embedding model load all take real time), and it had no
+:: way to notice the server falling back to a different port. cli-client.js now handles both
+:: concerns itself (retries for up to 20s, checks ports 3000-3009), so just hand off to it
+:: directly instead of duplicating a weaker version of that logic here.
 node server/cli-client.js
 if errorlevel 1 (
     echo CLI chat exited. Stopping server...

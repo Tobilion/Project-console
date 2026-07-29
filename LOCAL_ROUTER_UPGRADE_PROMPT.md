@@ -250,6 +250,45 @@ These are independent; each can ship and be tested on its own.
   once a working build environment is available (standing caveat this entire project: the sandbox
   used to build prior fixes had no working VM, so nothing has been build/lint-tested yet).
 
+### Real `npm run dev` test results (2026-07-29, first live run after all three pieces shipped)
+
+`npm run lint` passed clean (no type errors from anything in this doc). `npm install` needed
+`npm approve-scripts` for `re2`/`sharp`/`protobufjs` (native modules whose install scripts get
+skipped by default) before `npm run dev` would come up — worth calling out for the next machine
+this gets set up on.
+
+- ✅ **"push the site with the comment 'bug fixes'"** — committed with the exact given message
+  and pushed. Comment survived.
+- ✅ **"Can I attach the github link"** — correctly asked for the URL (confirms the
+  `BUILTIN_INTENTS` gate fix for `git_remote_add` from phase 1 actually works end-to-end now).
+- ⚠️ Follow-up turn (pasting just the URL, e.g. `https://github.com/Tobilion/Project-console`,
+  with no verb like "attach"/"set") fell through to the generic fallback instead of completing the
+  remote-add. This is a **separate, pre-existing gap**, not something phases 1-3 were meant to
+  cover: none of `git_remote_add`/`file_create`/`file_append` have real multi-turn slot-filling —
+  when the handler asks a follow-up question ("paste the URL" / "what should the file contain?"),
+  the user's next message is matched independently from scratch with no memory that a question is
+  pending. Candidate for a future phase; not fixed here.
+- ✅ **"add a file"** (no name/content given) — correctly asked what to name it and what it should
+  contain.
+- ✅ **"add file foo with text 'hello'"** — created the file, git-checkpointed, confirmed with
+  "✅ Written foo".
+- ❌ → **fixed**: two garbled follow-ups ("Call it jimmyjagz.md with tex :- \"..." — see the
+  `PURE_CHITCHAT_INTENTS` fix documented in `CLAUDE.md`'s matching-pipeline gotchas) both
+  incorrectly matched `system.chit_chat.gratitude`. Not caused by the new router tier (structurally
+  it can't be — the router only runs after semantic/NLP/fuzzy already fail, and this input has
+  near-zero similarity to any gratitude example); almost certainly `nlpEngine`'s trained classifier
+  stage. Fixed with an input-shape guard (`looksLikeRealRequest`) applied to all three
+  match-producing stages (semantic/nlp/router), not just the router — this bug predates this whole
+  upgrade and would have fired with or without it.
+- ✅ **"You wrote foo to where"** (genuinely novel, no real intent fits) — correctly fell through
+  to the generic fallback with suggestion chips instead of guessing. Good evidence the "return
+  null when unsure" behavior works in the cases it's supposed to.
+
+Not yet isolated: whether the router tier itself ever actually fired during this session (no
+stage-level telemetry was captured in the exported chat transcript to confirm `source: 'router'`
+vs. an earlier stage catching everything). Worth checking `data/near-misses/<projectId>.jsonl`
+for `source: 'router'` entries next time, or watching server logs live.
+
 ## Explicitly out of scope this pass
 
 - No Python sidecar process, no new npm/pip dependencies.

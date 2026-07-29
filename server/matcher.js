@@ -33,7 +33,7 @@ const BUILTIN_INTENTS = new Set([
   'git_push', 'git_commit', 'git_commit_push', 'git_add',
   'git_init', 'git_ignore_add', 'git_rm_cached', 'npm_install',
   'npm_build', 'npm_run', 'file_create', 'file_delete', 'file_append', 'file_read',
-  'git_remote_add', 'project_scan',
+  'git_remote_add', 'project_scan', 'project_list',
   'git_log', 'git_branch', 'git_checkout', 'git_pull',
   'system.monitoring.metrics',
 ]);
@@ -42,6 +42,31 @@ const BUILTIN_INTENTS = new Set([
 // that gates dispatch below — a router result naming an intent outside this set could never be
 // executed, so there's no reason for the two lists to risk drifting apart.
 export { BUILTIN_INTENTS };
+
+// Confirmed live 2026-07-29: a garbled file-creation follow-up ("Call it jimmyjagz.md with tex
+// :- \"") landed on system.chit_chat.gratitude — twice, across two different malformed inputs,
+// neither containing anything resembling thanks. Both are zero-argument, always-safe-sounding
+// canned replies with no real semantic bar to clear once *any* stage claims a confident-looking
+// match, which is exactly the failure mode a weak/out-of-distribution classifier falls into
+// (nlpEngine's trained classifier, stage 2 below, is the most likely source — it's this file's
+// own documented "legacy fallback", gated only by a flat score >= 0.45 with no margin check,
+// unlike the semantic stage's floor+margin gate). A message that names a file (has an extension)
+// or contains an explicit quote is essentially never small talk in this app's domain, so treat a
+// pure-chitchat result as untrustworthy — not a match at all — when either signal is present,
+// letting the input fall through to the next stage instead of returning a wrong-but-harmless-
+// looking answer. Narrower and cheaper than trying to fix the underlying classifier.
+const PURE_CHITCHAT_INTENTS = new Set([
+  'system.chit_chat.greeting', 'system.chit_chat.status', 'system.chit_chat.gratitude',
+  'system.chit_chat.clear', 'system.chit_chat.yes_no',
+]);
+
+function looksLikeRealRequest(input) {
+  return /\.[a-zA-Z0-9]{1,6}\b/.test(input) || /["']/.test(input);
+}
+
+function isTrustworthyChitChat(intent, input) {
+  return !(PURE_CHITCHAT_INTENTS.has(intent) && looksLikeRealRequest(input));
+}
 
 const FALLBACK_SUGGESTIONS = ['help', 'overview', 'what are the commands', 'project structure', 'git status', 'monitoring'];
 
@@ -152,7 +177,7 @@ export async function matchInput(input, project, projectIndex, options = {}) {
         }
       }
       // 1b. Builtin intent match
-      if (BUILTIN_INTENTS.has(semanticResult.intent)) {
+      if (BUILTIN_INTENTS.has(semanticResult.intent) && isTrustworthyChitChat(semanticResult.intent, input)) {
         metrics.event({ type: 'match_result', input: input.slice(0, 80), outcome: 'semantic_builtin', duration: Date.now() - t0 });
         return {
           match: null,
@@ -173,7 +198,7 @@ export async function matchInput(input, project, projectIndex, options = {}) {
   if (nlpResult && nlpResult.score >= 0.45) {
     const intent = nlpResult.intent;
 
-    if (intent.startsWith('system.chit_chat.') || intent.startsWith('project.context.')) {
+    if ((intent.startsWith('system.chit_chat.') || intent.startsWith('project.context.')) && isTrustworthyChitChat(intent, input)) {
       metrics.event({ type: 'match_result', input: input.slice(0, 80), outcome: 'nlp_builtin', duration: Date.now() - t0 });
       return { match: null, builtin: intent, suggestions: [], telemetryId };
     }
@@ -211,9 +236,16 @@ export async function matchInput(input, project, projectIndex, options = {}) {
   const tRouter = Date.now();
   let routerResult = null;
   try {
+    // Same defense-in-depth as the semantic/nlp guards above: don't even offer the router a
+    // pure-chitchat intent when the input looks like a real request (filename/quote present).
+    // A weak local model is exactly as prone to defaulting to a "safe sounding" reply as
+    // nlpEngine's trained classifier was — no reason to trust it more here.
+    const routerAllowedIntents = looksLikeRealRequest(input)
+      ? [...BUILTIN_INTENTS].filter((i) => !PURE_CHITCHAT_INTENTS.has(i))
+      : [...BUILTIN_INTENTS];
     routerResult = await routeViaLocalModel(input, {
       model: options.model,
-      allowedIntents: [...BUILTIN_INTENTS],
+      allowedIntents: routerAllowedIntents,
       repoMapSlice: formatRepoMap(project?.codebaseIndex?.repoMap, ROUTER_REPO_MAP_CHARS) || undefined,
     });
   } catch {

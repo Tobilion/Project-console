@@ -145,6 +145,28 @@ class IntentClassifier {
     });
   }
 
+  /**
+   * Adds one confirmed real-usage phrase to the classifier's training set without a full
+   * retrain — call `retrainFromLearned()` after a batch of these to actually refit the model.
+   * This is what lets nlpEngine (an actual trained NLP.js classifier, not just curated examples)
+   * improve from real usage instead of only ever training on the fixed phrases hand-written in
+   * `initializeDefaultIntents()` below. Confirmed live 2026-07-29: the semantic matcher's example
+   * list already gets new confirmed phrases from `learningEngine.js`'s near-miss auto-promotion
+   * (see semanticMatcher.js / learnedIntents.js), but this classifier never did — it was retrained
+   * once at startup and then frozen for the rest of the process's life, silently missing out on
+   * every phrase the near-miss loop had already validated as correct.
+   */
+  addLearnedPhrase(phrase, intentName) {
+    this.manager.addDocument('en', phrase, intentName);
+  }
+
+  /** Refits the classifier against everything added via addLearnedPhrase() since last train(). */
+  async retrainFromLearned() {
+    await this.manager.train();
+    this.manager.save();
+    this.isTrained = true;
+  }
+
   async train(projects) {
     this.clearProjectDocs(projects);
     if (projects) {

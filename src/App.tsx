@@ -15,14 +15,18 @@ function App() {
   // do want to see everything at once (e.g. hunting for a chat you can't remember the project
   // for).
   const [showAllChats, setShowAllChats] = React.useState(false);
+  // Requested directly — the chat panel always shared the screen with the sessions sidebar and
+  // the project grid, with no way to just focus on the conversation. Purely a layout toggle: it
+  // doesn't touch any chat state, so switching in and out of it never loses anything.
+  const [chatFullscreen, setChatFullscreen] = React.useState(false);
 
   const {
     projects, activeProject, scanPath, setScanPath, messages,
     pendingConfirm, sessions, activeSessionId, showSessions, setShowSessions,
-    aiEnabled, ollamaStatus, aiThinking, indexingProjectId,
+    aiEnabled, ollamaStatus, aiThinking, commandPending, indexingProjectId,
     aiModel, aiMode, showWelcome, setShowWelcome, pendingToolConfirm,
     pendingMemorySuggestion, handleMemorySuggestionRespond,
-    handleSendMessage, handleConfirm, handleToolConfirm, handleAIToggle,
+    handleSendMessage, handleCancel, handleConfirm, handleToolConfirm, handleAIToggle,
     handleSetModel, handleSetMode, handleSelectProject,
     handleSearch, handleDeepResearch, handleNewChat, handleQuickStart, handleScan,
     createSession, switchSession, deleteSession, handleSwitchToProject,
@@ -95,9 +99,10 @@ function App() {
   }
 
   return (
-    <div className="h-screen relative flex flex-col p-6">
+    <div className={`h-screen relative flex flex-col ${chatFullscreen ? '' : 'p-6'}`}>
       <GlowOrbs />
 
+      {!chatFullscreen && (
       <header className="relative z-10 flex-shrink-0 flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-8">
         <div>
           <h1 className="text-3xl font-serif italic text-white mb-2">
@@ -143,9 +148,10 @@ function App() {
           directory=""
         />
       </header>
+      )}
 
-      <main className="relative z-10 flex-1 grid grid-cols-1 lg:grid-cols-12 gap-6 min-h-0 overflow-hidden">
-        {showSessions && (() => {
+      <main className={`relative z-10 flex-1 grid grid-cols-1 gap-6 min-h-0 overflow-hidden ${chatFullscreen ? '' : 'lg:grid-cols-12'}`}>
+        {!chatFullscreen && showSessions && (() => {
           const visibleSessions = (showAllChats || !activeProject)
             ? sessions
             : sessions.filter(s => s.projectId === activeProject.id);
@@ -197,31 +203,35 @@ function App() {
           </div>
           );
         })()}
-        <div className={`flex flex-col gap-6 overflow-y-auto pr-2 pb-6 min-h-0 ${showSessions ? 'lg:col-span-4' : 'lg:col-span-5'}`}>
-          <div className="flex items-center gap-2 flex-shrink-0">
-            <button onClick={() => setShowSessions(!showSessions)} className="p-1 text-gray-500 hover:text-gray-300 transition-colors">
-              <MessageSquare size={16} />
-            </button>
-            <h2 className="text-xs tracking-[0.2em] uppercase text-gray-500 font-bold">
-              Discovered Projects
-            </h2>
+        {!chatFullscreen && (
+          <div className={`flex flex-col gap-6 overflow-y-auto pr-2 pb-6 min-h-0 ${showSessions ? 'lg:col-span-4' : 'lg:col-span-5'}`}>
+            <div className="flex items-center gap-2 flex-shrink-0">
+              <button onClick={() => setShowSessions(!showSessions)} className="p-1 text-gray-500 hover:text-gray-300 transition-colors">
+                <MessageSquare size={16} />
+              </button>
+              <h2 className="text-xs tracking-[0.2em] uppercase text-gray-500 font-bold">
+                Discovered Projects
+              </h2>
+            </div>
+            {projects.length === 0 ? (
+               <div className="text-sm text-gray-500 font-mono italic">No projects found. Try scanning a different path.</div>
+            ) : (
+                <BentoGrid
+                  projects={projects}
+                  activeProject={activeProject}
+                  onSelect={handleSelectProject}
+                  workspaceProjects={workspaceProjects}
+                  addToWorkspace={addToWorkspace}
+                  removeFromWorkspace={removeFromWorkspace}
+                />
+            )}
           </div>
-          {projects.length === 0 ? (
-             <div className="text-sm text-gray-500 font-mono italic">No projects found. Try scanning a different path.</div>
-          ) : (
-              <BentoGrid
-                projects={projects}
-                activeProject={activeProject}
-                onSelect={handleSelectProject}
-                workspaceProjects={workspaceProjects}
-                addToWorkspace={addToWorkspace}
-                removeFromWorkspace={removeFromWorkspace}
-              />
-          )}
-        </div>
+        )}
 
-        <div className={`h-[calc(100vh-140px)] ${showSessions ? 'lg:col-span-6' : 'lg:col-span-7'}`}>
+        <div className={`${chatFullscreen ? 'h-full lg:col-span-12' : `h-[calc(100vh-140px)] ${showSessions ? 'lg:col-span-6' : 'lg:col-span-7'}`}`}>
           <Terminal
+            isFullscreen={chatFullscreen}
+            onToggleFullscreen={() => setChatFullscreen(v => !v)}
             messages={messages}
             onSendMessage={handleSendMessage}
             onSearch={handleSearch}
@@ -235,6 +245,8 @@ function App() {
             onMemorySuggestionRespond={handleMemorySuggestionRespond}
             aiEnabled={aiEnabled}
             aiThinking={aiThinking}
+            commandPending={commandPending}
+            onCancel={handleCancel}
             ollamaStatus={ollamaStatus}
             aiModel={aiModel}
             aiMode={aiMode}

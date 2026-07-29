@@ -12,7 +12,7 @@ const MARKER_MARGIN = OPEN_TAG.length - 1;
  * blocks (so the user never sees raw tool-call JSON flash by). Returns the full visible text
  * and any parsed tool calls once the stream ends.
  */
-export async function streamWithToolDetection(model, messages, ws) {
+export async function streamWithToolDetection(model, messages, ws, signal) {
   let buffer = '';
   let visible = '';
   let inToolCall = false;
@@ -65,7 +65,7 @@ export async function streamWithToolDetection(model, messages, ws) {
     }
   };
 
-  for await (const token of chatStream(model, messages)) {
+  for await (const token of chatStream(model, messages, signal)) {
     buffer += token;
     processBuffer();
   }
@@ -78,9 +78,9 @@ export async function streamWithToolDetection(model, messages, ws) {
 }
 
 /** Plain streaming pass with no tool-call parsing — used for the post-tool follow-up answer. */
-export async function streamPlain(model, messages, ws) {
+export async function streamPlain(model, messages, ws, signal) {
   let visible = '';
-  for await (const token of chatStream(model, messages)) {
+  for await (const token of chatStream(model, messages, signal)) {
     visible += token;
     if (ws.readyState === 1) ws.send(JSON.stringify({ type: 'token', data: token }));
   }

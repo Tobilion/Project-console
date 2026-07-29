@@ -1,39 +1,94 @@
 import crypto from 'crypto';
+import fs from 'fs/promises';
+import path from 'path';
 import { executeCommand } from '../executor.js';
 import { isCommandBlocked } from '../dangerousPatterns.js';
 import { pendingConfirmations } from '../state.js';
+import { extractParamValue, isSafeParamValue, substituteParams } from '../paramCommand.js';
 
-/** Handles a project.config.json trigger match: runs an "answer" or executes/confirms a "command". */
-export async function handleMatchedEntry(ws, entry, input, matchedTrigger, project, sessionContext) {
-  sessionContext.lastTriggeredEntry = entry;
-
-  if (entry.type === 'command' && isCommandBlocked(entry.action)) {
+/**
+ * Runs (or queues confirmation for) a fully-resolved command entry — i.e. one with no remaining
+ * {placeholder} params. Shared by the normal single-shot path below and by connection.js's
+ * pending-parameter follow-up flow, so both go through the exact same safety checks
+ * (isCommandBlocked runs again here on the SUBSTITUTED command, not just the template) and the
+ * exact same risky/non-risky confirm behavior.
+ */
+export async function runCommandEntry(ws, entry, input, matchedTrigger, project) {
+  if (entry.requires?.length) {
+    for (const rel of entry.requires) {
+      try {
+        await fs.access(path.join(project.path, rel));
+      } catch {
+        ws.send(JSON.stringify({
+          type: 'answer',
+          data: entry.requiresMessage || `Missing required file "${rel}" — this project needs a one-time setup step before this command will work.`,
+        }));
+        return;
+      }
+    }
+  }
+  if (isCommandBlocked(entry.action)) {
     ws.send(JSON.stringify({
       type: 'error_output',
       data: `SAFETY BLOCK: Command "${entry.action}" matches a dangerous pattern and is prohibited.\n`
     }));
     return;
   }
+  if (entry.risky) {
+    const token = crypto.randomUUID();
+    pendingConfirmations.set(token, {
+      projectId: project.id,
+      command: entry.action,
+      trigger: input,
+      createdAt: Date.now()
+    });
+    ws.send(JSON.stringify({
+      type: 'confirm_prompt',
+      token,
+      command: entry.action,
+      trigger: matchedTrigger || input
+    }));
+  } else {
+    executeCommand(entry.action, project.path, ws, project.id);
+  }
+}
+
+/**
+ * Handles a "command" entry that declares {placeholder} params (see paramCommand.js). Tries to
+ * resolve every param straight from the phrase that matched (e.g. "watch every 15 minutes"
+ * already contains the interval); anything left unresolved gets asked as a plain follow-up
+ * question via sessionContext.pendingParam, which connection.js's handleExecute checks before
+ * running the normal matching pipeline on the user's next message. No AI/LLM involved — this is
+ * what lets parameterized commands work the same whether AI mode is on or off.
+ */
+async function resolveParamsAndRun(ws, entry, input, matchedTrigger, project, sessionContext) {
+  const values = {};
+  for (const p of entry.params) {
+    const extracted = extractParamValue(input, p.pattern);
+    if (extracted && isSafeParamValue(extracted)) values[p.name] = extracted;
+  }
+  const missing = entry.params.find((p) => values[p.name] === undefined);
+  if (missing) {
+    sessionContext.pendingParam = {
+      entry, projectId: project.id, values, paramName: missing.name,
+      params: entry.params, matchedTrigger: matchedTrigger || input,
+    };
+    ws.send(JSON.stringify({ type: 'answer', data: missing.prompt }));
+    return;
+  }
+  const resolvedEntry = { ...entry, action: substituteParams(entry.action, values) };
+  await runCommandEntry(ws, resolvedEntry, input, matchedTrigger, project);
+}
+
+/** Handles a project.config.json trigger match: runs an "answer" or executes/confirms a "command". */
+export async function handleMatchedEntry(ws, entry, input, matchedTrigger, project, sessionContext) {
+  sessionContext.lastTriggeredEntry = entry;
 
   if (entry.type === 'answer') {
     ws.send(JSON.stringify({ type: 'answer', data: entry.response }));
+  } else if (entry.type === 'command' && entry.params?.length) {
+    await resolveParamsAndRun(ws, entry, input, matchedTrigger, project, sessionContext);
   } else if (entry.type === 'command') {
-    if (entry.risky) {
-      const token = crypto.randomUUID();
-      pendingConfirmations.set(token, {
-        projectId: project.id,
-        command: entry.action,
-        trigger: input,
-        createdAt: Date.now()
-      });
-      ws.send(JSON.stringify({
-        type: 'confirm_prompt',
-        token,
-        command: entry.action,
-        trigger: matchedTrigger || input
-      }));
-    } else {
-      executeCommand(entry.action, project.path, ws, project.id);
-    }
+    await runCommandEntry(ws, entry, input, matchedTrigger, project);
   }
 }

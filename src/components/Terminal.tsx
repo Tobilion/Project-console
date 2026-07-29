@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react'
 import { TerminalMessage, Project, AIStatus, PendingToolConfirm, PendingMemorySuggestion, ToolCallEntry } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
 import ReactMarkdown from 'react-markdown';
-import { Terminal as TerminalIcon, Send, Search, CheckCircle, XCircle, Brain, Loader2, History, Copy, FileDown, ListChecks, Download } from 'lucide-react';
+import { Terminal as TerminalIcon, Send, Search, CheckCircle, XCircle, Brain, Loader2, History, Copy, FileDown, ListChecks, Download, Square, Maximize2, Minimize2 } from 'lucide-react';
 import { AIAssistantInterface } from './ui/AIAssistantInterface';
 import { ToolHistoryPanel } from './ToolHistoryPanel';
 
@@ -40,6 +40,8 @@ interface TerminalProps {
   onMemorySuggestionRespond?: (accept: boolean) => void;
   aiEnabled: boolean;
   aiThinking: boolean;
+  commandPending: boolean;
+  onCancel?: () => void;
   ollamaStatus: AIStatus | null;
   aiModel: string;
   aiMode: string;
@@ -58,6 +60,8 @@ interface TerminalProps {
   removeFromWorkspace: (projectId: string) => void;
   clearWorkspace: () => void;
   onSwitchToProject?: (projectId: string) => void;
+  isFullscreen?: boolean;
+  onToggleFullscreen?: () => void;
 }
 
 /** Parses a JSON code-block child string and returns the parsed object, or null. */
@@ -123,7 +127,7 @@ const AI_MODES = [
   { value: 'structured', label: 'Structured' }
 ];
 
-export const Terminal = ({ messages, onSendMessage, onSearch, onDeepResearch, activeProject, pendingConfirm, onConfirm, pendingToolConfirm, onToolConfirm, pendingMemorySuggestion, onMemorySuggestionRespond, aiEnabled, aiThinking, ollamaStatus, aiModel, aiMode, onAIToggle, onSetModel, onSetMode, toolHistory, showToolHistory, onToggleToolHistory, onRerunToolCall, onExportMarkdown, onExportJson, onDirectCommand, workspaceProjects, addToWorkspace, removeFromWorkspace, clearWorkspace, onSwitchToProject }: TerminalProps) => {
+export const Terminal = ({ messages, onSendMessage, onSearch, onDeepResearch, activeProject, pendingConfirm, onConfirm, pendingToolConfirm, onToolConfirm, pendingMemorySuggestion, onMemorySuggestionRespond, aiEnabled, aiThinking, commandPending, onCancel, ollamaStatus, aiModel, aiMode, onAIToggle, onSetModel, onSetMode, toolHistory, showToolHistory, onToggleToolHistory, onRerunToolCall, onExportMarkdown, onExportJson, onDirectCommand, workspaceProjects, addToWorkspace, removeFromWorkspace, clearWorkspace, onSwitchToProject, isFullscreen, onToggleFullscreen }: TerminalProps) => {
   const [input, setInput] = useState('');
   const [showSearchOverlay, setShowSearchOverlay] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -306,8 +310,17 @@ export const Terminal = ({ messages, onSendMessage, onSearch, onDeepResearch, ac
         <span className="font-mono text-sm text-gray-300 flex-1">
           {activeProject ? `Connected: ${activeProject.name}` : 'No Project Selected'}
         </span>
+        {onToggleFullscreen && (
+          <button onClick={onToggleFullscreen} className="p-1.5 text-gray-500 hover:text-gray-200 transition-colors flex-shrink-0" title={isFullscreen ? 'Exit fullscreen' : 'Fullscreen chat'}>
+            {isFullscreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
+          </button>
+        )}
         {ollamaStatus && (
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap justify-end">
+            <button onClick={onAIToggle} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-mono transition-colors border flex-shrink-0 ${aiEnabled ? 'bg-teal-500/20 border-teal-500/40 text-teal-300' : 'bg-white/5 border-white/10 text-gray-500 hover:text-gray-300'}`}>
+              <Brain size={14} />
+              <span>AI {aiEnabled ? 'ON' : 'OFF'}</span>
+            </button>
             {aiEnabled && ((ollamaStatus.models?.length ?? 0) > 0 || (ollamaStatus.cloudModels?.length ?? 0) > 0) && (
               <>
                 <select
@@ -365,10 +378,6 @@ export const Terminal = ({ messages, onSendMessage, onSearch, onDeepResearch, ac
             <button onClick={onToggleToolHistory} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-mono transition-colors border ${showToolHistory ? 'bg-[#3d6bff]/20 border-[#3d6bff]/40 text-[#3d6bff]' : 'bg-white/5 border-white/10 text-gray-500 hover:text-gray-300'}`} title="Tool Call History">
               <ListChecks size={14} />
               {toolHistory.length > 0 && <span className="text-[10px]">{toolHistory.length}</span>}
-            </button>
-            <button onClick={onAIToggle} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-mono transition-colors border ${aiEnabled ? 'bg-teal-500/20 border-teal-500/40 text-teal-300' : 'bg-white/5 border-white/10 text-gray-500 hover:text-gray-300'}`}>
-              <Brain size={14} />
-              <span>AI {aiEnabled ? 'ON' : 'OFF'}</span>
             </button>
           </div>
         )}
@@ -541,6 +550,36 @@ export const Terminal = ({ messages, onSendMessage, onSearch, onDeepResearch, ac
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex items-center gap-3 text-teal-400/60 text-xs font-mono">
             <Loader2 size={14} className="animate-spin" />
             AI is thinking...
+            {/* Requested directly (2026-07-29) after a query ran 5+ minutes with no way to stop
+                it — CPU-only Ollama inference has no upper bound on its own. */}
+            {onCancel && (
+              <button
+                onClick={onCancel}
+                className="flex items-center gap-1 px-2 py-0.5 rounded border border-red-500/30 text-red-400/80 hover:text-red-300 hover:border-red-500/60 hover:bg-red-500/10 transition-colors"
+                title="Cancel this request"
+              >
+                <Square size={10} /> Stop
+              </button>
+            )}
+          </motion.div>
+        )}
+
+        {/* Trigger-mode busy indicator — requested directly after "run the site" gave no visual
+            sign the console was still working on a slow-starting command (e.g. a dev server
+            still booting), leaving no way to tell "still running" from "silently done". */}
+        {commandPending && !aiThinking && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex items-center gap-3 text-[#00d4a3]/60 text-xs font-mono">
+            <Loader2 size={14} className="animate-spin" />
+            Running...
+            {onCancel && (
+              <button
+                onClick={onCancel}
+                className="flex items-center gap-1 px-2 py-0.5 rounded border border-red-500/30 text-red-400/80 hover:text-red-300 hover:border-red-500/60 hover:bg-red-500/10 transition-colors"
+                title="Cancel this command"
+              >
+                <Square size={10} /> Stop
+              </button>
+            )}
           </motion.div>
         )}
       </div>
@@ -560,13 +599,13 @@ export const Terminal = ({ messages, onSendMessage, onSearch, onDeepResearch, ac
               value={input}
               onChange={(e) => { setInput(e.target.value); resetTab(); }}
               onKeyDown={handleInputKeyDown}
-              disabled={!activeProject || aiThinking}
-              placeholder={!activeProject ? "Select a project to start..." : aiThinking ? "AI is thinking..." : "Ask a question or enter a command... (Ctrl+R for history)"}
+              disabled={!activeProject || aiThinking || commandPending}
+              placeholder={!activeProject ? "Select a project to start..." : aiThinking ? "AI is thinking..." : commandPending ? "Running..." : "Ask a question or enter a command... (Ctrl+R for history)"}
               className="w-full bg-[#12151c] border border-white/10 rounded-xl py-3 pl-4 pr-12 text-gray-100 font-mono text-sm focus:outline-none focus:border-[#3d6bff] transition-colors disabled:opacity-50"
             />
             <button
               type="submit"
-              disabled={!input.trim() || !activeProject || aiThinking || isBlocked}
+              disabled={!input.trim() || !activeProject || aiThinking || commandPending || isBlocked}
               title={isBlocked ? 'Resolve the pending confirmation first (Esc to cancel)' : undefined}
               className="absolute right-2 p-2 text-gray-400 hover:text-[#00d4a3] disabled:opacity-50 transition-colors"
             >
