@@ -23,6 +23,12 @@ npm run lint     # tsc --noEmit
 `start.bat` handles port fallback (3000 → 3001-3010) automatically; the frontend derives the
 WebSocket URL from `window.location`, so it follows whatever port the server actually used.
 
+**Background daemon mode** (no visible terminal): `scripts/start-daemon.ps1` starts the server
+hidden, polls for readiness, and writes the bound port to `logs/daemon.port`. Stop with
+`scripts/stop-daemon.ps1`. `scripts/add-to-startup.ps1` creates a shortcut in `shell:startup`
+so the console starts automatically on login. Kill-by-port (not by wrapper PID) — robust even
+when the cmd.exe wrapper exits before npm.
+
 ## Architecture
 
 `server/index.js` is a thin orchestrator only — routes and WS logic live elsewhere:

@@ -117,6 +117,8 @@ This is distinct from the persistent cross-session memory above — session hist
 
 ## Quick Start
 
+### Web UI
+
 Double-click `start.bat` in the root folder. It will:
 1. Install dependencies if needed.
 2. Offer Web UI or CLI Chat mode.
@@ -129,6 +131,19 @@ npm install
 npm run dev     # tsx server/index.js, http://127.0.0.1:3000
 npm run lint    # tsc --noEmit
 ```
+
+### Background Daemon (no terminal window)
+
+```powershell
+.\scripts\start-daemon.ps1   # Starts hidden, polls until ready, writes port to logs/daemon.port
+.\scripts\stop-daemon.ps1    # Stops by killing the process listening on the port
+.\scripts\add-to-startup.ps1 # Adds a shortcut to shell:startup so it launches on login
+```
+
+The daemon runs `npm run dev` in a hidden window with output redirected to `logs/daemon.log`.
+It scans ports 3000-3009 to discover the actual bound port (the server auto-fallbacks if
+port 3000 is already in use). Stop is port-based (finds the process by what port it's listening
+on), so it works correctly even when the wrapper `cmd.exe` exits before the Node server does.
 
 ## AI Setup (Optional)
 
