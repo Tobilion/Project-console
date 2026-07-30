@@ -35,6 +35,7 @@ export function useConsole() {
   // without being "done"; only clears on a real end-of-turn signal) and different display text.
   const [commandPending, setCommandPending] = useState(false);
   const [activeServers, setActiveServers] = useState<Array<{projectId: string; command: string; pid: number | null; url: string | null}>>([]);
+  const [dashboardUpdateSignal, setDashboardUpdateSignal] = useState(0);
 
   const fetchActiveServers = useCallback(async () => {
     try {
@@ -361,6 +362,9 @@ export function useConsole() {
       case 'server_url':
         sessions.setMessages(prev => [...prev, { id, type: 'bot', content: `🔗 Dev server running at **${payload.data}**`, isMarkdown: true }]);
         break;
+      case 'dashboard_update':
+        setDashboardUpdateSignal(n => n + 1);
+        break;
       case 'learning_suggestion': {
         const { suggestions } = payload.data;
         if (suggestions.length === 0) {
@@ -554,6 +558,7 @@ export function useConsole() {
     aiThinkingText: ai.aiThinkingText,
     commandPending,
     activeServers,
+    dashboardUpdateSignal,
     indexingProjectId: projects.indexingProjectId,
     aiModel: ai.aiModel,
     aiMode: ai.aiMode,

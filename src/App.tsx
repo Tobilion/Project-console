@@ -34,7 +34,7 @@ function App() {
     createSession, switchSession, deleteSession, handleSwitchToProject,
     toolHistory, showToolHistory, setShowToolHistory, rerunToolCall,
     exportAsMarkdown, exportAsJson,
-    handleDirectCommand, activeServers,
+    handleDirectCommand, activeServers, dashboardUpdateSignal,
     workspaceProjects, addToWorkspace, removeFromWorkspace, clearWorkspace,
   } = useConsole();
 
@@ -164,7 +164,7 @@ function App() {
       <main className={`relative z-10 flex-1 min-h-0 overflow-hidden ${showDashboard ? '' : `grid grid-cols-1 gap-6 ${chatFullscreen ? '' : 'lg:grid-cols-12'}`}`}>
         {showDashboard ? (
           <div className="h-full p-4">
-            <Dashboard onClose={() => setShowDashboard(false)} />
+            <Dashboard onClose={() => setShowDashboard(false)} refreshSignal={dashboardUpdateSignal} />
           </div>
         ) : (<>
         {!chatFullscreen && showSessions && (() => {

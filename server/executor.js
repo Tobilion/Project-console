@@ -4,6 +4,7 @@ import fs from 'fs';
 import crypto from 'crypto';
 import { state, withPortCollisionWarning, pendingConfirmations } from './state.js';
 import { summarizeCommandOutput } from './outputSummarizer.js';
+import { broadcast } from './wsServer.js';
 
 // Strips ANSI escape sequences so URL detection isn't fooled by color/bold codes
 const ANSI_RE = /\x1b\[[0-9;]*[a-zA-Z]/g;
@@ -223,6 +224,7 @@ export function executeCommand(command, cwd, ws, projectId) {
     // Register so user can stop the server later
     if (projectId) {
       runningProcesses.set(projectId, { child, command: finalCommand });
+      broadcast({ type: 'dashboard_update' });
     }
 
     function detach() {
@@ -267,7 +269,10 @@ export function executeCommand(command, cwd, ws, projectId) {
         const unique = [...new Set(urls.map(u => u.replace(/\/+$/, '')))];
         for (const url of unique) {
           sendEvent('server_url', url);
-          if (projectId) state.lastDevUrls.set(projectId, url);
+          if (projectId) {
+            state.lastDevUrls.set(projectId, url);
+            broadcast({ type: 'dashboard_update' });
+          }
         }
         // If this is a dev server command, detach after URL + short grace to show it
         if (isDev) {
@@ -347,7 +352,10 @@ export function executeCommand(command, cwd, ws, projectId) {
       // synchronously, so skipping the delete here for an already-detached entry doesn't leak: at
       // worst, a genuinely-dead detached process leaves a stale entry until the next explicit
       // "stop server" call, which is a harmless no-op kill instead of a false "nothing running".
-      if (!detached) runningProcesses.delete(projectId);
+      if (!detached) {
+        runningProcesses.delete(projectId);
+        broadcast({ type: 'dashboard_update' });
+      }
       if (detached) return;
       stdoutSender.flush();
       stderrSender.flush();
@@ -399,6 +407,7 @@ export function executeCommand(command, cwd, ws, projectId) {
 
     child.on('error', (err) => {
       runningProcesses.delete(projectId);
+      broadcast({ type: 'dashboard_update' });
       sendEvent('error_output', `Failed to start process: ${err.message}`);
       sendEvent('end', `\nProcess failed.`);
       resolve({ success: false, error: err.message });

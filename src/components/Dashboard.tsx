@@ -14,9 +14,10 @@ interface DashboardEntry {
 
 interface DashboardProps {
   onClose: () => void;
+  refreshSignal?: number;
 }
 
-export const Dashboard = ({ onClose }: DashboardProps) => {
+export const Dashboard = ({ onClose, refreshSignal = 0 }: DashboardProps) => {
   const [entries, setEntries] = useState<DashboardEntry[]>([]);
 
   const fetchDashboard = useCallback(async () => {
@@ -31,6 +32,11 @@ export const Dashboard = ({ onClose }: DashboardProps) => {
     const id = setInterval(fetchDashboard, 5000);
     return () => clearInterval(id);
   }, [fetchDashboard]);
+
+  // Re-fetch immediately when the server signals a state change via WebSocket
+  useEffect(() => {
+    if (refreshSignal > 0) fetchDashboard();
+  }, [refreshSignal, fetchDashboard]);
 
   const totalUncommitted = entries.reduce((sum, e) => sum + e.uncommitted.length, 0);
   const totalRunning = entries.filter(e => e.runningCommand || e.devUrl).length;

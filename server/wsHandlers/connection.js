@@ -22,7 +22,7 @@ import { semanticMatcher } from '../semanticMatcher.js';
 import { readDistillations, generateDistillationSuggestions, applyDistillation, clearDistillations } from '../distillation.js';
 import { trackCommand, trackFileEdit, trackQuestion, addCandidateAddition, getMemorySummary, addToClaudeMd } from '../projectMemory.js';
 import { state, pendingConfirmations, pendingToolConfirmations, sweepExpiredConfirmations, withPortCollisionWarning } from '../state.js';
-import { wss } from '../wsServer.js';
+import { wss, broadcast } from '../wsServer.js';
 
 const pendingMemorySuggestions = new Map();
 
@@ -572,6 +572,7 @@ async function handleExecute(ws, parsed, sessionContext) {
       proc.child.kill('SIGTERM');
       runningProcesses.delete(project.id);
       state.lastDevUrls.delete(project.id);
+      broadcast({ type: 'dashboard_update' });
       ws.send(JSON.stringify({ type: 'answer', data: `Stopped \`${proc.command}\`.\n` }));
     } else {
       ws.send(JSON.stringify({ type: 'answer', data: `No running server for **${project.name}**.\n` }));
