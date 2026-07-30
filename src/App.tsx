@@ -32,7 +32,7 @@ function App() {
     createSession, switchSession, deleteSession, handleSwitchToProject,
     toolHistory, showToolHistory, setShowToolHistory, rerunToolCall,
     exportAsMarkdown, exportAsJson,
-    handleDirectCommand,
+    handleDirectCommand, activeServers,
     workspaceProjects, addToWorkspace, removeFromWorkspace, clearWorkspace,
   } = useConsole();
 
@@ -137,6 +137,12 @@ function App() {
           <button onClick={() => setShowWelcome(true)} className="p-2 text-gray-500 hover:text-gray-300 transition-colors" title="Home">
             <Home size={18} />
           </button>
+          {activeServers.length > 0 && (
+            <span className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-green-400 font-mono bg-green-500/10 rounded-lg border border-green-500/20 whitespace-nowrap flex-shrink-0">
+              <span className="w-1.5 h-1.5 rounded-full bg-green-400 inline-block animate-pulse" />
+              {activeServers.length} running
+            </span>
+          )}
         </form>
         <input
           ref={folderInputRef}

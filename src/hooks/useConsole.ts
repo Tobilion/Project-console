@@ -34,6 +34,14 @@ export function useConsole() {
   // intermediate 'start'/'output' chunks, since a still-booting dev server keeps streaming text
   // without being "done"; only clears on a real end-of-turn signal) and different display text.
   const [commandPending, setCommandPending] = useState(false);
+  const [activeServers, setActiveServers] = useState<Array<{projectId: string; command: string; pid: number | null; url: string | null}>>([]);
+
+  const fetchActiveServers = useCallback(async () => {
+    try {
+      const res = await fetch('/api/active-servers');
+      if (res.ok) setActiveServers(await res.json());
+    } catch {}
+  }, []);
 
   const addToolCall = useCallback((tool: string, args: Record<string, any>, result: any) => {
     const isGated = ['writeFile', 'editFile', 'insertAtLine'].includes(tool) ||
@@ -377,7 +385,10 @@ export function useConsole() {
     sessions.fetchSessions();
     wsHandler.connectWebSocket();
     fetch('/api/ollama/status').then(r => r.ok ? r.json() : null).then(s => { if (s) ai.fetchOllamaStatus(); }).catch(() => {});
+    fetchActiveServers();
+    const serverPollId = setInterval(fetchActiveServers, 5000);
     return () => {
+      clearInterval(serverPollId);
       wsHandler.disconnect();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -542,6 +553,7 @@ export function useConsole() {
     aiThinking: ai.aiThinking,
     aiThinkingText: ai.aiThinkingText,
     commandPending,
+    activeServers,
     indexingProjectId: projects.indexingProjectId,
     aiModel: ai.aiModel,
     aiMode: ai.aiMode,
