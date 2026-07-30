@@ -36,7 +36,7 @@ when the cmd.exe wrapper exits before npm.
 - `server/state.js` — shared mutable state (scan directory, project cache, pending confirmations)
 - `server/wsServer.js` — the `wss` instance + `broadcast()`
 - `server/mockProjects.js` — seeds fake projects on non-Windows sandboxes
-- `server/routes/` — `projectRoutes.js`, `sessionRoutes.js`, `searchRoutes.js`, `monitoringRoutes.js` (`/api/metrics`, `/api/active-servers`)
+- `server/routes/` — `projectRoutes.js`, `sessionRoutes.js`, `searchRoutes.js`, `monitoringRoutes.js` (`/api/metrics`, `/api/active-servers`, `/api/dashboard` with 30s in-memory cache)
 - `server/wsHandlers/` — `connection.js` (message router), `builtinIntents.js` (canned responses
   + `buildHelpMessage()` prompt library), `matchedEntry.js`, `aiQuery.js` (Ollama tool-call loop),
   `aiStream.js` (token streaming + `<tool_call>` extraction)
@@ -50,8 +50,16 @@ when the cmd.exe wrapper exits before npm.
 
 Frontend: `src/hooks/useConsole.ts` owns all state + WS/fetch handlers; `src/App.tsx` is
 render-only; `src/components/Terminal.tsx` renders chat + the two remaining confirmation card
-types (risky command, AI tool approval); `src/components/ui/AIAssistantInterface.tsx` is the
-AI-mode input bar (real file upload via `FileReader`, Search/Reason/Deep Research toggles).
+types (risky command, AI tool approval); `src/components/Dashboard.tsx` polls `/api/dashboard`
+every 5s and re-fetches immediately on `dashboard_update` WS events (broadcast from executor.js
+on process/URL changes) — conditional `LayoutDashboard` button in the header scan bar
+highlights when the view is active and replaces the main content area with a per-project status
+grid (uncommitted files, recent commits, dev URL, running command). A green pulsing pill in the
+header (`N running`) shows the live count from `/api/active-servers` with zero layout shift.
+`src/components/WelcomeScreen.tsx` now includes a 4-step guided tour overlay (fixed z-50
+backdrop-blur card, local state machine, dismissible at any step) activated via a "Take the Tour"
+button alongside New Chat / Quick Start Guide. `src/components/ui/AIAssistantInterface.tsx` is
+the AI-mode input bar (real file upload via `FileReader`, Search/Reason/Deep Research toggles).
 
 ## How the AI gets project context
 

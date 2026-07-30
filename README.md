@@ -20,6 +20,7 @@ The Console scans `C:\Users\tobil\Desktop\Projects` (or any specified directory)
 - **Host binding**: Defaults to `127.0.0.1` (local only). Set `HOST=0.0.0.0` for LAN access — but be aware there is no authentication.
 - **Cross-platform**: built and tested primarily on Windows, but the server, sandboxed file tools, and safety blocklist are all `process.platform`-aware and work on macOS/Linux too. `start.bat` (port-fallback launcher) is Windows-only — on macOS/Linux just run `npm run dev` directly.
 - **Cancellable AI queries**: CPU-only Ollama inference has no built-in time limit — a "Stop" button next to the busy indicator aborts an in-flight AI query or a running trigger-mode shell command mid-stream.
+- **Dashboard**: A toggleable per-project status grid showing uncommitted files, recent commits, dev server URLs, and running commands. Polls `/api/dashboard` every 5s with a 30s server-side cache; also re-fetches immediately on any `dashboard_update` WebSocket broadcast (process start/stop, URL detection, or command completion). A green pulsing pill in the header (`N running`) shows the live dev server count from `/api/active-servers` with zero layout shift — no flex reflow when it appears or disappears.
 
 ### Trigger Mode (Dispatcher)
 - **Multi-stage intent matching**: embedding cosine similarity (all-MiniLM-L6-v2) → a handful of literal pre-checks for confirmed trap phrases (`git init`, `gitignore`, `deploy`) → Fuse.js fuzzy → keyword patterns → NLP.js trained classifier → a single bounded local-model classification call (`localRouter.js`) for phrasings nothing above resolved → suggestion chips. 59 intents with ~1,900 example phrases, split across `server/intents/*.js` category files and merged in `intentsData.js` — the phrase lists are hand-curated, but matching itself is real ML at every stage (a trained local transformer for embeddings, a trained NLP.js classifier, and a logistic-regression confidence model trained on real accept/reject telemetry — see `confidenceModel.js`), and confirmed phrases get promoted into the permanent example set automatically as the console is used (`learningEngine.js`). Run `npm run check-intents` any time to statically scan all example phrases for exact/near-duplicate collisions before they cause a wrong match — complements the live `check collisions` command, which needs a running server.
@@ -145,6 +146,12 @@ It scans ports 3000-3009 to discover the actual bound port (the server auto-fall
 port 3000 is already in use). Stop is port-based (finds the process by what port it's listening
 on), so it works correctly even when the wrapper `cmd.exe` exits before the Node server does.
 
+### Welcome Tour
+When the web UI opens to the welcome screen, click **Take the Tour** to launch a 4-step guided
+overlay explaining project selection, AI mode activation, and key commands. The tour is a pure
+local state machine (no server round-trips, no shared-state mutations) — dismiss at any step via
+the X button or the backdrop click.
+
 ## AI Setup (Optional)
 
 1. Install Ollama from [ollama.com/download/windows](https://ollama.com/download/windows)
@@ -251,20 +258,29 @@ server/
 │                                (now backed by confidenceModel.js when enough data exists).
 ├── distillation.js              — Layer 3: AI exchange analysis, config entry suggestions.
 ├── projectMemory.js             — Layer 4: usage tracking, CLAUDE.md augmentation.
+├── readmeRunParser.js           — Trigger-mode README/CLAUDE.md parser for run command discovery.
 ├── mockProjects.js              — Fake project seeder for non-Windows dev.
-├── routes/                      — projectRoutes, sessionRoutes, searchRoutes, monitoringRoutes.
-└── wsHandlers/                  — connection.js, builtinIntents.js, matchedEntry.js,
-                                 aiQuery.js, aiStream.js.
+├── routes/                      — projectRoutes, sessionRoutes, searchRoutes, monitoringRoutes
+│                                  (`/api/metrics`, `/api/active-servers`, `/api/dashboard`).
+├── wsHandlers/                  — connection.js, builtinIntents.js, matchedEntry.js,
+│                                  aiQuery.js, aiStream.js.
+├── intents/                     — Split intent phrase files (chitChatIntents.js,
+│                                  gitIntents.js, projectKnowledgeIntents.js, etc.) merged by
+│                                  intentsData.js.
+└── scripts/                     — start-daemon.ps1, stop-daemon.ps1, add-to-startup.ps1,
+                                   checkIntentDuplicates.js.
 
 src/                          — React 19 + Vite frontend.
 ├── hooks/useConsole.ts       — All state + WS/fetch handlers.
 ├── App.tsx                   — Render root, folder picker, WebSocket init, fullscreen chat.
 ├── components/ErrorBoundary.tsx — Top-level safety net; catches render-time exceptions instead
 │                                of letting the whole app unmount to a blank white page.
-├── components/               — Terminal, WelcomeScreen, BentoGrid, SpotlightCard.
+├── components/               — Terminal, WelcomeScreen, BentoGrid, SpotlightCard, Dashboard.
 ├── components/ui/            — AIAssistantInterface with search/research/reason toggles.
 └── types.ts                  — Project, TerminalMessage, ChatSession, etc.
 
 start.bat                     — Launcher with mode selection + port fallback.
 server/cli-client.js          — Interactive CLI chat mode (no browser), with server auto-discovery.
+scripts/                       — Daemon launchers (start-daemon.ps1, stop-daemon.ps1,
+                                  add-to-startup.ps1).
 ```
