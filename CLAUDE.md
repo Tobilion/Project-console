@@ -36,7 +36,7 @@ when the cmd.exe wrapper exits before npm.
 - `server/state.js` — shared mutable state (scan directory, project cache, pending confirmations)
 - `server/wsServer.js` — the `wss` instance + `broadcast()`
 - `server/mockProjects.js` — seeds fake projects on non-Windows sandboxes
-- `server/routes/` — `projectRoutes.js`, `sessionRoutes.js`, `searchRoutes.js`
+- `server/routes/` — `projectRoutes.js`, `sessionRoutes.js`, `searchRoutes.js`, `monitoringRoutes.js` (`/api/metrics`, `/api/active-servers`)
 - `server/wsHandlers/` — `connection.js` (message router), `builtinIntents.js` (canned responses
   + `buildHelpMessage()` prompt library), `matchedEntry.js`, `aiQuery.js` (Ollama tool-call loop),
   `aiStream.js` (token streaming + `<tool_call>` extraction)

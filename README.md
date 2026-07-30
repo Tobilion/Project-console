@@ -252,7 +252,7 @@ server/
 ├── distillation.js              — Layer 3: AI exchange analysis, config entry suggestions.
 ├── projectMemory.js             — Layer 4: usage tracking, CLAUDE.md augmentation.
 ├── mockProjects.js              — Fake project seeder for non-Windows dev.
-├── routes/                      — projectRoutes, sessionRoutes, searchRoutes.
+├── routes/                      — projectRoutes, sessionRoutes, searchRoutes, monitoringRoutes.
 └── wsHandlers/                  — connection.js, builtinIntents.js, matchedEntry.js,
                                  aiQuery.js, aiStream.js.
 
