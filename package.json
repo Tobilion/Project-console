@@ -1,8 +1,17 @@
 {
   "name": "local-project-console",
-  "private": true,
-  "version": "0.0.0",
+  "private": false,
+  "version": "1.0.0",
+  "bin": {
+    "local-project-console": "bin/cli.js"
+  },
   "type": "module",
+  "files": [
+    "bin/",
+    "dist/",
+    "server/",
+    "README.md"
+  ],
   "scripts": {
     "dev": "tsx server/index.js",
     "start": "node dist/server.js",

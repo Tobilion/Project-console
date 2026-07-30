@@ -41,6 +41,12 @@ export const Dashboard = ({ onClose, refreshSignal = 0 }: DashboardProps) => {
   const totalUncommitted = entries.reduce((sum, e) => sum + e.uncommitted.length, 0);
   const totalRunning = entries.filter(e => e.runningCommand || e.devUrl).length;
 
+  const compactPath = (p: string) => {
+    const PREFIX = 'C:\\Users\\tobil\\Desktop\\Projects\\';
+    if (p.startsWith(PREFIX)) return '~/' + p.slice(PREFIX.length).replace(/\\/g, '/');
+    return p;
+  };
+
   return (
     <div className="flex flex-col gap-4 h-full overflow-hidden">
       <div className="flex items-center justify-between flex-shrink-0">
@@ -79,7 +85,7 @@ export const Dashboard = ({ onClose, refreshSignal = 0 }: DashboardProps) => {
                 <FolderGit2 size={16} className="text-[#00d4a3] flex-shrink-0" />
                 <h3 className="text-sm font-bold text-white truncate">{entry.name}</h3>
                 <span className="text-[10px] text-gray-500 font-mono truncate hidden lg:inline" title={entry.path}>
-                  {entry.path}
+                  {compactPath(entry.path)}
                 </span>
               </div>
               <div className="flex items-center gap-2 flex-shrink-0">
@@ -104,8 +110,8 @@ export const Dashboard = ({ onClose, refreshSignal = 0 }: DashboardProps) => {
               </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
-              <div>
+            <div className="grid grid-cols-12 gap-3 text-xs">
+              <div className="col-span-3">
                 <span className="text-[10px] tracking-wider uppercase text-gray-500 font-bold">Uncommitted</span>
                 {entry.uncommitted.length > 0 ? (
                   <div className="mt-1 max-h-20 overflow-y-auto space-y-0.5 font-mono text-yellow-300/70">
@@ -121,7 +127,7 @@ export const Dashboard = ({ onClose, refreshSignal = 0 }: DashboardProps) => {
                 )}
               </div>
 
-              <div>
+              <div className="col-span-7">
                 <span className="text-[10px] tracking-wider uppercase text-gray-500 font-bold flex items-center gap-1">
                   <GitCommit size={12} />
                   Recent commits
@@ -137,7 +143,7 @@ export const Dashboard = ({ onClose, refreshSignal = 0 }: DashboardProps) => {
                 )}
               </div>
 
-              <div>
+              <div className="col-span-2">
                 <span className="text-[10px] tracking-wider uppercase text-gray-500 font-bold">Status</span>
                 <div className="mt-1 space-y-1 font-mono">
                   {entry.runningCommand ? (

@@ -116,7 +116,48 @@ This is distinct from the persistent cross-session memory above — session hist
 ### Folder Picker
 - The "Browse for folder" button opens a real native folder dialog (`<input type="file" webkitdirectory>`), but browsers deliberately never expose an absolute path to a web page through it — so it only recovers a folder *name*. The server then looks for a matching folder under the current scan directory or its parent (covers the common case of a sibling folder), and shows a clear error suggesting you paste the full path if it can't find one automatically. For any folder elsewhere on disk, type or paste the full path directly into the text field (e.g. `C:\Users\you\Desktop\SomeFolder`) — that always works.
 
-## Quick Start
+## Global Quick Start (npx)
+
+No clone, no install. From any project folder on any machine with Node.js installed:
+
+```powershell
+npx local-project-console
+```
+
+This downloads and launches the console in your browser, scanning the current
+directory for projects automatically.
+
+### Codebase Configuration Initializer
+
+To generate a tailored `console.config.json` for the current project:
+
+```powershell
+npx local-project-console init
+```
+
+The initializer scans the target directory for:
+- **npm scripts** (`package.json`) — auto-derived into runnable trigger entries
+- **Python projects** — detects Flask, Django, and standalone scripts; suggests
+  `flask run`, `python manage.py runserver`, or `python app.py` as appropriate
+- **Rust/Cargo** — generates `cargo run` and `cargo test` entries
+- **Go modules** — generates `go run .` and `go test ./...` entries
+
+It also generates an **overview** answer entry describing the detected stack
+and languages. The resulting `console.config.json` is ready to commit to your
+repository so every team member gets the same commands out of the box.
+
+```powershell
+git add console.config.json
+git commit -m "Add Project Console config for <project-name>"
+```
+
+Pass a specific directory instead of the current folder:
+
+```powershell
+npx local-project-console init C:\path\to\project
+```
+
+## Quick Start (local development)
 
 ### Web UI
 
@@ -244,6 +285,9 @@ server/
 ├── projectScanner.js           — Discovers projects, reads CLAUDE.md/README.md/context files.
 ├── scriptEntries.js            — Auto-derives config entries from package.json scripts.
 ├── codebaseIndexer.js          — Directory tree, language/entry-point detection, repo map.
+├── configInitializer.js        — Codebase config initializer (`npx local-project-console init`).
+│                                Scans target directory for stack markers (npm, Python, Rust, Go)
+│                                and generates a tailored console.config.json.
 ├── conversationStore.js        — Session CRUD + .console/ management + gitignore helper.
 ├── executor.js                 — Shell command spawner, URL detection, port-retry, buffered
 │                                output streaming.
@@ -279,6 +323,9 @@ src/                          — React 19 + Vite frontend.
 ├── components/ui/            — AIAssistantInterface with search/research/reason toggles.
 └── types.ts                  — Project, TerminalMessage, ChatSession, etc.
 
+bin/cli.js                    — npm binary entry point (`npx local-project-console`). Parses
+│                                commands, launches production server, polls
+│                                `globalThis.__consoleServerPort`, auto-opens browser.
 start.bat                     — Launcher with mode selection + port fallback.
 server/cli-client.js          — Interactive CLI chat mode (no browser), with server auto-discovery.
 scripts/                       — Daemon launchers (start-daemon.ps1, stop-daemon.ps1,

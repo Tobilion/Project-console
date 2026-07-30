@@ -23,6 +23,13 @@ npm run lint     # tsc --noEmit
 `start.bat` handles port fallback (3000 → 3001-3010) automatically; the frontend derives the
 WebSocket URL from `window.location`, so it follows whatever port the server actually used.
 
+**Global npx launcher**: `node bin/cli.js` (or `npx local-project-console`) imports the
+bundled or source server into the same process and polls `globalThis.__consoleServerPort` —
+a process-global integer set by `server/index.js` once the port-fallback loop binds. This
+avoids ESM module-realm duplication (the esbuild bundle inlines `server/` modules, so a
+separate `import()` of `state.js` would see a different `state` object than the bundle's own
+copy). The wrapper auto-opens the browser on detection.
+
 **Background daemon mode** (no visible terminal): `scripts/start-daemon.ps1` starts the server
 hidden, polls for readiness, and writes the bound port to `logs/daemon.port`. Stop with
 `scripts/stop-daemon.ps1`. `scripts/add-to-startup.ps1` creates a shortcut in `shell:startup`
@@ -47,6 +54,15 @@ when the cmd.exe wrapper exits before npm.
 - `server/dangerousPatterns.js` — hard blocklist (last resort, not a security boundary)
 - `server/confidenceModel.js` — pure-JS logistic regression trained on real accept/reject
   telemetry; see "Learned confidence model" below
+- `server/configInitializer.js` — `initConfig()`: scans a target directory for stack markers
+  (npm, Python, Rust, Go, etc.) via `codebaseIndexer.js` + `scriptEntries.js` and writes a
+  tailored `console.config.json`; invoked by `npx local-project-console init`.
+- `bin/cli.js` — npm binary entry point (`npx local-project-console`). Parses `init` command,
+  launches the esbuild-bundled or source server in production mode, polls
+  `globalThis.__consoleServerPort` (set by `server/index.js` after the port-fallback loop binds),
+  and auto-opens the browser via `cmd /c start` (Windows) / `open` (macOS) / `xdg-open` (Linux).
+  Uses `pathToFileURL()` for all `import()` calls since Windows absolute paths with drive letters
+  are not valid ESM loader URLs.
 
 Frontend: `src/hooks/useConsole.ts` owns all state + WS/fetch handlers; `src/App.tsx` is
 render-only; `src/components/Terminal.tsx` renders chat + the two remaining confirmation card

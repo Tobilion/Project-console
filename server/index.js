@@ -72,7 +72,7 @@ async function init() {
     });
     app.use(vite.middlewares);
   } else {
-    const distPath = path.join(process.cwd(), 'dist');
+    const distPath = __dirname;
     app.use(express.static(distPath));
     app.get('*', (req, res, next) => {
       if (req.path.startsWith('/api/') || req.path.startsWith('/stream')) return next();
@@ -166,6 +166,7 @@ async function init() {
         const onListening = () => {
           httpServer.removeListener('error', onError);
           state.serverPort = tryPort;
+          globalThis.__consoleServerPort = tryPort;
           console.log(`Console Server running on http://${HOST}:${tryPort}`);
           console.log(`Default scan path: ${state.currentScanDirectory}`);
           if (HOST === '0.0.0.0') {
