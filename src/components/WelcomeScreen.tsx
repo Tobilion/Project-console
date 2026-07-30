@@ -2,7 +2,7 @@ import React from 'react';
 import { TextScramble } from './TextScramble';
 import { GlowOrbs } from './GlowOrbs';
 import { Project, AIStatus } from '../types';
-import { FolderSearch, MessageSquare, Brain, Cpu, HardDrive, Code, Zap, BookOpen } from 'lucide-react';
+import { FolderSearch, MessageSquare, Brain, Cpu, HardDrive, Code, Zap, BookOpen, ArrowRight, Check, ChevronLeft, ChevronRight, X, Sparkles, Search, Terminal } from 'lucide-react';
 
 interface WelcomeScreenProps {
   projects: Project[];
@@ -14,7 +14,32 @@ interface WelcomeScreenProps {
   onQuickStart: () => void;
 }
 
+const TOUR_STEPS = [
+  {
+    icon: <Sparkles size={28} />,
+    title: 'Welcome to V4 Knowledge Engine',
+    body: 'This is your local, offline command center for every project on your machine. Browse any folder, run commands, check git status, and ask questions — all without leaving this window. AI mode is off by default; you control when it activates.',
+  },
+  {
+    icon: <FolderSearch size={28} />,
+    title: 'Projects & Navigation',
+    body: 'Every discovered project appears in the grid below. Click any card to open a chat scoped to that project — sessions, commands, and file access all stay inside its folder. Use the scan bar up top to point at any directory on your machine.',
+  },
+  {
+    icon: <Brain size={28} />,
+    title: 'AI Assistant',
+    body: 'Toggle AI mode on for natural-language conversations: ask questions about a project\'s code, read files, write new ones, and run commands. Every write or risky action asks for your approval first — the AI never acts without your say-so.',
+  },
+  {
+    icon: <Check size={28} />,
+    title: 'You\'re All Set',
+    body: 'Quick Start Guide (below) lists the most common trigger-mode commands. The Dashboard button in the header shows live status for every project at a glance. Dive in — everything works offline, nothing leaves your machine.',
+  },
+];
+
 export function WelcomeScreen({ projects, ollamaStatus, aiEnabled, onAIToggle, onSelectProject, onNewChat, onQuickStart }: WelcomeScreenProps) {
+  const [tourStep, setTourStep] = React.useState(0);
+
   const totalFiles = projects.reduce((sum, p) => sum + (p.codebaseIndex?.totalFiles || 0), 0);
   const totalDirs = projects.reduce((sum, p) => sum + (p.codebaseIndex?.totalDirs || 0), 0);
   const activeLangs = new Set<string>();
@@ -70,6 +95,9 @@ export function WelcomeScreen({ projects, ollamaStatus, aiEnabled, onAIToggle, o
           <button onClick={onQuickStart} className="flex items-center gap-2 px-6 py-3 bg-white/5 border border-white/10 text-gray-300 rounded-xl font-bold text-sm hover:bg-white/10 transition-colors">
             <BookOpen size={16} /> Quick Start Guide
           </button>
+          <button onClick={() => setTourStep(1)} className="flex items-center gap-2 px-6 py-3 bg-white/5 border border-white/10 text-[#00d4a3] rounded-xl font-bold text-sm hover:bg-white/10 transition-colors group">
+            <Sparkles size={16} className="group-hover:rotate-12 transition-transform" /> Take the Tour
+          </button>
         </div>
 
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -84,6 +112,56 @@ export function WelcomeScreen({ projects, ollamaStatus, aiEnabled, onAIToggle, o
           ))}
         </div>
       </div>
+
+      {tourStep > 0 && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setTourStep(0)} />
+          <div className="relative z-10 w-full max-w-lg mx-4 bg-[#0a0a0f] border border-white/10 rounded-2xl shadow-2xl overflow-hidden">
+            <div className="flex items-center justify-between px-6 pt-6 pb-2">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-[#00d4a3]/10 rounded-lg text-[#00d4a3]">
+                  {TOUR_STEPS[tourStep - 1].icon}
+                </div>
+                <div className="text-xs font-mono text-gray-500">
+                  Step {tourStep} of 4
+                </div>
+              </div>
+              <button onClick={() => setTourStep(0)} className="p-1 text-gray-500 hover:text-gray-300 transition-colors">
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="px-6 py-4">
+              <h2 className="text-xl font-bold text-white mb-3">{TOUR_STEPS[tourStep - 1].title}</h2>
+              <p className="text-sm text-gray-400 leading-relaxed">{TOUR_STEPS[tourStep - 1].body}</p>
+            </div>
+
+            <div className="flex items-center justify-between px-6 pb-6 pt-2">
+              <div className="flex gap-1.5">
+                {[1, 2, 3, 4].map(i => (
+                  <div key={i} className={`w-2 h-2 rounded-full transition-colors ${i === tourStep ? 'bg-[#00d4a3]' : 'bg-white/10'}`} />
+                ))}
+              </div>
+              <div className="flex items-center gap-2">
+                {tourStep > 1 && (
+                  <button onClick={() => setTourStep(s => s - 1)} className="flex items-center gap-1 px-3 py-2 text-xs text-gray-400 hover:text-gray-200 transition-colors font-mono">
+                    <ChevronLeft size={14} /> Back
+                  </button>
+                )}
+                {tourStep < 4 ? (
+                  <button onClick={() => setTourStep(s => s + 1)} className="flex items-center gap-1.5 px-4 py-2 bg-[#00d4a3]/20 text-[#00d4a3] rounded-lg text-xs font-bold tracking-wider uppercase hover:bg-[#00d4a3]/30 transition-colors">
+                    Next <ChevronRight size={14} />
+                  </button>
+                ) : (
+                  <button onClick={() => setTourStep(0)} className="flex items-center gap-1.5 px-4 py-2 bg-gradient-to-r from-[#3d6bff] to-[#6366f1] text-white rounded-lg text-xs font-bold tracking-wider uppercase hover:opacity-90 transition-opacity">
+                    Done <Check size={14} />
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
