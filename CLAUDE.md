@@ -1383,3 +1383,35 @@ review process yet. Found and fixed four real issues, all already patched in the
 - Tools/handlers take named-args objects, not positional args.
 - New WS message types belong in both `server/wsHandlers/connection.js` (or wherever emits them)
   and the frontend's `useConsole.ts` `handleWebSocketMessage` switch — keep them in sync.
+
+
+## Has my code been pushed?
+
+Let me check your git status.
+
+_(0.9s, 34 tok/s)_
+
+No—your code is **not** pushed. Here’s the current state:
+
+| File | Status |
+|------|--------|
+| `CLAUDE.md` | **Modified, staged** (uppercase `M` in `git status` = staged for commit) |
+| `README.md` | Modified, **unstaged** |
+| `server/ollama.js` | Modified, **unstaged** |
+| `server/semanticMatcher.js` | Modified, **unstaged** |
+| `server/wsHandlers/aiQuery.js` | Modified, **unstaged** |
+| `server/wsHandlers/aiStream.js` | Modified, **unstaged** |
+| `server/wsHandlers/builtinIntents.js` | Modified, **unstaged** |
+
+So `CLAUDE.md` has been staged (`git add`) but the others haven’t, and **nothing has been committed or pushed yet**.
+
+Would you like me to:
+1. **Stage all** of these files (`git add .`) and create a commit, then push, or
+2. **Review the diffs first** before staging anything, or
+3. Just push the already-staged `CLAUDE.md` and commit the rest separately?
+
+Let me know how you’d like to proceed.
+
+_(3.2s, 97 tok/s)_
+
+_(2.4s, 112 tok/s)_
