@@ -163,7 +163,6 @@ class IntentClassifier {
   /** Refits the classifier against everything added via addLearnedPhrase() since last train(). */
   async retrainFromLearned() {
     await this.manager.train();
-    this.manager.save();
     this.isTrained = true;
   }
 
@@ -186,8 +185,22 @@ class IntentClassifier {
       });
     }
 
+    // Confirmed live 2026-07-30 (reported directly: "every time it scans the site reloads",
+    // triggered by scanning C:\Users\tobil\Desktop\tobi-portfolio): `this.manager.save()` used to
+    // run here with no path argument, which node-nlp resolves to `./model.nlp` relative to
+    // process.cwd() — the console's own repo root, since it's launched via `npm run dev` from
+    // there. That file is nowhere in Vite's `watch.ignored` list (only `data/`/`.cache/`/
+    // `*.console/` are excluded — see index.js/vite.config.ts), so every retrain rewrote it and
+    // Vite treated it as a real source change, forcing a full-page reload. Nothing in this file
+    // (or anywhere else in the codebase) ever calls `.load()` to read `model.nlp` back — the
+    // classifier is always rebuilt fresh from `initializeDefaultIntents()` + learned phrases on
+    // every process start (see train() below and index.js's startup sequence) — so this save was
+    // pure dead weight with an active bug attached, not a working persistence feature. Removed
+    // rather than just re-pointed at an already-ignored directory like `data/`, since there's no
+    // code path that would ever read it back; if real save/load persistence is wanted later, it
+    // should write under `data/` (already excluded from Vite's watch) and pair the save with an
+    // actual `.load()` call on startup instead of writing a file nothing consumes.
     await this.manager.train();
-    this.manager.save();
     this.isTrained = true;
   }
 

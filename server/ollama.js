@@ -179,6 +179,10 @@ export async function chatOnce(model, messages, options = {}, signal, hostOverri
       model,
       messages,
       stream: false,
+      // See chatStream()'s comment below — same reasoning/content split, requested here too so a
+      // reasoning-capable model's router classification doesn't get its "thinking" text mixed
+      // into the one short response this call parses.
+      think: true,
       options: {
         num_ctx: NUM_CTX,
         temperature: options.temperature ?? 0,
@@ -194,12 +198,28 @@ export async function chatOnce(model, messages, options = {}, signal, hostOverri
   return data.message?.content || '';
 }
 
+/**
+ * Streams a chat completion, yielding `{ type: 'content' | 'thinking', text }` chunks.
+ *
+ * Requests `think: true` so Ollama splits a reasoning-capable model's internal deliberation
+ * (`message.thinking`) from its actual answer (`message.content`) instead of the two being
+ * indistinguishable. Confirmed live 2026-07-29: without this, a thinking model (GPT-OSS,
+ * Qwen3.5, etc.) could stream its raw reasoning ("We need to call getGitStatus.") straight
+ * through as if it were the final reply — this app had no way to tell "still thinking" apart
+ * from "done answering," so it just showed whatever text arrived and closed the turn the moment
+ * Ollama reported `done`. `think: true` is safe to always send: a model that doesn't support
+ * thinking simply never populates `message.thinking`, so this is fully backward compatible with
+ * plain (non-reasoning) local models — every chunk just comes through as `type: 'content'` like
+ * before. Callers (see aiStream.js) are responsible for only treating `content` chunks as the
+ * real answer / scanning them for `<tool_call>` blocks; `thinking` chunks are reasoning-only and
+ * must never be mistaken for a finished response.
+ */
 export async function* chatStream(model, messages, signal, hostOverride) {
   const host = hostOverride || OLLAMA_HOST;
   const res = await fetch(`${host}/api/chat`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ model, messages, stream: true, options: { num_ctx: NUM_CTX } }),
+    body: JSON.stringify({ model, messages, stream: true, think: true, options: { num_ctx: NUM_CTX } }),
     signal
   });
 
@@ -223,11 +243,12 @@ export async function* chatStream(model, messages, signal, hostOverride) {
         const json = JSON.parse(line);
         if (json.done) {
           if (json.total_duration) {
-            yield `\n\n_(${(json.total_duration / 1e9).toFixed(1)}s, ${(json.eval_count / (json.total_duration / 1e9)).toFixed(0)} tok/s)_`;
+            yield { type: 'content', text: `\n\n_(${(json.total_duration / 1e9).toFixed(1)}s, ${(json.eval_count / (json.total_duration / 1e9)).toFixed(0)} tok/s)_` };
           }
           return;
         }
-        if (json.message?.content) yield json.message.content;
+        if (json.message?.thinking) yield { type: 'thinking', text: json.message.thinking };
+        if (json.message?.content) yield { type: 'content', text: json.message.content };
       } catch {}
     }
   }

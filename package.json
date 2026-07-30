@@ -7,7 +7,8 @@
     "dev": "tsx server/index.js",
     "start": "node dist/server.js",
     "build": "vite build && esbuild server/index.js --bundle --platform=node --format=esm --packages=external --sourcemap --outfile=dist/server.js",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "check-intents": "node server/scripts/checkIntentDuplicates.js"
   },
   "dependencies": {
     "@nlpjs/basic": "^5.0.0-alpha.5",
@@ -32,6 +33,7 @@
     "react-markdown": "^10.1.0",
     "sharp": "^0.35.3",
     "tailwind-merge": "^3.6.0",
+    "typescript": "~5.8.2",
     "vite": "^6.2.3",
     "ws": "^8.21.1"
   },
@@ -42,7 +44,6 @@
     "esbuild": "^0.25.0",
     "tailwindcss": "^4.1.14",
     "tsx": "^4.21.0",
-    "typescript": "~5.8.2",
     "vite": "^6.2.3"
   },
   "allowScripts": {

@@ -23,7 +23,7 @@ function App() {
   const {
     projects, activeProject, scanPath, setScanPath, messages,
     pendingConfirm, sessions, activeSessionId, showSessions, setShowSessions,
-    aiEnabled, ollamaStatus, aiThinking, commandPending, indexingProjectId,
+    aiEnabled, ollamaStatus, aiThinking, aiThinkingText, commandPending, indexingProjectId,
     aiModel, aiMode, showWelcome, setShowWelcome, pendingToolConfirm,
     pendingMemorySuggestion, handleMemorySuggestionRespond,
     handleSendMessage, handleCancel, handleConfirm, handleToolConfirm, handleAIToggle,
@@ -245,6 +245,7 @@ function App() {
             onMemorySuggestionRespond={handleMemorySuggestionRespond}
             aiEnabled={aiEnabled}
             aiThinking={aiThinking}
+            aiThinkingText={aiThinkingText}
             commandPending={commandPending}
             onCancel={handleCancel}
             ollamaStatus={ollamaStatus}

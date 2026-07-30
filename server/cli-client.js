@@ -7,10 +7,14 @@ import readline from 'readline';
 const BASE_PORT = parseInt(process.env.PORT, 10) || 3000;
 const HOST = process.env.HOST || 'localhost';
 const MAX_PORT_ATTEMPTS = 10;
-// Bumped from 20s to 40s (requested directly) — real startup (dotenvx env injection, NLP
-// training, semanticMatcher's embedding-model load, etc.) sometimes runs long enough that 20s
-// wasn't consistently enough, especially on a cold start.
-const CONNECT_TIMEOUT_MS = 40000;
+// Bumped again 2026-07-30 (40s → 90s) based on a real measured cold boot of ~41s — right at the
+// old timeout's edge, meaning some boots were likely already failing silently before this. The
+// 2026-07-30 intent-expansion batch also grew intentsData.js by roughly a third (more phrases for
+// semanticMatcher.js to embed, more training data for nlpEngine.js), which pushes real startup
+// time up further, not down. 90s gives real headroom above the one measured data point rather
+// than guessing a new number outright — re-measure and adjust again if a real boot ever gets
+// close to this new ceiling. (Previous bump: 20s → 40s, same underlying cause.)
+const CONNECT_TIMEOUT_MS = 90000;
 const RETRY_INTERVAL_MS = 750;
 
 const C = {
@@ -61,24 +65,71 @@ async function discoverServer() {
   return null;
 }
 
+// Confirmed live 2026-07-30 (real transcript): typing anything that wasn't a valid in-range
+// number — a stray chat message sent before the picker was answered ("what port are you running
+// on"), or a mistyped number ("1100") — used to silently resolve to `projects[0]` with zero
+// feedback. That's how a session ended up on the wrong project with no visible error at all: the
+// user thought they'd typed a chat message or picked project #11, but actually got whichever
+// project happened to be first in the list. Now it re-asks instead of ever guessing.
 function selectProject(projects) {
   return new Promise((resolve) => {
-    const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+    // crlfDelay: Infinity — without it, Node's readline docs warn that an interface can emit
+    // TWO 'line' events for one Enter press if the \r and \n bytes of a Windows-style line ending
+    // arrive in separate reads (default crlfDelay is only 100ms). This matches a real report:
+    // typing "10" for project #10 registered each digit as if pressed twice. Windows terminals
+    // (ConPTY in particular) are exactly the case docs call out as prone to this. Applied to all
+    // three readline.createInterface() calls in this file for the same reason.
+    const rl = readline.createInterface({ input: process.stdin, output: process.stdout, crlfDelay: Infinity });
     console.log(`\n${C.bold}${C.cyan}Available Projects:${C.reset}\n`);
     projects.forEach((p, i) => {
       console.log(`  ${C.bold}${i + 1}${C.reset}. ${C.green}${p.name}${C.reset}\n     ${C.dim}${p.path}${C.reset}`);
     });
-    rl.question(`\n${C.bold}Select project (1-${projects.length}):${C.reset} `, (answer) => {
-      rl.close();
-      const idx = parseInt(answer.trim(), 10);
-      resolve(idx >= 1 && idx <= projects.length ? projects[idx - 1] : projects[0]);
-    });
+    const ask = () => {
+      rl.question(`\n${C.bold}Select project (1-${projects.length}):${C.reset} `, (answer) => {
+        const idx = parseInt(answer.trim(), 10);
+        if (Number.isInteger(idx) && idx >= 1 && idx <= projects.length) {
+          rl.close();
+          resolve(projects[idx - 1]);
+        } else {
+          console.log(`${C.red}"${answer.trim()}" isn't a number between 1 and ${projects.length} — try again.${C.reset}`);
+          ask();
+        }
+      });
+    };
+    ask();
   });
+}
+
+// Requested directly: a way to skip the interactive picker entirely and jump straight to a known
+// project directory, e.g. `node server/cli-client.js --dir "C:\Users\tobil\Desktop\Projects\netpulse"`
+// (also accepts `--project <name>` for a case-insensitive name/folder-name match). Matched against
+// whatever the server's own discovery already returned — this never re-implements project
+// discovery client-side, it just picks from the same list `selectProject()` would show.
+function findProjectFromArgs(projects) {
+  const args = process.argv.slice(2);
+  const dirIdx = args.findIndex((a) => a === '--dir' || a === '-d');
+  if (dirIdx !== -1 && args[dirIdx + 1]) {
+    const target = args[dirIdx + 1].replace(/[\\/]+$/, '').toLowerCase();
+    const match = projects.find((p) => p.path.replace(/[\\/]+$/, '').toLowerCase() === target);
+    if (match) return match;
+    console.log(`${C.yellow}No discovered project has path "${args[dirIdx + 1]}" — falling back to the picker.${C.reset}`);
+    return null;
+  }
+  const projIdx = args.findIndex((a) => a === '--project' || a === '-p');
+  if (projIdx !== -1 && args[projIdx + 1]) {
+    const target = args[projIdx + 1].toLowerCase();
+    const match = projects.find((p) => p.name.toLowerCase() === target || p.folderName?.toLowerCase() === target);
+    if (match) return match;
+    console.log(`${C.yellow}No discovered project matches name "${args[projIdx + 1]}" — falling back to the picker.${C.reset}`);
+    return null;
+  }
+  return null;
 }
 
 async function main() {
   console.clear();
   console.log(`\n${C.bgBlue}${C.bold}  Local Project Console — CLI Chat  ${C.reset}\n`);
+  console.log(`${C.dim}Tip: skip the picker next time with --dir "<full project path>" or --project "<name>".${C.reset}`);
   console.log(`${C.dim}Connecting (checking ports ${BASE_PORT}-${BASE_PORT + MAX_PORT_ATTEMPTS - 1}, retrying for up to ${CONNECT_TIMEOUT_MS / 1000}s)...${C.reset}`);
 
   const discovered = await discoverServer();
@@ -94,7 +145,7 @@ async function main() {
   }
   console.log(`${C.green}✔ Connected.${C.reset}`);
 
-  let project = projects.length === 1 ? projects[0] : await selectProject(projects);
+  let project = findProjectFromArgs(projects) || (projects.length === 1 ? projects[0] : await selectProject(projects));
 
   console.log(`\n${C.dim}─── Project: ${C.green}${project.name}${C.dim} ───────${C.reset}`);
   console.log(`${C.gray}Type a message, 'projects' to switch/rescan, or 'quit' to exit.${C.reset}\n`);
@@ -147,7 +198,7 @@ async function main() {
 
   function setupReadline() {
     if (rl) rl.close();
-    rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+    rl = readline.createInterface({ input: process.stdin, output: process.stdout, crlfDelay: Infinity });
     rl.setPrompt(`${C.cyan}${C.bold}chat>${C.reset} `);
     waitingForInput = true;
     rl.prompt();
@@ -195,7 +246,7 @@ async function main() {
   function questionAsync(prompt) {
     return new Promise((resolve) => {
       if (rl) rl.close();
-      const q = readline.createInterface({ input: process.stdin, output: process.stdout });
+      const q = readline.createInterface({ input: process.stdin, output: process.stdout, crlfDelay: Infinity });
       q.question(`${C.yellow}${prompt} ${C.reset}`, (answer) => {
         q.close();
         resolve(answer.trim().toLowerCase());

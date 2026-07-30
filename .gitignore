@@ -22,3 +22,9 @@ data/conversations/
 
 # Local Project Console chat memory (not for git)
 .console/
+
+# Stray node-nlp save artifact — see nlpEngine.js's train()/retrainFromLearned() comments (2026-07-30):
+# this used to get rewritten at the repo root on every project scan and was never actually read
+# back by anything, causing an unwanted Vite dev-server reload each time. The save call is now
+# removed, but this stays ignored as a guard in case a stale copy exists locally or reappears.
+model.nlp

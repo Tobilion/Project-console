@@ -1,9 +1,12 @@
 import crypto from 'crypto';
 import { injectContext } from '../contextInjector.js';
-import { executeCommand } from '../executor.js';
+import { executeCommand, runningProcesses } from '../executor.js';
 import { performUndo, isGitRepo } from '../gitSafety.js';
 import { pendingConfirmations, state } from '../state.js';
 import { createProjectTools } from '../tools.js';
+import { findDocumentedRunCommand } from '../readmeRunParser.js';
+import { formatApiRoutes, findTodos, findBiggestFiles } from '../codebaseIndexer.js';
+import { isSafeParamValue } from '../paramCommand.js';
 
 /**
  * Pulls a filename and (optionally) quoted content out of a natural-language trigger-mode
@@ -38,6 +41,30 @@ function parseFileNameOnly(input) {
 }
 
 /**
+ * Extracts a commit/push comment from phrasing like `with the comment "..."` / `message: '...'`.
+ * Tries a fully-quoted match first — captures everything between matching quote characters (via
+ * a backreference) so the message can safely contain the word "and" without being cut short.
+ * Falls back to the old "stop at the first ' and' or end of string" heuristic only for an
+ * UNQUOTED message, where "and" plausibly does start a separate trailing clause ("message: fix
+ * the bug and push").
+ *
+ * Confirmed live 2026-07-29 (real exported chat transcript): `push this code to github with
+ * comment "Massive Memory and Learning improvements"` silently committed as just "Massive
+ * Memory" — the previous regex (duplicated across git_push/git_commit/git_commit_push/deploy)
+ * stopped at the FIRST " and" it found anywhere in the tail, regardless of whether it was inside
+ * the quotes, because it was written to catch an unquoted trailing clause like "message: fix the
+ * bug and push it" and never accounted for "and" being a perfectly normal word inside a real
+ * quoted commit message. All four call sites now share this one fixed implementation instead of
+ * each carrying their own copy of the same bug.
+ */
+function extractCommentMessage(input) {
+  const quoted = input.match(/(?:with (?:the )?)?(?:comment|message):?\s*(["'])([\s\S]+?)\1/i);
+  if (quoted) return quoted[2].trim();
+  const unquoted = input.match(/(?:with (?:the )?)?(?:comment|message):?\s*(.+?)(?:\s*$|\s+and\s)/i);
+  return unquoted ? unquoted[1].trim() : null;
+}
+
+/**
  * Queues a direct file-tool call (writeFile/appendToFile/etc.) behind the same
  * confirm-before-execute flow risky shell commands already use, instead of routing it through
  * executeCommand — there's no shell command to run here, just a sandboxed tools.js function.
@@ -58,6 +85,13 @@ function queueFileOpConfirmation(ws, project, input, { tool, args, summary }) {
     command: summary,
     trigger: tool,
   }));
+}
+
+/** Picks one entry at random — used to give repeated chit-chat intents (greeting, thanks, status)
+ *  varied replies instead of the exact same string every time, without needing any model call.
+ *  Requested directly (2026-07-30): "richer canned chit-chat... still fully deterministic". */
+function pickRandom(arr) {
+  return arr[Math.floor(Math.random() * arr.length)];
 }
 
 /** Enrich a plain-text response with a summary of the project's codebase index, if present. */
@@ -167,6 +201,33 @@ function buildHelpMessage(project, sessionContext) {
 }
 
 /**
+ * Confirmed live 2026-07-30 (Matchday Exchange transcript): "run its server" and "run .bat" both
+ * ran the generic `npm run dev` (spawning a second, then third, redundant Vite instance on
+ * 3002/3003) instead of the project's actual `npm run server` wallet/settlement backend script —
+ * even though a differently-phrased "Is its server running?" correctly found and ran that exact
+ * script. Root cause: `run_project`'s handler always defaulted straight to scripts.dev/start/serve
+ * without ever looking at what the user's own input said, unlike `npm_run`'s handler (which tries,
+ * but only when a script name immediately follows "run"/"execute" — "run its server" fails that
+ * too, since "its" is what immediately follows "run"). This checks every real script name in the
+ * project's own package.json against the input as a whole word, so "its server", "is the server
+ * running", "start the server process" etc. all find `server` regardless of exactly where the
+ * word falls in the sentence — a looser, more forgiving match than npm_run's strict regex,
+ * intentionally, since this is meant to catch cases that regex misses. Returns null (defer to the
+ * normal dev/start/serve default) when no other script name appears at all.
+ */
+function findMentionedScript(input, scripts) {
+  const lower = input.toLowerCase();
+  const names = Object.keys(scripts || {});
+  // Longest name first so e.g. "test:e2e" wins over a bare "test" also being a substring match.
+  names.sort((a, b) => b.length - a.length);
+  for (const name of names) {
+    const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    if (new RegExp(`\\b${escaped}\\b`, 'i').test(lower)) return name;
+  }
+  return null;
+}
+
+/**
  * Shared helper: detect project type and emit suggestion chips with runnable commands.
  * Used by both `npm_run` and `run_project` when no matching script is found.
  */
@@ -193,6 +254,21 @@ function projectTypeSuggestions(ws, project, scripts) {
     }));
     return;
   }
+  // Requested directly (2026-07-30): before guessing a command from language detection alone,
+  // check whether the project's own README/CLAUDE.md already documents the real run command
+  // (Install/Usage/Getting Started/Run section, or any fenced code block with a recognizable
+  // command shape — see readmeRunParser.js). This is real author-written instructions, strictly
+  // more trustworthy than a language-based guess, and it's how trigger mode (no AI/Ollama
+  // involved at all) can still "read the README" the same way a human skimming it would.
+  const documented = findDocumentedRunCommand(project);
+  if (documented) {
+    const sourceNote = documented.header
+      ? `Found in **${documented.doc}** under "${documented.header}":`
+      : `Found in **${documented.doc}**:`;
+    ws.send(JSON.stringify({ type: 'answer', data: `${sourceNote}` }));
+    ws.send(JSON.stringify({ type: 'suggestions', data: [documented.command] }));
+    return;
+  }
   // Confirmed live 2026-07-29 (NetPulse, a real Flask/Python project): this used `langs.includes(
   // 'Python')`, but codebaseIndexer.js's detectLanguages() always formats each entry as
   // "Python (4 files)" — never the bare name — so `.includes('Python')` (an exact-match array
@@ -201,6 +277,18 @@ function projectTypeSuggestions(ws, project, scripts) {
   // the generic "entry point" suggestion instead of "python main.py" / npm script suggestions.
   const isPython = langs.some((l) => l.startsWith('Python'));
   const isJs = langs.some((l) => l.startsWith('JavaScript') || l.startsWith('TypeScript'));
+  // Widened 2026-07-30 (raised directly, alongside the codebase indexer's own language coverage
+  // widening) — these five used to have no trigger-mode run-command support at all and fell into
+  // the generic `entries.length > 0` branch below, which just does `start <entrypoint>` — wrong
+  // for anything compiled (e.g. `start main.go` opens the file in its default editor instead of
+  // running it). Each checks a real project marker (not just language file count) before
+  // suggesting anything, same "don't guess if we can't tell" spirit as the Python branch above.
+  const isGo = !!idx?.keyFiles?.['go.mod'];
+  const isRust = !!idx?.keyFiles?.['cargo.toml'];
+  const isJava = !!(idx?.keyFiles?.['pom.xml'] || idx?.keyFiles?.['build.gradle'] || idx?.keyFiles?.['build.gradle.kts']);
+  const isRuby = !!idx?.keyFiles?.['Gemfile'];
+  const isPhp = !!idx?.keyFiles?.['composer.json'];
+  const isCSharp = entries.some((e) => e.endsWith('Program.cs')) || langs.some((l) => l.startsWith('C#'));
   const scriptNames = Object.keys(scripts);
   const suggestions = [];
 
@@ -231,6 +319,30 @@ function projectTypeSuggestions(ws, project, scripts) {
   } else if (isJs) {
     ws.send(JSON.stringify({ type: 'answer', data: `JavaScript project with no npm scripts. Try:` }));
     suggestions.push('npx serve .', 'npx vite', 'npm install');
+  } else if (isRust) {
+    ws.send(JSON.stringify({ type: 'answer', data: `This is a **Rust** project (Cargo.toml found). Click a suggestion to run it:` }));
+    suggestions.push('cargo run', 'cargo build');
+  } else if (isGo) {
+    ws.send(JSON.stringify({ type: 'answer', data: `This is a **Go** project (go.mod found). Click a suggestion to run it:` }));
+    suggestions.push('go run .', 'go build ./...');
+  } else if (isJava) {
+    const isGradle = !!(idx?.keyFiles?.['build.gradle'] || idx?.keyFiles?.['build.gradle.kts']);
+    ws.send(JSON.stringify({ type: 'answer', data: `This is a **Java** project (${isGradle ? 'Gradle' : 'Maven'} found)${idx?.frameworks?.includes('Spring Boot') ? ' using **Spring Boot**' : ''}. Click a suggestion to run it:` }));
+    if (isGradle) suggestions.push('./gradlew bootRun', './gradlew run');
+    else suggestions.push('mvn spring-boot:run', 'mvn compile exec:java');
+  } else if (isRuby) {
+    const looksLikeRails = fileSample.includes('config.ru') || fileSample.some((f) => f.startsWith('config/environment.rb'));
+    ws.send(JSON.stringify({ type: 'answer', data: `This is a **Ruby** project (Gemfile found)${looksLikeRails ? ', likely Rails/Rack' : ''}. Click a suggestion to run it:` }));
+    if (looksLikeRails) suggestions.push('bundle exec rails server', 'bundle exec rackup');
+    else suggestions.push('bundle install', 'bundle exec ruby app.rb');
+  } else if (isPhp) {
+    const isLaravel = idx?.frameworks?.includes('Laravel') || fileSample.includes('artisan');
+    ws.send(JSON.stringify({ type: 'answer', data: `This is a **PHP** project (composer.json found)${isLaravel ? ', looks like Laravel' : ''}. Click a suggestion to run it:` }));
+    if (isLaravel) suggestions.push('php artisan serve');
+    else suggestions.push('php -S localhost:8000', 'composer install');
+  } else if (isCSharp) {
+    ws.send(JSON.stringify({ type: 'answer', data: `This is a **C#/.NET** project. Click a suggestion to run it:` }));
+    suggestions.push('dotnet run', 'dotnet build');
   } else if (entries.length > 0) {
     ws.send(JSON.stringify({ type: 'answer', data: `**Entry point:** \`${entries[0]}\`. Try:` }));
     suggestions.push(`start ${entries[0]}`);
@@ -253,7 +365,14 @@ export async function handleBuiltinIntent(ws, action, input, project, sessionCon
     }
   } else if (action === 'system.chit_chat.greeting') {
     const ctx = injectContext(input, action, project.codebaseIndex);
-    let responseText = `Hello! Local Console is active for [${project.name}].\n\n` +
+    const opener = pickRandom([
+      `Hello! Local Console is active for [${project.name}].`,
+      `Hey there — [${project.name}] is loaded and ready.`,
+      `Hi! Ready to help with [${project.name}].`,
+      `Hey! [${project.name}] is up. What are we working on?`,
+      `Good to see you — [${project.name}] is live.`,
+    ]);
+    let responseText = `${opener}\n\n` +
       `• Location: ${project.path}\n` +
       `• Type "help" to list all commands & topics.\n` +
       `• Type "overview" for architecture overview.\n` +
@@ -262,11 +381,49 @@ export async function handleBuiltinIntent(ws, action, input, project, sessionCon
     ws.send(JSON.stringify({ type: 'answer', data: responseText }));
   } else if (action === 'system.chit_chat.status') {
     const ctx = injectContext(input, action, project.codebaseIndex);
-    let statusMsg = enrichWithIndex(`I'm running and ready on **[${project.name}]**. What do you need?`, project.codebaseIndex);
+    const opener = pickRandom([
+      `I'm running and ready on **[${project.name}]**. What do you need?`,
+      `All good here — standing by on **[${project.name}]**.`,
+      `Still here, still watching **[${project.name}]**. What's next?`,
+      `Running smoothly on **[${project.name}]** — what can I do?`,
+      `Yep, I'm listening — **[${project.name}]** is active.`,
+    ]);
+    let statusMsg = enrichWithIndex(opener, project.codebaseIndex);
     if (ctx) statusMsg += `\n\n${ctx}`;
     ws.send(JSON.stringify({ type: 'answer', data: statusMsg }));
   } else if (action === 'system.chit_chat.gratitude') {
-    ws.send(JSON.stringify({ type: 'answer', data: `You're welcome! Ready for your next command on [${project.name}].` }));
+    ws.send(JSON.stringify({
+      type: 'answer',
+      data: pickRandom([
+        `You're welcome! Ready for your next command on [${project.name}].`,
+        `Anytime! What's next for [${project.name}]?`,
+        `Happy to help — let me know what's next on [${project.name}].`,
+        `No problem at all. What else can I do on [${project.name}]?`,
+        `Glad that helped. Ready when you are.`,
+      ]),
+    }));
+  } else if (action === 'system.chit_chat.farewell') {
+    // New intent (2026-07-30, requested directly — "richer canned chit-chat"): the chit-chat set
+    // had no goodbye at all before, so "bye"/"see you later" either fell through to a no-match
+    // fallback or got misclassified onto something else entirely.
+    ws.send(JSON.stringify({
+      type: 'answer',
+      data: pickRandom([
+        `See you later! [${project.name}] will be here when you're back.`,
+        `Bye for now — come back anytime.`,
+        `Catch you later. [${project.name}] stays as you left it.`,
+        `Goodbye! Nothing lost — just say hi when you're back.`,
+        `Take care! I'll be right here on [${project.name}].`,
+      ]),
+    }));
+  } else if (action === 'system.chit_chat.identity') {
+    // New intent (2026-07-30, requested directly): "who are you"/"what are you" previously had no
+    // real answer — either misclassified onto system.chit_chat.help or fell to a generic fallback.
+    // Distinct from "help" (which lists commands) — this answers what this thing *is*.
+    ws.send(JSON.stringify({
+      type: 'answer',
+      data: `I'm the local command console for **[${project.name}]** — a project-aware dispatcher that runs entirely on your machine. With AI mode off, I match what you type against a fixed set of known project actions (git, npm/build commands, file reads, project Q&A) using a local embedding model — no data leaves this machine, no cloud model involved. With AI mode on, I hand things off to your local Ollama model with read/write tools scoped to this project's folder. Type "help" for the full list of what I can do here.`,
+    }));
   } else if (action === 'system.chit_chat.clear') {
     ws.send(JSON.stringify({ type: 'clear_console' }));
   } else if (action === 'system.chit_chat.help') {
@@ -294,6 +451,29 @@ export async function handleBuiltinIntent(ws, action, input, project, sessionCon
     ws.send(JSON.stringify({ type: 'answer', data: `### Gotchas / Known Issues\n\n${project.parsedKnowledge?.gotchas || 'No known issues parsed from markdown.'}` }));
   } else if (action === 'project.knowledge.architecture') {
     ws.send(JSON.stringify({ type: 'answer', data: `### Architecture\n\n${project.parsedKnowledge?.architecture || 'No architecture information parsed from markdown.'}` }));
+  } else if (action === 'project.knowledge.how_to_run') {
+    // Requested directly (2026-07-30): a purely informational "how do I run/install/set this up"
+    // answer — distinct from `run_project`, which actually executes a command. This is meant to
+    // answer "how much can trigger mode (no AI) understand from the README" specifically: it
+    // never guesses silently, it always says where the answer came from (a documented command
+    // vs. a language-based inference vs. "nothing found, turn on AI mode").
+    const documented = findDocumentedRunCommand(project);
+    const idx = project.codebaseIndex;
+    let msg;
+    if (documented) {
+      msg = documented.header
+        ? `Documented in **${documented.doc}** under "${documented.header}":\n\n\`\`\`\n${documented.command}\n\`\`\``
+        : `Found this command in **${documented.doc}**:\n\n\`\`\`\n${documented.command}\n\`\`\``;
+    } else if (idx?.frameworks?.length || idx?.languages?.length) {
+      const parts = [];
+      if (idx.languages?.length) parts.push(`**Languages:** ${idx.languages.slice(0, 4).join(', ')}`);
+      if (idx.frameworks?.length) parts.push(`**Detected stack:** ${idx.frameworks.join(', ')}`);
+      if (idx.entryPoints?.length) parts.push(`**Entry point(s):** ${idx.entryPoints.join(', ')}`);
+      msg = `No documented run command found in this project's README/CLAUDE.md, but here's what was detected from the code itself:\n\n${parts.join('\n')}\n\nSay "run project" and I'll suggest a command based on this, or turn AI mode on for it to work it out from the source directly.`;
+    } else {
+      msg = `Nothing documented or detected about how to run this project. Try "run project" for a best-effort guess, or turn AI mode on.`;
+    }
+    ws.send(JSON.stringify({ type: 'answer', data: msg }));
   } else if (action === 'system.chit_chat.explain_followup') {
     if (sessionContext.lastTriggeredEntry) {
       const last = sessionContext.lastTriggeredEntry;
@@ -338,8 +518,7 @@ export async function handleBuiltinIntent(ws, action, input, project, sessionCon
       // full of "push ..." variants), and this branch used to always push bare, silently
       // dropping any comment the user typed. Parse it the same way deploy does so the comment
       // isn't lost regardless of which of the two intents wins the match.
-      const msgMatch = input.match(/(?:with (?:the )?(?:comment|message) ["']?|(?:comment|message):?\s*["']?)(.+?)(?:["']?\s*$|["']?\s+and)/i);
-      const commitMsg = msgMatch ? msgMatch[1].trim() : null;
+      const commitMsg = extractCommentMessage(input);
       const token = crypto.randomUUID();
       const command = commitMsg
         ? `git add -A && git commit -m "${commitMsg.replace(/"/g, '\\"')}" && git push`
@@ -392,8 +571,7 @@ export async function handleBuiltinIntent(ws, action, input, project, sessionCon
       ws.send(JSON.stringify({ type: 'answer', data: `**[${project.name}]** isn't a git repository yet. Run \`git init\` first.` }));
     } else {
       // Extract a commit message from the user's input if possible
-      const msgMatch = input.match(/(?:with message ["']?|message:?\s*["']?)(.+?)(?:["']?\s*$|["']?\s+and)/i);
-      const commitMsg = msgMatch ? msgMatch[1].trim() : 'update';
+      const commitMsg = extractCommentMessage(input) || 'update';
       const token = crypto.randomUUID();
       pendingConfirmations.set(token, {
         projectId: project.id,
@@ -411,8 +589,7 @@ export async function handleBuiltinIntent(ws, action, input, project, sessionCon
     if (!(await isGitRepo(project.path))) {
       ws.send(JSON.stringify({ type: 'answer', data: `**[${project.name}]** isn't a git repository yet. Run \`git init\` first, then add a remote origin.` }));
     } else {
-      const msgMatch = input.match(/(?:with message ["']?|message:?\s*["']?)(.+?)(?:["']?\s*$|["']?\s+and)/i);
-      const commitMsg = msgMatch ? msgMatch[1].trim() : 'update';
+      const commitMsg = extractCommentMessage(input) || 'update';
       const token = crypto.randomUUID();
       pendingConfirmations.set(token, {
         projectId: project.id,
@@ -493,6 +670,18 @@ export async function handleBuiltinIntent(ws, action, input, project, sessionCon
     if (runMatch) {
       const scriptName = runMatch[1];
       if (scripts[scriptName]) {
+        // Same duplicate-dev-server guard as run_project — see that handler's comment for the
+        // real transcript this fixes. Only applies to dev-server-shaped script names; anything
+        // else (test, build, lint, the project's own custom scripts) always re-runs freely.
+        const tracked = ['dev', 'start', 'serve'].includes(scriptName) ? runningProcesses.get(project.id) : null;
+        if (tracked) {
+          const url = state.lastDevUrls.get(project.id);
+          ws.send(JSON.stringify({
+            type: 'answer',
+            data: `**[${project.name}]** already has \`${tracked.command}\` running${url ? ` at ${url}` : ''} — say "stop server" first if you want to restart it.\n`
+          }));
+          return true;
+        }
         executeCommand(`npm run ${scriptName}`, project.path, ws, project.id);
       } else {
         ws.send(JSON.stringify({ type: 'answer', data: `No script called **\`${scriptName}\`** found in \`package.json\`.` }));
@@ -628,6 +817,15 @@ export async function handleBuiltinIntent(ws, action, input, project, sessionCon
       type: 'answer',
       data: `**Available projects:**\n${list}\n\nIn the web UI, click a different project card in the sidebar to switch — no restart needed. In CLI chat, type "projects" to rescan and pick a different one.`,
     }));
+  } else if (action === 'system.chit_chat.port') {
+    // See intentsData.js's 'system.chit_chat.port' comment — this used to have no real intent
+    // and fell through to a generic status reply that never actually named a port.
+    ws.send(JSON.stringify({
+      type: 'answer',
+      data: state.serverPort
+        ? `This console itself is running on port **${state.serverPort}** (http://127.0.0.1:${state.serverPort}). If you meant this project's own dev server, ask "what is the link" instead.`
+        : `I don't have a confirmed server port yet — try refreshing the page, or check the terminal that launched "npm run dev".`,
+    }));
   } else if (action === 'git_log') {
     executeCommand('git log --oneline -10', project.path, ws, project.id);
     return true;
@@ -636,6 +834,52 @@ export async function handleBuiltinIntent(ws, action, input, project, sessionCon
     return true;
   } else if (action === 'git_checkout') {
     ws.send(JSON.stringify({ type: 'answer', data: `To switch branches, use AI mode or run \`git checkout <branch-name>\` directly. You can also tell me the branch name and I'll set up the command for confirmation.` }));
+  } else if (action === 'git_diff') {
+    // Safe/read-only, same treatment as git_log/git_branch — no confirmation needed.
+    if (!(await isGitRepo(project.path))) {
+      ws.send(JSON.stringify({ type: 'answer', data: `**[${project.name}]** isn't a git repository yet.` }));
+    } else {
+      executeCommand('git diff', project.path, ws, project.id);
+      return true;
+    }
+  } else if (action === 'git_stash') {
+    // New (2026-07-30, requested directly). Confirm-gated even though `git stash` is technically
+    // reversible via `git stash pop` — it can look like uncommitted work "disappeared" from the
+    // working tree, which is exactly the kind of surprising-but-recoverable action this app's
+    // existing safety model (see CLAUDE.md) already requires a confirm step for.
+    if (!(await isGitRepo(project.path))) {
+      ws.send(JSON.stringify({ type: 'answer', data: `**[${project.name}]** isn't a git repository yet.` }));
+    } else {
+      const token = crypto.randomUUID();
+      pendingConfirmations.set(token, { projectId: project.id, command: 'git stash', trigger: input, createdAt: Date.now() });
+      ws.send(JSON.stringify({ type: 'confirm_prompt', token, command: 'git stash (shelves uncommitted changes — restore later with "git stash pop")', trigger: 'git_stash' }));
+    }
+  } else if (action === 'git_stash_pop') {
+    if (!(await isGitRepo(project.path))) {
+      ws.send(JSON.stringify({ type: 'answer', data: `**[${project.name}]** isn't a git repository yet.` }));
+    } else {
+      const token = crypto.randomUUID();
+      pendingConfirmations.set(token, { projectId: project.id, command: 'git stash pop', trigger: input, createdAt: Date.now() });
+      ws.send(JSON.stringify({ type: 'confirm_prompt', token, command: 'git stash pop (restores the most recently stashed changes — can conflict with current changes)', trigger: 'git_stash_pop' }));
+    }
+  } else if (action === 'git_branch_create') {
+    // New (2026-07-30, requested directly). Same injection-safety check paramCommand.js's
+    // parameterized commands already use for user-supplied values substituted into a command
+    // string — a branch name is exactly that kind of value.
+    if (!(await isGitRepo(project.path))) {
+      ws.send(JSON.stringify({ type: 'answer', data: `**[${project.name}]** isn't a git repository yet.` }));
+    } else {
+      const branchMatch = input.match(/(?:branch|create a branch|new branch|make a branch)(?:\s+called|\s+named)?\s+["'`]?([\w./-]+)["'`]?/i);
+      const branchName = branchMatch?.[1];
+      if (!branchName || !isSafeParamValue(branchName)) {
+        ws.send(JSON.stringify({ type: 'answer', data: `What should the new branch be called? Try "create a branch called feature-x".` }));
+      } else {
+        const token = crypto.randomUUID();
+        const command = `git checkout -b ${branchName}`;
+        pendingConfirmations.set(token, { projectId: project.id, command, trigger: input, createdAt: Date.now() });
+        ws.send(JSON.stringify({ type: 'confirm_prompt', token, command: `${command} (creates and switches to a new branch)`, trigger: 'git_branch_create' }));
+      }
+    }
   } else if (action === 'git_pull') {
     const token = crypto.randomUUID();
     pendingConfirmations.set(token, {
@@ -656,6 +900,31 @@ export async function handleBuiltinIntent(ws, action, input, project, sessionCon
     if (pkgJson) {
       try { scripts = JSON.parse(pkgJson).scripts || {}; } catch {}
     }
+
+    // Prefer a script the user actually named ("run its server", "is the server running") over
+    // the generic dev/start/serve default — see findMentionedScript's own comment for the real
+    // transcript this fixes. dev/start/serve fall through to the normal path below unchanged.
+    const mentioned = findMentionedScript(input, scripts);
+    if (mentioned && !['dev', 'start', 'serve'].includes(mentioned)) {
+      executeCommand(`npm run ${mentioned}`, project.path, ws, project.id);
+      return true;
+    }
+
+    // Confirmed live 2026-07-30: nothing here ever checked whether a dev server was already
+    // running for this project before spawning another one — three separate "run ..." messages
+    // in one session ("run dev", "run its server", "run .bat") each blindly launched a fresh
+    // `npm run dev`, leaving three redundant Vite instances on 3001/3002/3003 all serving the
+    // same project. `runningProcesses` (executor.js) is the same map "stop server" already reads.
+    const tracked = runningProcesses.get(project.id);
+    if (tracked && (scripts.dev || scripts.start || scripts.serve)) {
+      const url = state.lastDevUrls.get(project.id);
+      ws.send(JSON.stringify({
+        type: 'answer',
+        data: `**[${project.name}]** already has \`${tracked.command}\` running${url ? ` at ${url}` : ''} — say "stop server" first if you want to restart it.\n`
+      }));
+      return true;
+    }
+
     // Check for known dev/start scripts first
     if (scripts.dev) {
       executeCommand('npm run dev', project.path, ws, project.id);
@@ -682,8 +951,7 @@ export async function handleBuiltinIntent(ws, action, input, project, sessionCon
         data: `**[${project.name}]** isn't a git repository yet, so there's nothing to push. Run \`git init\`, add a remote, and push once manually — after that "deploy" will work here.`
       }));
     } else {
-      const msgMatch = input.match(/(?:with (?:the )?(?:comment|message) ["']?|(?:comment|message):?\s*["']?)(.+?)(?:["']?\s*$|["']?\s+and)/i);
-      const commitMsg = msgMatch ? msgMatch[1].trim() : null;
+      const commitMsg = extractCommentMessage(input);
       const token = crypto.randomUUID();
       const command = commitMsg
         ? `git add -A && git commit -m "${commitMsg.replace(/"/g, '\\"')}" && git push`
@@ -807,6 +1075,67 @@ export async function handleBuiltinIntent(ws, action, input, project, sessionCon
         }
         ws.send(JSON.stringify({ type: 'answer', data: msg }));
       }
+    }
+  } else if (action === 'project.context.routes') {
+    // New (2026-07-30, requested directly): surfaces idx.apiRoutes (Express/Flask/FastAPI/Django
+    // route declarations — see codebaseIndexer.js's extractRoutes()) that was already being
+    // collected for the AI system prompt but had no trigger-mode-visible way to ask for it.
+    const idx = project.codebaseIndex;
+    const routesText = formatApiRoutes(idx?.apiRoutes, 3000);
+    if (!routesText) {
+      ws.send(JSON.stringify({ type: 'answer', data: `No API routes detected for **[${project.name}]** (only Express/Flask/FastAPI/Django route declarations are recognized).` }));
+    } else {
+      ws.send(JSON.stringify({ type: 'answer', data: `### Detected API routes [${project.name}]\n\n\`\`\`\n${routesText}\n\`\`\`` }));
+    }
+  } else if (action === 'project.context.file_relations') {
+    // New (2026-07-30, requested directly): "which files import X" / "who uses this file" —
+    // leverages the reverse-import index already attached to each repoMap entry
+    // (buildReverseImportIndex() in codebaseIndexer.js) instead of scanning anything fresh.
+    const idx = project.codebaseIndex;
+    const fileName = parseFileNameOnly(input);
+    if (!fileName) {
+      ws.send(JSON.stringify({ type: 'answer', data: `Which file? Try "which files import utils.js" or "what does state.js import".` }));
+    } else {
+      const entry = (idx?.repoMap || []).find((e) => e.path === fileName || e.path.endsWith('/' + fileName) || e.path.endsWith('\\' + fileName));
+      if (!entry) {
+        ws.send(JSON.stringify({ type: 'answer', data: `Couldn't find "${fileName}" in the indexed repo map. Try "read file ${fileName}" to check the exact path, or re-scan the project.` }));
+      } else {
+        const parts = [`### ${entry.path}`];
+        parts.push(entry.imports?.length ? `**Imports:** ${entry.imports.join(', ')}` : '**Imports:** (none detected)');
+        parts.push(entry.importedBy?.length ? `**Imported by:** ${entry.importedBy.join(', ')}` : '**Imported by:** (no other indexed file imports this — or it\'s not a local import)');
+        ws.send(JSON.stringify({ type: 'answer', data: parts.join('\n') }));
+      }
+    }
+  } else if (action === 'project.context.monorepo') {
+    // New (2026-07-30, requested directly): surfaces idx.subPackages/isMonorepo (see
+    // codebaseIndexer.js's detectSubPackages()).
+    const idx = project.codebaseIndex;
+    if (!idx?.isMonorepo) {
+      ws.send(JSON.stringify({ type: 'answer', data: `**[${project.name}]** doesn't look like a monorepo — only one manifest file (package.json/pyproject.toml/Cargo.toml/etc.) was found.` }));
+    } else {
+      const list = idx.subPackages.map((p) => `- \`${p.path}\` (${p.manifests.join(', ')})`).join('\n');
+      ws.send(JSON.stringify({ type: 'answer', data: `### [${project.name}] looks like a monorepo\n\n${idx.subPackages.length} sub-packages detected:\n\n${list}\n\nEach should likely be run/installed independently.` }));
+    }
+  } else if (action === 'project.context.todos') {
+    // New (2026-07-30, requested directly): "find all todos" — a fresh on-demand scan (see
+    // codebaseIndexer.js's findTodos()), not part of the cached index since it's asked for
+    // rarely enough that paying the cost on-demand beats slowing down every project select.
+    const todos = await findTodos(project.path);
+    if (!todos.length) {
+      ws.send(JSON.stringify({ type: 'answer', data: `No TODO/FIXME/HACK/XXX comments found in **[${project.name}]** (scanned up to 150 code files).` }));
+    } else {
+      const list = todos.map((t) => `- **${t.tag}** \`${t.file}:${t.line}\`${t.text ? ` — ${t.text}` : ''}`).join('\n');
+      ws.send(JSON.stringify({ type: 'answer', data: `### TODO/FIXME markers in [${project.name}]\n\n${list}${todos.length >= 60 ? '\n\n_(capped at 60 results)_' : ''}` }));
+    }
+  } else if (action === 'project.context.biggest_files') {
+    // New (2026-07-30, requested directly): "what's the biggest file" — on-demand fs.stat scan
+    // (see codebaseIndexer.js's findBiggestFiles()), same on-demand-only reasoning as TODOs above.
+    const biggest = await findBiggestFiles(project.path, 10);
+    if (!biggest.length) {
+      ws.send(JSON.stringify({ type: 'answer', data: `Couldn't determine file sizes for **[${project.name}]**.` }));
+    } else {
+      const list = biggest.map((f) => `- \`${f.path}\` — ${(f.bytes / 1024).toFixed(1)} KB`).join('\n');
+      ws.send(JSON.stringify({ type: 'answer', data: `### Largest files in [${project.name}]\n\n${list}` }));
     }
   } else if (action === 'system.monitoring.metrics') {
     const { default: fetch } = await import('node-fetch');

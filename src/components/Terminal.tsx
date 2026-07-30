@@ -40,6 +40,7 @@ interface TerminalProps {
   onMemorySuggestionRespond?: (accept: boolean) => void;
   aiEnabled: boolean;
   aiThinking: boolean;
+  aiThinkingText?: string;
   commandPending: boolean;
   onCancel?: () => void;
   ollamaStatus: AIStatus | null;
@@ -127,7 +128,7 @@ const AI_MODES = [
   { value: 'structured', label: 'Structured' }
 ];
 
-export const Terminal = ({ messages, onSendMessage, onSearch, onDeepResearch, activeProject, pendingConfirm, onConfirm, pendingToolConfirm, onToolConfirm, pendingMemorySuggestion, onMemorySuggestionRespond, aiEnabled, aiThinking, commandPending, onCancel, ollamaStatus, aiModel, aiMode, onAIToggle, onSetModel, onSetMode, toolHistory, showToolHistory, onToggleToolHistory, onRerunToolCall, onExportMarkdown, onExportJson, onDirectCommand, workspaceProjects, addToWorkspace, removeFromWorkspace, clearWorkspace, onSwitchToProject, isFullscreen, onToggleFullscreen }: TerminalProps) => {
+export const Terminal = ({ messages, onSendMessage, onSearch, onDeepResearch, activeProject, pendingConfirm, onConfirm, pendingToolConfirm, onToolConfirm, pendingMemorySuggestion, onMemorySuggestionRespond, aiEnabled, aiThinking, aiThinkingText, commandPending, onCancel, ollamaStatus, aiModel, aiMode, onAIToggle, onSetModel, onSetMode, toolHistory, showToolHistory, onToggleToolHistory, onRerunToolCall, onExportMarkdown, onExportJson, onDirectCommand, workspaceProjects, addToWorkspace, removeFromWorkspace, clearWorkspace, onSwitchToProject, isFullscreen, onToggleFullscreen }: TerminalProps) => {
   const [input, setInput] = useState('');
   const [showSearchOverlay, setShowSearchOverlay] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -547,19 +548,32 @@ export const Terminal = ({ messages, onSendMessage, onSearch, onDeepResearch, ac
         <div ref={endRef} />
 
         {aiThinking && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex items-center gap-3 text-teal-400/60 text-xs font-mono">
-            <Loader2 size={14} className="animate-spin" />
-            AI is thinking...
-            {/* Requested directly (2026-07-29) after a query ran 5+ minutes with no way to stop
-                it — CPU-only Ollama inference has no upper bound on its own. */}
-            {onCancel && (
-              <button
-                onClick={onCancel}
-                className="flex items-center gap-1 px-2 py-0.5 rounded border border-red-500/30 text-red-400/80 hover:text-red-300 hover:border-red-500/60 hover:bg-red-500/10 transition-colors"
-                title="Cancel this request"
-              >
-                <Square size={10} /> Stop
-              </button>
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex flex-col gap-1.5">
+            <div className="flex items-center gap-3 text-teal-400/60 text-xs font-mono">
+              <Loader2 size={14} className="animate-spin" />
+              AI is thinking...
+              {/* Requested directly (2026-07-29) after a query ran 5+ minutes with no way to stop
+                  it — CPU-only Ollama inference has no upper bound on its own. */}
+              {onCancel && (
+                <button
+                  onClick={onCancel}
+                  className="flex items-center gap-1 px-2 py-0.5 rounded border border-red-500/30 text-red-400/80 hover:text-red-300 hover:border-red-500/60 hover:bg-red-500/10 transition-colors"
+                  title="Cancel this request"
+                >
+                  <Square size={10} /> Stop
+                </button>
+              )}
+            </div>
+            {/* Requested directly (2026-07-30) — the server already separates a reasoning
+                model's internal deliberation (Ollama's `message.thinking`) from its real answer
+                and streams the former as its own 'thinking' event; previously the spinner above
+                was the only signal anything was happening, with no visibility into what the
+                model was actually doing. Capped height + scroll so a long reasoning trace doesn't
+                push the input bar off-screen; only rendered once there's actually text to show. */}
+            {aiThinkingText && (
+              <div className="max-h-24 overflow-y-auto text-teal-400/40 text-xs font-mono italic whitespace-pre-wrap pl-6 border-l border-teal-400/20">
+                {aiThinkingText}
+              </div>
             )}
           </motion.div>
         )}

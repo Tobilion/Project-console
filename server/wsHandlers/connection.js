@@ -1,5 +1,5 @@
 import crypto from 'crypto';
-import { matchInput } from '../matcher.js';
+import { matchInput, describeIntent, getFallbackSuggestions } from '../matcher.js';
 import { resolveContext } from '../contextResolver.js';
 import { injectContext } from '../contextInjector.js';
 import { appendMessage, getSession } from '../conversationStore.js';
@@ -325,6 +325,39 @@ async function handleExecute(ws, parsed, sessionContext) {
     return;
   }
 
+  // Requested directly (2026-07-30): when matcher.js hits a genuine collision (two different
+  // intents scoring nearly identically — see semanticMatcher.js's `collision` field), it asks
+  // "did you mean X or Y?" instead of silently guessing. This is the reply to that question —
+  // checked before the normal matching pipeline for the same reason pendingParam is above.
+  if (sessionContext.pendingDisambiguation && sessionContext.pendingDisambiguation.projectId === projectId) {
+    const pending = sessionContext.pendingDisambiguation;
+    sessionContext.pendingDisambiguation = null;
+    const lower = input.trim().toLowerCase();
+    const REJECT_RE = /^(no|nope|neither|none|none of (those|these|the above)|not (that|those|it)|thats wrong|that'?s wrong|wrong|cancel|nevermind|never mind)\b/;
+    if (REJECT_RE.test(lower)) {
+      ws.send(JSON.stringify({
+        type: 'answer',
+        data: `No problem — here are some other things I can try:\n_Suggestions: ${getFallbackSuggestions(input).join(', ')}_\n`,
+      }));
+      ws.send(JSON.stringify({ type: 'end' }));
+      return;
+    }
+    let chosen = null;
+    if (/^(1|one|first|the first|a)\b/.test(lower)) chosen = pending.candidates[0];
+    else if (/^(2|two|second|the second|b)\b/.test(lower)) chosen = pending.candidates[1];
+    if (chosen) {
+      await handleBuiltinIntent(ws, chosen, pending.originalInput, project, sessionContext);
+      if (chosen !== 'system.chit_chat.git_status') {
+        ws.send(JSON.stringify({ type: 'end' }));
+      }
+      return;
+    }
+    // Anything else (not a clear pick, not a clear rejection) — the user probably just moved on
+    // to a new, unrelated message rather than answering the question at all. Backtracking here
+    // means treating it as a brand-new input through the normal pipeline rather than getting
+    // stuck insisting on an answer to a question nobody's addressing anymore.
+  }
+
   // Telemetry commands
   const lowerInput = input.trim().toLowerCase();
   if (lowerInput === 'telemetry review' || lowerInput === 'check telemetry' || lowerInput === 'telemetry stats') {
@@ -522,8 +555,18 @@ async function handleExecute(ws, parsed, sessionContext) {
     return;
   }
 
-  // "stop server" / "kill server" — stop a running dev server
-  if (/^(stop|kill|shutdown|end)\s+(the\s+)?(server|process|dev)/i.test(lowerInput)) {
+  // "stop server" / "kill server" — stop a running dev server. Also catches a bare "stop it" /
+  // "kill it" / "cancel it" (confirmed live 2026-07-30: "Stop it" typed right after a dev server
+  // was confirmed still running instead matched system.chit_chat.yes_no — 'stop' is a legitimate
+  // yes/no-reject example phrase there too — and returned a confusing "No pending confirmation"
+  // reply) but ONLY when a process is actually tracked for this project; a pronoun-only "stop it"
+  // with nothing running is ambiguous enough that falling through to the normal yes/no fallback
+  // is the safer default.
+  const hasTrackedProcess = runningProcesses.has(project.id);
+  if (
+    /^(stop|kill|shutdown|end)\s+(the\s+)?(server|process|dev)/i.test(lowerInput) ||
+    (hasTrackedProcess && /^(stop|kill|cancel)\s+it\.?$/i.test(lowerInput.trim()))
+  ) {
     const proc = runningProcesses.get(project.id);
     if (proc) {
       proc.child.kill('SIGTERM');
@@ -666,6 +709,20 @@ async function handleExecute(ws, parsed, sessionContext) {
   // mode, if any — it works independently of the aiEnabled toggle (that flag only gates the
   // multi-turn tool-call loop in aiQuery.js) and falls back to its own default model if unset.
   const matchResult = await matchInput(input, project, projectIndex, { model: sessionContext.aiModel });
+
+  // A genuine collision (matcher.js/semanticMatcher.js — two different intents scoring nearly
+  // identically) — ask which one was meant instead of guessing. See the pendingDisambiguation
+  // reply handler above for how the answer is consumed.
+  if (matchResult.disambiguate) {
+    const [a, b] = matchResult.disambiguate;
+    sessionContext.pendingDisambiguation = { projectId, candidates: [a, b], originalInput: input };
+    ws.send(JSON.stringify({
+      type: 'answer',
+      data: `Not sure which you meant:\n1. ${describeIntent(a)}\n2. ${describeIntent(b)}\n\nReply with "1" or "2" — or say "neither" if it's something else.\n`,
+    }));
+    ws.send(JSON.stringify({ type: 'end' }));
+    return;
+  }
 
   if (matchResult.routedByModel) {
     // Observability parity with the 'guess'/'fallback' near-miss sources already logged below —

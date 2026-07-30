@@ -5,6 +5,14 @@ export function useAI(sendWS: (data: object) => void, setMessages: React.Dispatc
   const [aiEnabled, setAiEnabled] = useState(false);
   const [ollamaStatus, setOllamaStatus] = useState<AIStatus | null>(null);
   const [aiThinking, setAiThinking] = useState(false);
+  // Requested directly (2026-07-30): the server already separates a reasoning model's internal
+  // deliberation (Ollama's `message.thinking`) from its actual answer and streams the former as
+  // its own 'thinking' WS event (see ollama.js/aiStream.js) — this used to arrive and be silently
+  // dropped client-side, so the busy spinner was the only signal anything was happening, with no
+  // visibility into what the model was actually doing. Accumulates the raw reasoning text for the
+  // current in-flight query; cleared whenever a new query starts or the real answer begins
+  // streaming (stream_start), since thinking is done being useful once the answer itself arrives.
+  const [aiThinkingText, setAiThinkingText] = useState('');
   const [aiModel, setAiModel] = useState('qwen2.5-coder:7b');
   const [aiMode, setAiMode] = useState('default');
 
@@ -156,6 +164,7 @@ export function useAI(sendWS: (data: object) => void, setMessages: React.Dispatc
 
   return {
     aiEnabled, setAiEnabled, ollamaStatus, aiThinking, setAiThinking,
+    aiThinkingText, setAiThinkingText,
     aiModel, setAiModel, aiMode, setAiMode,
     fetchOllamaStatus, handleAIToggle, handlePullModel, handleSetModel, handleSetMode,
   };

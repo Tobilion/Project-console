@@ -256,11 +256,22 @@ export function useConsole() {
         break;
       case 'ai_start':
         ai.setAiThinking(true);
+        ai.setAiThinkingText('');
         // Used to force the tool trace panel open on every single AI message ("so live activity
         // is visible without an extra click") — reported directly as an annoyance once AI mode
         // was actually being used for real (it popped the panel open on every message, including
         // ones with no tool calls at all, overriding the user's own choice to keep it closed).
         // The manual toggle button (now reliably visible after the earlier layout fix) is enough.
+        break;
+      case 'thinking':
+        // A reasoning model's internal deliberation, separate from its actual answer (see
+        // ollama.js/aiStream.js) — previously received and silently dropped. Appended directly
+        // rather than run through the token buffer/flush-timer machinery below: thinking text is
+        // typically much lower-volume than the final answer and this is a plain italic status
+        // line, not markdown-rendered chat content, so the extra batching isn't worth the delay.
+        if (payload.data) {
+          ai.setAiThinkingText(prev => prev + payload.data);
+        }
         break;
       case 'tool_start':
         // Previously sent by the server and silently dropped client-side — the user had no
@@ -273,6 +284,7 @@ export function useConsole() {
         break;
       case 'stream_start': {
         ai.setAiThinking(false);
+        ai.setAiThinkingText('');
         const streamId = id;
         if (wsHandler.wsRef.current) (wsHandler.wsRef.current as any)._streamId = streamId;
         sessions.setMessages(prev => [...prev, { id: streamId, type: 'bot', content: '', isMarkdown: true, streaming: true }]);
@@ -528,6 +540,7 @@ export function useConsole() {
     aiEnabled: ai.aiEnabled,
     ollamaStatus: ai.ollamaStatus,
     aiThinking: ai.aiThinking,
+    aiThinkingText: ai.aiThinkingText,
     commandPending,
     indexingProjectId: projects.indexingProjectId,
     aiModel: ai.aiModel,

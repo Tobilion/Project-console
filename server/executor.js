@@ -333,7 +333,21 @@ export function executeCommand(command, cwd, ws, projectId) {
     }, isDev ? 10000 : 20000);
 
     child.on('close', (code) => {
-      runningProcesses.delete(projectId);
+      // Confirmed live 2026-07-30 (Matchday Exchange transcript): "stop server" reported "No
+      // running server" seconds after "what's the link?" confirmed the dev server was still
+      // serving requests. Root cause — this used to delete the runningProcesses entry
+      // unconditionally on 'close', including after detach() had already run. On at least some
+      // Windows npm/vite invocations, the tracked `child` (the shell wrapper around `npm run
+      // dev`) can fire its own 'close' well before the actual dev server process it spawned
+      // stops serving, orphaning the real server from the handle we were tracking it under —
+      // wiping the map entry at that point permanently breaks "stop server" for a process that's
+      // still very much alive, even though `state.lastDevUrls` (a separate cache) correctly still
+      // shows it running. Once detached, "stop server" (connection.js) is the only code that
+      // should ever remove this entry — it kills the child and deletes the entry itself
+      // synchronously, so skipping the delete here for an already-detached entry doesn't leak: at
+      // worst, a genuinely-dead detached process leaves a stale entry until the next explicit
+      // "stop server" call, which is a harmless no-op kill instead of a false "nothing running".
+      if (!detached) runningProcesses.delete(projectId);
       if (detached) return;
       stdoutSender.flush();
       stderrSender.flush();

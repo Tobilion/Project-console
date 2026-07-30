@@ -4,6 +4,15 @@ import { logMatch, getEffectiveThreshold } from './intentTelemetry.js';
 import { metrics } from './metrics.js';
 import { routeViaLocalModel } from './localRouter.js';
 import { formatRepoMap } from './codebaseIndexer.js';
+import { INTENTS } from './intentsData.js';
+
+// Human-readable label for an intent, used only to phrase a "did you mean X or Y?" disambiguation
+// prompt (see BUILTIN_INTENTS' collision handling below) — just the intent's own first example
+// phrase, since every intent already has several natural-language examples and there's no
+// separate display-name field to maintain in sync.
+export function describeIntent(intent) {
+  return INTENTS[intent]?.examples?.[0] || intent;
+}
 
 // Much smaller than ollamaContext.js's system-prompt cap (6000 chars) — the router is a single
 // bounded classification call on CPU-only hardware (LOCAL_ROUTER_UPGRADE_PROMPT.md's hard
@@ -23,19 +32,22 @@ const BUILTIN_INTENTS = new Set([
   'system.chit_chat.greeting', 'system.chit_chat.status', 'system.chit_chat.gratitude',
   'system.chit_chat.clear', 'system.chit_chat.help', 'system.chit_chat.git_status',
   'system.chit_chat.explain_followup', 'system.chit_chat.undo', 'system.chit_chat.deploy',
-  'system.chit_chat.yes_no',
+  'system.chit_chat.yes_no', 'system.chit_chat.farewell', 'system.chit_chat.identity',
   'project.knowledge.overview', 'project.knowledge.stack', 'project.knowledge.commands',
   'project.knowledge.gotchas', 'project.knowledge.architecture',
   'project.context.structure', 'project.context.languages', 'project.context.file_count',
   'project.context.entry_point', 'project.context.tech_preview',
   'project.context.tests', 'project.context.dependencies', 'project.context.config',
-  'run_project',
+  'project.context.routes', 'project.context.file_relations', 'project.context.monorepo',
+  'project.context.todos', 'project.context.biggest_files',
+  'run_project', 'project.knowledge.how_to_run',
   'git_push', 'git_commit', 'git_commit_push', 'git_add',
   'git_init', 'git_ignore_add', 'git_rm_cached', 'npm_install',
   'npm_build', 'npm_run', 'file_create', 'file_delete', 'file_append', 'file_read',
   'git_remote_add', 'project_scan', 'project_list',
   'git_log', 'git_branch', 'git_checkout', 'git_pull',
-  'system.monitoring.metrics',
+  'git_diff', 'git_stash', 'git_stash_pop', 'git_branch_create',
+  'system.monitoring.metrics', 'system.chit_chat.port',
 ]);
 
 // Exported so localRouter.js's allowed-intent list is always drawn from exactly the same set
@@ -58,6 +70,10 @@ export { BUILTIN_INTENTS };
 const PURE_CHITCHAT_INTENTS = new Set([
   'system.chit_chat.greeting', 'system.chit_chat.status', 'system.chit_chat.gratitude',
   'system.chit_chat.clear', 'system.chit_chat.yes_no',
+  // Added alongside these two new intents (2026-07-30) — same "zero-argument, always-safe-
+  // sounding canned reply" shape as the four above, so a garbled real request could just as
+  // easily misfire onto "goodbye" or "who are you" as it previously did onto "gratitude".
+  'system.chit_chat.farewell', 'system.chit_chat.identity',
 ]);
 
 function looksLikeRealRequest(input) {
@@ -68,9 +84,33 @@ function isTrustworthyChitChat(intent, input) {
   return !(PURE_CHITCHAT_INTENTS.has(intent) && looksLikeRealRequest(input));
 }
 
+// Confirmed live 2026-07-30 (two separate transcripts, same exact failure): "who uses
+// connection.js" landed on project.knowledge.stack ("### Tech Stack / No stack information
+// parsed from markdown.") instead of project.context.file_relations. Root cause: the NLP.js
+// classifier fallback below is gated only by a flat score >= 0.45 with no margin check (the same
+// documented weakness behind the gratitude/garbled-input bug that PURE_CHITCHAT_INTENTS fixes),
+// but that guard only covers system.chit_chat.*/project.context.* — the project.knowledge.*
+// canonMap right below it had zero real-request scrutiny at all. None of the five
+// project.knowledge.* intents (overview/stack/commands/gotchas/architecture) are ever legitimately
+// about one specific named file — a query naming a real filename is a strong signal the
+// classifier picked the wrong bucket, so treat that combination as untrustworthy too and let the
+// input fall through to the router/fallback stages instead of returning a wrong, unhelpful answer.
+const KNOWLEDGE_INTENTS_NEVER_ABOUT_A_FILE = new Set([
+  'project.knowledge.overview', 'project.knowledge.stack', 'project.knowledge.commands',
+  'project.knowledge.gotchas', 'project.knowledge.architecture',
+]);
+
+function looksLikeFileReference(input) {
+  return /\.[a-zA-Z0-9]{1,6}\b/.test(input);
+}
+
+function isTrustworthyKnowledgeIntent(intent, input) {
+  return !(KNOWLEDGE_INTENTS_NEVER_ABOUT_A_FILE.has(intent) && looksLikeFileReference(input));
+}
+
 const FALLBACK_SUGGESTIONS = ['help', 'overview', 'what are the commands', 'project structure', 'git status', 'monitoring'];
 
-function getFallbackSuggestions(input) {
+export function getFallbackSuggestions(input) {
   const fuzzy = semanticMatcher.getSuggestions(input, 5);
   return fuzzy.length > 0 ? fuzzy : FALLBACK_SUGGESTIONS;
 }
@@ -177,7 +217,34 @@ export async function matchInput(input, project, projectIndex, options = {}) {
         }
       }
       // 1b. Builtin intent match
-      if (BUILTIN_INTENTS.has(semanticResult.intent) && isTrustworthyChitChat(semanticResult.intent, input)) {
+      if (
+        BUILTIN_INTENTS.has(semanticResult.intent) &&
+        isTrustworthyChitChat(semanticResult.intent, input) &&
+        isTrustworthyKnowledgeIntent(semanticResult.intent, input)
+      ) {
+        // Requested directly (2026-07-30): rather than silently guessing on a true collision
+        // (two different intents scoring nearly identically — semanticMatcher.js's `collision`
+        // field, computed only for genuine cross-intent ties, not multiple phrasings of the same
+        // winning intent), ask which one was meant instead of picking one. Scoped deliberately
+        // narrow per the user's own choice: only fires when both candidates are real builtin
+        // intents and neither is a pure-chitchat/knowledge intent the input doesn't actually look
+        // like (same trust guards as the winner itself) — an ordinary confident match is
+        // completely unaffected.
+        if (
+          semanticResult.collision &&
+          BUILTIN_INTENTS.has(semanticResult.collision.intent) &&
+          isTrustworthyChitChat(semanticResult.collision.intent, input) &&
+          isTrustworthyKnowledgeIntent(semanticResult.collision.intent, input)
+        ) {
+          metrics.event({ type: 'match_result', input: input.slice(0, 80), outcome: 'disambiguate', duration: Date.now() - t0 });
+          return {
+            match: null,
+            builtin: null,
+            disambiguate: [semanticResult.intent, semanticResult.collision.intent],
+            suggestions: [],
+            telemetryId,
+          };
+        }
         metrics.event({ type: 'match_result', input: input.slice(0, 80), outcome: 'semantic_builtin', duration: Date.now() - t0 });
         return {
           match: null,
@@ -210,7 +277,7 @@ export async function matchInput(input, project, projectIndex, options = {}) {
       'project.knowledge.gotchas': 'project.knowledge.gotchas',
       'project.knowledge.architecture': 'project.knowledge.architecture',
     };
-    if (canonMap[intent]) {
+    if (canonMap[intent] && isTrustworthyKnowledgeIntent(intent, input)) {
       return { match: null, builtin: canonMap[intent], suggestions: [], telemetryId };
     }
 

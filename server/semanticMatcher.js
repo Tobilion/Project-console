@@ -317,8 +317,42 @@ class SemanticMatcher {
       _stages.push({ stage: 'semantic', intent: bestIntent, confidence: bestScore, margin, floor: effectiveFloor, matched: bestScore >= effectiveFloor && margin >= MIN_MARGIN });
 
       if (bestScore >= effectiveFloor && margin >= MIN_MARGIN) {
+        // Requested directly (2026-07-30) after "Stop it" silently matched system.chit_chat.yes_no
+        // instead of the stop-server intent it was meant for — a true collision (two DIFFERENT
+        // intents scoring almost identically) was previously indistinguishable from an ordinary
+        // confident match, and got silently resolved to whichever won by a hair. `secondBestScore`
+        // above can belong to the SAME intent as the winner (a different example phrase scoring
+        // almost as well), which isn't a real ambiguity — so this does a second, cheap pass to find
+        // the best-scoring vector belonging to a genuinely DIFFERENT intent, and only flags a
+        // collision when that different intent is nearly tied with the winner. matcher.js turns
+        // this into a "did you mean X or Y?" prompt instead of guessing — scoped deliberately
+        // narrow (only fires when we were about to confidently return an answer anyway) per the
+        // user's explicit choice to limit this to true collisions, not every low-confidence match.
+        let bestOtherIntent = null;
+        let bestOtherScore = -1;
+        let bestOtherMeta = null;
+        const considerOther = (sim, intent, meta) => {
+          if (intent === bestIntent) return;
+          if (sim > bestOtherScore) {
+            bestOtherScore = sim;
+            bestOtherIntent = intent;
+            bestOtherMeta = meta;
+          }
+        };
+        for (const [intent, data] of Object.entries(this.projectIntentVectors)) {
+          for (const vec of data.vectors) considerOther(this._cosineSimilarity(inputData, vec), intent, { projectIndex: data.projectIndex, entryIndex: data.entryIndex });
+        }
+        for (const [intent, vectors] of Object.entries(this.intentVectors)) {
+          for (const vec of vectors) considerOther(this._cosineSimilarity(inputData, vec), intent, null);
+        }
+
+        const trueMargin = bestOtherIntent ? bestScore - bestOtherScore : 1;
+        const collision = (bestOtherIntent && trueMargin < MIN_MARGIN)
+          ? { intent: bestOtherIntent, confidence: bestOtherScore, meta: bestOtherMeta }
+          : null;
+
         this._lastTelemetry = { stages: _stages, winner: 'semantic', finalIntent: bestIntent, finalConfidence: bestScore };
-        return { intent: bestIntent, confidence: bestScore, source: 'semantic', meta: bestMeta };
+        return { intent: bestIntent, confidence: bestScore, source: 'semantic', meta: bestMeta, collision };
       }
     } catch (err) {
       _stages.push({ stage: 'semantic', matched: false, error: err.message });
@@ -526,6 +560,20 @@ class SemanticMatcher {
   }
 
   _splitConjunctions(input) {
+    // Confirmed live 2026-07-29: `push this code with comment "Massive Memory and Learning
+    // improvements"` has "and" sitting right inside a quoted commit message that was never meant
+    // to be split at all — this function has no concept of quote boundaries, so it would happily
+    // chop that string into two "intents" at the word "and" regardless of the quotes around it.
+    // The regex bug that actually caused the observed truncation lived in builtinIntents.js's own
+    // comment-parsing (now fixed — see extractCommentMessage), but this splitter had the same
+    // blind spot and could still misfire the same way for any other quoted argument (file
+    // content, a URL, etc.) that happens to contain one of these conjunction words. Since a
+    // multi-intent split is only ever a convenience for genuinely separate requests ("show
+    // structure and run tests"), not something any quoted-argument command needs, just skip
+    // splitting entirely whenever the input contains a quote character — safer to fall through to
+    // normal single-intent matching (which already treats the whole string as one request) than
+    // to risk cutting a quoted value in half.
+    if (/["']/.test(input)) return null;
     // Split on common conjunctions (non-capturing groups to avoid split artifacts)
     const separators = /\s+(?:and|also|then|plus)\s+|,\s*|;\s*|\s+&\s+|\s+as well as\s+/i;
     const parts = input.split(separators).map(s => s.trim()).filter(s => s && s.length > 3);

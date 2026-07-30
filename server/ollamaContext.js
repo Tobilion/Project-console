@@ -1,4 +1,4 @@
-import { formatRepoMap } from './codebaseIndexer.js';
+import { formatRepoMap, formatApiRoutes } from './codebaseIndexer.js';
 import { formatMemoryForPrompt } from './memoryStore.js';
 
 // Full AI mode can afford a larger repo-map slice than the router tier's single bounded call
@@ -53,9 +53,14 @@ function formatIndex(idx) {
   if (!idx) return 'No index data available.';
   let lines = [`- ${idx.totalFiles} files, ${idx.totalDirs} directories`];
   if (idx.languages?.length) lines.push(`- Languages: ${idx.languages.slice(0, 5).join(', ')}`);
+  if (idx.frameworks?.length) lines.push(`- Detected stack: ${idx.frameworks.join(', ')}`);
   if (idx.entryPoints?.length) lines.push(`- Entry points: ${idx.entryPoints.join(', ')}`);
   if (idx.hasTests) lines.push('- Has test files');
   if (idx.hasCli) lines.push('- Has CLI entry point');
+  if (idx.hasGit) lines.push('- Git repository: yes');
+  if (idx.isMonorepo) {
+    lines.push(`- **Monorepo**: ${idx.subPackages.length} sub-packages detected — ${idx.subPackages.map(p => `${p.path} (${p.manifests.join(', ')})`).join('; ')}. Treat each as its own independently-runnable package rather than assuming one root command runs everything.`);
+  }
   if (idx.fileSample?.length) lines.push(`- Sample files: ${idx.fileSample.slice(0, 8).join(', ')}`);
   if (idx.entrySnippets && Object.keys(idx.entrySnippets).length) {
     for (const [file, snippet] of Object.entries(idx.entrySnippets)) {
@@ -67,7 +72,14 @@ function formatIndex(idx) {
   // awareness instead of guessing or always reaching for readFile first. See codebaseIndexer.js.
   const repoMapText = formatRepoMap(idx.repoMap, MAX_SYSTEM_PROMPT_REPO_MAP_CHARS);
   if (repoMapText) {
-    lines.push(`\n--- Project signature map (exports/functions/classes by file) ---\n${repoMapText}`);
+    lines.push(`\n--- Project signature map (exports/functions/classes by file, plus which files import/are imported by each other) ---\n${repoMapText}`);
+  }
+  // API surface (Express/Flask/FastAPI/Django route declarations) — a different, often more
+  // directly useful kind of structural understanding than the export list above: "what does this
+  // app expose over HTTP" rather than "what does each file export".
+  const routesText = formatApiRoutes(idx.apiRoutes, 2000);
+  if (routesText) {
+    lines.push(`\n--- Detected API routes ---\n${routesText}`);
   }
   return lines.join('\n');
 }

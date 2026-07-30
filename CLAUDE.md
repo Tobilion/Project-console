@@ -494,7 +494,422 @@ All four layers now run at least partly unattended instead of requiring a manual
   `useConsole.ts`. Scope note: the router tier's own bounded Ollama call (max 8s) was
   deliberately left out of this — it's already short enough not to need a cancel path.
 
+## Folder picker, CLI picker, and "what port" fixes (2026-07-30, reported directly)
+
+- **The web UI's "Browse for folder" showing a folder-name-only path, and a "can't open this
+  folder — it contains system files" dialog, are both hard browser restrictions, not bugs.**
+  `showDirectoryPicker()`/`<input webkitdirectory>` can never hand a plain (non-Electron) web page
+  an absolute filesystem path — only a folder name — by design (see `App.tsx`'s
+  `handleBrowseFolder`/`handleFolderPick` comments). `projectRoutes.js`'s `resolveScanTarget()`
+  already compensates by searching the current scan directory + its parent for a matching folder
+  name, but that only ever finds a *sibling* of what's currently scanned — a folder anywhere else
+  needs its full absolute path pasted into the scan box directly (the UI already surfaces this in
+  the button's title text and in the error message). The "system files" dialog is Chrome's own
+  picker refusing certain protected/reparse-point folders (e.g. some OneDrive-synced or top-level
+  user folders) before the page ever sees anything — not something this app's code can catch or
+  override. No code change possible here beyond what already exists; if this keeps confusing
+  people, consider replacing Browse with paste-only and removing the button entirely.
+- **Fixed 2026-07-30 (raised directly — "if I point this at someone else's folder, or one with
+  none of these files, recognition will fail"): project discovery no longer requires config/docs/
+  package.json.** `projectScanner.js`'s `discoverProjects()`/`scanSingleProject()` still check
+  `console.config.json`, `CONTEXT_FILENAMES` (CLAUDE.md/README.md/ABOUT-TOBI.md/
+  UNIVERSAL_CONTEXT.md), and `package.json` first as before, but a folder with none of those three
+  is no longer automatically invisible. New `isRecognizableByCodeAlone()` runs the same
+  `codebaseIndex` every included project already gets and recognizes a folder if it has actual
+  source files the language detector knows (now covers Go/Rust/Java/Ruby/PHP/C# too, not just
+  JS/Python — see codebaseIndexer.js below), a key config file (`Cargo.toml`/`go.mod`/
+  `requirements.txt`/etc.), or a real `.git` directory. A project recognized only this way gets a
+  synthesized minimal config (`buildFallbackConfig()`) with one `answer`-type entry ("what is this
+  project") summarizing detected languages/stack/entry points, so it isn't left silently empty —
+  note the field is `response`, not `answer` (mismatching this once is exactly the bug
+  `matchedEntry.js`'s `handleMatchedEntry` would hit: it reads `entry.response`). This only affects
+  *discovery* — a project that's `git`-only with no `package.json`/docs still won't have any
+  runnable command entries beyond what the user or AI mode adds later.
+- **Structure-scanning quality widened alongside the above (2026-07-30, requested directly —
+  "deep semantic understanding... implement some things to it").** `codebaseIndexer.js`'s repo map
+  (regex-based export/function/class extraction) and entry-point detection were JS/TS/Python-only;
+  both now also cover Go, Rust, Java, Ruby, PHP, and C# (new `SIGNATURE_PATTERNS_BY_EXT` lookup +
+  wider `ENTRY_NAMES`/`CODE_EXTS`). Two additions beyond just "more languages": (1) `extractImports()`
+  pulls each file's own `import`/`require`/`from X import` specifiers (local/relative ones sorted
+  first, capped at 8) so the repo map shows a sliver of real cross-file dependency information —
+  `formatRepoMap()` now renders `path: sigA, sigB [imports: ../state.js, ./foo]` instead of a flat,
+  disconnected per-file list. (2) `detectFrameworks()` reads already-cached `keyFiles` (package.json
+  deps, requirements.txt/pyproject.toml) against a static name→label map (React, Express, Flask,
+  Django, Vite, Prisma, etc.) and surfaces the result as `idx.frameworks`, now injected into both
+  the fallback-recognition summary above and `ollamaContext.js`'s AI system prompt. New
+  `hasGitRepo()` (exported, also used by the recognition fallback) and `idx.hasGit` on every index.
+  Still no real AST/parser — this is deliberately more regex heuristics, tuned for coverage and
+  cheapness, not a dependency-graph engine.
+- **CLI picker silently defaulted to `projects[0]` on ANY invalid input, with zero feedback —
+  confirmed live via a real transcript where a stray chat message typed before the picker was
+  answered, and later a mistyped project number ("1100"), both got silently mapped to a project
+  the user never chose.** `cli-client.js`'s `selectProject()` now loops and re-asks on anything
+  that isn't an in-range integer, printing what was rejected and why, instead of ever guessing.
+  Also added `--dir "<full path>"` / `--project "<name>"` CLI args (`findProjectFromArgs()`) so the
+  interactive picker can be skipped entirely and the client jumps straight to a known project —
+  matched against the same project list the server's own discovery already returned, never
+  reimplemented client-side.
+- **"What port are you running on" had no real intent and fell through to a generic chit-chat
+  status reply that never actually named a port**, even though `state.serverPort` (added earlier
+  for the dev-server port-collision warning) already holds the real value. Added a real
+  `system.chit_chat.port` intent (`intentsData.js` + `BUILTIN_INTENTS` in `matcher.js` — the same
+  gate that's bitten missing intents before, see `git_remote_add`/`project_list` above — + a
+  handler in `builtinIntents.js`) that answers with the actual console port, and points at "what is
+  the link" for the project's own dev-server URL instead. Requires a server restart (or a live
+  `semanticMatcher.initialize()` re-run) to pick up the new example phrases — not yet verified live
+  since no Ollama/npm session was available in this sandbox; re-check with a real "what port are
+  you running on" after restarting `npm run dev`.
+
+## Deeper structural understanding + trigger-mode README parsing (2026-07-30, requested directly)
+
+Follow-up to the recognition/scanning work above — six concrete additions, all still regex/API-
+based (no AI call, no new hard dependency beyond one already-present devDependency promoted to a
+real dependency):
+
+- **Trigger-mode (no AI) can now read a project's own README/CLAUDE.md for the real run command.**
+  New `server/readmeRunParser.js`'s `findDocumentedRunCommand()` looks for an Install/Usage/Getting
+  Started/Run-labeled section (or, failing that, any fenced code block in the doc at all) and
+  matches it against a closed list of known run-command shapes (`npm run`, `cargo run`, `go run`,
+  Maven/Gradle, `dotnet run`, `bundle exec`, `php artisan serve`, `flask run`, `python manage.py
+  runserver`, etc.). `projectTypeSuggestions()` (`builtinIntents.js`) now calls this FIRST, before
+  any language-based guessing, and a new purely-informational intent `project.knowledge.how_to_run`
+  ("how do I run this", "what's the setup process", ~90 example phrases in `intentsData.js`) answers
+  with exactly what was found and where — never silently guessing without saying whether the
+  answer came from the README or from language detection. AI mode already did the equivalent of
+  this generically via its own tool loop (see `ollamaContext.js`'s `executeCommand` instructions) —
+  this is what gives *trigger mode* (Ollama fully off) the same "read the docs first" behavior.
+- **Trigger-mode run-command guessing extended to Go/Rust/Java/Ruby/PHP/C#** (previously
+  Python/JS-only — anything else fell into a generic `start <entrypoint>` suggestion that's
+  actively wrong for compiled languages, e.g. `start main.go` just opens the file in a text
+  editor). `projectTypeSuggestions()` now checks real project markers (`go.mod`, `Cargo.toml`,
+  `pom.xml`/`build.gradle`, `Gemfile`, `composer.json`, `Program.cs`) before suggesting
+  `cargo run`, `go run .`, `mvn spring-boot:run`/`./gradlew bootRun`, `bundle exec rails server`,
+  `php artisan serve`, `dotnet run`, etc. — same "check a real marker, don't guess from language
+  file count alone" spirit as the existing Python branch. `codebaseIndexer.js`'s `KEY_FILES` was
+  missing `pom.xml`/`build.gradle`/`build.gradle.kts` entirely before this — Maven/Gradle projects
+  had an always-empty `keyFiles`, so this was a real gap, not just missing guess logic.
+  `run_project`'s example phrases in `intentsData.js` were also widened (~55 new phrases) to cover
+  imperative "run this X project" phrasing per language, alongside the ~90 informational
+  `project.knowledge.how_to_run` phrases above (~145 new examples combined). **Not yet verified
+  live** — no working Ollama/npm session was available in the sandbox this was built in (VM
+  failed to start), so this is based on static reading of `matcher.js`'s dispatch stages, not a
+  real run through the semantic matcher. Both new intents were added to `matcher.js`'s
+  `BUILTIN_INTENTS` Set (miss this and the intent is unreachable no matter how good its examples
+  are — see the `git_remote_add`/`project_list` history above for exactly this failure mode).
+- **Reverse dependency index + API route map.** `codebaseIndexer.js`'s repo map already had a
+  per-file "what does this file import" list (previous session); it now also resolves local/
+  relative imports back to the actual file they point at and attaches the inverse — each entry can
+  show both "imports: X" and "used by: Y" (`buildReverseImportIndex()`/`resolveLocalImport()`).
+  Separately, `extractRoutes()` regex-matches Express (`app.get/post/...`), Flask (`@app.route`),
+  FastAPI (`@app.get/...`), and Django (`path(...)` inside `urls.py`/anything mentioning
+  `urlpatterns`) route declarations into `idx.apiRoutes`, rendered via new `formatApiRoutes()` and
+  injected into the AI system prompt (`ollamaContext.js`) as a "what does this app expose over
+  HTTP" surface map — a different and often more directly useful kind of structural understanding
+  than a flat export list.
+- **Monorepo detection.** `detectSubPackages()` groups manifest files (`package.json`,
+  `pyproject.toml`, `Cargo.toml`, `pom.xml`, etc.) by containing directory; more than one such
+  directory sets `idx.isMonorepo`/`idx.subPackages`, surfaced both in the AI system prompt (with an
+  explicit "treat each as its own independently-runnable package" instruction) and in
+  `projectScanner.js`'s code-only-recognition fallback summary.
+- **Real parser for JS/TS/TSX signature extraction**, replacing regex as the primary path for
+  those extensions specifically (Go/Rust/Java/Ruby/PHP/C#/Python are still regex-only — a real
+  parser for those would need either a much heavier dependency or shelling out to a language
+  runtime this Node-only project doesn't otherwise need, so this was scoped to JS/TS only). Uses
+  the `typescript` package's compiler API (`ts.createSourceFile` + a shallow top-level-statement
+  walk) rather than adding a new dependency like `acorn` — `typescript` was already a
+  `devDependency` here for `npm run lint` (`tsc --noEmit`), and unlike `acorn` it natively
+  understands TS/TSX type syntax instead of throwing on it. Promoted to a real `dependency` in
+  `package.json` since the indexer now needs it at runtime, not just at lint time. Loaded via a
+  cached dynamic `import('typescript')`; every call site catches failures (missing package,
+  version mismatch, genuine parse error) and falls back to the pre-existing regex extractor, so
+  this is a strict enhancement with no new hard requirement and no regression path — plus it
+  picks up `interface`/`type`/`enum` declarations the old regex list never covered at all.
+- **Static verification only, not live-tested.** Every item above was written and manually traced
+  for correctness (regex tested by hand against representative sample text, matcher dispatch
+  chain read line-by-line), but this sandbox's Linux VM failed to start for the whole session, so
+  none of it has been run against a live server, a real Ollama call, or the actual semantic
+  matcher's embedding output. Before trusting this fully: run `npm install` (picks up
+  `typescript` as a real dependency now), `npm run lint`, start the dev server, and test a few of
+  the new `project.knowledge.how_to_run`/`run_project` phrasings against a real Go/Rust/Java repo
+  to confirm both correct intent routing and correct extracted run commands.
+
+## Trigger-mode intent expansion (2026-07-30, requested directly — "richer chit-chat, more read-only code questions, more git actions, ~2000 example phrases, still using real ML not just hardcoding")
+
+Follow-up to the README-parsing batch above. Clarified up front and worth restating here since it
+came up directly: the phrase lists in `intentsData.js` are hand-curated seed data, but the
+*matching* is genuinely learned — `semanticMatcher.js` embeds every example via a real local
+transformer (`Xenova/all-MiniLM-L6-v2`) and matches by cosine similarity, `nlpEngine.js` is a
+separately trained NLP.js classifier, and `confidenceModel.js` is a logistic regression trained by
+real gradient descent on actual accept/reject telemetry (see "Learned confidence model" above) —
+none of this batch changed that architecture, it just gave all three layers a lot more to work with.
+
+- **Richer, varied chit-chat — still fully deterministic, no LLM call.** `builtinIntents.js` has a
+  new `pickRandom()` helper; greeting/status/gratitude no longer send the exact same string every
+  time (3-5 varied replies each, still template-based). Two new intents: `system.chit_chat.farewell`
+  (there was no goodbye handling before at all) and `system.chit_chat.identity` ("who/what are
+  you" — previously fell through to help or a generic fallback; now explains the trigger-mode vs
+  AI-mode distinction directly). Both added to `matcher.js`'s `BUILTIN_INTENTS` Set AND its
+  `PURE_CHITCHAT_INTENTS` Set (same "garbled input could misfire onto a zero-argument safe-sounding
+  reply" protection as greeting/gratitude/etc — see that Set's own comment).
+- **Five new read-only codebase intents**, all built on data this app was already collecting for
+  the AI system prompt but had no trigger-mode-visible way to ask for directly:
+  `project.context.routes` (surfaces `idx.apiRoutes` via `formatApiRoutes()`),
+  `project.context.file_relations` ("which files import X" / "who uses this file" — reads the
+  `imports`/`importedBy` already attached to each `repoMap` entry, no fresh scan needed),
+  `project.context.monorepo` (surfaces `idx.subPackages`/`isMonorepo`),
+  `project.context.todos` (new `findTodos()` in `codebaseIndexer.js` — an on-demand regex scan for
+  TODO/FIXME/HACK/XXX markers, capped at 150 files / 60 results), and
+  `project.context.biggest_files` (new `findBiggestFiles()` — on-demand `fs.stat` scan, top 10 by
+  size). The last two are deliberately NOT part of the cached `codebaseIndex` — they're asked for
+  rarely enough that paying the scan cost on-demand beats slowing down every single project select
+  for a feature most sessions never use.
+- **Four new git intents**, kept inside the existing safety model rather than expanding it:
+  `git_diff` (safe/read-only, executes immediately like `git_log`/`git_branch`), `git_stash` and
+  `git_stash_pop` (confirm-gated — technically reversible via each other, but shelving/restoring
+  uncommitted work is exactly the "surprising but recoverable" case this app already gates), and
+  `git_branch_create` (confirm-gated, branch name run through `paramCommand.js`'s
+  `isSafeParamValue()` — the same shell-metacharacter check already used for parameterized command
+  substitution, since a branch name substitutes directly into a command string the same way).
+  Deliberately did NOT add `git reset --hard`, force-push, or branch deletion — those are a real
+  expansion of the destructive-action surface and would need an explicit discussion first per this
+  file's own "Safety model — don't weaken this without discussing it first" section.
+- **All nine new intents added to `matcher.js`'s `BUILTIN_INTENTS` Set** — this is the fourth or
+  fifth time this exact class of bug has bitten this app (see the `git_remote_add`/`project_list`/
+  `file_append` history earlier in this file): an intent with real examples and a real handler is
+  still completely unreachable if it's missing from that one Set. Checked explicitly this time
+  before considering the batch done.
+- **Every existing intent (all ~40 of them) had its example list widened** with casual phrasing,
+  contractions, typo-tolerant variants, and question/imperative alternates — the explicit goal
+  ("a lot of fallback, less errors") was reducing how often a real request falls through to the
+  generic no-match suggestion chips, not just adding raw phrase count. Combined with the ~250
+  phrases already added for the README-run-command intents in the previous batch, `intentsData.js`
+  is now in the range of ~1800-2000 total example phrases across ~46 intents.
+- **Deliberate ambiguity risk, not fully resolved**: `project.knowledge.how_to_run` (informational)
+  and `run_project` (executes) share a lot of conceptual territory, and now so do
+  `system.chit_chat.help` ("what can you do") and `system.chit_chat.identity` ("what are you") —
+  both pairs were phrased with deliberately different shapes (question vs. imperative for the
+  first pair, capability-listing vs. self-description for the second) specifically to help the
+  embedding matcher keep them apart, but this is a design choice made by reasoning about the
+  matcher's behavior, not by testing it — see the verification note below.
+- **Static verification only, again.** Every addition in this batch was checked by hand for
+  wiring correctness (the `BUILTIN_INTENTS` Set membership, the `response` vs `answer` field name,
+  `PURE_CHITCHAT_INTENTS` membership for the two new chit-chat intents) and the on-demand scan
+  functions were traced for correctness against `codebaseIndexer.js`'s existing patterns (same
+  `IGNORE_DIRS`/cap conventions as `buildRepoMap`). None of it has been run against the live
+  semantic matcher — the sandbox this was built in never got a working Linux VM this session. This
+  is the same caveat as the previous batch, worth repeating because it still hasn't been resolved:
+  run `npm run lint`, start the dev server, and try a real mix of the new phrasings (especially the
+  `run_project`/`how_to_run` and `help`/`identity` pairs above) before trusting the routing.
+
+## Intent phrase management (2026-07-30, requested directly — "how do we manage ~2000 phrases")
+
+- `server/intentsData.js` was a single ~970-line object; split into `server/intents/` (
+  `chitChatIntents.js`, `projectKnowledgeIntents.js`, `projectContextIntents.js`, `gitIntents.js`,
+  `npmAndFileIntents.js`, `miscIntents.js`), merged back into one `INTENTS` object via object
+  spread. Pure reorganization — every intent key/phrase is unchanged, and object spread preserves
+  nested array/object references, so `learnedIntents.js`'s `INTENTS[intent].examples.push(...)`
+  mutation pattern still works exactly as before. 59 intents total (correcting an earlier "~46
+  intents" estimate from the prior batch).
+- New `server/scripts/checkIntentDuplicates.js` (`npm run check-intents`) — a static, no-server,
+  instant text-level check: flags exact duplicate phrases within one intent (harmless, just
+  redundant), exact duplicates across two different intents (real ambiguity, worth fixing), and
+  near-duplicates (edit distance ≤2, length-bucketed to stay fast) across different intents. This
+  complements, not replaces, the live `check collisions` chat command — that one computes real
+  embedding cosine similarity between whole intents but needs a running server with the
+  transformer model loaded; this script needs neither and is the first thing to run after adding
+  a batch of new phrases.
+- `server/cli-client.js`'s `CONNECT_TIMEOUT_MS` bumped 40s → 90s based on a real measured ~41s cold
+  boot (right at the old timeout's edge) — the 2026-07-30 intent-expansion batch also grew
+  `intentsData.js` by roughly a third, which pushes real startup time (embedding + NLP classifier
+  training) up further, not down. Re-measure and adjust again if a real boot ever gets close to
+  this new ceiling.
+- **Zip/junk-folder over-recognition, fixed (reported directly: "the AI tracked some zip folders
+  and some basic folders").** `codebaseIndexer.js`'s `detectLanguages()` used to fall back to
+  `ext.slice(1)` for ANY unmapped file extension — a folder with only `.zip` files got a fabricated
+  `"zip (3 files)"` entry in `idx.languages`, and `projectScanner.js`'s
+  `isRecognizableByCodeAlone()` checked `languages.length > 0`, so archive-only folders incorrectly
+  passed as recognized projects. Fixed: `detectLanguages()` now skips unmapped extensions entirely
+  instead of fabricating a language name, and recognition now checks a new, stricter `hasRealCode`
+  signal (`REAL_CODE_EXTS` allowlist — actual source file extensions only) instead of raw language
+  count. Plain folders with real code but no `package.json`/docs are still correctly recognized —
+  that part was intentional from the earlier project-recognition-widening work, not a bug.
+
+## Live bugs found via check-intents + real chat transcripts (2026-07-30, reported directly)
+
+Running the new `npm run check-intents` for the first time (1902 phrases, 59 intents) found 3
+within-intent dupes, 17 cross-intent exact dupes, and 71 near-duplicates — see the script's own
+output for the full list. Fixed the within-intent dupes and the highest-value cross-intent ones
+(a specific git/knowledge intent losing to a broad chit-chat catchall on the exact same phrase:
+`git_status`/`system.chit_chat.deploy` vs. `git_diff`/`git_log`/`git_commit`/`git_commit_push`;
+`system.chit_chat.help`/`identity` vs. `project.knowledge.commands`/`overview`;
+`project.knowledge.stack` vs. `project.context.languages`/`dependencies`;
+`project.knowledge.commands` vs. `how_to_run`; `npm_build` vs. `npm_run`). Left the genuinely
+ambiguous ones alone (`greeting`/`status` sharing "sup"/"whats up"-style phrasing,
+`overview`/`tech_preview` sharing "summary") — both sides give a plausible answer either way, so
+de-duplicating them is bikeshedding with real risk of hurting recall for no clear win. The 71
+near-duplicates (mostly short 2-3 letter chit-chat tokens like "ye"/"yo"/"ok" colliding across
+greeting/yes_no/farewell) were left as-is for the same reason — real embedding-similarity
+collisions (not just text overlap) still need the live `check collisions` chat command to assess.
+
+Also found and fixed three real bugs from user-provided exported chat transcripts (Project console,
+Matchday Exchange, NetPulse sessions), none of which `check-intents` could have caught since
+they're routing/state bugs, not phrase-text bugs:
+
+- **"who uses connection.js" answered with "### Tech Stack / No stack information parsed from
+  markdown."** — confirmed live twice, same exact wrong answer both times. Root cause:
+  `matcher.js`'s NLP.js-classifier fallback stage (`nlpResult.score >= 0.45`, no margin check) had
+  a `PURE_CHITCHAT_INTENTS`/`isTrustworthyChitChat` guard for `system.chit_chat.*`/
+  `project.context.*` intents but **not** for the `project.knowledge.*` canonMap right below it —
+  so a weak/wrong classification onto `project.knowledge.stack` sailed through unguarded instead
+  of falling through to the correct `project.context.file_relations` intent. Fixed with a new
+  `isTrustworthyKnowledgeIntent()` guard (same shape as the chit-chat one): none of the five
+  `project.knowledge.*` intents are ever legitimately about one specific named file, so a query
+  containing a real filename now gets treated as untrustworthy for that intent category and falls
+  through instead of returning a wrong answer. Applied to both the semantic-stage builtin match and
+  the NLP canonMap. Also widened `project.context.file_relations`'s own example phrases (previously
+  all generic "this file"/placeholder shape, e.g. "who imports state.js") with real-filename-style
+  phrasing ("who uses connection.js") so the semantic stage has a real shot at matching correctly
+  in the first place, not just at blocking the wrong answer.
+- **"stop server" reported "No running server" for a dev server confirmed still running seconds
+  later via "what's the link?"** (Matchday Exchange transcript). Root cause: `executor.js`'s
+  `child.on('close', ...)` handler unconditionally called `runningProcesses.delete(projectId)`,
+  including after `detach()` had already fired and told the user it was safe to use "stop server"
+  later. On at least some Windows npm/vite invocations the tracked `child` (the shell wrapper
+  around `npm run dev`) can fire its own `close` well before the actual dev server process it
+  spawned stops serving, silently orphaning the real server from the handle being tracked. Fixed:
+  only delete the map entry on `close` if the process was never detached — "stop server"
+  (`connection.js`) already deletes the entry itself synchronously when it actually kills a
+  tracked process, so this was pure redundant (and here, harmful) cleanup.
+- **"Stop it" (typed right after the above) returned "No pending confirmation to respond to."**
+  instead of stopping the server. `system.chit_chat.yes_no`'s example phrases literally include
+  `'stop'`/`'abort'` as a reject-style reply, so a bare "stop it" matched that intent instead of
+  anything server-related. Fixed narrowly: `connection.js`'s "stop server" regex now also catches
+  a bare "stop it"/"kill it"/"cancel it" — but only when a process is actually tracked for that
+  project (`runningProcesses.has(project.id)`), so an unrelated "stop it" with nothing running
+  still safely falls through to the normal yes/no fallback instead of being over-matched.
+
+## "Did you mean X or Y?" collision disambiguation (2026-07-30, requested directly)
+
+Every previously-fixed matching bug this session (stack vs. file_relations, stop-server vs.
+yes_no) had the same shape: two different intents scored close enough to be a coin flip, and the
+pipeline silently picked one instead of asking. Rather than guessing more broadly (which the user
+explicitly scoped down to "only true collisions" via a clarifying question — not every
+low-confidence match, since that would interrupt harmless read-only queries too), this adds a
+narrow disambiguation step exactly at the point a real tie is detected:
+
+- `semanticMatcher.js`'s accept path (`bestScore >= floor && margin >= MIN_MARGIN`) now does a
+  second, cheap pass to find the best-scoring vector belonging to a genuinely **different** intent
+  than the winner (`bestOtherIntent`/`bestOtherScore`) — separate from the existing
+  `secondBestScore`, which can belong to the *same* intent (a different example phrase scoring
+  almost as well) and isn't a real ambiguity. If that different intent is within `MIN_MARGIN`
+  (0.03) of the winner, the result carries a `collision: { intent, confidence, meta }` field
+  alongside the normal winning intent — existing callers are unaffected since the winner is still
+  returned as before.
+- `matcher.js`'s 1b builtin-match step checks `semanticResult.collision`: if present, the collision
+  intent is also a real `BUILTIN_INTENTS` member, and both intents pass the same
+  `isTrustworthyChitChat`/`isTrustworthyKnowledgeIntent` guards as the winner, it returns
+  `{ disambiguate: [intentA, intentB] }` instead of silently picking `intentA`. New
+  `describeIntent()` (exported) renders a human-readable label from an intent's own first example
+  phrase — no separate display-name field to keep in sync.
+- `connection.js` sends a "Not sure which you meant: 1. ... 2. ... reply with 1/2/neither"
+  `answer` message and stores `sessionContext.pendingDisambiguation = { projectId, candidates,
+  originalInput }`, checked at the very top of `handleExecute` (same spot as the existing
+  `pendingParam` interceptor, for the same reason — this reply was never meant to hit the normal
+  matching pipeline). "1"/"2" dispatches the chosen intent directly via `handleBuiltinIntent`;
+  "no"/"neither"/"none of those"/"that's wrong"/etc. clears the pending state and shows fallback
+  suggestion chips instead of insisting on an answer. Anything else (not a clear pick, not a clear
+  rejection) also clears the pending state and falls through to the normal pipeline unmodified —
+  this is the requested "backtrack" behavior: if the reply doesn't address the question, treat it
+  as a new, unrelated message rather than getting stuck.
+- Deliberately does NOT touch the NLP.js classifier fallback or the local-router tier — scoped to
+  the semantic stage only, since that's where the existing margin/secondBestScore machinery already
+  lived and where every confirmed collision so far actually originated.
+
+## Scanning a project's own root, and a stray reload bug (2026-07-30, reported directly)
+
+Two real bugs from one report ("scanning C:\Users\tobil\Desktop\tobi-portfolio listed its content
+and the site reloads every time it scans"):
+
+- **Every scan rewrote a repo-root file, forcing a Vite full-page reload.** `nlpEngine.js`'s
+  `train()`/`retrainFromLearned()` used to call `this.manager.save()` with no path argument —
+  node-nlp resolves that to `./model.nlp` relative to `process.cwd()`, which is this app's own
+  repo root (launched via `npm run dev` from there). That file was nowhere in Vite's
+  `watch.ignored` list (only `data/`/`.cache/`/`*.console/` are excluded — same mechanism
+  documented earlier for `data/conversations/index.json`), and nothing anywhere in the codebase
+  ever calls `.load()` to read it back — the classifier is always rebuilt fresh from
+  `initializeDefaultIntents()` + learned phrases on every process start. So this was a pure-dead
+  write with an active bug attached: every `/api/scan-path` call retrains and re-saves it,
+  triggering a "real source file changed" full reload each time. Removed the `.save()` calls
+  entirely rather than redirecting them into an already-ignored directory, since nothing consumes
+  the file — if real persistence is wanted later, it needs a matching `.load()` on startup and
+  should live under `data/`. Also added `model.nlp` to `.gitignore` as a guard.
+- **Pointing the scan path directly at a single project (anything outside the default
+  `C:\Users\tobil\Desktop\Projects`, which always requires pasting a full absolute path — see the
+  folder-picker limitation above) listed that project's own internal subfolders as if they were
+  separate top-level projects.** `discoverProjects(baseDir)` always treated `baseDir` as a
+  *container* of project folders and scanned each immediate child as a candidate — combined with
+  this session's earlier code-only recognition widening (any folder with real source files now
+  counts), a folder like `src/`, `components/`, or `public/` inside the scanned project passed
+  recognition on its own and got listed as a fake separate project, flooding the list with the
+  project's own structure instead of the project itself. Fixed: `discoverProjects()` now checks
+  whether `baseDir` itself looks like a single project root first (console.config.json, or a
+  CLAUDE.md/README.md/etc., or `package.json` at `baseDir`'s own top level) and if so calls the
+  existing `scanSingleProject()` on it directly instead of descending into its children — reusing
+  the same function already used by the folder-picker/`--dir` path. Deliberately does NOT also
+  check for a bare `.git` directory as a signal, since someone could plausibly keep an entire
+  `Projects` container under one repo without every sub-project being its own repo, and that
+  shouldn't collapse the whole container into one fake project. A plain container folder (like the
+  default scan directory) essentially never has its own package.json/README/config at its own
+  root, so normal multi-project scanning is unaffected.
+
+## Wrong script picked + duplicate dev-server spawns (2026-07-30, reported directly)
+
+Matchday Exchange has two separate servers — the Vite site (`npm run dev`) and a wallet/settlement
+backend (`npm run server`, `tsx watch server/start.ts`, port 4400). A real transcript showed
+"run dev" correctly starting Vite, then "run its server" and later "run .bat" *each* also ran
+`npm run dev` again — never the actual `server` script — leaving three redundant Vite instances on
+3001/3002/3003 all serving the same project. Oddly, "Is its server running?" (different phrasing,
+same intent) correctly ran `npm run server` — proof the right script name lookup already existed
+somewhere, just wasn't reachable from every phrasing.
+
+Root cause: `run_project`'s handler (`builtinIntents.js`) always defaulted straight to
+`scripts.dev`/`start`/`serve` without ever looking at what the user actually typed. `npm_run`'s
+handler *does* try to extract a script name, but only via a strict regex requiring the name to
+immediately follow "run"/"execute" — `run its server` captures `its`, not `server`, so it missed
+too. The one path that worked, `npm run server` running correctly, went through a *third*,
+different route entirely: `server` isn't in `scriptEntries.js`'s `KNOWN_SCRIPTS` map, so it got a
+generic auto-derived entry with trigger phrases `['run server', 'npm run server']`, and "Is its
+server running?" happened to land on that project-specific entry via embedding similarity instead
+of the generic `run_project` builtin — an inherently fragile coin flip between a large builtin
+example cluster and a two-phrase project-specific entry, not something to rely on.
+
+Fixed two ways, both in `builtinIntents.js`:
+- New `findMentionedScript(input, scripts)` checks every real script name in the project's own
+  `package.json` against the input as a whole word (not anchored to right-after-"run" like
+  `npm_run`'s regex), so "its server", "is the server running", "start the server process" all
+  find `server` regardless of where the word falls in the sentence. `run_project` now calls this
+  first and defers to it before falling back to the dev/start/serve default; `npm_run`'s existing
+  regex path is unchanged (still tried first there, since it's more precise when it matches).
+- Both `run_project` and `npm_run` now check `runningProcesses` (the same map `stop server` reads)
+  before running a dev-server-shaped script (`dev`/`start`/`serve`) — if one's already tracked for
+  this project, they answer with what's already running and where, instead of spawning another.
+  Doesn't touch anything project-specific-entry-triggered (`matchedEntry.js`/`runCommandEntry`) —
+  that path wasn't what fired the duplicate runs in this transcript, so it's a known adjacent gap
+  to revisit if the same symptom shows up coming from a project-specific "run dev"-style trigger
+  instead of these two builtins.
+
 ## Known gotchas
+
+- **CLI project picker registering one keystroke as two (2026-07-30, reported directly: typing
+  "10" for project #10 acted like each digit was pressed twice).** All three
+  `readline.createInterface()` calls in `cli-client.js` (`selectProject()`, `setupReadline()`,
+  `questionAsync()`) were missing `crlfDelay: Infinity`. Node's own readline docs warn that without
+  it, an interface can emit two `'line'` events for a single Enter press if the `\r`/`\n` bytes of
+  a Windows-style line ending arrive in separate reads — the default `crlfDelay` is only 100ms, and
+  Windows terminals (ConPTY in particular) are the case the docs call out as prone to this. Not yet
+  reproduced live in this sandbox (no interactive TTY available here), but this is the documented,
+  known cause of exactly this symptom shape — verify with a real "type 10, press Enter once" test
+  on Windows next session.
 
 - **Fixed 2026-07-28: `memory_suggestion` (Layer 4 adaptive project memory) was silently
   dropped client-side — the whole proactive-nudge feature never reached the user.**
@@ -792,6 +1207,78 @@ All four layers now run at least partly unattended instead of requiring a manual
   so this can't block the synchronous suggestion-approval flow or server startup) whenever a
   suggestion gets approved/auto-applied — so both matchers now learn from the same confirmed usage
   signal instead of just one of them.
+
+- **Commit-comment truncation bug, confirmed live 2026-07-29 via a real exported chat transcript.**
+  `push this code to github with comment "Massive Memory and Learning improvements"` silently
+  committed as just "Massive Memory" — a regex duplicated across four handlers
+  (`git_push`/`git_commit`/`git_commit_push`/`system.chit_chat.deploy` in `builtinIntents.js`)
+  stopped capturing at the FIRST " and" found anywhere in the tail, regardless of whether it was
+  inside the user's quotes, because it was written to strip an unquoted trailing clause like
+  "message: fix the bug and push" and never accounted for "and" being an ordinary word inside a
+  real quoted commit message. Fixed with one shared `extractCommentMessage(input)`: tries a
+  fully-quoted match first (matching-quote backreference, so anything between the quotes is safe
+  including "and"), and only falls back to the old stop-at-"and"/end heuristic for an unquoted
+  message. All four call sites now use it instead of each carrying their own copy of the bug.
+  Also hardened `semanticMatcher.js`'s `_splitConjunctions()` (the multi-intent "show structure
+  and run tests" splitter, which runs *before* single-intent matching in `matcher.js`) to bail out
+  entirely whenever the input contains a quote character — it has no concept of quote boundaries
+  either, and could in principle chop a different quoted argument (file content, a URL) at the
+  same word even after the above fix, for any input where the split-off second half happens to
+  also resolve to a real intent. Verified both fixes with standalone regex tests against the exact
+  real failing input plus the previously-supported unquoted-trailing-clause case.
+- **AI mode narrating a tool call instead of making one, confirmed live 2026-07-29 via the same
+  transcript.** `qwen3.5:cloud` replied "We need to call getGitStatus." (and similar) as plain
+  visible text instead of emitting a `<tool_call>{...}</tool_call>` block, three times in a row for
+  "push this code to github" — `streamWithToolDetection` (`aiStream.js`) only intercepts an actual
+  `<tool_call>` tag, so when the model just narrates its plan in prose there's nothing to catch:
+  the narration silently became the "final answer", no tool ever ran, and nothing signaled to the
+  user that the request had failed (they eventually gave up and toggled AI mode off). Fixed with
+  one bounded corrective retry in `aiQuery.js`: `looksLikeUnexecutedToolIntent()` detects this
+  narrating-without-calling pattern (deliberately narrow — explicit "we/I need to call" phrasing,
+  or a short reply mentioning "tool call" — so it doesn't fire on ordinary short answers), and if
+  it fires on the first response with zero tool calls, the model is told directly that no
+  `<tool_call>` block was found and given one more try before whatever it says next is accepted as
+  the real answer. Verified the detector against the real transcript's exact reply text plus a set
+  of ordinary answers that must NOT trigger it.
+- **Root cause of the above, confirmed live 2026-07-29 with GPT-OSS (not just qwen3.5:cloud) —
+  this app never separated a reasoning model's "thinking" from its actual answer at all.**
+  `server/ollama.js`'s `chatStream()`/`chatOnce()` never requested Ollama's `think` option, so a
+  thinking-capable model's internal deliberation and its finished reply both arrived as plain
+  `message.content` with nothing to distinguish them — the code just showed whatever text came
+  through and closed the turn the instant Ollama reported `done`. The corrective-retry fix above
+  is a mitigation for one symptom of this; the actual fix is requesting `think: true` on every
+  `/api/chat` call and treating Ollama's `message.thinking` / `message.content` as genuinely
+  separate channels. `chatStream()` now yields `{ type: 'content' | 'thinking', text }` chunks
+  instead of raw strings; `aiStream.js`'s `streamWithToolDetection()`/`streamPlain()` only feed
+  `content` chunks into the visible-text/tool-call-detection buffer — `thinking` chunks are sent
+  to the client as a new `thinking` WS event (ignored by the frontend today, a no-op — available
+  for a future "thinking…" indicator) but can never be mistaken for the real answer or a tool
+  call. `think: true` is safe to send unconditionally: a model without thinking support simply
+  never populates `message.thinking`, so every chunk still comes through as `content` exactly like
+  before — verified with a standalone test simulating both a reasoning-model-shaped stream (tool
+  call correctly isolated from the "We need to call getGitStatus." thinking text) and a plain
+  model's stream (fully unaffected, single concatenated content string).
+
+- **AI mode fabricating a completed action with zero tool-call evidence, confirmed live
+  2026-07-29 via a real exported transcript — worse than the narrating-without-calling bug above.**
+  Asked to "push," the model skipped straight to "That **pushed successfully** ✅" with a
+  fabricated-looking list of commit hashes — no `<tool_call>` block, and no narrated intention
+  either (`looksLikeUnexecutedToolIntent` only catches "we need to call X" phrasing, so it never
+  had anything to retry here). The model even second-guessed itself two messages later ("let me
+  actually verify what's in the commits since I claimed to push but have no visibility into the
+  contents"), confirming after the fact that it invented the result. This is more dangerous than
+  the narrating case because there's no visible sign anything went wrong — a user could easily
+  believe a destructive git operation happened when it didn't. Fixed with
+  `looksLikeFabricatedActionClaim()` (`aiQuery.js`): checked once, after every round of the tool
+  loop completes, against `toolHistory` (every tool actually run across the *whole* exchange, not
+  just one round) — if that's empty but the final text still describes a completed mutating
+  action (pushed/committed/deployed/deleted/installed/wrote/created/merged/reverted + a success
+  word or ✅), an unmissable correction is sent as its own message right after. Can't edit the
+  original reply in place since it was already streamed token-by-token before this check runs —
+  the correction has to come as a follow-up, not a retroactive edit. Verified against the real
+  transcript's exact fabricated line (fires) plus several ordinary answers, including one that
+  mentions "push" without a success word and one that uses "wrote" in an unrelated context (both
+  correctly don't fire).
 
 ## Conventions
 

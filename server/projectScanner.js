@@ -3,6 +3,56 @@ import path from 'path';
 import { indexProject } from './codebaseIndexer.js';
 import { deriveScriptEntriesForProject, mergeAutoEntries } from './scriptEntries.js';
 
+/**
+ * Whether a project's own codebaseIndex alone is enough to recognize the folder as a project,
+ * with no docs/config/package.json present at all. Confirmed-real gap (2026-07-30, raised
+ * directly): a folder full of real code but none of CLAUDE.md/README.md/console.config.json/
+ * package.json was completely invisible to discovery no matter how much was in it — a real
+ * problem the moment this app is pointed at someone else's folder, or at a non-npm project
+ * (Go/Rust/Java/Ruby/PHP/a bare Python script) that was never given a doc file. Recognized here
+ * if the folder has actual source code (checked via `hasRealCode`, NOT `languages.length` — see
+ * the fix below), OR a config file codebaseIndexer.js already knows about (Cargo.toml, go.mod,
+ * requirements.txt, etc. — hasConfig only covers package.json/pyproject.toml/Cargo.toml, so also
+ * check keyFiles directly), OR it's a real git repository (a strong signal of "this is a real
+ * project", not junk, even if all it currently holds is non-code files).
+ *
+ * Fixed 2026-07-30 (reported directly — folders containing only .zip archives, or other non-code
+ * junk, were showing up as recognized "projects"). This used to check `codebaseIndex.languages.
+ * length > 0`, but `detectLanguages()` had its own bug (now also fixed) that bucketed literally
+ * any file extension — including `.zip` — into `idx.languages` if it wasn't in the known langMap,
+ * so a folder with three zip files alone was enough to pass. Now checks `codebaseIndex.hasRealCode`
+ * instead, which is computed against a real programming-language extension allowlist
+ * (`REAL_CODE_EXTS` in codebaseIndexer.js) and never counts arbitrary/unmapped extensions.
+ */
+function isRecognizableByCodeAlone(codebaseIndex) {
+  if (!codebaseIndex || codebaseIndex.totalFiles === 0) return false;
+  const hasAnyKeyFile = codebaseIndex.keyFiles && Object.keys(codebaseIndex.keyFiles).length > 0;
+  return codebaseIndex.hasRealCode || hasAnyKeyFile || codebaseIndex.hasGit;
+}
+
+/** Builds a minimal config for a project recognized only via isRecognizableByCodeAlone() above —
+ *  otherwise it would be included with an empty `entries: []` and no way to explain itself when
+ *  asked "what is this project" in trigger mode. */
+function buildFallbackConfig(name, codebaseIndex) {
+  const parts = [];
+  if (codebaseIndex.languages.length) parts.push(`Languages: ${codebaseIndex.languages.join(', ')}`);
+  if (codebaseIndex.frameworks?.length) parts.push(`Detected stack: ${codebaseIndex.frameworks.join(', ')}`);
+  if (codebaseIndex.entryPoints.length) parts.push(`Likely entry point(s): ${codebaseIndex.entryPoints.join(', ')}`);
+  if (codebaseIndex.hasGit) parts.push(`Git repository: yes`);
+  if (codebaseIndex.isMonorepo) parts.push(`Monorepo with ${codebaseIndex.subPackages.length} sub-packages (${codebaseIndex.subPackages.map((p) => p.path).join(', ')})`);
+  const summary = parts.length
+    ? `No CLAUDE.md/README.md/console.config.json/package.json found for this project — this overview was auto-detected from the folder's contents. ${parts.join('. ')}.`
+    : `No CLAUDE.md/README.md/console.config.json/package.json found, and little else was detected either — auto-recognized based on file contents alone.`;
+  return {
+    projectName: name,
+    entries: [{
+      triggers: ['what is this project', 'overview', 'tell me about this project', 'project info'],
+      type: 'answer',
+      response: summary,
+    }],
+  };
+}
+
 // Files treated as project-context documentation, in priority order (index 0 wins ties for
 // which doc is treated as "the" doc in builtinIntents.js's overview/deep-dive responses).
 // Tobi's own convention (see insightflow on GitHub) is CLAUDE.md as source of truth, with
@@ -26,6 +76,35 @@ export async function discoverProjects(baseDir) {
     if (!stats.isDirectory()) return [];
 
     const entries = await fs.readdir(baseDir, { withFileTypes: true });
+
+    // Confirmed live 2026-07-30 (reported directly — scanning C:\Users\tobil\Desktop\tobi-portfolio
+    // "listed its content"): discoverProjects() always treated baseDir as a *container* of
+    // project subfolders, scanning each immediate child as a candidate project. If baseDir is
+    // actually a single project's own root (pasted directly instead of a parent "Projects" folder
+    // — an easy mistake, and the only option for anything outside the default scan directory),
+    // every one of ITS OWN subfolders (src/, components/, public/, etc.) got evaluated as if each
+    // were a separate top-level project — and since the code-only recognition fallback added
+    // earlier this session recognizes any folder with real source files, most of them passed,
+    // flooding the project list with the scanned project's own internal folder structure instead
+    // of the project itself. Detected here via the same kind of root-level signal used everywhere
+    // else in this file (console.config.json / CLAUDE.md-README-etc. / package.json at baseDir's
+    // OWN root) — deliberately does not also check for a bare `.git` directory, since someone
+    // could plausibly keep an entire `Projects` container under one git repo without every
+    // sub-project being a separate repo, and that shouldn't collapse the whole container into one
+    // fake "project". A plain container folder holding many separate projects essentially never
+    // has its own package.json/README/config at its own root, so this is safe for the normal case
+    // (the default `C:\Users\tobil\Desktop\Projects` scan directory has none of these).
+    const rootNames = new Set(entries.map((e) => e.name.toLowerCase()));
+    const looksLikeSingleProjectRoot =
+      rootNames.has('console.config.json') ||
+      CONTEXT_FILENAMES.some((f) => rootNames.has(f)) ||
+      rootNames.has('package.json');
+    if (looksLikeSingleProjectRoot) {
+      const folderName = path.basename(baseDir);
+      const single = await scanSingleProject(folderName, baseDir);
+      return single ? [single] : [];
+    }
+
     const projects = [];
 
     for (const entry of entries) {
@@ -110,8 +189,17 @@ export async function discoverProjects(baseDir) {
           mergeAutoEntries(config, autoEntries);
         }
 
+        // Always index now (rather than only when config/contextFiles already justified
+        // inclusion) — isRecognizableByCodeAlone() below needs the codebase index itself to
+        // decide whether a doc-less, config-less, package.json-less folder should still be
+        // recognized as a project.
+        const codebaseIndex = await indexProject(projectPath);
+
+        if (!config && contextFiles.length === 0 && isRecognizableByCodeAlone(codebaseIndex)) {
+          config = buildFallbackConfig(entry.name, codebaseIndex);
+        }
+
         if (config || contextFiles.length > 0) {
-          const codebaseIndex = await indexProject(projectPath);
           projects.push({
             id: entry.name.toLowerCase().replace(/[^a-z0-9_-]/g, '-'),
             folderName: entry.name,
@@ -205,8 +293,15 @@ export async function scanSingleProject(folderName, projectPath) {
     mergeAutoEntries(config, autoEntries);
   }
 
+  // Same isRecognizableByCodeAlone() fallback as discoverProjects() above — this path is used
+  // when a specific folder is picked directly (e.g. via the folder picker or --dir), so it needs
+  // the same "don't go invisible just because there's no doc/config/package.json" treatment.
+  const codebaseIndex = await indexProject(projectPath);
+  if (!config && contextFiles.length === 0 && isRecognizableByCodeAlone(codebaseIndex)) {
+    config = buildFallbackConfig(folderName, codebaseIndex);
+  }
+
   if (config || contextFiles.length > 0) {
-    const codebaseIndex = await indexProject(projectPath);
     return {
       id: folderName.toLowerCase().replace(/[^a-z0-9_-]/g, '-'),
       folderName,
