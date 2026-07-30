@@ -44,11 +44,12 @@ $process.Id | Out-File -FilePath $PidFile -Encoding ASCII
 Write-Host "Daemon started (PID $($process.Id)). Waiting for server to become ready..." -ForegroundColor Cyan
 
 # Scan ports 3000-3009 to find the actual bound port.
-# Keep trying for up to 45 seconds — first boot can be slow (NLP training + embedding
+# Keep trying for up to ~90 seconds — first boot can be slow (NLP training + embedding
 # model download + project indexing all run before the server starts listening).
+# Measured cold boot ~41s (NLP + embedding model), so maxRounds=30 gives ~90s ceiling.
 $found = $false
 $basePort = 3000
-$maxRounds = 15
+$maxRounds = 30
 for ($round = 0; $round -lt $maxRounds -and -not $found; $round++) {
     for ($i = 0; $i -lt 10 -and -not $found; $i++) {
         $port = $basePort + $i
