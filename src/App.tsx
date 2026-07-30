@@ -4,8 +4,9 @@ import { TextScramble } from './components/TextScramble';
 import { BentoGrid } from './components/BentoGrid';
 import { Terminal } from './components/Terminal';
 import { WelcomeScreen } from './components/WelcomeScreen';
+import { Dashboard } from './components/Dashboard';
 import { useConsole } from './hooks/useConsole';
-import { FolderSearch, Plus, MessageSquare, Trash2, Home } from 'lucide-react';
+import { FolderSearch, Plus, MessageSquare, Trash2, Home, LayoutDashboard } from 'lucide-react';
 
 function App() {
   const folderInputRef = useRef<HTMLInputElement>(null);
@@ -19,6 +20,7 @@ function App() {
   // the project grid, with no way to just focus on the conversation. Purely a layout toggle: it
   // doesn't touch any chat state, so switching in and out of it never loses anything.
   const [chatFullscreen, setChatFullscreen] = React.useState(false);
+  const [showDashboard, setShowDashboard] = React.useState(false);
 
   const {
     projects, activeProject, scanPath, setScanPath, messages,
@@ -143,6 +145,9 @@ function App() {
               {activeServers.length} running
             </span>
           )}
+          <button onClick={() => setShowDashboard(v => !v)} className={`p-2 transition-colors ${showDashboard ? 'text-[#00d4a3]' : 'text-gray-500 hover:text-gray-300'}`} title="Dashboard">
+            <LayoutDashboard size={18} />
+          </button>
         </form>
         <input
           ref={folderInputRef}
@@ -156,7 +161,12 @@ function App() {
       </header>
       )}
 
-      <main className={`relative z-10 flex-1 grid grid-cols-1 gap-6 min-h-0 overflow-hidden ${chatFullscreen ? '' : 'lg:grid-cols-12'}`}>
+      <main className={`relative z-10 flex-1 min-h-0 overflow-hidden ${showDashboard ? '' : `grid grid-cols-1 gap-6 ${chatFullscreen ? '' : 'lg:grid-cols-12'}`}`}>
+        {showDashboard ? (
+          <div className="h-full p-4">
+            <Dashboard onClose={() => setShowDashboard(false)} />
+          </div>
+        ) : (<>
         {!chatFullscreen && showSessions && (() => {
           const visibleSessions = (showAllChats || !activeProject)
             ? sessions
@@ -193,10 +203,6 @@ function App() {
                 <MessageSquare size={14} className="flex-shrink-0" />
                 <span className="truncate flex-1 flex flex-col">
                   <span className="truncate">{s.title}</span>
-                  {/* Session titles auto-update to whatever you first typed in them, regardless
-                      of which project they're linked to — so two chats can look alike ("Dream
-                      Kick Ch...") while actually belonging to different projects. Always show the
-                      real linked project so it's never ambiguous which folder a chat will jump to. */}
                   {s.projectName && (
                     <span className="truncate text-[10px] text-gray-500 normal-case tracking-normal">{s.projectName}</span>
                   )}
@@ -274,6 +280,7 @@ function App() {
             onSwitchToProject={handleSwitchToProject}
           />
         </div>
+        </>)}
       </main>
     </div>
   );
