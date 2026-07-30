@@ -115,12 +115,14 @@ export function injectContext(input, intent, codebaseIndex) {
       }
       break;
     }
-    case 'run_project': {
-      if (codebaseIndex.entryPoints?.length) {
-        snippets.push(`To run: start \`${codebaseIndex.entryPoints[0]}\``);
-      }
-      break;
-    }
+    // Deliberately no 'run_project' case here: this app already learned (and documented in
+    // CLAUDE.md) that a naive "start <entrypoint>" suggestion is actively wrong for compiled
+    // languages (e.g. "start main.go" just opens the file in an editor) — run_project's own
+    // handler in builtinIntents.js does real marker-based detection (go.mod/Cargo.toml/pom.xml/
+    // etc.) instead. A prior version of this switch had a run_project case that reintroduced the
+    // naive pattern; it was never actually wired up (nothing calls injectContext with
+    // action === 'run_project') but was removed outright rather than left as a landmine for
+    // whoever wires it up next without noticing the earlier fix.
   }
 
   // Keyword-triggered file injection (independent of intent)

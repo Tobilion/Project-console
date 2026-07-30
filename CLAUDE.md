@@ -928,6 +928,73 @@ Fixed two ways, both in `builtinIntents.js`:
   to revisit if the same symptom shows up coming from a project-specific "run dev"-style trigger
   instead of these two builtins.
 
+## AI-mode-generated feature batch (deepseek v4 flash via opencode, 2026-07-30) + safety review
+
+A separate coding pass (not this session's earlier trigger-mode/intent work) added six new
+`server/` modules in one batch: `webSearch.js` (DuckDuckGo scrape-based `webSearch`/`deepResearch`
+for the AI-mode Search/Deep Research toggles), `pluginTools.js` (lets a project define custom
+AI-mode tools via a `console.tools.json` manifest — `{ name, description, command, args, risky }`
+entries, loaded per-project in `tools.js`'s `createProjectTools()` and merged into `baseTools`),
+`contextInjector.js` (`injectContext()` — appends codebase-index snippets like entry points/
+languages/matched files onto certain trigger-mode `answer` replies, called from several spots in
+`builtinIntents.js`), `contextResolver.js` (`resolveContext()` — a last-resort fallback in
+`connection.js`, tried only after semantic/NLP/router/fuzzy all fail to match anything at all, that
+guesses an intent from short keywords or pronoun carryover from the previous turn), `metrics.js`
+(a small in-process counters/histogram/ring-buffer store — clean, no issues found), and
+`gitSafety.js` (an extraction of `createCheckpoint`/`performUndo`/`isGitRepo` that already existed
+inline elsewhere — pure refactor, `undoLastChange` in `tools.js` still calls it the same way).
+
+Reviewed for safety/correctness since none of it had been through this file's own documented
+review process yet. Found and fixed four real issues, all already patched in the files themselves:
+
+- **`pluginTools.js` reintroduced a closed command-injection class of bug.** `createPluginToolFn`
+  substituted `{{argName}}`/`${argName}` call args directly into a manifest's `command` template
+  and ran it via `exec()` with no shell-metacharacter check and no `isCommandBlocked()` check on
+  the resolved string — exactly the gap `paramCommand.js`'s `isSafeParamValue()` was built to close
+  for the existing hand-authored parameterized-command feature (see that file's own security note).
+  Worse, gating was entirely up to the manifest's own optional `risky` flag (defaults to false), so
+  an unmarked custom tool ran with zero user confirmation — a project folder cloned from someone
+  else could ship a `console.tools.json` with an innocent-sounding tool that actually runs anything.
+  Fixed: every substituted value is now checked with `isSafeParamValue()` before substitution
+  (rejects shell metacharacters/newlines/oversized values, independent of the manifest's own `args`
+  schema), and the fully-resolved command is checked against `isCommandBlocked()` right before
+  `exec()` — neither check depends on the manifest's `risky` flag, since that flag is author-
+  supplied and unverifiable. The `risky`-gated-confirmation behavior itself (via `isCustomToolRisky`
+  in `tools.js`) is unchanged — this fix closes the injection/blocklist gap underneath it, it
+  doesn't change who needs to click Approve. **Still worth a deliberate decision, not made here**:
+  whether an unmarked (`risky: false`/omitted) plugin tool should really run without confirmation
+  at all, given the manifest is user/repo-authored and not verified by this app.
+- **`webSearch.js`'s `deepResearch` had a host allowlist that silently defeated itself.**
+  DuckDuckGo's HTML endpoint never links straight to a result — every `result__a` href is a
+  same-site redirect (`duckduckgo.com/l/?uddg=<encoded-destination>`), and the old
+  `ALLOWED_SEARCH_HOSTS` only permitted `duckduckgo.com`/`html.duckduckgo.com` — so it happened to
+  pass, but only because it was checking DDG's wrapper, not the real destination, and the `url`
+  field shown to users as a citation was DDG's redirect link rather than the actual source. Fixed:
+  new `resolveRealUrl()` decodes the `uddg` param back to the real destination for every result
+  `webSearch()` returns; `deepResearch`'s allowlist was replaced with `isSafeExternalUrl()` — a
+  basic SSRF guard (rejects non-http(s) schemes and localhost/private-IP-range hostnames) that
+  makes sense against an arbitrary external destination, instead of an allowlist that could never
+  have matched one.
+- **`contextResolver.js`'s keyword fallback used plain substring matching.** `CONTEXTUAL_MAP`
+  checked `input.includes('main')`/`.includes('run')`/etc. — short keywords that fire inside
+  unrelated words ("maintaining" contains "main", "the crunch is real" contains "run"). Since this
+  only runs as the last resort after every other matching stage gives up (see `connection.js`'s
+  "no match — try conversation context carryover" call site), a false-positive here is worse than
+  the honest "no match → suggestion chips" it replaces — the same "confident wrong answer is worse
+  than an honest fallback" lesson this file already learned from `PURE_CHITCHAT_INTENTS`/
+  `isTrustworthyKnowledgeIntent` above. Fixed with word-boundary regex matching instead of
+  `.includes()`; had to special-case keywords like `.env` that start/end with a non-word character,
+  since a plain `\b` can never match between two non-word characters (a naive `\b\.env\b` would
+  never match ".env" at all) — `keywordRegex()` only asserts a boundary on whichever edge of the
+  keyword is actually a word character.
+- **`contextInjector.js` had a dead `run_project` switch case reintroducing a fixed anti-pattern.**
+  It would have suggested `` To run: start `<entrypoint>` `` — the exact naive pattern this file
+  already documents as "actively wrong for compiled languages" (see the "Trigger-mode run-command
+  guessing extended" entry above; `run_project`'s real handler in `builtinIntents.js` does proper
+  marker-based detection instead). Nothing ever called `injectContext` with `action ===
+  'run_project'`, so this was inert, not a live bug — removed outright rather than left as a trap
+  for whoever wires it up next.
+
 ## Known gotchas
 
 - **CLI project picker registering one keystroke as two (2026-07-30, reported directly: typing

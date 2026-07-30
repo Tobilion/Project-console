@@ -1,5 +1,28 @@
 const SEARCH_CACHE = new Map();
 
+/**
+ * DuckDuckGo's HTML endpoint (html.duckduckgo.com/html) never links straight to the destination
+ * page — every result__a href is wrapped as a same-site redirect,
+ * `//duckduckgo.com/l/?uddg=<url-encoded-destination>&rut=...`. Left unwrapped, every `url` this
+ * module returns (shown to users as a citation, and what deepResearch's own host allowlist below
+ * checks) is DDG's redirect link, not the real source — decode it back to the actual destination
+ * so citations point somewhere useful and the allowlist check downstream means what it says.
+ */
+function resolveRealUrl(href) {
+  if (!href) return href;
+  try {
+    const normalized = href.startsWith('//') ? `https:${href}` : href;
+    const parsed = new URL(normalized, 'https://duckduckgo.com');
+    if (parsed.hostname.endsWith('duckduckgo.com') && parsed.pathname.startsWith('/l/')) {
+      const real = parsed.searchParams.get('uddg');
+      if (real) return decodeURIComponent(real);
+    }
+    return parsed.href;
+  } catch {
+    return href;
+  }
+}
+
 export async function webSearch(query) {
   const cacheKey = query.toLowerCase().trim();
   if (SEARCH_CACHE.has(cacheKey)) return SEARCH_CACHE.get(cacheKey);
@@ -30,7 +53,7 @@ export async function webSearch(query) {
     for (let i = 0; i < Math.min(links.length, 8); i++) {
       results.push({
         title: links[i]?.title || '',
-        url: links[i]?.href || '',
+        url: resolveRealUrl(links[i]?.href) || '',
         snippet: snippets[i] || '',
       });
     }
@@ -43,6 +66,22 @@ export async function webSearch(query) {
   }
 }
 
+// `webSearch()`'s results now carry the real destination URL (see resolveRealUrl above), not
+// DuckDuckGo's redirect wrapper — so an allowlist of DDG's own hostnames no longer makes sense
+// here (it would silently skip every real result). The actual risk at this fetch is SSRF: a
+// crafted/compromised search result pointing at an internal address (localhost, a LAN IP, a
+// cloud metadata endpoint) that this server would then fetch on the user's behalf. Guard against
+// that class of target instead of allowlisting hosts we can't predict in advance.
+const BLOCKED_HOSTNAME_RE = /^(localhost|127\.|10\.|192\.168\.|169\.254\.|0\.0\.0\.0|::1|\[::1\])/i;
+const PRIVATE_172_RE = /^172\.(1[6-9]|2\d|3[01])\./;
+
+function isSafeExternalUrl(urlObj) {
+  if (urlObj.protocol !== 'http:' && urlObj.protocol !== 'https:') return false;
+  const host = urlObj.hostname;
+  if (BLOCKED_HOSTNAME_RE.test(host) || PRIVATE_172_RE.test(host)) return false;
+  return true;
+}
+
 export async function deepResearch(query) {
   try {
     const searchResults = await webSearch(query);
@@ -50,13 +89,12 @@ export async function deepResearch(query) {
     if (!Array.isArray(searchResults) || searchResults.length === 0) {
       return { error: 'No search results found.' };
     }
-    const ALLOWED_SEARCH_HOSTS = new Set(['duckduckgo.com', 'html.duckduckgo.com']);
     const topResults = searchResults.slice(0, 5);
     const contents = [];
     for (const r of topResults) {
       try {
         const urlObj = new URL(r.url);
-        if (!ALLOWED_SEARCH_HOSTS.has(urlObj.hostname)) continue;
+        if (!isSafeExternalUrl(urlObj)) continue;
         const pageRes = await fetch(r.url, {
           headers: { 'User-Agent': 'Mozilla/5.0' },
           signal: AbortSignal.timeout(5000),
