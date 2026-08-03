@@ -36,6 +36,7 @@ model.nlp
 # AI-session prompt/spec files — paste-in context for sessions, not app docs. Kept locally
 # for reference, never committed (untracked 2026-08-03).
 console-intent-expansion-prompt.md
+console-chitchat-ai-upgrade-prompt.md
 AI-FIX-PLAN.md
 AUDIT_REMEDIATION_PROMPT.md
 BUG_FIX_PROMPT.md
