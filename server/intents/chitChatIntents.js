@@ -7,7 +7,7 @@ export const CHIT_CHAT_INTENTS = {
   'system.chit_chat.greeting': {
     examples: [
       'hi', 'hello', 'hey', 'yo', 'good morning', 'good evening',
-      'good afternoon', 'greetings', 'hey there', 'hi there', 'howdy', 'sup',
+      'good afternoon', 'greetings', 'hey there', 'hi there', 'howdy',
       'whats up', 'howdy partner', 'ello', 'hiya', 'hey hey', 'morning',
       'evening', 'how are you today', 'hello there',
       'ey up', 'wassup', 'whats good', 'yo yo', 'greetings and salutations',
@@ -19,6 +19,9 @@ export const CHIT_CHAT_INTENTS = {
       'oi', 'alright then', 'top of the morning', 'evenin', 'mornin',
       'hows things', 'hiya there', 'well hello', 'hello hello',
       'greetings friend', 'good to see you', 'nice to see you',
+      'howdy doody', 'what is up', 'what is good', 'hello everyone',
+      'hey everybody', 'hi all', 'good to be here', 'back again',
+      'returning', 'just got here', 'arrived',
     ],
   },
   'system.chit_chat.status': {
@@ -37,6 +40,10 @@ export const CHIT_CHAT_INTENTS = {
       'you doing alright', 'all systems go', 'you functioning okay',
       'how are things going', 'is it all good', 'is everything fine',
       'you working properly', 'checking in', 'just checking in',
+      'you there', 'you still there',
+      'are you awake', 'still alive', 'ping', 'pong',
+      'everything running', 'all good still', 'how is the project',
+      'console status', 'are you up', 'system status',
     ],
   },
   'system.chit_chat.gratitude': {
@@ -54,6 +61,7 @@ export const CHIT_CHAT_INTENTS = {
       'that helped a lot thanks', 'nice work thanks', 'solid thanks',
       'good looking out thanks', 'you rock', 'legend thanks',
       'this was helpful thanks', 'great stuff', 'perfect thanks a lot',
+      'good job', 'nice work', 'great job', 'well done',
     ],
   },
   'system.chit_chat.farewell': {
@@ -67,6 +75,9 @@ export const CHIT_CHAT_INTENTS = {
       'night night', 'im done for the day', 'closing this up',
       'thats it for today', 'ill be back later', 'ttyl',
       'farewell', 'im finished for now', 'wrapping up',
+      'see you next time', 'bye bye', 'so long', 'adios',
+      'cheerio', 'until later', 'im off', 'heading out now',
+      'thats it', 'all done', 'finish', 'done for now',
     ],
   },
   'system.chit_chat.identity': {
@@ -223,6 +234,20 @@ export const CHIT_CHAT_INTENTS = {
       'use the ai assistant', 'ask the ai', 'let the ai handle it',
       'activate ai mode', 'can the ai do this', 'use ai for this',
       'do it with ai', 'ask the ai model', 'use ai',
+    ],
+  },
+  'system.chit_chat.ack': {
+    examples: [
+      'nice', 'cool', 'great', 'perfect', 'nice one',
+      'good stuff', 'sweet', 'thats great',
+      'awesome work', 'cool cool',
+    ],
+  },
+  'system.chit_chat.joke': {
+    examples: [
+      'tell me a joke', 'make me laugh', 'give me a joke',
+      'got any jokes', 'tell a joke', 'say something funny',
+      'joke for me', 'tell me something funny',
     ],
   },
   'system.monitoring.metrics': {

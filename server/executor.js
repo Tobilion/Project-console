@@ -210,7 +210,10 @@ export function executeCommand(command, cwd, ws, projectId) {
         // another one instead? (Y/n)" prompt (react-scripts/CRA) had no way to ever be answered
         // — the process would just hang. 'pipe' costs nothing when nothing writes to it; only
         // used when the port-conflict prompt below is actually detected and the user approves.
-        stdio: ['pipe', 'pipe', 'pipe']
+        stdio: ['pipe', 'pipe', 'pipe'],
+        // windowsHide: true prevents a flashing console window when the parent process has no
+        // attached console (daemon mode, background start, npx launcher). Harmless on macOS/Linux.
+        windowsHide: true
       });
     } catch (err) {
       sendEvent('error_output', `Failed to start process: ${err.message}`);

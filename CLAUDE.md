@@ -608,6 +608,11 @@ real dependency):
   answer came from the README or from language detection. AI mode already did the equivalent of
   this generically via its own tool loop (see `ollamaContext.js`'s `executeCommand` instructions) —
   this is what gives *trigger mode* (Ollama fully off) the same "read the docs first" behavior.
+  The Python run-command patterns accept an optional interpreter path prefix (`[\w.:\\\/-]*`) so
+  venv-style invocations (`venv\Scripts\python.exe main.py serve`) are recognized exactly like
+  bare `python main.py ...` — fixed 2026-08-03, confirmed live against NetPulse's venv-based
+  README/CLAUDE.md (both docs use `venv\Scripts\python.exe ...` now; before the fix
+  `findDocumentedRunCommand()` returned `null` for them).
 - **Trigger-mode run-command guessing extended to Go/Rust/Java/Ruby/PHP/C#** (previously
   Python/JS-only — anything else fell into a generic `start <entrypoint>` suggestion that's
   actively wrong for compiled languages, e.g. `start main.go` just opens the file in a text
@@ -1034,6 +1039,13 @@ review process yet. Found and fixed four real issues, all already patched in the
   still resolve to `project.knowledge.commands`, "stop server" 0.309 and "check git status"
   0.264 stay well below both bars) + `npm run lint`; not yet re-verified live through a chat
   session.
+  Same-day follow-up: NetPulse's own `console.config.json` command entries (and the harness fake
+  project that mirrors them) were updated to use `venv\Scripts\python.exe main.py ...` — its
+  README/CLAUDE.md/main.py now require the venv interpreter (the system `python` lacks
+  `speedtest`, and `main.py` aborts with guidance if the module is missing). The
+  `readmeRunParser.js` Python patterns were extended with an optional interpreter path prefix
+  (`[\w.:\\\/-]*`) so venv-style commands parse the same as bare `python ...` (see the 2026-07-30
+  readmeRunParser entry above).
 - **Stale `dist/server.js` silently shadows source changes (bit twice, 2026-08-03).** `start.bat`'s
   WEB_MODE checks `IF EXIST "dist\server.js"` and runs `npm start` (`node dist/server.js`, the
   esbuild bundle) instead of `npm run dev` (`tsx server/index.js`, live source) whenever a bundle
@@ -1214,6 +1226,46 @@ review process yet. Found and fixed four real issues, all already patched in the
     - `npm run check-intents` after Phase 3: 1 within-intent dupe + 6 cross-intent exact dupes +
       72 near-dups — the exact same pre-existing set as after Phase 2, zero new. `npm run lint`
       clean. Not yet live-chat-verified — same caveat as Phases 1-2.
+
+- **Fixed 2026-08-03 (Phase 1 — command-window fix): `executor.js` spawn was missing `windowsHide: true`.** When the server runs without an attached console (daemon mode via `scripts/start-daemon.ps1`, background start via `start.bat`, or `npx local-project-console` launcher), Windows allocates a fresh console window for every child process spawned by `executeCommand()` — the "window for each command" symptom. Added `windowsHide: true` to the spawn options (harmless on macOS/Linux, required on Windows for consoleless parents). Verified live in daemon mode: commands run from chat no longer flash a cmd window; dev servers still detach correctly and `stop server` still works.
+
+- **Fixed 2026-08-03 (Phase 2 — trigger-mode chit-chat expansion):** Added 3 new chit-chat intents + widened existing pools + time-of-day greetings:
+  - `system.chit_chat.ack` — brief acknowledgment replies ("nice", "cool", "great", etc.). Confirm-prompt responses go through `handleConfirmResponse`, NOT the matcher — these can never approve a pending command.
+  - `system.chit_chat.joke` — deterministic programmer jokes (8 variants), no network/AI.
+  - Greeting handler: added time-of-day opener (morning/afternoon/evening/night via `new Date().getHours()`) as an extra `pickRandom` element.
+  - Status pool: added `'you there', 'you still there', 'still there', 'are you there', 'are you awake'`.
+  - Gratitude pool: added `'good job', 'nice work', 'great job', 'well done'` (ownership clean: praise → gratitude, acks → ack).
+  - Farewell pool: widened from 10 to ~20 variants.
+  - All new chit-chat intents registered in BOTH `BUILTIN_INTENTS` AND `PURE_CHITCHAT_INTENTS` (the garbled-input guard set).
+  - `npm run check-intents`: zero NEW exact/near dupes (pre-existing ones left per owner rule).
+  - Full harness: CONTROL battery byte-identical, all new + adjacent batteries green (159/159).
+  - Verified: harness + lint + check-intents all pass.
+
+- **Fixed 2026-08-03 (Phase 3 — trigger-mode basic calls):** Seven new deterministic, immediate,
+  non-destructive intents (spec file's "basics" phase): `project.action.open_in_vscode` (spawns
+  `code <path>`, ENOENT → File→Open Folder guidance instead of raw error), `project.action.open_in_explorer`
+  (platform-branched `explorer`/`open`/`xdg-open`), `project.action.open_site` (reads `state.lastDevUrls`;
+  no URL → guidance, never spawns), `project.action.copy_path` (new `copy_to_clipboard` WS event —
+  the one new message type, handled in `useConsole.ts`'s `handleWebSocketMessage` switch per the
+  keep-them-in-sync convention — + an answer), `git_remote_info` (read-only `git remote -v`, same
+  isGitRepo gate as git_diff), `project.context.running_processes` (GLOBAL list across all projects
+  from the shared `runningProcesses` map + lastDevUrls — distinct from the question-shaped, single-
+  project `dev_server_status`), `project.context.session_info` (count + recent 3 from the central
+  conversationStore index). All seven verified in `BUILTIN_INTENTS` (the gate that has silently
+  killed intents 5+ times — checked explicitly). Measured seed-trimming: `open the site`/`open the
+  website` removed from `open_site` (exact cross-intent dupes with run_project, pre-existing owner
+  keeps them — check-intents verified 0 new after). Harness: **280/280** (full 133-input regression
+  + 7 new batteries + 21 new adjacent must-not-steal + 7 handler-shape checks). Three adjacent
+  probes investigated, all confirmed **pre-existing** (byte-identical at the pre-Phase-3 commit
+  c92c1f6 via git worktree, deliberately not fixed in this phase): (1) `open the project` → stage-1b
+  CONFIG_RUN_ENTRY_FLOOR diverts it to the pytest entry (0.590 ≥ 0.55) — same documented trade-off
+  class as `run this project` 0.517 in matcher.js:29, and raising the floor would break the
+  verified "run the site and watch" 0.565 → watch control; (2) `git remote add origin <url>` never
+  reaches the matcher live — connection.js's typed-command bypass (isCommandAllowed → git) runs it
+  directly, so the harness's git_status misroute is unreachable in production; (3) `what is the dev
+  url` is unseeded (deliberately-excluded "what is the url" family in dev_server_status) AND slips
+  past the link pre-check regex (which needs link/url/address immediately after "the ") → NLP-stage
+  misroute to stack. Not yet live-chat-verified — same caveat as Phases 1-3.
 
 - **CLI project picker registering one keystroke as two (2026-07-30, reported directly: typing
   "10" for project #10 acted like each digit was pressed twice).** All three

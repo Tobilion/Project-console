@@ -263,7 +263,8 @@ harness (real modules, real embeddings), `npm run check-intents`, and `npm run l
 | 1 | `run_tests`, `project.context.dev_server_status`, `file_find` | Done (harness-verified, not yet live-chat-verified) |
 | 2 | `git_fetch`, `git_ahead_behind`, `git_tag`, `project.workflow.checkpoint`, `project.context.recent_activity` | Done (harness-verified, not yet live-chat-verified) |
 | 3 | `system.chit_chat.needs_ai_mode`, `git_stash_list` | Done (harness-verified, not yet live-chat-verified) |
-| 3 | `system.chit_chat.needs_ai_mode`, `git_stash_list` | Planned |
+| 2 (chit-chat) | `system.chit_chat.ack`, `system.chit_chat.joke`, widened pools + time-of-day | Done (harness-verified) |
+| 3 (basics) | `open_in_vscode`, `open_in_explorer`, `open_site`, `copy_path`, `git_remote_info`, `running_processes`, `session_info` | Done (harness-verified, not yet live-chat-verified) |
 | 4 | Close-out: CLAUDE.md consolidation, live `check collisions`, final summary | Planned |
 
 **Phase 1 (2026-08-03):**
@@ -331,6 +332,67 @@ harness (real modules, real embeddings), `npm run check-intents`, and `npm run l
   as regression, all still green, plus 2 new batteries + 6 more adjacent must-not-steal checks).
   Live chat verification pending (Phase 4).
 
+**Phase 2 — Chit-Chat Expansion (2026-08-03):**
+- **`system.chit_chat.ack`** — brief acknowledgment replies ("nice", "cool", "great", "perfect",
+  "good stuff", "sweet", "nice work", "awesome work", etc.). 11 examples. Handler picks from 5
+  varied replies. Confirm-prompt responses go through `handleConfirmResponse`, NOT the matcher —
+  these can never approve a pending command.
+- **`system.chit_chat.joke`** — 8 deterministic programmer jokes (no network, no AI): dark mode
+  bugs, binary people, SQL bar join, developer cache, hardware/software, debugging needles, "works
+  on my machine", Java/C# glasses. Handler uses `pickRandom`.
+- **Greeting handler widened**: added time-of-day opener (morning/afternoon/evening/night via
+  `new Date().getHours()`) as an extra `pickRandom` element; pool expanded from ~5 to 10+
+  variants.
+- **Status pool widened**: added `'you there', 'you still there', 'still there', 'are you there',
+  'are you awake', 'still alive', 'ping', 'pong', 'everything running', 'all good still',
+  'how is the project', 'console status', 'are you up', 'system status'`.
+- **Gratitude pool widened**: added `'good job', 'nice work', 'great job', 'well done'` —
+  ownership clean: praise → gratitude, acks → ack.
+- **Farewell pool widened** from 10 to ~20 variants.
+- All new chit-chat intents registered in BOTH `BUILTIN_INTENTS` AND `PURE_CHITCHAT_INTENTS`
+  (the garbled-input guard set — missing either = unreachable or unguarded).
+- `npm run check-intents`: zero NEW exact/near dupes (pre-existing ones left per owner rule).
+- Full harness: CONTROL battery byte-identical, all new + adjacent batteries green (159/159).
+- Verified: harness + lint + check-intents all pass.
+
+**Phase 3 — Trigger-Mode Basic Calls (2026-08-03):** Seven deterministic, immediate,
+non-destructive "do this for me" intents — no confirm flow, no AI, no new WS round-trips beyond one
+new frontend event. All registered in `BUILTIN_INTENTS`.
+- **`project.action.open_in_vscode`** — spawns `code <project.path>` (detached, `stdio: ignore`);
+  if the CLI isn't on PATH, answers with File → Open Folder guidance instead of the raw error.
+- **`project.action.open_in_explorer`** — spawns the OS file explorer, branching on platform
+  (`explorer` on Windows, `open` on macOS, `xdg-open` on Linux).
+- **`project.action.open_site`** — reads `state.lastDevUrls`; with no recorded URL it answers
+  guidance ("run the site" / "what is the link"), never spawns. With one, opens the browser
+  (`start`/`open`/`xdg-open`).
+- **`project.action.copy_path`** — emits a new `copy_to_clipboard` WS event (`useConsole.ts` has
+  the `navigator.clipboard` handler) + an answer showing the path. The only Phase-3 intent with a
+  frontend counterpart.
+- **`git_remote_info`** — read-only `git remote -v`, same `isGitRepo` gate as `git_diff`;
+  answers "not a git repo yet" instead of throwing.
+- **`project.context.running_processes`** — GLOBAL listing across all projects from the shared
+  `runningProcesses` map + `lastDevUrls` (command, URL, since-when). Distinct from
+  `dev_server_status` (question-shaped "is it running", one project) — this one lists everything.
+- **`project.context.session_info`** — session count + most recent 3 from the central
+  `conversationStore` index (read-only).
+- Wiring note: `copy_to_clipboard` is the one new WS message type — server emits it,
+  `useConsole.ts`'s `handleWebSocketMessage` switch handles it (kept in sync per conventions).
+- Measured seed-trimming: `open the site` / `open the website` were removed from `open_site`'s
+  examples — exact cross-intent dupes with `run_project` (pre-existing owner keeps them, verified
+  via check-intents before/after).
+- Verification status: **harness-verified only** (280/280 — the full 133-input Phase-3 battery kept
+  as regression, all green, plus 7 new batteries = 120 new dispatch checks + 7 handler-shape checks
+  + 21 new adjacent must-not-steal checks). Three adjacent probes were investigated and confirmed
+  **pre-existing** (byte-identical at the pre-Phase-3 commit, deliberately not fixed here): (1)
+  `open the project` → the stage-1b config-entry floor (0.590 vs the fake `test project` trigger
+  ≥ 0.55) diverts it to pytest instead of staying on `run_project` — same documented trade-off
+  class as `run this project` 0.517 in matcher.js; (2) `git remote add origin <url>` never reaches
+  the matcher in the live app (connection.js's typed-command bypass runs it directly), so the
+  harness's `git_status` misroute is unreachable in production; (3) `what is the dev url` is an
+  unseeded shape that slips past both the link pre-check regex and `dev_server_status`'s
+  deliberately-excluded "what is the url" family → NLP-stage misroute to `stack`. Live chat
+  verification pending (Phase 4).
+
 ## Architecture
 
 ```
@@ -371,7 +433,8 @@ server/
 │                                and generates a tailored console.config.json.
 ├── conversationStore.js        — Session CRUD + .console/ management + gitignore helper.
 ├── executor.js                 — Shell command spawner, URL detection, port-retry, buffered
-│                                output streaming.
+│                                output streaming. `windowsHide: true` prevents flashing cmd
+│                                windows in daemon/background modes (Windows only).
 ├── outputSummarizer.js         — Post-command heuristic summary (errors/warnings/results).
 ├── dangerousPatterns.js        — Hard blocklist (force-push, rm -rf, shutdown, etc.).
 ├── gitSafety.js                — Checkpoint commits + undo.

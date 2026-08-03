@@ -50,7 +50,7 @@ const BUILTIN_INTENTS = new Set([
   'system.chit_chat.clear', 'system.chit_chat.help', 'system.chit_chat.git_status',
   'system.chit_chat.explain_followup', 'system.chit_chat.undo', 'system.chit_chat.deploy',
   'system.chit_chat.yes_no', 'system.chit_chat.farewell', 'system.chit_chat.identity',
-  'system.chit_chat.needs_ai_mode',
+  'system.chit_chat.needs_ai_mode', 'system.chit_chat.ack', 'system.chit_chat.joke',
   'project.knowledge.overview', 'project.knowledge.stack', 'project.knowledge.commands',
   'project.knowledge.gotchas', 'project.knowledge.architecture',
   'project.context.structure', 'project.context.languages', 'project.context.file_count',
@@ -58,15 +58,18 @@ const BUILTIN_INTENTS = new Set([
   'project.context.tests', 'project.context.dependencies', 'project.context.config',
   'project.context.routes', 'project.context.file_relations', 'project.context.monorepo',
   'project.context.todos', 'project.context.biggest_files', 'project.context.dev_server_status',
-  'project.context.recent_activity',
+  'project.context.recent_activity', 'project.context.running_processes',
+  'project.context.session_info',
   'run_project', 'project.knowledge.how_to_run', 'run_tests', 'project.workflow.checkpoint',
   'git_push', 'git_commit', 'git_commit_push', 'git_add',
   'git_init', 'git_ignore_add', 'git_rm_cached', 'npm_install',
   'npm_build', 'npm_run', 'file_create', 'file_delete', 'file_append', 'file_read', 'file_find',
-  'git_remote_add', 'project_scan', 'project_list',
+  'git_remote_add', 'git_remote_info', 'project_scan', 'project_list',
   'git_log', 'git_branch', 'git_checkout', 'git_pull',
-  'git_diff', 'git_stash', 'git_stash_pop', 'git_stash_list', 'git_branch_create',
   'git_fetch', 'git_ahead_behind', 'git_tag',
+  'git_diff', 'git_stash', 'git_stash_pop', 'git_stash_list', 'git_branch_create',
+  'project.action.open_in_vscode', 'project.action.open_in_explorer',
+  'project.action.open_site', 'project.action.copy_path',
   'system.monitoring.metrics', 'system.chit_chat.port',
 ]);
 
@@ -99,6 +102,11 @@ const PURE_CHITCHAT_INTENTS = new Set([
   // could just as easily land here as on gratitude, so it gets the same guard. Registered in
   // BOTH this set and BUILTIN_INTENTS — this is the one intent that must be in both.
   'system.chit_chat.needs_ai_mode',
+  // ack (2026-08-03, Phase 2.1): zero-argument, always-safe-sounding canned reply — same
+  // garbled-input guard as the rest of this set.
+  'system.chit_chat.ack',
+  // joke (2026-08-03, Phase 2.3): zero-argument, deterministic jokes — same garbled-input guard.
+  'system.chit_chat.joke',
 ]);
 
 function looksLikeRealRequest(input) {

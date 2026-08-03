@@ -261,4 +261,22 @@ export const PROJECT_CONTEXT_INTENTS = {
       'show me what was modified recently', 'whats been changed recently',
     ],
   },
+  'project.context.running_processes': {
+    examples: [
+      'whats running', 'what is running right now', 'show running processes',
+      'list running processes', 'whats still running', 'any processes running',
+      'whats running in the background', 'show all running commands',
+      'what commands are running', 'list active processes', 'show background processes',
+      'whats currently running', 'show me running tasks',
+    ],
+  },
+  'project.context.session_info': {
+    examples: [
+      'how many chats do i have', 'show my chat history count',
+      'how many sessions exist', 'list my recent chats',
+      'show recent sessions', 'how many conversations do i have',
+      'session count', 'chat count', 'how many chat sessions',
+      'show my sessions', 'list sessions', 'what chats do i have',
+    ],
+  },
 };

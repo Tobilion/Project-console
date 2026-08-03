@@ -274,4 +274,13 @@ export const GIT_INTENTS = {
       'create a branch for this feature', 'branch this off',
     ],
   },
+  'git_remote_info': {
+    examples: [
+      'what is my remote', 'what is the remote url', 'show my remotes',
+      'git remote info', 'what remote is this on', 'where is this pushed to',
+      'show the remote url', 'whats the origin url', 'show git remotes',
+      'list remotes', 'what remotes exist', 'git remote -v',
+      'show remote info', 'what is the git remote', 'remote repository info',
+    ],
+  },
 };

@@ -362,6 +362,13 @@ export function useConsole() {
       case 'server_url':
         sessions.setMessages(prev => [...prev, { id, type: 'bot', content: `🔗 Dev server running at **${payload.data}**`, isMarkdown: true }]);
         break;
+      case 'copy_to_clipboard':
+        navigator.clipboard.writeText(payload.data).then(() => {
+          sessions.setMessages(prev => [...prev, { id, type: 'system', content: `✅ Copied to clipboard: \`${payload.data}\`` }]);
+        }).catch(() => {
+          sessions.setMessages(prev => [...prev, { id, type: 'error', content: 'Failed to copy to clipboard' }]);
+        });
+        break;
       case 'dashboard_update':
         setDashboardUpdateSignal(n => n + 1);
         break;

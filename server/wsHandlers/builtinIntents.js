@@ -425,12 +425,17 @@ export async function handleBuiltinIntent(ws, action, input, project, sessionCon
     }
   } else if (action === 'system.chit_chat.greeting') {
     const ctx = injectContext(input, action, project.codebaseIndex);
+    const hour = new Date().getHours();
+    const timeOfDay = hour < 5 ? 'night' : hour < 12 ? 'morning' : hour < 17 ? 'afternoon' : 'evening';
     const opener = pickRandom([
-      `Hello! Local Console is active for [${project.name}].`,
+      `Good ${timeOfDay}! Local Console is active for [${project.name}].`,
       `Hey there — [${project.name}] is loaded and ready.`,
       `Hi! Ready to help with [${project.name}].`,
       `Hey! [${project.name}] is up. What are we working on?`,
       `Good to see you — [${project.name}] is live.`,
+      `Welcome back to [${project.name}] — ${timeOfDay} edition.`,
+      `${timeOfDay.charAt(0).toUpperCase() + timeOfDay.slice(1)}! [${project.name}] is standing by.`,
+      `Hi again — [${project.name}] is still here.`,
     ]);
     let responseText = `${opener}\n\n` +
       `• Location: ${project.path}\n` +
@@ -495,6 +500,35 @@ export async function handleBuiltinIntent(ws, action, input, project, sessionCon
         `That one needs AI mode — flip the AI toggle at the top of this chat (next to the model picker) and ask again. AI mode gives me read/write tools scoped to [${project.name}], so I can handle open-ended requests.`,
         `This is trigger mode, which only handles the fixed built-in actions. Use the AI toggle in the header of this chat to switch AI mode on for requests like that, then re-ask.`,
         `AI mode isn't on right now. Flip the AI switch in the chat header, then ask me again — with AI on I can work with files in [${project.name}] and answer open-ended questions.`,
+      ]),
+    }));
+  } else if (action === 'system.chit_chat.ack') {
+    // New intent (2026-08-03, Phase 2.1): brief acknowledgment replies — "nice", "cool", etc.
+    // Confirm-prompt responses go through handleConfirmResponse, NOT the matcher — so these
+    // can never approve a pending command.
+    ws.send(JSON.stringify({
+      type: 'answer',
+      data: pickRandom([
+        `Glad it worked! What's next on [${project.name}]?`,
+        `Nice — anything else on [${project.name}]?`,
+        `Good stuff. Ready for the next one.`,
+        `Awesome. What are we doing next?`,
+        `Cool. Let me know what you need.`,
+      ]),
+    }));
+  } else if (action === 'system.chit_chat.joke') {
+    // New intent (2026-08-03, Phase 2.3): programmer jokes — deterministic, no network, no AI.
+    ws.send(JSON.stringify({
+      type: 'answer',
+      data: pickRandom([
+        `Why do programmers prefer dark mode? Because light attracts bugs.`,
+        `There are 10 types of people in the world: those who understand binary and those who don't.`,
+        `A SQL query walks into a bar, walks up to two tables and asks: "Can I join you?"`,
+        `Why did the developer go broke? Because he used up all his cache.`,
+        `Hardware: the part of a computer that you can kick. Software: the part you can only curse at.`,
+        `Debugging: removing the needles from the haystack.`,
+        `It works on my machine — the classic production deployment strategy.`,
+        `Why do Java developers wear glasses? Because they don't C#.`,
       ]),
     }));
   } else if (action === 'system.chit_chat.clear') {
@@ -1355,6 +1389,99 @@ export async function handleBuiltinIntent(ws, action, input, project, sessionCon
       ws.send(JSON.stringify({ type: 'answer', data: `### Console Metrics\n\n**Counters:**\n${counters || '_(none)_'}\n\n**Latency:**${histoLines || ' _(none)_'}\n\n**Recent Events:**\n${recent || ' _(none)_'}` }));
     } catch (err) {
       ws.send(JSON.stringify({ type: 'answer', data: `### Console Metrics\n\nCould not fetch metrics: ${err.message}` }));
+    }
+  } else if (action === 'project.action.open_in_vscode') {
+    // Phase 3 (2026-08-03): open project folder in VS Code. If `code` not on PATH, answer with
+    // guidance instead of the raw error.
+    const { spawn } = await import('child_process');
+    const child = spawn('code', [project.path], { detached: true, stdio: 'ignore' });
+    child.on('error', (err) => {
+      if (err.code === 'ENOENT' || err.message.includes('not recognized')) {
+        ws.send(JSON.stringify({ type: 'answer', data: `VS Code \`code\` CLI not found on PATH. Open VS Code manually and use File → Open Folder → \`${project.path}\`.` }));
+      } else {
+        ws.send(JSON.stringify({ type: 'error_output', data: `Failed to open VS Code: ${err.message}\n` }));
+      }
+    });
+    child.unref();
+    ws.send(JSON.stringify({ type: 'answer', data: `Opening **[${project.name}]** in VS Code...` }));
+  } else if (action === 'project.action.open_in_explorer') {
+    // Phase 3 (2026-08-03): open project folder in OS file explorer — branch on platform.
+    const { spawn } = await import('child_process');
+    const isWindows = process.platform === 'win32';
+    const isMac = process.platform === 'darwin';
+    let cmd, args;
+    if (isWindows) {
+      cmd = 'explorer';
+      args = [project.path];
+    } else if (isMac) {
+      cmd = 'open';
+      args = [project.path];
+    } else {
+      cmd = 'xdg-open';
+      args = [project.path];
+    }
+    const child = spawn(cmd, args, { detached: true, stdio: 'ignore' });
+    child.on('error', (err) => {
+      ws.send(JSON.stringify({ type: 'error_output', data: `Failed to open folder: ${err.message}\n` }));
+    });
+    child.unref();
+    ws.send(JSON.stringify({ type: 'answer', data: `Opening **[${project.name}]** folder in file explorer...` }));
+  } else if (action === 'project.action.open_site') {
+    // Phase 3 (2026-08-03): open the dev server URL in browser. Reads state.lastDevUrls.
+    const url = state.lastDevUrls.get(project.id);
+    if (!url) {
+      ws.send(JSON.stringify({ type: 'answer', data: `No dev server URL recorded for **[${project.name}]**. Say "run the site" to start it, or "what is the link" if you think it's already running.` }));
+      return true;
+    }
+    const { spawn } = await import('child_process');
+    const isWindows = process.platform === 'win32';
+    const isMac = process.platform === 'darwin';
+    const cmd = isWindows ? 'start' : isMac ? 'open' : 'xdg-open';
+    const args = isWindows ? ['', url] : [url];
+    const child = spawn(cmd, args, { detached: true, stdio: 'ignore', shell: isWindows });
+    child.on('error', (err) => {
+      ws.send(JSON.stringify({ type: 'error_output', data: `Failed to open browser: ${err.message}\n` }));
+    });
+    child.unref();
+    ws.send(JSON.stringify({ type: 'answer', data: `Opening **${url}** in your browser...` }));
+  } else if (action === 'project.action.copy_path') {
+    // Phase 3 (2026-08-03): emit copy_to_clipboard WS event — frontend handles clipboard write.
+    ws.send(JSON.stringify({ type: 'copy_to_clipboard', data: project.path }));
+    ws.send(JSON.stringify({ type: 'answer', data: `Copied **[${project.name}]** path to clipboard:\n\`${project.path}\`` }));
+  } else if (action === 'git_remote_info') {
+    // Phase 3 (2026-08-03): read-only `git remote -v` — same isGitRepo gate as git_diff.
+    if (!(await isGitRepo(project.path))) {
+      ws.send(JSON.stringify({ type: 'answer', data: `**[${project.name}]** isn't a git repository yet. No remotes to show.` }));
+    } else {
+      executeCommand('git remote -v', project.path, ws, project.id);
+    }
+  } else if (action === 'project.context.running_processes') {
+    // Phase 3 (2026-08-03): GLOBAL list across ALL projects from runningProcesses + lastDevUrls.
+    const procs = [];
+    for (const [pid, info] of runningProcesses) {
+      const proj = state.activeProjectsCache.find((p) => p.id === pid);
+      const url = state.lastDevUrls.get(pid);
+      procs.push({ project: proj?.name || pid, command: info.command, url, runningSince: info.startedAt });
+    }
+    if (procs.length === 0) {
+      ws.send(JSON.stringify({ type: 'answer', data: `Nothing running across all projects. Say "run the site" in a project to start one.` }));
+    } else {
+      const lines = procs.map((p) =>
+        `- **[${p.project}]** \`${p.command}\`${p.url ? ` — ${p.url}` : ''}${p.runningSince ? ` (since ${new Date(p.runningSince).toLocaleTimeString()})` : ''}`
+      ).join('\n');
+      ws.send(JSON.stringify({ type: 'answer', data: `### Running processes\n\n${lines}` }));
+    }
+  } else if (action === 'project.context.session_info') {
+    // Phase 3 (2026-08-03): session count + most recent 3 from conversationStore index.
+    const { listSessions } = await import('../conversationStore.js');
+    const sessions = await listSessions();
+    if (sessions.length === 0) {
+      ws.send(JSON.stringify({ type: 'answer', data: `No chat sessions found.` }));
+    } else {
+      const recent = sessions.slice(0, 3).map((s) =>
+        `- **${s.title}** ([${s.projectName}] — ${new Date(s.updatedAt).toLocaleString()})`
+      ).join('\n');
+      ws.send(JSON.stringify({ type: 'answer', data: `### Chat sessions (${sessions.length} total)\n\n${recent}${sessions.length > 3 ? `\n\n...and ${sessions.length - 3} more` : ''}` }));
     }
   } else {
     return false; // unrecognized intent
