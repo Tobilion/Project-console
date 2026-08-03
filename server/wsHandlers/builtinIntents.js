@@ -250,12 +250,15 @@ const CONFIG_SUGGESTION_FLOOR = 0.4;
 
 // Requested directly (2026-07-30): findDocumentedRunCommands() returns every run command a doc
 // documents, in doc order — and the FIRST one is often NOT the web server (NetPulse's "## Run"
-// block lists `once` first, `serve` third). For a site-flavored ask ("run the site" / "start the
-// web server") prefer whichever documented command actually SERVES the web app (serve/flask /
-// uvicorn/vite/npm dev shape) over the raw first match, so "run the site" doesn't land on a
-// one-shot command documented first. Non-site asks and single-command docs keep the first-match
-// behavior exactly as before.
-const SITE_FLAVORED_INPUT_RE = /\b(site|website|web ?(app|site|server)|dashboard|frontend|page)\b/i;
+// block lists `once` first, `serve` third). For a site-flavored ("run the site" / "start the
+// web server") or server-flavored ("run the server" / "start the api") ask, prefer whichever
+// documented command actually SERVES the web app (serve/flask / uvicorn/vite/npm dev shape) over
+// the raw first match, so neither "run the site" nor "run the server" lands on a one-shot command
+// documented first. Non-site asks and single-command docs keep the first-match behavior exactly
+// as before. Widened 2026-08-03 to include server/api/backend demand-side shapes — the earlier
+// site-only list let a README-only (no console.config.json) project's "run the server" fall back
+// to the first documented command (e.g. `once`) instead of the actual `serve`.
+const SITE_FLAVORED_INPUT_RE = /\b(site|website|web ?(app|site|server)|dashboard|frontend|page|server|api|backend)\b/i;
 const SERVER_SHAPED_COMMAND_RE = /\b(serve\b|server|flask\s+run|uvicorn|gunicorn|vite(\s|$)|php\s+artisan\s+serve|dev\b|npm\s+run\s+(dev|start|serve)|dotnet\s+run|\bhttp\.server)/i;
 
 function pickDocumentedRunCommand(documents, input) {
@@ -320,6 +323,14 @@ async function projectTypeSuggestions(ws, project, input, scripts) {
   // check: a config entry is authored for this exact console, so it's the most trustworthy
   // source of all. Deliberately suggestion-only — auto-execution stays in matcher.js where the
   // floor is higher and the safety checks (confirm flow, params) are the normal entry path.
+  // Confirmed live 2026-07-29 (NetPulse, a real Flask/Python project): this used `langs.includes(
+  // 'Python')` but codebaseIndexer.js's detectLanguages() always formats each entry as
+  // "Python (4 files)" — never a bare name — so `.includes('Python')` (an exact-match array
+  // check) could never be true for ANY project. Same bug for 'JavaScript'/'TypeScript'. This
+  // silently broke the Python and JS branches below for every project, always falling through to
+  // the generic "entry point" suggestion instead of "python main.py" / npm script suggestions.
+  const isPython = langs.some((l) => l.startsWith('Python'));
+  const isJs = langs.some((l) => l.startsWith('JavaScript') || l.startsWith('TypeScript'));
   const cfgEntries = (project.config || project)?.entries || [];
   if (cfgEntries.some((e) => e.type === 'command')) {
     const projectIndex = state.activeProjectsCache.findIndex((p) => p.id === project.id);
@@ -330,6 +341,21 @@ async function projectTypeSuggestions(ws, project, input, scripts) {
       ws.send(JSON.stringify({ type: 'suggestions', data: [bestEntry.action] }));
       return;
     }
+  }
+  const scriptNames = Object.keys(scripts);
+  // Requested directly (2026-08-03): package.json's scripts are the more CURRENT source of truth
+  // than a README/CLAUDE.md that may document an older command — a repo's package file gets
+  // updated on every dependency/script change while the docs often lag behind. So when the project
+  // has real npm scripts (and no matching config entry — config still wins, it's authored for this
+  // exact console), prefer listing the actual scripts over trusting a documented command that may
+  // be stale. If it turns out the doc has a command the scripts don't cover, the doc still shows
+  // up lower in the pipeline — the scripts list is strictly the higher-trust source here. Order:
+  // config entries > package.json scripts > documented README/CLAUDE.md command > bat launcher >
+  // language guess.
+  if (scriptNames.length > 0) {
+    ws.send(JSON.stringify({ type: 'answer', data: `### Available Scripts\n\nClick one to run it:` }));
+    ws.send(JSON.stringify({ type: 'suggestions', data: scriptNames.map((s) => `npm run ${s}`) }));
+    return;
   }
   const documented = pickDocumentedRunCommand(findDocumentedRunCommands(project), input);
   if (documented) {
@@ -348,14 +374,6 @@ async function projectTypeSuggestions(ws, project, input, scripts) {
     }));
     return;
   }
-  // Confirmed live 2026-07-29 (NetPulse, a real Flask/Python project): this used `langs.includes(
-  // 'Python')`, but codebaseIndexer.js's detectLanguages() always formats each entry as
-  // "Python (4 files)" — never the bare name — so `.includes('Python')` (an exact-match array
-  // check) could never be true for ANY project. Same bug for 'JavaScript'/'TypeScript'. This
-  // silently broke the Python and JS branches below for every project, always falling through to
-  // the generic "entry point" suggestion instead of "python main.py" / npm script suggestions.
-  const isPython = langs.some((l) => l.startsWith('Python'));
-  const isJs = langs.some((l) => l.startsWith('JavaScript') || l.startsWith('TypeScript'));
   // Widened 2026-07-30 (raised directly, alongside the codebase indexer's own language coverage
   // widening) — these five used to have no trigger-mode run-command support at all and fell into
   // the generic `entries.length > 0` branch below, which just does `start <entrypoint>` — wrong
@@ -368,7 +386,6 @@ async function projectTypeSuggestions(ws, project, input, scripts) {
   const isRuby = !!idx?.keyFiles?.['Gemfile'];
   const isPhp = !!idx?.keyFiles?.['composer.json'];
   const isCSharp = entries.some((e) => e.endsWith('Program.cs')) || langs.some((l) => l.startsWith('C#'));
-  const scriptNames = Object.keys(scripts);
   const suggestions = [];
 
   if (isPython) {
@@ -392,9 +409,6 @@ async function projectTypeSuggestions(ws, project, input, scripts) {
   } else if (hasIndexHtml && !scriptNames.length) {
     ws.send(JSON.stringify({ type: 'answer', data: `This is a **static site** (no build step). Click a suggestion to serve it locally:` }));
     suggestions.push('npx serve .', 'python -m http.server 8080');
-  } else if (isJs && scriptNames.length > 0) {
-    ws.send(JSON.stringify({ type: 'answer', data: `### Available Scripts\n\nClick one to run it:` }));
-    scriptNames.forEach(s => suggestions.push(`npm run ${s}`));
   } else if (isJs) {
     ws.send(JSON.stringify({ type: 'answer', data: `JavaScript project with no npm scripts. Try:` }));
     suggestions.push('npx serve .', 'npx vite', 'npm install');

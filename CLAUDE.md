@@ -1724,6 +1724,26 @@ zero new dupes — same baseline as the Phase-3 intent batch it follows):
   (`/^(?:open|launch)\s+(?:the\s+|this\s+)?project$/i`) exempts exactly those phrasings from the
   stage-1b config-earn redirect; the verified redirect cases ("run the site and watch at interval
   of 5 minutes" 0.565, "run the network speed" 0.721) all start with a run verb and are untouched.
+- **Package.json scripts now outrank documented README/CLAUDE.md commands, and server/api/backend
+  asks pick the server-shaped command** (`builtinIntents.js`, 2026-08-03, requested directly —
+  "since the package file might be more current than the read me then that should be the proper
+  one"). Two changes to `projectTypeSuggestions()`'s fallback ordering:
+  - **Priority order is now: console.config.json entries > package.json scripts > documented
+    README/CLAUDE.md command > bat launcher > language guess.** The new scripts branch
+    (`scriptNames.length > 0`) lists the real `npm run ...` scripts as suggestion chips and
+    returns, before the documented-command branch ever runs — a repo's package file is updated on
+    every script/dependency change while the docs lag behind, so scripts are the more-current
+    source of truth. The old `isJs && scriptNames.length > 0` branch lower in the function became
+    unreachable and was removed; `isPython`/`isJs` were hoisted above `cfgEntries` so the new
+    branch can reuse them.
+  - **`SITE_FLAVORED_INPUT_RE` widened** from site/website/web/dashboard/frontend/page to also
+    match server/api/backend ("run the server", "start the api", "run the backend"). Before this,
+    a README-only project (no console.config.json) whose docs list a one-shot command first (e.g.
+    NetPulse's `once`) answered "run the server" with `once` instead of the actual `serve` — the
+    site-only list never covered server-flavored demand. Verified with a new README-only fake
+    project harness (no config entries, no package.json, real NetPulse `## Run` block): "run the
+    site"/"run the server"/"start the api"/"run the backend"/"run the dashboard" → serve (never
+    once), "run once" → once (first-match intact), `how_to_run` lists all 5 documented commands.
 
 ## Conventions
 
