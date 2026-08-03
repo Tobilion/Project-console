@@ -1745,6 +1745,47 @@ zero new dupes — same baseline as the Phase-3 intent batch it follows):
     site"/"run the server"/"start the api"/"run the backend"/"run the dashboard" → serve (never
     once), "run once" → once (first-match intact), `how_to_run` lists all 5 documented commands.
 
+## Chit-chat intelligence (2026-08-03, Phase 4 of `console-chitchat-ai-upgrade-prompt.md`)
+
+Handler-level only — no intent/matcher/example-phrase changes, so the full dispatch control battery
+is byte-identical (re-verified 298/298 after this phase). Four passes, all harness-verified at the
+handler level (fake ws + stubbed `chatOnce`, no Ollama needed) + `tsc --noEmit` + `check-intents`:
+
+- **Live-state enrichment (`buildLiveStateLine()`, `builtinIntents.js`).** Greeting and status
+  replies now append a `**Live state:**` line: console port (`state.serverPort`), `N project(s)
+  indexed` (`state.activeProjectsCache.length`), a running dev server for this project
+  (`runningProcesses.get(project.id)` → command + `state.lastDevUrls` URL + port-collision warning
+  via `withPortCollisionWarning()`), and an uncommitted-git-file count (`cachedUncommittedCount()`:
+  `git status --short` via `execFile`, cached 30s per project, `null` → line omitted, errors
+  swallowed). Every clause is individually try/caught so a failure in one can never break the
+  reply.
+- **Memory-aware greeting (`buildMemoryBlock()`, same file).** Greeting includes a `What the
+  console remembers about this project` block from `memory.md` via the already-existing
+  `formatMemoryForPrompt()` (2-line slice / 300 chars, omitted when the project has no memory).
+  Status deliberately stays lean — no memory block there (chosen over the spec's optional
+  §5.3B placement to keep the status reply tight; greeting is the one that gets the full context).
+- **Project-customizable canned replies (`chatReplies` in `console.config.json`).** A project can
+  override the canned pools per intent: `chatReplies: { greeting: [...], status: [...], gratitude:
+  [...], farewell: [...], ack: [...] }`. `server/projectScanner.js`'s `sanitizeChatReply()` drops
+  any non-array value and any unknown key at scan time (console.warn, never throws) — wired into
+  BOTH config-parse sites (`discoverProjects` and `scanSingleProject`), so a malformed
+  `chatReplies` can never break project discovery. The handler reads pools via `chatReplyPool()`
+  with the default pool as fallback.
+- **Smart chit-chat when AI is ON (`smartChitchatReply()`, same file).** Greeting and status only —
+  gratitude/farewell/ack stay fully canned (deliberate scope: those don't need tailoring, and
+  keeping them canned preserves the deterministic trigger-mode behavior the user asked for).
+  When AI mode is enabled, the handler calls `chatOnce` (`server/ollama.js`, single bounded call —
+  temp 0.7, `num_predict` 120, 8s wall-clock via `AbortSignal.timeout`, model = the user's
+  `sessionContext.aiModel` or the default) with a short prompt containing project name + the
+  canned reply as a fallback suggestion. Any failure/timeout/empty reply → the EXACT canned reply
+  is sent instead (spec's non-negotiable). AI OFF → never called (deterministic, verified).
+  Testable via `__setSmartChatOnceForTests(fn)` (module-level `let smartChatOnce = chatOnce` —
+  ESM const bindings can't be reassigned, so the handler calls the mutable indirection).
+
+Verification status: handler-harness (9/9), full control battery (298/298), lint, check-intents all
+green; NOT yet exercised live through a real chat + real Ollama — expected, and the manual
+verification kit in the spec (§2, §5) covers it at the end of the whole upgrade.
+
 ## Conventions
 
 - No file over ~400 lines; split by concern (see `server/wsHandlers/` for the pattern).

@@ -30,6 +30,36 @@ function isRecognizableByCodeAlone(codebaseIndex) {
   return codebaseIndex.hasRealCode || hasAnyKeyFile || codebaseIndex.hasGit;
 }
 
+// `chatReplies` is an OPTIONAL console.config.json top-level key (Phase 4.5 chit-chat
+// intelligence): pools of reply strings per chit-chat intent ("greeting"/"status"/"gratitude"/
+// "farewell"/"ack") that REPLACE that intent's built-in canned replies for this project. It's
+// validated here at scan time — a malformed `chatReplies` must be ignored (with a warning),
+// never a crash, exactly like a truncated package.json parse.
+const CHAT_REPLIES_INTENTS = new Set(['greeting', 'status', 'gratitude', 'farewell', 'ack']);
+function sanitizeChatReplies(config) {
+  if (!config || typeof config !== 'object') return;
+  const raw = config.chatReplies;
+  if (raw === undefined || raw === null) return;
+  if (typeof raw !== 'object' || Array.isArray(raw)) {
+    console.warn('[projectScanner] Ignoring invalid console.config.json "chatReplies" — expected an object keyed by intent.');
+    delete config.chatReplies;
+    return;
+  }
+  for (const key of Object.keys(raw)) {
+    if (!CHAT_REPLIES_INTENTS.has(key)) {
+      console.warn(`[projectScanner] Ignoring unknown chatReplies key "${key}" (allowed: ${[...CHAT_REPLIES_INTENTS].join(', ')}).`);
+      delete raw[key];
+      continue;
+    }
+    const pool = raw[key];
+    if (!Array.isArray(pool) || pool.length === 0 || pool.some((s) => typeof s !== 'string' || !s.trim())) {
+      console.warn(`[projectScanner] Ignoring invalid chatReplies.${key} — must be a non-empty array of non-empty strings.`);
+      delete raw[key];
+    }
+  }
+  if (Object.keys(raw).length === 0) delete config.chatReplies;
+}
+
 /** Builds a minimal config for a project recognized only via isRecognizableByCodeAlone() above —
  *  otherwise it would be included with an empty `entries: []` and no way to explain itself when
  *  asked "what is this project" in trigger mode. */
@@ -118,6 +148,7 @@ export async function discoverProjects(baseDir) {
           if (configStats.isFile()) {
             const configData = await fs.readFile(configPath, 'utf-8');
             config = JSON.parse(configData);
+            sanitizeChatReplies(config);
           }
         } catch (err) {}
 
@@ -233,6 +264,7 @@ export async function scanSingleProject(folderName, projectPath) {
     if (configStats.isFile()) {
       const configData = await fs.readFile(configPath, 'utf-8');
       config = JSON.parse(configData);
+      sanitizeChatReplies(config);
     }
   } catch (err) {}
 

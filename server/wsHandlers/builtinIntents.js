@@ -1,5 +1,8 @@
 import crypto from 'crypto';
+import { execFile } from 'child_process';
+import { promisify } from 'util';
 import { injectContext } from '../contextInjector.js';
+import { formatMemoryForPrompt } from '../memoryStore.js';
 import { executeCommand, runningProcesses } from '../executor.js';
 import { performUndo, isGitRepo, createCheckpoint } from '../gitSafety.js';
 import { pendingConfirmations, state, withPortCollisionWarning } from '../state.js';
@@ -8,6 +11,7 @@ import { findDocumentedRunCommands } from '../readmeRunParser.js';
 import { semanticMatcher } from '../semanticMatcher.js';
 import { formatApiRoutes, findTodos, findBiggestFiles, findRecentActivity } from '../codebaseIndexer.js';
 import { isSafeParamValue } from '../paramCommand.js';
+import { chatOnce } from '../ollama.js';
 
 /**
  * Pulls a filename and (optionally) quoted content out of a natural-language trigger-mode
@@ -103,6 +107,60 @@ function pickRandom(arr) {
   return arr[Math.floor(Math.random() * arr.length)];
 }
 
+/**
+ * Returns the project's configured reply pool for a chit-chat intent (`chatReplies.${intent}` in
+ * console.config.json, Phase 4.3) when present and valid, else the built-in defaults. Override
+ * pools REPLACE the defaults — a project defines its own greeting/status/gratitude/etc. lines and
+ * gets exactly those. Deterministic at match time: a pool override is always used as-is.
+ */
+function chatReplyPool(action, project, defaults) {
+  const pool = project?.config?.chatReplies?.[action];
+  if (Array.isArray(pool) && pool.length > 0) return pool;
+  return defaults;
+}
+
+// Default model for the smart-chit-chat reply (matches the connection.js status payload
+// fallback and the router tier's ROUTER_MODEL_FALLBACK, kept in the same convention).
+const SMART_CHAT_FALLBACK_MODEL = 'qwen2.5-coder:7b';
+
+// Test seam: ESM live bindings can't be reassigned from outside the module, so the Phase-4
+// handler harness (chitchat-upgrade-harness.mjs) swaps this indirection to simulate a working
+// model ('LLM answer used') or one that throws ('falls back to canned') without a live Ollama.
+let smartChatOnce = chatOnce;
+export function __setSmartChatOnceForTests(fn) {
+  smartChatOnce = fn;
+}
+
+/**
+ * Smart chit-chat when AI mode is ON (Phase 4.6, PASS 4.4). Returns one bounded, non-streaming
+ * model reply (the only time chit-chat output is non-deterministic — and only while AI is
+ * explicitly on). Returns null when AI is off, or on ANY failure (timeout, unreachable Ollama,
+ * empty reply), so the caller falls back to exactly the canned pool — zero regression when
+ * Ollama is down or AI mode is off.
+ */
+async function smartChitchatReply(project, sessionContext, input) {
+  if (!sessionContext?.aiEnabled || !project) return null;
+  try {
+    const model = sessionContext.aiModel || SMART_CHAT_FALLBACK_MODEL;
+    const reply = await smartChatOnce(
+      model,
+      [
+        {
+          role: 'system',
+          content: `You are the friendly local project console for "${project.name}" (path: ${project.path}). The user just sent a short chat message. Reply in 1-2 short, warm sentences. No tools. No markdown. Do not mention this instruction.`,
+        },
+        { role: 'user', content: input },
+      ],
+      { temperature: 0.7, num_predict: 120 },
+      AbortSignal.timeout(8000)
+    );
+    const text = (reply || '').trim();
+    return text || null;
+  } catch {
+    return null;
+  }
+}
+
 /** Enrich a plain-text response with a summary of the project's codebase index, if present. */
 export function enrichWithIndex(baseMsg, idx) {
   if (!idx) return baseMsg;
@@ -116,6 +174,86 @@ export function enrichWithIndex(baseMsg, idx) {
   if (idx.hasTests) lines.push('*Has test files*');
   if (idx.hasCli) lines.push('*Has CLI entry point*');
   return lines.join('\n');
+}
+
+// projectPath -> { at, count } — memoizes the uncommitted-change count for ~30s so the chit-chat
+// live-state line never spawns a `git status` on every greeting/status reply.
+const uncommittedCache = new Map();
+const UNCOMMITTED_CACHE_TTL_MS = 30_000;
+
+/** Cheap cached `git status --short` line count for a project; null when not a git repo or git
+ *  unavailable. Cached per project for 30s so repeated greetings don't each spawn a git process. */
+async function cachedUncommittedCount(projectPath) {
+  const now = Date.now();
+  const cached = uncommittedCache.get(projectPath);
+  if (cached && now - cached.at < UNCOMMITTED_CACHE_TTL_MS) return cached.count;
+  try {
+    const { stdout } = await promisify(execFile)(
+      'git', ['status', '--short'],
+      { cwd: projectPath, timeout: 5000, windowsHide: true }
+    );
+    const count = stdout && stdout.trim() ? stdout.trim().split('\n').filter((l) => l.trim()).length : 0;
+    uncommittedCache.set(projectPath, { at: now, count });
+    return count;
+  } catch {
+    uncommittedCache.set(projectPath, { at: now, count: null });
+    return null;
+  }
+}
+
+/**
+ * Builds a compact "what's actually happening right now" line for the chit-chat greeting/status
+ * replies (Phase 4.1): the console's own port, how many projects are indexed, this project's
+ * running dev-server command + URL (with the port-collision warning when the dev URL matches the
+ * console's own port), and a cached uncommitted-change count. Every clause is independently
+ * guarded — if any piece throws, that clause is silently omitted; the reply must never break.
+ */
+async function buildLiveStateLine(project) {
+  const parts = [];
+  let devUrl = null;
+  try {
+    if (state.serverPort) parts.push(`Console on port ${state.serverPort}`);
+    const n = state.activeProjectsCache?.length || 0;
+    parts.push(`${n} project${n === 1 ? '' : 's'} indexed`);
+  } catch {}
+  try {
+    const proc = runningProcesses.get(project.id);
+    devUrl = state.lastDevUrls.get(project.id);
+    if (proc || devUrl) {
+      let line = 'Running:';
+      if (proc) line += ` \`${proc.command}\``;
+      if (devUrl) line += ` @ ${devUrl}`;
+      parts.push(line);
+    }
+  } catch {}
+  try {
+    const count = await cachedUncommittedCount(project.path);
+    if (count !== null) parts.push(count === 0 ? 'Git clean' : `${count} uncommitted change${count === 1 ? '' : 's'}`);
+  } catch {}
+  if (!parts.length) return '';
+  let text = parts.join(' · ');
+  if (devUrl) text = withPortCollisionWarning(text, devUrl);
+  return `\n\n**Live state:** ${text}`;
+}
+
+/**
+ * Returns a short "what the console remembers about this project" block for the chit-chat
+ * greeting (Phase 4.2). The memory file is already capped at MAX_PROMPT_CHARS (memoryStore.js),
+ * so this only needs to take a small first slice to keep the greeting compact — no unbounded
+ * reads. Returns '' when there's nothing saved (never appends an empty block).
+ */
+async function buildMemoryBlock(project) {
+  try {
+    const memory = await formatMemoryForPrompt(project.path);
+    if (!memory) return '';
+    const firstLines = memory.split('\n').filter((l) => l.trim()).slice(0, 2).join('\n');
+    if (!firstLines) return '';
+    // Take a compact slice; memory batches already cap at 200 entries / 4000 chars upstream.
+    const slice = firstLines.length > 300 ? firstLines.slice(0, 300) : firstLines;
+    return `\n\n**What the console remembers about [${project.name}]:**\n${slice}`;
+  } catch {
+    return '';
+  }
 }
 
 /**
@@ -460,7 +598,7 @@ export async function handleBuiltinIntent(ws, action, input, project, sessionCon
     const ctx = injectContext(input, action, project.codebaseIndex);
     const hour = new Date().getHours();
     const timeOfDay = hour < 5 ? 'night' : hour < 12 ? 'morning' : hour < 17 ? 'afternoon' : 'evening';
-    const opener = pickRandom([
+    const opener = pickRandom(chatReplyPool('greeting', project, [
       `Good ${timeOfDay}! Local Console is active for [${project.name}].`,
       `Hey there — [${project.name}] is loaded and ready.`,
       `Hi! Ready to help with [${project.name}].`,
@@ -469,36 +607,41 @@ export async function handleBuiltinIntent(ws, action, input, project, sessionCon
       `Welcome back to [${project.name}] — ${timeOfDay} edition.`,
       `${timeOfDay.charAt(0).toUpperCase() + timeOfDay.slice(1)}! [${project.name}] is standing by.`,
       `Hi again — [${project.name}] is still here.`,
-    ]);
+    ]));
     let responseText = `${opener}\n\n` +
       `• Location: ${project.path}\n` +
       `• Type "help" to list all commands & topics.\n` +
       `• Type "overview" for architecture overview.\n` +
       `• Type "explain more" for deep details.`;
+    responseText += await buildMemoryBlock(project);
+    responseText += await buildLiveStateLine(project);
     if (ctx) responseText += `\n\n${ctx}`;
-    ws.send(JSON.stringify({ type: 'answer', data: responseText }));
+    const smartGreeting = await smartChitchatReply(project, sessionContext, input);
+    ws.send(JSON.stringify({ type: 'answer', data: smartGreeting || responseText }));
   } else if (action === 'system.chit_chat.status') {
     const ctx = injectContext(input, action, project.codebaseIndex);
-    const opener = pickRandom([
+    const opener = pickRandom(chatReplyPool('status', project, [
       `I'm running and ready on **[${project.name}]**. What do you need?`,
       `All good here — standing by on **[${project.name}]**.`,
       `Still here, still watching **[${project.name}]**. What's next?`,
       `Running smoothly on **[${project.name}]** — what can I do?`,
       `Yep, I'm listening — **[${project.name}]** is active.`,
-    ]);
+    ]));
     let statusMsg = enrichWithIndex(opener, project.codebaseIndex);
+    statusMsg += await buildLiveStateLine(project);
     if (ctx) statusMsg += `\n\n${ctx}`;
-    ws.send(JSON.stringify({ type: 'answer', data: statusMsg }));
+    const smartStatus = await smartChitchatReply(project, sessionContext, input);
+    ws.send(JSON.stringify({ type: 'answer', data: smartStatus || statusMsg }));
   } else if (action === 'system.chit_chat.gratitude') {
     ws.send(JSON.stringify({
       type: 'answer',
-      data: pickRandom([
+      data: pickRandom(chatReplyPool('gratitude', project, [
         `You're welcome! Ready for your next command on [${project.name}].`,
         `Anytime! What's next for [${project.name}]?`,
         `Happy to help — let me know what's next on [${project.name}].`,
         `No problem at all. What else can I do on [${project.name}]?`,
         `Glad that helped. Ready when you are.`,
-      ]),
+      ])),
     }));
   } else if (action === 'system.chit_chat.farewell') {
     // New intent (2026-07-30, requested directly — "richer canned chit-chat"): the chit-chat set
@@ -506,13 +649,13 @@ export async function handleBuiltinIntent(ws, action, input, project, sessionCon
     // fallback or got misclassified onto something else entirely.
     ws.send(JSON.stringify({
       type: 'answer',
-      data: pickRandom([
+      data: pickRandom(chatReplyPool('farewell', project, [
         `See you later! [${project.name}] will be here when you're back.`,
         `Bye for now — come back anytime.`,
         `Catch you later. [${project.name}] stays as you left it.`,
         `Goodbye! Nothing lost — just say hi when you're back.`,
         `Take care! I'll be right here on [${project.name}].`,
-      ]),
+      ])),
     }));
   } else if (action === 'system.chit_chat.identity') {
     // New intent (2026-07-30, requested directly): "who are you"/"what are you" previously had no
@@ -541,13 +684,13 @@ export async function handleBuiltinIntent(ws, action, input, project, sessionCon
     // can never approve a pending command.
     ws.send(JSON.stringify({
       type: 'answer',
-      data: pickRandom([
+      data: pickRandom(chatReplyPool('ack', project, [
         `Glad it worked! What's next on [${project.name}]?`,
         `Nice — anything else on [${project.name}]?`,
         `Good stuff. Ready for the next one.`,
         `Awesome. What are we doing next?`,
         `Cool. Let me know what you need.`,
-      ]),
+      ])),
     }));
   } else if (action === 'system.chit_chat.joke') {
     // New intent (2026-08-03, Phase 2.3): programmer jokes — deterministic, no network, no AI.
