@@ -997,6 +997,224 @@ review process yet. Found and fixed four real issues, all already patched in the
 
 ## Known gotchas
 
+- **Fixed 2026-08-03 (NetPulse chat transcript, reported directly — "run the site" produced a
+  broken suggestion, a crash, and a phantom "still running" message).** Three bugs, all fixed:
+  (1) `readmeRunParser.js`'s `firstMatchingCommandLine()` returned only the token the regex
+  matched, so every `python main.py <subcommand>` line in NetPulse's CLAUDE.md collapsed to bare
+  `python main.py` (a guaranteed argparse crash — NetPulse's dispatcher requires a subcommand).
+  Now returns the full command segment after the match, stopping at a trailing `#`/`//` comment
+  or `&&`/`||` separator (`python main.py watch --interval 30` stays intact; `pip install ... &&
+  python main.py once` returns just `python main.py once`). (2) `executor.js`'s `forceDetachTimer`
+  was never cleared on `close`/`error`/`detach`, so a fast-failing command (exit code 2) got the
+  correct "Process exited with code 2" AND, 20s later, a phantom "This command is still running
+  in the background" message for a process that was already dead. The timer is now cleared in all
+  three places. (3) NetPulse's own `console.config.json` command entries (`python main.py serve`,
+  `python main.py watch --interval {interval}`) used to lose to the generic `run_project`/`npm_run`
+  builtin clusters in the embedding race, so "run the site and watch at interval of 5 minutes"
+  never reached the watch entry. Two-part fix, floor values chosen from measured real-embedding
+  cosine scores of NetPulse inputs against its own triggers (not guessed):
+  - `semanticMatcher.js` new `bestProjectCommandEntry(input, projectIndex)` — best-scoring
+    `project.action.*` vector for one project, independent of the global builtin clusters.
+  - `matcher.js` stage 1b: when the winning builtin is `run_project`/`npm_run` and the project's
+    best entry clears `CONFIG_RUN_ENTRY_FLOOR` (0.55), dispatch through the exact same
+    config-entry path as stage 1a instead (params/confirm flow untouched). 0.5 was unsafe —
+    measured "run this project" 0.517 against the "test project" trigger silently auto-ran
+    pytest; 0.55 clears that while still auto-running the true positives (compound 0.565 -> watch,
+    "run the network speed" 0.721 -> watch, "run the tests" 0.825 -> pytest).
+  - `builtinIntents.js` `projectTypeSuggestions()` (now async, takes `input`): below the auto-run
+    floor but above `CONFIG_SUGGESTION_FLOOR` (0.40), a config command entry with no `{params}`
+    is surfaced as the suggestion chip (e.g. "run the site" 0.410 -> `python main.py serve` chip
+    instead of the README-parse's bare `python main.py once`) — suggestion-only by design, and
+    entries with params are skipped since a bare chip can't answer the param ask.
+  The compound request itself already reached the watch entry via the existing multi-intent split
+  (`matchMulti` + the stage-1a meta path — the earlier "never reached it" diagnosis was a test
+  harness artifact, not the app); part 1 dispatches `run_project`, which the suggestion lever now
+  answers with the serve chip. Verified with standalone harnesses against the real modules
+  (battery of ~16 inputs incl. the false-positive set: "run the numbers"/"run the calculation"
+  still resolve to `project.knowledge.commands`, "stop server" 0.309 and "check git status"
+  0.264 stay well below both bars) + `npm run lint`; not yet re-verified live through a chat
+  session.
+- **Stale `dist/server.js` silently shadows source changes (bit twice, 2026-08-03).** `start.bat`'s
+  WEB_MODE checks `IF EXIST "dist\server.js"` and runs `npm start` (`node dist/server.js`, the
+  esbuild bundle) instead of `npm run dev` (`tsx server/index.js`, live source) whenever a bundle
+  is present — with no timestamp/staleness check. Two same-day fixes (the bat-launcher-vs-README
+  ordering fix and the literal-typed-command fix, both below) were made in `server/`, but the repo
+  had a `dist/server.js` from three days earlier; restarting via `start.bat` kept silently running
+  the old bundled logic with zero indication anything was stale. Deleted `dist/` so `start.bat`
+  falls back to source until the next intentional `npm run build`. **If `dist/` ever gets rebuilt
+  again, remember it will shadow any further `server/` edits under `start.bat`'s Web UI mode until
+  it's deleted or rebuilt again** — `npm run dev` directly (bypassing `start.bat`) always runs
+  current source regardless of `dist/`'s presence, so prefer that while iterating on server code.
+- **Fixed 2026-08-03 (NetPulse, confirmed live via exported transcript): typing an exact, already-
+  correct command in chat (e.g. `python main.py serve`) did not run it.** Typed input always went
+  through the normal intent-matching pipeline, and since the text happened to name a real project
+  file, it lost to `project.context.file_relations` ("who uses main.py") instead of executing —
+  the ONLY way to actually run a command was clicking its auto-generated suggestion chip, which
+  takes a separate client-side path (`onDirectCommand` → `execute_tool` WS message) that bypasses
+  the matcher entirely. Fixed in `connection.js`'s `handleExecute`: if the whole trimmed message is
+  already an allowlisted, non-blocked command (`isCommandAllowed`/`isCommandBlocked` — the exact
+  same gate the chip path already used), it now runs directly instead of being matched as an
+  intent. Only exact, well-formed command lines qualify — "run python main.py serve please" still
+  goes through the normal pipeline, so intent phrases aren't affected.
+- **Fixed 2026-08-03 (NetPulse, reported directly): bat-launcher detection ran BEFORE the
+  documented-README-command check in `projectTypeSuggestions()` (`builtinIntents.js`), so a
+  generic "run the site" on a project that ships both a `Play *.bat` launcher AND a documented
+  safe command (NetPulse has both — the bat launcher exists but `python main.py serve` is real,
+  non-interactive, and documented in its own README) always told the user to double-click the
+  bat file instead of surfacing the real command. Swapped the order: `findDocumentedRunCommand()`
+  now runs first, and the bat-launcher fallback only fires when no documented command was found.
+  The bat check still exists for projects where the launcher is genuinely the only way to
+  reproduce an interactive/multi-process startup (DuplicateFileAnalyzer, insightflow, StudyFlash
+  where the README doesn't spell out the two-process pattern) — this only changes precedence when
+  a project has both.
+- **Intent expansion, Phases 1-3 complete (2026-08-03, spec from `console-intent-expansion-prompt.md`).**
+  Ten trigger-mode intents added in three passes, all harness-verified against the real modules
+  (real NetPulse `console.config.json` entries as the fake project, real embeddings): 49/49
+  (Phase 1) → 98/98 (Phase 2) → 133/133 (Phase 3) dispatch + handler checks — the spec §4.3 control
+  battery reproduced at every phase plus per-intent and adjacent (must-not-steal) batteries, with
+  ONE documented deviation from the baseline control battery, see the `what is the link` note under
+  dev_server_status below. The full set: `run_tests`, `project.context.dev_server_status`,
+  `file_find`, `git_fetch`, `git_ahead_behind`, `git_tag`, `project.workflow.checkpoint`,
+  `project.context.recent_activity`, `system.chit_chat.needs_ai_mode`, `git_stash_list` — every one
+  verified in `BUILTIN_INTENTS` (the gate that has silently killed intents 5+ times). Not yet
+  re-verified through a live chat session — harness-verified only; the user plans to do live chat
+  verification after the whole upgrade. The spec file lives in the repo root but is gitignored
+  (along with the other AI-session prompt docs) — it's local reference, not app docs; the README's
+  "Intent Expansion (Phased)" section mirrors the phase map.
+  - **Phase 1 (2026-08-03).** Three intents plus two measured fixes.
+    - **`run_tests`** (npmAndFileIntents.js examples, `BUILTIN_INTENTS`, handler in
+    builtinIntents.js): executes the project's real test command by marker detection —
+    `package.json` `scripts.test` → `npm test`, `Cargo.toml` → `cargo test`, `go.mod` →
+    `go test ./...`, `pyproject.toml`/`requirements.txt` → `python -m pytest`; no marker → plain
+    "no test setup detected" answer. Immediate, no confirmation (tests always re-run freely, no
+    dev-server duplicate guard — matches the existing npm_run rule). The ONE intentional dispatch
+    change of the phase: "run the tests" now runs tests instead of answering about them. Per the
+    spec's forbidden list, the action-flavored "execute tests"/"kick off the tests"/"execute the
+    test suite"/"check test results" phrases remain owned by `project.context.tests` (that intent
+    stays question-shaped + these), so no other routing changed. One convention fix in the
+    handler: keyFiles content is truncated at 2000 chars with a `\n... (truncated)` marker by
+    `readKeyFiles`, so the `package.json` parse strips it first — same as `detectFrameworks`/
+    `configInitializer`; a large package.json without that would have silently reported "no test
+    setup detected". (Note: the same un-stripped parse pattern still exists at builtinIntents.js
+    ~727/1000 and connection.js:616 for run_project/npm_run and the link pre-check — pre-existing,
+    out of Phase-1 scope, worth fixing if a big-package.json project ever misbehaves there.)
+  - **`project.context.dev_server_status`** (projectContextIntents.js examples, `BUILTIN_INTENTS`,
+    handler in builtinIntents.js): "is the server running" / "is the site live" / "what's the URL"
+    previously only worked by luck when a config entry or the "what is the link" pre-check in
+    connection.js caught the phrasing. Reads `runningProcesses` + `state.lastDevUrls` (same data
+    the pre-check reports), reports command + URL or "not running" + how to start it, and applies
+    `withPortCollisionWarning()` exactly like the pre-check does. Read-only, immediate. Note: the
+    "what is the link"-family is still owned by connection.js's pre-check (runs before the
+    matcher) — the intent covers the question-shaped phrasings that pre-check never matched, and
+    if any of them ever did reach the matcher, this intent answers them equivalently (same data).
+    Per the spec, "what port is the dev server on" lives here (the dev server's port) — but "what
+    port is the server on" deliberately does NOT: `system.chit_chat.port` already owns that exact
+    phrase and an exact cross-intent dupe would fail check-intents. Example-seed trimming, measured:
+    "what is the url" / "whats the url" / "what is the url of the server" / "what url is it on" are
+    deliberately NOT in the example list — those exact shapes are caught by the connection.js link
+    pre-check before the matcher (same data, real URL, port-collision warning), and "whats the url"
+    scored 0.734 for the unrelated "what is the link" input, dragging the cluster into that
+    baseline's territory. "where is my server running" IS an example (it's NOT pre-checked — the
+    pre-check regex requires "the " before the keyword, "my server" slips past it) and so is "is the
+    dev url up", both spec seeds. **Accepted second change (the spec's §4.3 "leave `what is the
+    link` alone" and §5.2 "seed `what is the server link`" are in tension):** "what is the link"
+    now routes to this intent in the harness (was project.knowledge.stack). The spec's own seed
+    "what is the server link" scores ~0.85 against it — a near-identical phrase, permanently above
+    the 0.6 floor, so no example trimming can revert the flip. Live behavior is 100% unchanged: the
+    pre-check (connection.js ~line 608, `what('s| is)\s+(the\s+)?(link|url|address)`) intercepts it
+    before the matcher and answers with the real URL. In-harness, this intent's answer (command +
+    URL) is more correct than the old tech-stack dump anyway.
+  - **`file_find`** (npmAndFileIntents.js examples, `BUILTIN_INTENTS`, handler in
+    builtinIntents.js): "where is main.py" / "find the config file" — parses the name loosely
+    (same `parseFileNameOnly` as file_read) and runs the sandboxed `findFiles()` tool. Read-only,
+    immediate; caps results at 15 with a "...and N more" tail, and says plainly when nothing
+    matches. No "gitignore" phrasings on purpose — the existing `PRE_SEMANTIC_OVERRIDES` literal
+    for `git_ignore_add` swallows any input containing "gitignore" before the matcher sees it.
+  - **`parseFileNameOnly` widened** (builtinIntents.js): now also handles "the <name> file" shape
+    ("find the config file", "read the readme file") where the name comes BEFORE the word "file"
+    — both file_read and file_find previously asked "which file?" for these. Deliberately
+    requires a determiner ("the/a/my/...") before the name so bare action phrases like "read
+    file" / "open file" / "show me the file" still ask instead of treating the verb as a
+    filename (verified: all three still ask).
+  - **`PRE_SEMANTIC_OVERRIDES` +1, measured**: "who uses main.py" scored 0.826 for `file_find`
+    ("where is main.py" — the filename dominates the vector) vs 0.770 for
+    `project.context.file_relations`, silently flipping a documented, confirmed-live intent's own
+    territory. Added a literal override routing `who ... uses/imports/references/depends on` and
+    `which/what + files/modules + use/import/reference` to `file_relations` before embeddings run
+    (second alternative deliberately requires the files/modules noun so "what is imported"
+    [dependencies] and "what does this file import" stay untouched). Keep this pattern narrow —
+    same rule as the rest of that list. Justified against the spec's own PRE_SEMANTIC_OVERRIDES
+    rule: "only for CONFIRMED misclassifications" — this one was confirmed by measurement in the
+    harness, caused by file_find's own introduction.
+  - Wiring checks: all three new intents verified present in `BUILTIN_INTENTS` (the gate that has
+    silently killed intents 5+ times before — run_tests was already there from the previous
+    session's in-flight work; dev_server_status and file_find added this pass). `npm run
+    check-intents`: no new exact/near duplicates (the 6 cross-intent exact dupes and 71
+    near-dups it reports are all pre-existing, deliberately-left items). `npm run lint` passes.
+  - **Phase 2 (2026-08-03, same spec file).** Five more intents, one pass each, harness-verified
+    (98/98: full control battery unchanged + 5 new batteries + adjacent must-not-steal checks,
+    real embeddings; output `phase2-final.txt` in temp). Same wiring gate as always — all five
+    verified in `BUILTIN_INTENTS` (the gate that has silently killed intents 5+ times).
+    - **`git_fetch`** (gitIntents.js, `BUILTIN_INTENTS`, immediate): read-only ref update,
+      `git fetch`. No "pull"-shaped phrases (git_pull owns those). Measured adjacent note: "fetch
+      and merge" (a git_pull exact example) now splits into `MULTI: git_fetch | git_pull` because
+      the multi-intent splitter resolves "fetch" on its own now — outcome is the same as a pull
+      (fetch runs, then the pull-merge confirm), accepted and documented rather than fighting the
+      splitter.
+    - **`git_ahead_behind`** (gitIntents.js, `BUILTIN_INTENTS`, immediate): "am I behind origin" —
+      runs `git status -sb`, which prints the `[origin/main: ahead 2, behind 1]` bracket directly,
+      no parsing. Question-shaped only; pull-flavored phrasings stay with git_pull.
+    - **`git_tag`** (gitIntents.js, `BUILTIN_INTENTS`, list = immediate / create = confirm-gated):
+      no name → `git tag` list; a name → `isSafeParamValue` check BEFORE the confirm (same rule as
+      git_branch_create) then the standard pendingConfirmations flow. Verified the injection
+      attempt "create a tag called v1.0;rm -rf" confirms as bare `git tag v1.0` — the name regex's
+      character class `[A-Za-z0-9._/-]` can't capture a shell metacharacter, so the junk is dropped
+      at parse; isSafeParamValue is the second layer for weird-but-legal captures.
+    - **`project.workflow.checkpoint`** (miscIntents.js, `BUILTIN_INTENTS`, immediate — user-asked
+      commit, recoverable, same justification as the auto-checkpoint): calls the same
+      `createCheckpoint` gitSafety.js uses before risky commands; non-git projects get its own
+      message surfaced as-is ("Project is not a git repository. Skipping git checkpoint." —
+      handler-tested, nothing mutated). "checkpoint my work" / "make a save point" are deliberately
+      NOT seeded here — those exact phrases are already git_commit examples (cross-intent exact
+      dupes would fail check-intents) and git_commit answers them equivalently (harness-verified:
+      both still route to git_commit).
+    - **`project.context.recent_activity`** (projectContextIntents.js + new `findRecentActivity()`
+      in codebaseIndexer.js — same readProjectTree walk findBiggestFiles uses, IGNORE_DIRS +
+      dotfile skipping included, on-demand not cached, `[{path, mtime}]` desc; `BUILTIN_INTENTS`,
+      immediate): answers about FILE modification times on disk, deliberately distinct from
+      git_status (working tree) and git_log (commits). The bare "what changed recently" is NOT
+      seeded here — it's an exact pre-existing git_status example; per the Phase-1 precedent the
+      pre-existing owner keeps it (harness-verified: still routes to git_status).
+    - `npm run check-intents` after Phase 2: 6 cross-intent exact dupes (all pre-existing; the 7th
+      — "what changed recently" — was introduced by an early seed and removed per the owner rule
+      above), 72 near-dups (all pre-existing style items; the new "show tags" vs "show stats" pair
+      is informational). `npm run lint` clean. Not yet live-chat-verified — same caveat as Phase 1.
+  - **Phase 3 (2026-08-03, same spec file).** Two more intents, one pass each, harness-verified
+    (133/133: the full 98-input Phase-2 battery kept as regression — control + P2 batteries +
+    adjacent all still green — plus 2 new batteries + 6 more adjacent must-not-steal checks,
+    real embeddings; output `phase3-final.txt` in temp). Same wiring gate as always — both
+    verified in `BUILTIN_INTENTS`.
+    - **`system.chit_chat.needs_ai_mode`** (chitChatIntents.js, `BUILTIN_INTENTS` **AND**
+      `PURE_CHITCHAT_INTENTS`, immediate canned answer): open-ended requests typed with AI off
+      previously scattered onto identity/structure/commands (baseline measured: "turn on ai mode"
+      → identity, "ask the ai" → structure, "can the ai do this" → commands — all wrong) or the
+      generic fallback. The AI toggle is a frontend-only control with no server-side flip path
+      by design, so this intent can only answer with guidance — 3 pickRandom replies pointing at
+      the header AI toggle. Registered in BOTH Sets deliberately: it's a zero-argument, always-
+      safe-sounding canned reply, so it gets the same garbled-input protection as
+      greeting/gratitude (the "who are you"/"goodbye" precedent from 2026-07-30).
+    - **`git_stash_list`** (gitIntents.js, `BUILTIN_INTENTS`, immediate): read-only listing,
+      `git stash list` — same treatment as git_log/git_branch (no confirm, does not touch the
+      stash itself), with the same isGitRepo gate as git_stash/git_stash_pop. Baseline showed the
+      pre-existing git_stash/git_stash_pop clusters absorbing these phrasings ("show stashes" →
+      metrics, "what stashes exist" → git_tag) — the 12 new examples give the read-only shape its
+      own cluster. "show the stash" / "what is in my stash" are question-shaped here; the
+      action-shaped "pop the stash"/"unstash changes" still route to git_stash_pop
+      (adjacent-verified).
+    - `npm run check-intents` after Phase 3: 1 within-intent dupe + 6 cross-intent exact dupes +
+      72 near-dups — the exact same pre-existing set as after Phase 2, zero new. `npm run lint`
+      clean. Not yet live-chat-verified — same caveat as Phases 1-2.
+
 - **CLI project picker registering one keystroke as two (2026-07-30, reported directly: typing
   "10" for project #10 acted like each digit was pressed twice).** All three
   `readline.createInterface()` calls in `cli-client.js` (`selectProject()`, `setupReadline()`,
@@ -1383,35 +1601,3 @@ review process yet. Found and fixed four real issues, all already patched in the
 - Tools/handlers take named-args objects, not positional args.
 - New WS message types belong in both `server/wsHandlers/connection.js` (or wherever emits them)
   and the frontend's `useConsole.ts` `handleWebSocketMessage` switch — keep them in sync.
-
-
-## Has my code been pushed?
-
-Let me check your git status.
-
-_(0.9s, 34 tok/s)_
-
-No—your code is **not** pushed. Here’s the current state:
-
-| File | Status |
-|------|--------|
-| `CLAUDE.md` | **Modified, staged** (uppercase `M` in `git status` = staged for commit) |
-| `README.md` | Modified, **unstaged** |
-| `server/ollama.js` | Modified, **unstaged** |
-| `server/semanticMatcher.js` | Modified, **unstaged** |
-| `server/wsHandlers/aiQuery.js` | Modified, **unstaged** |
-| `server/wsHandlers/aiStream.js` | Modified, **unstaged** |
-| `server/wsHandlers/builtinIntents.js` | Modified, **unstaged** |
-
-So `CLAUDE.md` has been staged (`git add`) but the others haven’t, and **nothing has been committed or pushed yet**.
-
-Would you like me to:
-1. **Stage all** of these files (`git add .`) and create a commit, then push, or
-2. **Review the diffs first** before staging anything, or
-3. Just push the already-staged `CLAUDE.md` and commit the rest separately?
-
-Let me know how you’d like to proceed.
-
-_(3.2s, 97 tok/s)_
-
-_(2.4s, 112 tok/s)_

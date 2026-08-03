@@ -71,4 +71,20 @@ export const MISC_INTENTS = {
       'jump to another project', 'show my other projects',
     ],
   },
+  // Intent expansion (Phase 2, 2026-08-03, requested directly): an explicit user-asked
+  // checkpoint commit via createCheckpoint — same flow as the auto-checkpoint before risky
+  // commands. "checkpoint my work" / "make a save point" deliberately NOT seeded here: those
+  // exact phrases are already git_commit examples (cross-intent exact dupes would fail
+  // check-intents) and git_commit answers them equivalently.
+  'project.workflow.checkpoint': {
+    examples: [
+      'make a checkpoint', 'create a checkpoint', 'save a checkpoint',
+      'make a checkpoint commit', 'checkpoint the project',
+      'create a checkpoint commit', 'save my work as a checkpoint',
+      'checkpoint', 'create a save point', 'commit a checkpoint',
+      'save a checkpoint commit', 'checkpoint my project',
+      'make me a checkpoint', 'take a checkpoint', 'checkpoint my progress',
+      'save my progress as a checkpoint', 'create a checkpoint now',
+    ],
+  },
 };

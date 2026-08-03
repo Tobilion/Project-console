@@ -1,11 +1,12 @@
 import crypto from 'crypto';
 import { injectContext } from '../contextInjector.js';
 import { executeCommand, runningProcesses } from '../executor.js';
-import { performUndo, isGitRepo } from '../gitSafety.js';
-import { pendingConfirmations, state } from '../state.js';
+import { performUndo, isGitRepo, createCheckpoint } from '../gitSafety.js';
+import { pendingConfirmations, state, withPortCollisionWarning } from '../state.js';
 import { createProjectTools } from '../tools.js';
 import { findDocumentedRunCommand } from '../readmeRunParser.js';
-import { formatApiRoutes, findTodos, findBiggestFiles } from '../codebaseIndexer.js';
+import { semanticMatcher } from '../semanticMatcher.js';
+import { formatApiRoutes, findTodos, findBiggestFiles, findRecentActivity } from '../codebaseIndexer.js';
 import { isSafeParamValue } from '../paramCommand.js';
 
 /**
@@ -32,12 +33,20 @@ function parseFileNameAndContent(input) {
  * filename with an extension first ("notes.md", "src/utils/helpers.js" — the reliable case,
  * doesn't require the word "file" to appear at all), then falls back to whatever follows the
  * literal word "file" for extensionless names like "add file Tobijagz to folder...".
+ *
+ * Phase 1 (2026-08-03): also handles the "the <name> file" shape ("find the config file",
+ * "where is the readme file") where the name comes BEFORE the word "file" — file_read and the
+ * new file_find both previously asked "which file?" for these. Deliberately requires a
+ * determiner ("the/a/my/...") before the name so a bare action like "read file" or "open file"
+ * still asks instead of treating the verb as a filename.
  */
 function parseFileNameOnly(input) {
   const withExt = input.match(/\b([\w.\-/\\]+\.[a-zA-Z0-9]{1,10})\b/);
   if (withExt) return withExt[1];
   const afterFileWord = input.match(/\bfile\b\s+(?:called\s+|named\s+)?["'`]?([^\s"'`]+?)["'`]?(?=\s+(?:to|in|with|containing|saying|that|and|$)|$)/i);
-  return afterFileWord?.[1] || null;
+  if (afterFileWord) return afterFileWord[1];
+  const beforeFileWord = input.match(/\b(?:the|a|an|my|your|this|that)\s+([\w.-]{2,})\s+file\b/i);
+  return beforeFileWord?.[1] || null;
 }
 
 /**
@@ -227,11 +236,34 @@ function findMentionedScript(input, scripts) {
   return null;
 }
 
+// Phase 3 (2026-08-03, NetPulse transcript): suggestion-chip bar for a project's own
+// console.config.json `command` entries when a run-family builtin (run_project / npm_run) won
+// the match but its input fell below matcher.js's CONFIG_RUN_ENTRY_FLOOR auto-run bar. Measured
+// from real NetPulse inputs against its own triggers: the genuine cases this must catch score
+// 0.41-0.50 ("run the site" -> 0.410 serve, "run the server" -> 0.499 serve), while inputs that
+// merely contain "run" but are about something else ("run the numbers", "run the calculation")
+// never reach this helper at all — they resolve to other intents (project.knowledge.commands)
+// or the no-match fallback. A wrong suggestion chip is harmless (nothing runs until clicked),
+// which is exactly why this bar is lower than the auto-run floor; 0.40 is the top of the
+// measured no-man's-land below the true positives.
+const CONFIG_SUGGESTION_FLOOR = 0.4;
+
 /**
  * Shared helper: detect project type and emit suggestion chips with runnable commands.
  * Used by both `npm_run` and `run_project` when no matching script is found.
+ *
+ * Phase 3 (2026-08-03, NetPulse transcript): the suggestion fallback this helper produces used
+ * to guess from README/language markers alone — a generic "run the site" on NetPulse suggested
+ * `python main.py once` (the first line of its README's Run block) instead of the project's own
+ * hand-authored `python main.py serve` entry. A project's own console.config.json `command`
+ * entries are strictly more trustworthy than any parsed README guess — same priority order as
+ * the matcher's execution-side preference (CONFIG_RUN_ENTRY_FLOOR, stage 1b) — so prefer the
+ * best-scoring entry here too, as a suggestion chip (NOT an auto-run: only matcher.js auto-runs,
+ * above its own higher floor). Entries with `{param}` placeholders are skipped — a bare chip
+ * can't answer the param ask (handleMatchedEntry's pendingParam flow only runs on the
+ * entry-dispatch path, which this fallback isn't).
  */
-function projectTypeSuggestions(ws, project, scripts) {
+async function projectTypeSuggestions(ws, project, input, scripts) {
   const idx = project.codebaseIndex;
   const langs = idx?.languages || [];
   const entries = idx?.entryPoints || [];
@@ -246,20 +278,40 @@ function projectTypeSuggestions(ws, project, scripts) {
   // that's likely wrong or would hang forever waiting on stdin nobody can answer. Hand-authored
   // console.config.json entries still take priority over this — it only fires when nothing
   // matched there first.
-  const batLauncher = fileSample.find((f) => /^Play .+\.bat$/i.test(f));
-  if (batLauncher) {
-    ws.send(JSON.stringify({
-      type: 'answer',
-      data: `This project ships its own launcher: **${batLauncher}**. It may prompt for input or start more than one process, so double-click it in File Explorer (or run it from a terminal) instead of through this console.`,
-    }));
-    return;
-  }
   // Requested directly (2026-07-30): before guessing a command from language detection alone,
   // check whether the project's own README/CLAUDE.md already documents the real run command
   // (Install/Usage/Getting Started/Run section, or any fenced code block with a recognizable
   // command shape — see readmeRunParser.js). This is real author-written instructions, strictly
   // more trustworthy than a language-based guess, and it's how trigger mode (no AI/Ollama
   // involved at all) can still "read the README" the same way a human skimming it would.
+  //
+  // Confirmed live 2026-08-03 (NetPulse, reported directly): this used to run AFTER the bat-
+  // launcher check below, so a generic "run the site" on NetPulse always hit the bat-launcher
+  // fallback and told the user to double-click Play NetPulse.bat — even though NetPulse's own
+  // README documents a real, safe, non-interactive command (`python main.py serve`) and the bat
+  // launcher was never actually necessary for it. The bat-launcher check exists for projects
+  // where the launcher is the ONLY way to reproduce an interactive/multi-process startup — it
+  // isn't a reason to ignore a documented single-command entry point when one exists. Swapped
+  // order: a documented command now wins even when a Play *.bat file is also present.
+  // Phase 3 (2026-08-03, NetPulse transcript): a project's own hand-authored command entries
+  // win the *suggestion* race the same way matcher.js stage 1b makes them win the *execution*
+  // race above CONFIG_RUN_ENTRY_FLOOR — before trusting a README-parse guess, check whether one
+  // of the project's own entries scores above CONFIG_SUGGESTION_FLOOR. Runs before the
+  // documented-command branch below for the same reason that branch runs before the bat-launcher
+  // check: a config entry is authored for this exact console, so it's the most trustworthy
+  // source of all. Deliberately suggestion-only — auto-execution stays in matcher.js where the
+  // floor is higher and the safety checks (confirm flow, params) are the normal entry path.
+  const cfgEntries = (project.config || project)?.entries || [];
+  if (cfgEntries.some((e) => e.type === 'command')) {
+    const projectIndex = state.activeProjectsCache.findIndex((p) => p.id === project.id);
+    const best = await semanticMatcher.bestProjectCommandEntry(input, projectIndex);
+    const bestEntry = best ? cfgEntries[best.entryIndex] : null;
+    if (bestEntry && bestEntry.type === 'command' && !bestEntry.params && best.score >= CONFIG_SUGGESTION_FLOOR) {
+      ws.send(JSON.stringify({ type: 'answer', data: `Found a run command in **[${project.name}]**'s own config:` }));
+      ws.send(JSON.stringify({ type: 'suggestions', data: [bestEntry.action] }));
+      return;
+    }
+  }
   const documented = findDocumentedRunCommand(project);
   if (documented) {
     const sourceNote = documented.header
@@ -267,6 +319,14 @@ function projectTypeSuggestions(ws, project, scripts) {
       : `Found in **${documented.doc}**:`;
     ws.send(JSON.stringify({ type: 'answer', data: `${sourceNote}` }));
     ws.send(JSON.stringify({ type: 'suggestions', data: [documented.command] }));
+    return;
+  }
+  const batLauncher = fileSample.find((f) => /^Play .+\.bat$/i.test(f));
+  if (batLauncher) {
+    ws.send(JSON.stringify({
+      type: 'answer',
+      data: `This project ships its own launcher: **${batLauncher}**. It may prompt for input or start more than one process, so double-click it in File Explorer (or run it from a terminal) instead of through this console.`,
+    }));
     return;
   }
   // Confirmed live 2026-07-29 (NetPulse, a real Flask/Python project): this used `langs.includes(
@@ -423,6 +483,19 @@ export async function handleBuiltinIntent(ws, action, input, project, sessionCon
     ws.send(JSON.stringify({
       type: 'answer',
       data: `I'm the local command console for **[${project.name}]** — a project-aware dispatcher that runs entirely on your machine. With AI mode off, I match what you type against a fixed set of known project actions (git, npm/build commands, file reads, project Q&A) using a local embedding model — no data leaves this machine, no cloud model involved. With AI mode on, I hand things off to your local Ollama model with read/write tools scoped to this project's folder. Type "help" for the full list of what I can do here.`,
+    }));
+  } else if (action === 'system.chit_chat.needs_ai_mode') {
+    // New intent (2026-08-03, Phase 3 of the intent-expansion spec): open-ended requests typed
+    // while AI mode is off previously scattered onto identity/structure/commands or the generic
+    // fallback. The AI toggle is a frontend-only control, so this can only answer with guidance —
+    // it must NOT try to flip the toggle itself (no such server-side path exists by design).
+    ws.send(JSON.stringify({
+      type: 'answer',
+      data: pickRandom([
+        `That one needs AI mode — flip the AI toggle at the top of this chat (next to the model picker) and ask again. AI mode gives me read/write tools scoped to [${project.name}], so I can handle open-ended requests.`,
+        `This is trigger mode, which only handles the fixed built-in actions. Use the AI toggle in the header of this chat to switch AI mode on for requests like that, then re-ask.`,
+        `AI mode isn't on right now. Flip the AI switch in the chat header, then ask me again — with AI on I can work with files in [${project.name}] and answer open-ended questions.`,
+      ]),
     }));
   } else if (action === 'system.chit_chat.clear') {
     ws.send(JSON.stringify({ type: 'clear_console' }));
@@ -685,7 +758,7 @@ export async function handleBuiltinIntent(ws, action, input, project, sessionCon
         executeCommand(`npm run ${scriptName}`, project.path, ws, project.id);
       } else {
         ws.send(JSON.stringify({ type: 'answer', data: `No script called **\`${scriptName}\`** found in \`package.json\`.` }));
-        projectTypeSuggestions(ws, project, scripts);
+        await projectTypeSuggestions(ws, project, input, scripts);
       }
       return true;
     }
@@ -709,7 +782,7 @@ export async function handleBuiltinIntent(ws, action, input, project, sessionCon
         executeCommand('npm start', project.path, ws, project.id);
       } else {
         ws.send(JSON.stringify({ type: 'answer', data: `No \`dev\` or \`start\` script found in \`package.json\`.` }));
-        projectTypeSuggestions(ws, project, scripts);
+        await projectTypeSuggestions(ws, project, input, scripts);
       }
       return true;
     }
@@ -720,12 +793,12 @@ export async function handleBuiltinIntent(ws, action, input, project, sessionCon
       } else if (scripts.start) {
         executeCommand('npm start', project.path, ws, project.id);
       } else {
-        projectTypeSuggestions(ws, project, scripts);
+        await projectTypeSuggestions(ws, project, input, scripts);
       }
       return true;
     }
     // Fallback: show available scripts or project type suggestions
-    projectTypeSuggestions(ws, project, scripts);
+    await projectTypeSuggestions(ws, project, input, scripts);
     return true;
   } else if (action === 'file_create') {
     // Trigger mode never had a route to actually create a file — "add a file" always bounced
@@ -776,6 +849,29 @@ export async function handleBuiltinIntent(ws, action, input, project, sessionCon
         summary: `Append to "${parsed.fileName}" (${parsed.content.length} chars)`,
       });
     }
+  } else if (action === 'run_tests') {
+    // Intent expansion (Phase 1, 2026-08-03): "run the tests" previously only answered ABOUT
+    // tests (project.context.tests, informational). This executes the project's real test command
+    // by marker detection — same style as run_project's marker checks below. Tests re-run
+    // freely (no dev-server duplicate guard, no confirm) per the existing npm_run rule.
+    const pkgJson = project.codebaseIndex?.keyFiles?.['package.json'];
+    let scripts = {};
+    // keyFiles content is truncated at 2000 chars with a "\n... (truncated)" tail marker by
+    // readKeyFiles — strip it before parsing, same convention as detectFrameworks/configInitializer.
+    if (pkgJson) { try { scripts = JSON.parse(pkgJson.replace(/\n\.\.\. \(truncated\)$/, '')).scripts || {}; } catch {} }
+    const keyFiles = project.codebaseIndex?.keyFiles || {};
+    if (scripts.test) {
+      executeCommand('npm test', project.path, ws, project.id);
+    } else if (keyFiles['cargo.toml']) {
+      executeCommand('cargo test', project.path, ws, project.id);
+    } else if (keyFiles['go.mod']) {
+      executeCommand('go test ./...', project.path, ws, project.id);
+    } else if (keyFiles['pyproject.toml'] || keyFiles['requirements.txt']) {
+      executeCommand('python -m pytest', project.path, ws, project.id);
+    } else {
+      ws.send(JSON.stringify({ type: 'answer', data: `No test setup detected for **[${project.name}]** (no package.json test script, Cargo.toml, go.mod, or Python test marker). Say "tell me about the tests" to see what's here.` }));
+    }
+    return true;
   } else if (action === 'file_read') {
     const fileName = parseFileNameOnly(input);
     if (!fileName) {
@@ -796,6 +892,27 @@ export async function handleBuiltinIntent(ws, action, input, project, sessionCon
         } else {
           ws.send(JSON.stringify({ type: 'answer', data: result.error }));
         }
+      }
+    }
+  } else if (action === 'file_find') {
+    // Intent expansion (Phase 1, 2026-08-03): the dedicated "where is the file X" / "find the
+    // config file" path — parses the name loosely (same parseFileNameOnly as file_read) and
+    // runs the same sandboxed findFiles() the AI path uses. Read-only, immediate; "no matches"
+    // is stated plainly instead of a generic failure.
+    const fileName = parseFileNameOnly(input);
+    if (!fileName) {
+      ws.send(JSON.stringify({ type: 'answer', data: `Which file are you looking for? Try "where is main.py" or "find the config file".` }));
+    } else {
+      const tools = await createProjectTools(project);
+      const matches = await tools.findFiles({ pattern: fileName });
+      if (matches.success && matches.data.length > 0) {
+        const capped = matches.data.slice(0, 15);
+        const list = capped.map((f) => `  - \`${f}\``).join('\n');
+        let msg = `Found ${matches.data.length} match${matches.data.length === 1 ? '' : 'es'} for **${fileName}** in **[${project.name}]**:\n${list}`;
+        if (matches.data.length > capped.length) msg += `\n  … and ${matches.data.length - capped.length} more`;
+        ws.send(JSON.stringify({ type: 'answer', data: msg }));
+      } else {
+        ws.send(JSON.stringify({ type: 'answer', data: `No files match **"${fileName}"** in **[${project.name}]**. Try a different name, or "show me the project structure" to see what's here.` }));
       }
     }
   } else if (action === 'file_delete') {
@@ -854,6 +971,15 @@ export async function handleBuiltinIntent(ws, action, input, project, sessionCon
       pendingConfirmations.set(token, { projectId: project.id, command: 'git stash', trigger: input, createdAt: Date.now() });
       ws.send(JSON.stringify({ type: 'confirm_prompt', token, command: 'git stash (shelves uncommitted changes — restore later with "git stash pop")', trigger: 'git_stash' }));
     }
+  } else if (action === 'git_stash_list') {
+    // New (2026-08-03, Phase 3 of the intent-expansion spec). Read-only listing, same immediate
+    // treatment as git_log/git_branch — never touches the stash itself.
+    if (!(await isGitRepo(project.path))) {
+      ws.send(JSON.stringify({ type: 'answer', data: `**[${project.name}]** isn't a git repository yet.` }));
+    } else {
+      executeCommand('git stash list', project.path, ws, project.id);
+      return true;
+    }
   } else if (action === 'git_stash_pop') {
     if (!(await isGitRepo(project.path))) {
       ws.send(JSON.stringify({ type: 'answer', data: `**[${project.name}]** isn't a git repository yet.` }));
@@ -893,6 +1019,49 @@ export async function handleBuiltinIntent(ws, action, input, project, sessionCon
       command: 'git pull (fetches and merges remote changes)',
       trigger: 'git_pull'
     }));
+  } else if (action === 'git_fetch') {
+    // Intent expansion (Phase 2, 2026-08-03): read-only — updates remote-tracking refs, never
+    // touches the working tree. Same immediate treatment as git_log/git_branch.
+    executeCommand('git fetch', project.path, ws, project.id);
+    return true;
+  } else if (action === 'git_ahead_behind') {
+    // Intent expansion (Phase 2, 2026-08-03): "am I behind origin" — git status -sb prints the
+    // "[origin/main: ahead 2, behind 1]" line directly; no parsing needed. Read-only, immediate.
+    executeCommand('git status -sb', project.path, ws, project.id);
+    return true;
+  } else if (action === 'git_tag') {
+    // Intent expansion (Phase 2, 2026-08-03): no tag name -> list (read-only, immediate, same
+    // as git_log); a tag name -> confirm-gated `git tag <name>`. The name is validated with
+    // isSafeParamValue BEFORE the confirm prompt, exactly like git_branch_create, since it
+    // substitutes straight into the command string.
+    if (!(await isGitRepo(project.path))) {
+      ws.send(JSON.stringify({ type: 'answer', data: `**[${project.name}]** isn't a git repository yet.` }));
+    } else {
+      const tagName = (input.match(/(?:called|named)\s+([A-Za-z0-9._/-]+)/i) ||
+                       input.match(/\btag(?: this)?(?: as)?\s+([A-Za-z0-9._/-]+)/i))?.[1] || null;
+      if (!tagName) {
+        executeCommand('git tag', project.path, ws, project.id);
+      } else if (!isSafeParamValue(tagName)) {
+        ws.send(JSON.stringify({ type: 'answer', data: `Tag name **${tagName}** contains characters that aren't allowed. Use letters, numbers, dots, underscores, slashes, and hyphens.` }));
+      } else {
+        const token = crypto.randomUUID();
+        const command = `git tag ${tagName}`;
+        pendingConfirmations.set(token, { projectId: project.id, command, trigger: input, createdAt: Date.now() });
+        ws.send(JSON.stringify({ type: 'confirm_prompt', token, command: `${command} (creates a tag on the current commit)`, trigger: 'git_tag' }));
+      }
+    }
+  } else if (action === 'project.workflow.checkpoint') {
+    // Intent expansion (Phase 2, 2026-08-03, requested directly): an explicit user-asked
+    // checkpoint commit — same createCheckpoint the auto-checkpoint-before-risky-commands flow
+    // uses. A normal, recoverable commit, so no confirm; non-git projects get createCheckpoint's
+    // own message surfaced as-is.
+    const result = await createCheckpoint(project.path, input);
+    if (result.success) {
+      ws.send(JSON.stringify({ type: 'answer', data: result.message }));
+    } else {
+      ws.send(JSON.stringify({ type: 'error_output', data: (result.message || result.error || 'Checkpoint failed.') + '\n' }));
+    }
+    return true;
   } else if (action === 'run_project') {
     // Try to detect the project type and run appropriately
     const pkgJson = project.codebaseIndex?.keyFiles?.['package.json'];
@@ -933,7 +1102,7 @@ export async function handleBuiltinIntent(ws, action, input, project, sessionCon
     } else if (scripts.serve) {
       executeCommand('npm run serve', project.path, ws, project.id);
     } else {
-      projectTypeSuggestions(ws, project, scripts);
+      await projectTypeSuggestions(ws, project, input, scripts);
     }
     return true;
   } else if (action === 'system.chit_chat.git_status') {
@@ -1137,6 +1306,37 @@ export async function handleBuiltinIntent(ws, action, input, project, sessionCon
       const list = biggest.map((f) => `- \`${f.path}\` — ${(f.bytes / 1024).toFixed(1)} KB`).join('\n');
       ws.send(JSON.stringify({ type: 'answer', data: `### Largest files in [${project.name}]\n\n${list}` }));
     }
+  } else if (action === 'project.context.dev_server_status') {
+    // Intent expansion (Phase 1, 2026-08-03): "is the server running" / "is the site live" /
+    // "what's the URL" now has a real intent instead of depending on a config entry or the
+    // "what is the link" pre-check in connection.js happening to catch the phrasing. Reads the
+    // same runningProcesses + lastDevUrls the pre-check reports — read-only, immediate, and the
+    // port-collision heads-up is applied the same way the pre-check applies it.
+    const proc = runningProcesses.get(project.id);
+    const url = state.lastDevUrls.get(project.id);
+    if (proc) {
+      let msg = `**[${project.name}]** has \`${proc.command}\` running right now.`;
+      if (url) msg += `\n\nOpen it at **${url}** — or say "what is the link" to see it again.`;
+      else msg += `\n\nThe process is tracked but no local URL was detected yet — it may still be starting up, or it doesn't expose an HTTP server.`;
+      ws.send(JSON.stringify({ type: 'answer', data: withPortCollisionWarning(msg, url) }));
+    } else {
+      ws.send(JSON.stringify({ type: 'answer', data: `**[${project.name}]** has no server running right now. Say "run the site" to start it, or "how do I run this" for instructions.` }));
+    }
+  } else if (action === 'project.context.recent_activity') {
+    // Intent expansion (Phase 2, 2026-08-03): on-demand file-mtime scan via findRecentActivity
+    // (same readProjectTree walk findBiggestFiles uses — IGNORE_DIRS + dotfile skipping included),
+    // deliberately not part of the cached index since it's asked for rarely.
+    try {
+      const recent = await findRecentActivity(project.path, { limit: 10 });
+      if (!recent.length) {
+        ws.send(JSON.stringify({ type: 'answer', data: `No recently modified files found for **[${project.name}]**.` }));
+      } else {
+        ws.send(JSON.stringify({ type: 'answer', data: `### Recently modified [${project.name}]\n\n` + recent.map(f => `- \`${f.path}\` — ${new Date(f.mtime).toLocaleString()}`).join('\n') }));
+      }
+    } catch (err) {
+      ws.send(JSON.stringify({ type: 'error_output', data: `Could not scan recent activity: ${err.message}\n` }));
+    }
+    return true;
   } else if (action === 'system.monitoring.metrics') {
     const { default: fetch } = await import('node-fetch');
     try {

@@ -65,7 +65,11 @@ function firstMatchingCommandLine(text) {
     if (!trimmed || trimmed.startsWith('#') || trimmed.startsWith('//')) continue;
     for (const pattern of RUN_COMMAND_PATTERNS) {
       const m = trimmed.match(pattern);
-      if (m) return m[0].trim();
+      if (m) {
+        const tail = trimmed.slice(m.index + m[0].length);
+        const rest = tail.split(/(?:\s*#|\s*\/\/|\s*&&|\s*\|\|)\s*/)[0].trim();
+        return (m[0] + (rest ? ` ${rest}` : '')).trim();
+      }
     }
   }
   return null;

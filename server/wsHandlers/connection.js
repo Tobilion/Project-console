@@ -358,6 +358,29 @@ async function handleExecute(ws, parsed, sessionContext) {
     // stuck insisting on an answer to a question nobody's addressing anymore.
   }
 
+  // Confirmed live 2026-08-03 (NetPulse transcript, reported directly): typing a literal,
+  // already-correct command (e.g. "python main.py serve") did NOT run it — it went through the
+  // normal intent-matching pipeline like any other chat message, and since it happened to name a
+  // real file in the project, it lost to `project.context.file_relations` ("who uses main.py")
+  // instead of executing. The ONLY way to actually run a suggested command was to click its
+  // auto-generated suggestion chip, which takes a completely different path client-side
+  // (`onDirectCommand` in Terminal.tsx, sent as an `execute_tool`/`executeCommand` WS message —
+  // see `handleToolCall` below) that bypasses the matcher entirely. Typed input had no equivalent.
+  // Fixed by giving typed input the same bypass: if the whole message is already a well-formed,
+  // allowlisted command (`isCommandAllowed` — the same `ALLOWED_COMMANDS` check the chip path
+  // uses) and isn't blocked by `isCommandBlocked`'s dangerous-pattern check, run it directly
+  // instead of feeding it to the matcher at all. No new attack surface: this is the exact same
+  // allowlist + blocklist gate `handleToolCall`'s `executeCommand` tool already enforces on every
+  // chip click, just reachable from a typed message too. Deliberately does NOT try to be clever
+  // about partial/fuzzy command text ("run python main.py serve please") — only an exact,
+  // already-correct command line is auto-run; anything else still goes through the normal
+  // pipeline so "run the site" etc. keep working as intents.
+  const trimmedInput = input.trim();
+  if (isCommandAllowed(trimmedInput) && !isCommandBlocked(trimmedInput)) {
+    executeCommand(trimmedInput, project.path, ws, project.id);
+    return;
+  }
+
   // Telemetry commands
   const lowerInput = input.trim().toLowerCase();
   if (lowerInput === 'telemetry review' || lowerInput === 'check telemetry' || lowerInput === 'telemetry stats') {

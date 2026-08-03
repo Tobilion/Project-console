@@ -183,6 +183,49 @@ export const GIT_INTENTS = {
       'sync my repo', 'get everything up to date',
     ],
   },
+  'git_fetch': {
+    // Intent expansion (Phase 2, 2026-08-03): read-only fetch — updates remote-tracking refs
+    // without touching the working tree. Deliberately no "pull"-shaped phrases (git_pull owns
+    // those, and pulling is fetch+merge — a mutation). "fetch the latest"-style phrasings sit
+    // close to git_pull's "fetch latest" example; measured post-registration, see CLAUDE.md.
+    examples: [
+      'git fetch', 'fetch from origin', 'fetch the latest', 'fetch the remote',
+      'fetch updates', 'fetch from the remote', 'download the latest refs',
+      'update my remote refs', 'fetch upstream', 'fetch the latest from origin',
+      'sync remote refs', 'fetch latest commits', 'run a git fetch',
+      'fetch all the remote refs', 'fetch the branches from origin',
+      'fetch the new commits from the remote', 'do a fetch',
+    ],
+  },
+  'git_ahead_behind': {
+    // Intent expansion (Phase 2, 2026-08-03): "am I behind origin" — git status -sb prints
+    // "[origin/main: ahead 2, behind 1]" directly. Question-shaped only; "pull"-flavored
+    // phrasings stay with git_pull (that's the mutation).
+    examples: [
+      'is my branch behind origin', 'is my branch ahead of origin',
+      'am i behind the remote', 'am i ahead of the remote',
+      'is my code up to date with origin', 'is my branch in sync with origin',
+      'how far behind am i', 'how far ahead am i',
+      'what is the state of my branch vs origin', 'is my local branch behind',
+      'is my branch behind the remote', 'check if i am behind origin',
+      'is my work synced with the remote', 'is my branch up to date',
+      'is my code in sync with the remote', 'am i up to date with origin',
+    ],
+  },
+  'git_tag': {
+    // Intent expansion (Phase 2, 2026-08-03): list = immediate, create = confirm-gated (handler
+    // mirrors git_branch_create's isSafeParamValue + pendingConfirmations flow).
+    examples: [
+      'list tags', 'list git tags', 'show tags', 'show git tags',
+      'what tags exist', 'what tags do i have', 'git tag list', 'show all tags',
+      'create a tag called v1.0', 'make a tag named v1.0', 'create tag v1.0',
+      'make a tag called v1.0', 'tag this commit as v1.0',
+      'tag the current commit v1.0', 'add a tag called v1.0',
+      'create a git tag', 'make a git tag', 'tag this as v1.0',
+      'set a tag v1.0', 'create a new tag', 'create a tag named release',
+      'make a new tag', 'show me the tags', 'what tags are there',
+    ],
+  },
   'git_diff': {
     examples: [
       'git diff', 'show diff', 'show me the diff', 'show the full diff',
@@ -209,6 +252,14 @@ export const GIT_INTENTS = {
       'apply stashed changes', 'get my stashed changes back', 'unstash my work',
       'bring back the stash', 'restore my shelved changes', 'pop stash',
       'apply the stash', 'get back my stashed work',
+    ],
+  },
+  'git_stash_list': {
+    examples: [
+      'list stashes', 'list my stashes', 'show stashes',
+      'what stashes exist', 'git stash list', 'show my stashed work',
+      'what is in my stash', 'show stashed changes', 'list the stashes',
+      'what stashes do i have', 'show the stash', 'what is stashed',
     ],
   },
   'git_branch_create': {

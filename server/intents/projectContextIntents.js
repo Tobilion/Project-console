@@ -83,19 +83,25 @@ export const PROJECT_CONTEXT_INTENTS = {
     ],
   },
   'project.context.tests': {
+    // Intent expansion (Phase 1, 2026-08-03): "run the tests" now dispatches to the new
+    // run_tests intent in npmAndFileIntents.js (the one intentional dispatch change of the
+    // phase) — that phrase no longer lives here. This intent stays question/information-shaped
+    // ("how do i test", "what tests are there"), and per the intent-expansion spec's forbidden
+    // list the action-flavored "execute ..."/"kick off ..."/"check test results" phrases stay
+    // here rather than moving to run_tests — run_tests is purely "run ..." imperative.
     examples: [
-      'run tests', 'how do i test', 'test the code', 'run the tests',
+      'how do i test',
       'testing framework', 'what tests are there', 'show tests',
-      'test status', 'run test suite', 'are there tests',
-      'how to run tests', 'test the project', 'run all tests',
-      'execute tests', 'tell me about tests', 'test coverage',
+      'test status', 'are there tests',
+      'how to run tests',
+      'tell me about tests', 'test coverage',
       'what testing tools', 'how to test this', 'unit tests',
       'integration tests', 'test setup', 'testing approach',
       'is there test coverage', 'how is testing done',
       'show test files', 'list tests', 'where are the tests',
-      'does this project have tests', 'run the test suite please',
-      'kick off the tests', 'execute the test suite', 'check test results',
-      'run all unit tests', 'verify the tests pass',
+      'does this project have tests',
+      'execute tests', 'execute the test suite', 'kick off the tests',
+      'check test results', 'verify the tests pass',
     ],
   },
   'project.context.dependencies': {
@@ -202,6 +208,57 @@ export const PROJECT_CONTEXT_INTENTS = {
       'show me the heaviest files', 'which files take up the most space',
       'rank files by size', 'find the largest files', 'show top 10 biggest files',
       'what file is taking up the most space', 'show file size breakdown',
+    ],
+  },
+  'project.context.dev_server_status': {
+    // Intent expansion (Phase 1, 2026-08-03): "is the server running" / "is the site live" /
+    // "what's the URL" previously had no real intent — it only worked by luck when a config
+    // entry or the "what is the link" pre-check in connection.js happened to catch the phrasing.
+    // This is the dedicated status path: reads runningProcesses + lastDevUrls (the same data the
+    // link pre-check reports) so any phrasing reaches it. Read-only, immediate. Per the intent-
+    // expansion spec, "what port is the dev server on" also lives here (the dev server's port);
+    // "what port is the server on" deliberately does NOT — system.chit_chat.port already owns
+    // that exact phrase (an exact cross-intent dupe would fail check-intents). "what is the
+    // link"-family stays owned by the connection.js pre-check (answers equivalently with the
+    // same data); this intent covers the variants the pre-check never matched.
+    examples: [
+      'is the server running', 'is the site live', 'is the dev server running',
+      'is the site running', 'is the dev server up', 'is the server up', 'is the app running',
+      'is the app live', 'is the site up', 'is the server still running', 'is the website live',
+      'is the dev server still up', 'is my dev server running', 'is my server still running',
+      'is the local server running', 'is the backend up', 'is the frontend up',
+      'is anything running right now', 'check if the server is running',
+      'check if the dev server is up', 'check the server status', 'is the dev url up',
+      'has the server started', 'did the server start', 'is the server ready',
+      'is the site live yet', 'has the dev server booted', 'where is my server running',
+      // No "what is the url" / "whats the url" / "what url is it on" / "what is the url of the
+      // server" — those exact shapes are caught by connection.js's link pre-check (runs before
+      // the matcher) and answer with the same data; including them here would drag the
+      // dev_server_status cluster toward "what is the link" and flip that baseline control
+      // input away from project.knowledge.stack (measured: "whats the url" scored 0.734 for
+      // "what is the link" vs the next-best 0.550). The not-pre-checked variants below stay.
+      'whats the dev server url', 'what is the dev server url', 'whats the site address',
+      'whats the site url', 'show me the dev url', 'tell me the url', 'what is the server link',
+      'what port is the dev server on', 'give me the link to the site',
+    ],
+  },
+  // Intent expansion (Phase 2, 2026-08-03): "what changed recently" — on-demand file-mtime scan
+  // (findRecentActivity), NOT git status: this intent answers about file modification times on
+  // disk, git_status answers about staged/unstaged changes. "show recent commits" stays with
+  // git_log (commit history, not file edits). Note: the bare "what changed recently" phrase is
+  // deliberately NOT seeded here — it's already an exact example of system.chit_chat.git_status
+  // (a cross-intent exact dupe would fail check-intents), and per the Phase-1 precedent the
+  // pre-existing owner keeps it.
+  'project.context.recent_activity': {
+    examples: [
+      'what files changed recently', 'what was modified recently',
+      'show recent changes', 'what did i change recently', 'recent file activity',
+      'what files were edited recently', 'show me recent file changes',
+      'what has been modified lately', 'what did i work on recently',
+      'recent changes in the project', 'what changed last',
+      'show the latest modified files', 'what files did i touch recently',
+      'what files have changed today', 'which files did i edit recently',
+      'show me what was modified recently', 'whats been changed recently',
     ],
   },
 };

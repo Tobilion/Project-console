@@ -231,6 +231,7 @@ export function executeCommand(command, cwd, ws, projectId) {
       if (detached) return;
       detached = true;
       if (detachTimer) clearTimeout(detachTimer);
+      if (forceDetachTimer) clearTimeout(forceDetachTimer);
       // Stop listening to output
       child.stdout.removeAllListeners('data');
       child.stderr.removeAllListeners('data');
@@ -338,6 +339,7 @@ export function executeCommand(command, cwd, ws, projectId) {
     }, isDev ? 10000 : 20000);
 
     child.on('close', (code) => {
+      if (forceDetachTimer) clearTimeout(forceDetachTimer);
       // Confirmed live 2026-07-30 (Matchday Exchange transcript): "stop server" reported "No
       // running server" seconds after "what's the link?" confirmed the dev server was still
       // serving requests. Root cause — this used to delete the runningProcesses entry
@@ -406,6 +408,7 @@ export function executeCommand(command, cwd, ws, projectId) {
     });
 
     child.on('error', (err) => {
+      if (forceDetachTimer) clearTimeout(forceDetachTimer);
       runningProcesses.delete(projectId);
       broadcast({ type: 'dashboard_update' });
       sendEvent('error_output', `Failed to start process: ${err.message}`);

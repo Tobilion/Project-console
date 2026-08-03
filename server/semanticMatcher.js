@@ -266,6 +266,15 @@ class SemanticMatcher {
       // "push to github" / "deploy to github" (system.chit_chat.deploy), which mention github
       // without asking to attach/set a link.
       { intent: 'git_remote_add', pattern: /\b(attach|add|set|connect|link|point)\b.{0,20}\b(github|remote)\b.{0,20}\b(link|url|repo|repository|address|origin)\b/i },
+      // Phase 1 (2026-08-03, measured live with real embeddings): "who uses main.py" scored
+      // 0.826 for the new file_find intent ("where is main.py" — the filename dominates the
+      // vector) vs 0.770 for project.context.file_relations, silently flipping a documented,
+      // confirmed-live intent's own territory. The "who/which ... uses/imports/references"
+      // question-verb is unambiguous in this app's domain — it's always file_relations, never a
+      // locate request — so it wins outright before the embedding stage. Deliberately narrow:
+      // second alternative requires the "which/what + files/modules + verb" shape so "what is
+      // imported" (project.context.dependencies) and "what does this file import" stay untouched.
+      { intent: 'project.context.file_relations', pattern: /\bwho\s+(?:uses?|imports?|references?|depends\s+on)\b|\b(?:which|what)\s+(?:files?|modules?)\s+(?:use|import|reference)\b/i },
     ];
     for (const { intent, pattern } of PRE_SEMANTIC_OVERRIDES) {
       if (pattern.test(inputStr)) {
@@ -529,6 +538,44 @@ class SemanticMatcher {
     if (!kwMatched) _stages.push({ stage: 'keyword', matched: false });
     this._lastTelemetry = { stages: _stages, winner: null, finalIntent: null, finalConfidence: 0 };
     return null;
+  }
+
+  /**
+   * Best-scoring project config command entry (project.action.*) for one project, computed
+   * independently of the global builtin cluster — used by matcher.js stage 1b to let a
+   * project's own hand-authored command entries win over generic run-family builtins
+   * (run_project / npm_run) instead of losing the embedding race to their large phrase
+   * clusters. Returns { entryIndex, vectorIndex, score } or null.
+   */
+  async bestProjectCommandEntry(input, projectIndex) {
+    if (!this.ready) {
+      try {
+        await this.initialize();
+      } catch {
+        return null;
+      }
+    }
+    const inputStr = (input || '').trim().toLowerCase();
+    if (!inputStr) return null;
+    let inputData;
+    try {
+      const v = await this.extractor(inputStr, { pooling: 'mean', normalize: true });
+      inputData = v.data;
+    } catch {
+      return null;
+    }
+    let best = null;
+    for (const [intentName, data] of Object.entries(this.projectIntentVectors)) {
+      if (!intentName.startsWith('project.action.')) continue;
+      if (data.projectIndex !== projectIndex) continue;
+      for (let i = 0; i < data.vectors.length; i++) {
+        const sim = this._cosineSimilarity(inputData, data.vectors[i]);
+        if (!best || sim > best.score) {
+          best = { entryIndex: data.entryIndex, vectorIndex: i, score: sim };
+        }
+      }
+    }
+    return best;
   }
 
   getAndClearLastTelemetry() {

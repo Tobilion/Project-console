@@ -688,6 +688,23 @@ export async function findBiggestFiles(projectPath, topN = 10) {
   return sized.slice(0, topN);
 }
 
+/** Returns the most recently modified files, as [{path, mtime}] sorted desc by mtime (mtimeMs).
+ *  Intent expansion (Phase 2, 2026-08-03): same on-demand reasoning as findTodos/findBiggestFiles
+ *  — deliberately NOT part of the cached codebaseIndex, since it's asked for rarely. */
+export async function findRecentActivity(projectPath, { limit = 10 } = {}) {
+  const tree = await readProjectTree(projectPath);
+  const files = tree.filter((e) => e.type === 'file');
+  const withMtime = [];
+  for (const f of files) {
+    try {
+      const stat = await fs.stat(path.join(projectPath, f.path));
+      withMtime.push({ path: f.path, mtime: stat.mtimeMs });
+    } catch {}
+  }
+  withMtime.sort((a, b) => b.mtime - a.mtime);
+  return withMtime.slice(0, limit);
+}
+
 export async function indexProject(projectPath) {
   try {
     const stats = await fs.stat(projectPath);

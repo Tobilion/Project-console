@@ -111,4 +111,44 @@ export const NPM_AND_FILE_INTENTS = {
       'toss this file', 'clear out this file',
     ],
   },
+  'file_find': {
+    // Intent expansion (Phase 1, 2026-08-03): "where is the file X" / "find the config file" had
+    // no real intent — file_read only showed contents of an exact path, and its "did you mean"
+    // fallback only fired after an exact-read failure. This is the dedicated locate/search path:
+    // parse the name loosely (same parseFileNameOnly as file_read), then findFiles() across the
+    // project. Read-only, immediate. Deliberately no "gitignore" phrasings — the
+    // PRE_SEMANTIC_OVERRIDES literal override routes any input containing "gitignore" to
+    // git_ignore_add before the matcher ever sees it, so such examples would be unreachable.
+    examples: [
+      'where is main.py', 'where is the config file', 'find the config file',
+      'where is the readme file', 'find the file called', 'locate the file',
+      'where is the claude file', 'where does this file live', 'find files like this',
+      'where is the env file', 'find the package file', 'where is app.js',
+      'find the file named', 'which folder is this file in', 'where is the setup file',
+      'search for the file', 'locate a file', 'find a file called',
+      'find the entry file', 'where does the file live', 'find me the file',
+      'where is the doc file', 'search for files named', 'what folder contains this file',
+      'find the styles file', 'where is the data file', 'locate the config file',
+      'where can i find this file', 'find the test file', 'find the utility file',
+    ],
+  },
+  'run_tests': {
+    // Intent expansion (Phase 1, 2026-08-03): "run the tests" previously only answered ABOUT
+    // tests (project.context.tests — informational) or, on NetPulse, matched its `run tests`
+    // config entry. This executes the project's real test command by marker detection instead.
+    // Kept action-imperative ("run ...") while project.context.tests stays question-shaped
+    // ("how do i test", "what tests are there") so the embeddings stay apart. Per the intent-
+    // expansion spec, the "execute ..."/"kick off ..." flavored phrases stay in
+    // project.context.tests (the spec's forbidden list — they never moved here).
+    examples: [
+      'run the tests', 'run the test suite', 'run all tests', 'run the unit tests',
+      'run the tests now', 'run pytest', 'run the pytest suite', 'run my tests',
+      'run the tests please', 'run tests for this project', 'run the test files',
+      'lets run the tests', 'run the full test suite', 'run the tests again',
+      'run the failing tests', 'run the backend tests', 'run the frontend tests',
+      'run the test suite now', 'run my tests please', 'run all the tests', 'run pytest now',
+      'can you run the tests', 'please run the tests', 'run the tests for me',
+      'run the whole test suite', 'run the tests will you', 'run my tests again',
+    ],
+  },
 };

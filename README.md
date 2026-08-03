@@ -23,7 +23,7 @@ The Console scans `C:\Users\tobil\Desktop\Projects` (or any specified directory)
 - **Dashboard**: A toggleable per-project status grid showing uncommitted files, recent commits, dev server URLs, and running commands. Polls `/api/dashboard` every 5s with a 30s server-side cache; also re-fetches immediately on any `dashboard_update` WebSocket broadcast (process start/stop, URL detection, or command completion). A green pulsing pill in the header (`N running`) shows the live dev server count from `/api/active-servers` with zero layout shift — no flex reflow when it appears or disappears.
 
 ### Trigger Mode (Dispatcher)
-- **Multi-stage intent matching**: embedding cosine similarity (all-MiniLM-L6-v2) → a handful of literal pre-checks for confirmed trap phrases (`git init`, `gitignore`, `deploy`) → Fuse.js fuzzy → keyword patterns → NLP.js trained classifier → a single bounded local-model classification call (`localRouter.js`) for phrasings nothing above resolved → suggestion chips. 59 intents with ~1,900 example phrases, split across `server/intents/*.js` category files and merged in `intentsData.js` — the phrase lists are hand-curated, but matching itself is real ML at every stage (a trained local transformer for embeddings, a trained NLP.js classifier, and a logistic-regression confidence model trained on real accept/reject telemetry — see `confidenceModel.js`), and confirmed phrases get promoted into the permanent example set automatically as the console is used (`learningEngine.js`). Run `npm run check-intents` any time to statically scan all example phrases for exact/near-duplicate collisions before they cause a wrong match — complements the live `check collisions` command, which needs a running server.
+- **Multi-stage intent matching**: embedding cosine similarity (all-MiniLM-L6-v2) → a handful of literal pre-checks for confirmed trap phrases (`git init`, `gitignore`, `deploy`) → Fuse.js fuzzy → keyword patterns → NLP.js trained classifier → a single bounded local-model classification call (`localRouter.js`) for phrasings nothing above resolved → suggestion chips. 69 intents with ~2,100 example phrases, split across `server/intents/*.js` category files and merged in `intentsData.js` — the phrase lists are hand-curated, but matching itself is real ML at every stage (a trained local transformer for embeddings, a trained NLP.js classifier, and a logistic-regression confidence model trained on real accept/reject telemetry — see `confidenceModel.js`), and confirmed phrases get promoted into the permanent example set automatically as the console is used (`learningEngine.js`). Run `npm run check-intents` any time to statically scan all example phrases for exact/near-duplicate collisions before they cause a wrong match — complements the live `check collisions` command, which needs a running server.
 - **Chit-chat + read-only code Q&A**: greeting/status/gratitude/farewell/identity all give varied canned replies (not the same string every time) with no LLM call. Read-only questions answerable without AI: detected API routes (Express/Flask/FastAPI/Django), which files import/are imported by a given file, monorepo sub-package detection, TODO/FIXME scanning, and largest-files-by-size.
 - **Git actions beyond push/commit**: diff, stash/stash-pop, and branch creation, gated the same way every other git action here is (safe/read-only runs immediately, anything that mutates state asks for confirmation first). Deliberately does not include hard reset or force operations.
 - **Project-specific triggers**: Commands and answers defined in each project's `console.config.json` are embedded dynamically alongside base intents.
@@ -250,6 +250,87 @@ The embedding model (all-MiniLM-L6-v2, ~23MB) downloads automatically on first t
 "clear distillations" — clear AI distillation records
 ```
 
+## Intent Expansion (Phased)
+
+Trigger-mode intent backlog implemented in phases (spec: `console-intent-expansion-prompt.md`, kept
+local — gitignored). Worked **one intent per pass** against a recorded control baseline battery;
+every phase re-verifies the baseline byte-for-byte plus the new-intent batteries with a standalone
+harness (real modules, real embeddings), `npm run check-intents`, and `npm run lint`.
+
+| Phase | Intents | Status |
+|---|---|---|
+| 0 | Prep: read pipeline files, build harness, record control baseline | Done |
+| 1 | `run_tests`, `project.context.dev_server_status`, `file_find` | Done (harness-verified, not yet live-chat-verified) |
+| 2 | `git_fetch`, `git_ahead_behind`, `git_tag`, `project.workflow.checkpoint`, `project.context.recent_activity` | Done (harness-verified, not yet live-chat-verified) |
+| 3 | `system.chit_chat.needs_ai_mode`, `git_stash_list` | Done (harness-verified, not yet live-chat-verified) |
+| 3 | `system.chit_chat.needs_ai_mode`, `git_stash_list` | Planned |
+| 4 | Close-out: CLAUDE.md consolidation, live `check collisions`, final summary | Planned |
+
+**Phase 1 (2026-08-03):**
+- **`run_tests`** — executes the project's real test command by marker detection (`package.json`
+  `scripts.test` → `npm test`, `Cargo.toml` → `cargo test`, `go.mod` → `go test ./...`,
+  `pyproject.toml`/`requirements.txt` → `python -m pytest`); immediate, no confirmation.
+  One intentional dispatch change: `run the tests` now runs tests instead of answering about them
+  (`project.context.tests` stays question-shaped, and the spec's "forbidden" action-flavored
+  phrases — `execute tests`, `kick off the tests`, etc. — remain owned by that informational
+  intent).
+- **`project.context.dev_server_status`** — "is the server running" / "is the site live" /
+  "what port is the dev server on" answer from `runningProcesses` + `state.lastDevUrls` (same
+  data as the link pre-check), with the port-collision warning. Read-only, immediate. Note:
+  `what port is the server on` is excluded — `system.chit_chat.port` already owns that exact
+  phrase. Pre-checked URL shapes (`what is the url`, `whats the url`, `what is the url of the
+  server`, `what url is it on`) are deliberately not example seeds — the connection.js link
+  pre-check owns them live, and `whats the url` was measured at 0.734 for the unrelated
+  `what is the link` input. One documented harness deviation from the baseline battery: `what is
+  the link` now routes here instead of `project.knowledge.stack` — forced by the spec's own seed
+  `what is the server link` (~0.85, can't drop below the floor); live behavior is unchanged since
+  the pre-check intercepts it before the matcher.
+- **`file_find`** — "where is main.py" / "find the config file": parses the name loosely and runs
+  the sandboxed `findFiles()` tool; caps results at 15. Read-only, immediate.
+- Supporting fixes: `parseFileNameOnly` widened for the "the \<name\> file" shape (both `file_read`
+  and `file_find`); a measured `PRE_SEMANTIC_OVERRIDES` literal routes "who uses X" to
+  `project.context.file_relations` (without it, the new `file_find` intent stole that documented
+  intent's territory — measured 0.826 vs 0.770); `run_tests` strips the keyFiles truncation marker
+  before parsing `package.json` (codebase convention).
+- Verification status: **harness-verified only** (49/49 dispatch + handler checks against real
+  modules and real NetPulse `console.config.json` entries — the spec §4.3 control battery plus
+  per-intent and adjacent batteries, with the one documented `what is the link` deviation above).
+  Not yet re-verified through a live chat session — that's the Phase 4 close-out step.
+
+**Phase 2 (2026-08-03):**
+- **`git_fetch`** — read-only `git fetch` (updates remote-tracking refs, never touches the
+  working tree); immediate. No `pull`-shaped phrases — `git_pull` owns those.
+- **`git_ahead_behind`** — "am I behind origin": runs `git status -sb` (prints the
+  `[origin/main: ahead 2, behind 1]` bracket directly); read-only, immediate.
+- **`git_tag`** — no name → `git tag` list (immediate); a name → `git tag <name>` behind the
+  standard confirm flow, with the same `isSafeParamValue` injection check as `git_branch_create`
+  applied before the prompt. The name regex is character-class-bounded, so shell metacharacters
+  can't even enter the captured name.
+- **`project.workflow.checkpoint`** — explicit user-asked checkpoint commit via the same
+  `createCheckpoint` the auto-checkpoint-before-risky-commands flow uses; immediate (recoverable
+  commit). Non-git projects get `createCheckpoint`'s own "not a git repository" message.
+- **`project.context.recent_activity`** — "what files changed recently": on-demand file-mtime
+  scan (`findRecentActivity()` in `codebaseIndexer.js`, same ignore conventions as the biggest-
+  files/todos scans), answers about file modification times on disk, distinct from `git status`
+  (working tree) and `git log` (commits).
+- Verification status: **harness-verified only** (98/98 — full Phase-1 control battery unchanged
+  + 5 new batteries + adjacent must-not-steal checks). Live chat verification pending (Phase 4).
+
+**Phase 3 (2026-08-03):**
+- **`system.chit_chat.needs_ai_mode`** — "turn on ai mode" / "ask the ai" / "can the ai do this"
+  with AI off previously scattered onto unrelated intents (identity/structure/commands) or the
+  fallback. The AI toggle is a frontend-only control, so this intent answers with guidance
+  pointing at the header AI toggle (varied canned replies, immediate). Registered in both
+  `BUILTIN_INTENTS` and `PURE_CHITCHAT_INTENTS` — the double registration matters: it's a
+  zero-argument safe-sounding canned reply, so garbled input gets the same guard as
+  greeting/gratitude.
+- **`git_stash_list`** — read-only `git stash list` (same immediate treatment as `git log`/
+  `git branch`, same isGitRepo gate as `git stash`); the pre-existing `git_stash`/`git_stash_pop`
+  clusters used to absorb these question-shaped phrasings.
+- Verification status: **harness-verified only** (133/133 — the full 98-input Phase-2 battery kept
+  as regression, all still green, plus 2 new batteries + 6 more adjacent must-not-steal checks).
+  Live chat verification pending (Phase 4).
+
 ## Architecture
 
 ```
@@ -266,7 +347,7 @@ server/
 ├── semanticMatcher.js         — Embedding + Fuse.js matching engine + PRE_SEMANTIC_OVERRIDES.
 ├── localRouter.js             — Bounded, single-call local-model classification tier (last
 │                                resort before giving up, independent of the AI-mode toggle).
-├── intentsData.js             — Merges 59 intents (~1,900 phrases) from server/intents/*.js.
+├── intentsData.js             — Merges 69 intents (~2,100 phrases) from server/intents/*.js.
 ├── scripts/checkIntentDuplicates.js — `npm run check-intents`: static exact/near-duplicate
 │                                phrase scanner, no server needed.
 ├── nlpEngine.js                — NLP.js classifier; retrains from confirmed near-miss promotions.

@@ -20,6 +20,23 @@ export function describeIntent(intent) {
 // a loose file reference, not the whole project.
 const ROUTER_REPO_MAP_CHARS = 1200;
 
+// Phase-3 floor (2026-08-03, NetPulse transcript): a project's own hand-authored
+// console.config.json `command` entry is preferred over the generic run_project / npm_run
+// builtins when its best trigger phrase clears this embedding floor — project-specific run
+// instructions should win over the builtin cluster's wildcard phrasing ("run the site" should
+// reach NetPulse's own "run locally" -> `python main.py serve`, and "watch at interval of 5
+// minutes" should reach its `watch --interval {interval}` entry). Chosen from measured cosine
+// scores of real NetPulse inputs against its own triggers (see CLAUDE.md): 0.5 was unsafe —
+// "run this project" scores 0.517 against the "test project" trigger and would have silently
+// auto-run pytest; 0.55 clears that while still auto-running the true positives ("run the site
+// and watch at interval of 5 minutes" 0.565 -> watch, "run the network speed" 0.721 -> watch,
+// "run the tests" 0.825 -> pytest). Sub-floor run-family inputs ("run the site" 0.410, "run the
+// server" 0.499) fall through to the builtin handler, where projectTypeSuggestions() surfaces
+// the config entry as a suggestion chip instead (see CONFIG_SUGGESTION_FLOOR in
+// builtinIntents.js). Lower than the builtin semantic floor by design, since only exact
+// project-authored entries are ever eligible and they are per-project, not global.
+const CONFIG_RUN_ENTRY_FLOOR = 0.55;
+
 // NOTE: file_append, file_read, and git_remote_add were previously missing from this set even
 // though builtinIntents.js has real handlers for all three, and git_remote_add's whole reason
 // for existing was a PRE_SEMANTIC_OVERRIDES literal-keyword hit in semanticMatcher.js (source:
@@ -33,20 +50,23 @@ const BUILTIN_INTENTS = new Set([
   'system.chit_chat.clear', 'system.chit_chat.help', 'system.chit_chat.git_status',
   'system.chit_chat.explain_followup', 'system.chit_chat.undo', 'system.chit_chat.deploy',
   'system.chit_chat.yes_no', 'system.chit_chat.farewell', 'system.chit_chat.identity',
+  'system.chit_chat.needs_ai_mode',
   'project.knowledge.overview', 'project.knowledge.stack', 'project.knowledge.commands',
   'project.knowledge.gotchas', 'project.knowledge.architecture',
   'project.context.structure', 'project.context.languages', 'project.context.file_count',
   'project.context.entry_point', 'project.context.tech_preview',
   'project.context.tests', 'project.context.dependencies', 'project.context.config',
   'project.context.routes', 'project.context.file_relations', 'project.context.monorepo',
-  'project.context.todos', 'project.context.biggest_files',
-  'run_project', 'project.knowledge.how_to_run',
+  'project.context.todos', 'project.context.biggest_files', 'project.context.dev_server_status',
+  'project.context.recent_activity',
+  'run_project', 'project.knowledge.how_to_run', 'run_tests', 'project.workflow.checkpoint',
   'git_push', 'git_commit', 'git_commit_push', 'git_add',
   'git_init', 'git_ignore_add', 'git_rm_cached', 'npm_install',
-  'npm_build', 'npm_run', 'file_create', 'file_delete', 'file_append', 'file_read',
+  'npm_build', 'npm_run', 'file_create', 'file_delete', 'file_append', 'file_read', 'file_find',
   'git_remote_add', 'project_scan', 'project_list',
   'git_log', 'git_branch', 'git_checkout', 'git_pull',
-  'git_diff', 'git_stash', 'git_stash_pop', 'git_branch_create',
+  'git_diff', 'git_stash', 'git_stash_pop', 'git_stash_list', 'git_branch_create',
+  'git_fetch', 'git_ahead_behind', 'git_tag',
   'system.monitoring.metrics', 'system.chit_chat.port',
 ]);
 
@@ -74,6 +94,11 @@ const PURE_CHITCHAT_INTENTS = new Set([
   // sounding canned reply" shape as the four above, so a garbled real request could just as
   // easily misfire onto "goodbye" or "who are you" as it previously did onto "gratitude".
   'system.chit_chat.farewell', 'system.chit_chat.identity',
+  // needs_ai_mode (2026-08-03, Phase 3 of the intent-expansion spec): same safe-sounding canned
+  // reply as the rest of this set ("flip the AI toggle and ask again") — a garbled real request
+  // could just as easily land here as on gratitude, so it gets the same guard. Registered in
+  // BOTH this set and BUILTIN_INTENTS — this is the one intent that must be in both.
+  'system.chit_chat.needs_ai_mode',
 ]);
 
 function looksLikeRealRequest(input) {
@@ -222,6 +247,23 @@ export async function matchInput(input, project, projectIndex, options = {}) {
         isTrustworthyChitChat(semanticResult.intent, input) &&
         isTrustworthyKnowledgeIntent(semanticResult.intent, input)
       ) {
+        // Phase 3 (2026-08-03, NetPulse transcript): a project's own config command entries
+        // lose to the huge run_project / npm_run phrase clusters in the embedding race, so a
+        // "run the site and watch at interval of 5 minutes" never reached the project's own
+        // `watch --interval {interval}` entry. When the winner is a generic run-family builtin,
+        // give the project's own `command`-type entries a separate chance above their own floor;
+        // dispatch through the exact same config-entry path as stage 1a (safety checks and the
+        // parameterized-command ask live in handleMatchedEntry / runCommandEntry, unchanged).
+        if (semanticResult.intent === 'run_project' || semanticResult.intent === 'npm_run') {
+          const projEntry = await semanticMatcher.bestProjectCommandEntry(input, projectIndex);
+          if (projEntry && projEntry.score >= CONFIG_RUN_ENTRY_FLOOR) {
+            const entryResult = tryLookupEntry([project], 0, projEntry.entryIndex, input);
+            if (entryResult) {
+              metrics.event({ type: 'match_result', input: input.slice(0, 80), outcome: 'config_run_entry', duration: Date.now() - t0 });
+              return { ...entryResult, telemetryId };
+            }
+          }
+        }
         // Requested directly (2026-07-30): rather than silently guessing on a true collision
         // (two different intents scoring nearly identically — semanticMatcher.js's `collision`
         // field, computed only for genuine cross-intent ties, not multiple phrasings of the same

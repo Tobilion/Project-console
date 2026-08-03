@@ -217,6 +217,14 @@ export const CHIT_CHAT_INTENTS = {
       'tell me the port number', 'whats the local port', 'give me the port',
     ],
   },
+  'system.chit_chat.needs_ai_mode': {
+    examples: [
+      'turn on ai mode', 'enable ai mode', 'use ai mode',
+      'use the ai assistant', 'ask the ai', 'let the ai handle it',
+      'activate ai mode', 'can the ai do this', 'use ai for this',
+      'do it with ai', 'ask the ai model', 'use ai',
+    ],
+  },
   'system.monitoring.metrics': {
     examples: [
       'show metrics', 'view metrics', 'monitoring', 'monitor',
