@@ -6,7 +6,7 @@ import { appendMessage, getSession } from '../conversationStore.js';
 import { executeCommand } from '../executor.js';
 import { isCommandBlocked } from '../dangerousPatterns.js';
 import { createCheckpoint } from '../gitSafety.js';
-import { createProjectTools, isGatedToolCall, isCommandAllowed, isCustomToolRisky } from '../tools.js';
+import { createProjectTools, isCommandAllowed, GATED_TOOLS, toolGrantKey, resolveToolGate } from '../tools.js';
 import { metrics } from '../metrics.js';
 import { runningProcesses } from '../executor.js';
 import { handleBuiltinIntent } from './builtinIntents.js';
@@ -102,6 +102,12 @@ function onConnection(ws) {
     conversationHistory: [],
     // Set by aiQuery.js while an AI query is in flight; read by the 'cancel' handler above.
     aiAbortController: null,
+    // Phase 5 (PASS 5.1): session-scoped tool grants — grantKey set for (project, tool) pairs
+    // the user has already approved for this conversation. Filled by the 'approve_task' WS
+    // message ("Approve this task") and by allow-after-first-ask policy approvals. Consulted by
+    // resolveToolGate (tools.js) on every tool call. Per-connection, so it resets on reconnect —
+    // the same lifetime as every other aiEnabled/activeProjectId setting here.
+    toolGrants: new Set(),
   };
 
   ws.on('error', (err) => {
@@ -163,6 +169,32 @@ async function routeMessage(ws, parsed, sessionContext) {
     case 'execute_tool':
       await handleToolCall(ws, parsed, sessionContext);
       return;
+    case 'approve_task': {
+      // Phase 5 (PASS 5.1): one-click "Approve this task" from the confirm card. Resolves the
+      // currently-pending tool confirmation by token (exactly like an Approve click) AND
+      // pre-grants every non-risky gated tool for this session+project so the rest of the
+      // current task's file edits run without further prompts. Deliberately does NOT grant
+      // executeCommand or the ALWAYS_CONFIRM_TOOLS (runTests/stopProcess) — risky shell
+      // commands and command-execution tools still ask every single time, that invariant is
+      // enforced in resolveToolGate, not just by what this case grants.
+      const { token, projectId } = parsed.payload || {};
+      const pid = projectId || sessionContext.activeProjectId;
+      const project = pid ? state.activeProjectsCache.find((p) => p.id === pid) : null;
+      if (project?.path) {
+        for (const name of GATED_TOOLS) {
+          sessionContext.toolGrants.add(toolGrantKey(project.path, name));
+        }
+      }
+      if (token && pendingToolConfirmations.has(token)) {
+        const pending = pendingToolConfirmations.get(token);
+        pendingToolConfirmations.delete(token);
+        pending.resolve(true);
+      } else {
+        ws.send(JSON.stringify({ type: 'answer', data: 'Approved — future file edits in this conversation will run without asking (commands and tests still get their own confirm).' }));
+      }
+      ws.send(JSON.stringify({ type: 'task_granted', data: { projectId: pid } }));
+      return;
+    }
     case 'ai_toggle': {
       const { enabled } = parsed.payload || {};
       sessionContext.aiEnabled = !!enabled;
@@ -1118,7 +1150,15 @@ async function handleToolCall(ws, parsed, sessionContext) {
     return;
   }
 
-  if (isGatedToolCall(tool, args) || isCustomToolRisky(tool, project?.path)) {
+  // Phase 5: direct tool calls consult the same resolveToolGate as the AI path — permissions
+  // policy (deny / allow-after-first-ask), session grants ("Approve this task"), and the
+  // always-confirm set all apply identically whichever path invokes the tool.
+  const gate = await resolveToolGate(tool, args, project?.path, sessionContext.toolGrants);
+  if (gate.action === 'deny') {
+    ws.send(JSON.stringify({ type: 'tool_result', data: { success: false, error: `Tool "${tool}" is denied by this project's permissions policy.` } }));
+    return;
+  }
+  if (gate.action === 'ask') {
     const token = crypto.randomUUID();
     const confirmed = await new Promise((resolve) => {
       pendingToolConfirmations.set(token, { resolve, createdAt: Date.now() });
@@ -1128,8 +1168,11 @@ async function handleToolCall(ws, parsed, sessionContext) {
       ws.send(JSON.stringify({ type: 'tool_result', data: { success: false, error: `${tool} rejected by user.` } }));
       return;
     }
+    // allow-after-first-ask policy: record the grant so later calls this session skip the prompt.
+    if (gate.grantKey) sessionContext.toolGrants.add(gate.grantKey);
   } else {
-    ws.send(JSON.stringify({ type: 'tool_start', data: `Running ${tool}...` }));
+    const prefix = gate.autoApproved ? 'Auto-approved: ' : '';
+    ws.send(JSON.stringify({ type: 'tool_start', data: `${prefix}Running ${tool}...` }));
   }
 
   const result = await tools[tool](args || {});

@@ -5,6 +5,42 @@ import { isCommandBlocked } from './dangerousPatterns.js';
 
 const MANIFEST_FILENAME = 'console.tools.json';
 
+// Phase 5 (2026-08-03, console-chitchat-ai-upgrade-prompt.md PASS 5.1): an optional top-level
+// `permissions` object in console.tools.json lets a project relax (or tighten) the per-tool
+// AI-mode confirmation flow. Defaults are unchanged (everything 'ask'); this is strictly opt-in
+// per-project, and executeCommand can NEVER leave 'ask' — `risky: true` commands stay gated
+// forever no matter what a manifest says.
+const PERMISSION_VALUES = new Set(['ask', 'allow-after-first-ask', 'deny']);
+const PERMISSION_ASK_ONLY_TOOLS = new Set(['executeCommand']);
+
+/**
+ * Validates the optional `permissions` object from a plugin manifest. Values other than
+ * ask/allow-after-first-ask/deny are dropped with a warning (never crash); executeCommand is
+ * coerced back to 'ask' (its only legal value — risky stays gated forever). Returns the sanitized
+ * object, or null when the manifest had no valid permissions.
+ */
+function sanitizePermissions(rawPermissions) {
+  if (rawPermissions === undefined || rawPermissions === null) return null;
+  if (typeof rawPermissions !== 'object' || Array.isArray(rawPermissions)) {
+    console.warn('[pluginTools] Ignoring invalid console.tools.json "permissions" — expected an object keyed by tool name.');
+    return null;
+  }
+  const out = {};
+  for (const [toolName, value] of Object.entries(rawPermissions)) {
+    if (!PERMISSION_VALUES.has(value)) {
+      console.warn(`[pluginTools] Ignoring invalid permissions entry "${toolName}" — expected one of: ask, allow-after-first-ask, deny.`);
+      continue;
+    }
+    if (PERMISSION_ASK_ONLY_TOOLS.has(toolName) && value !== 'ask') {
+      console.warn(`[pluginTools] Permission for "${toolName}" must stay "ask" (risky commands are always confirmed); forced back to "ask".`);
+      out[toolName] = 'ask';
+      continue;
+    }
+    out[toolName] = value;
+  }
+  return Object.keys(out).length > 0 ? out : null;
+}
+
 /** Schema validation for a single custom tool entry. */
 function validateToolEntry(tool, index) {
   const errors = [];
@@ -45,7 +81,9 @@ function validateToolEntry(tool, index) {
   return { valid: errors.length === 0, errors };
 }
 
-/** Load and validate a plugin manifest from a project directory. Returns { tools, raw } or null. */
+/** Load and validate a plugin manifest from a project directory. Returns { tools, permissions, raw }
+ *  or null. `permissions` is the sanitized optional PASS 5.1 policy map (may be present even when
+ *  a manifest has zero custom tools — a permissions-only manifest is valid). */
 export async function loadPluginManifest(projectPath) {
   const manifestPath = path.join(projectPath, MANIFEST_FILENAME);
   try {
@@ -68,8 +106,9 @@ export async function loadPluginManifest(projectPath) {
     if (errors.length > 0) {
       console.warn(`[pluginTools] ${manifestPath}: ${errors.join('; ')}`);
     }
-    if (tools.length === 0) return null;
-    return { tools, raw: parsed };
+    const permissions = sanitizePermissions(parsed.permissions);
+    if (tools.length === 0 && !permissions) return null;
+    return permissions ? { tools, permissions } : { tools };
   } catch (err) {
     if (err.code === 'ENOENT') return null;
     console.warn(`[pluginTools] Failed to load ${MANIFEST_FILENAME}: ${err.message}`);

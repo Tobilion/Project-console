@@ -49,8 +49,14 @@ when the cmd.exe wrapper exits before npm.
   `aiStream.js` (token streaming + `<tool_call>` extraction)
 - `server/tools.js` — `createProjectTools(project)`: file/git tools **sandboxed to that project's
   directory only** (path-escape attempts are rejected). Named-args, not positional. Tools:
-  `readFile`, `writeFile`, `editFile`, `findFiles`, `insertAtLine`, `searchCode`, `listFiles`,
-  `getProjectInfo`, `getGitStatus`, `undoLastChange`, `saveMemory`.
+  `readFile`, `writeFile`, `editFile` (single-pair or multi-hunk `oldStrings`/`newStrings`
+  arrays, all-or-nothing), `findFiles`, `insertAtLine`, `searchCode`, `listFiles`,
+  `getProjectInfo`, `getGitStatus`, `undoLastChange`, `saveMemory`, plus Phase 5 additions
+  `listProcesses`/`stopProcess`/`probeUrl`/`runTests` (process/test tools, always-confirm where
+  they mutate) and `webSearch`/`deepResearch` (SSRF-guarded). Also home to `resolveToolGate`
+  (single gate decision point: permissions policy → always-confirm set → session grants → ask),
+  `findTestCommand` (shared test-command marker detection), and `getToolPermission`
+  (permissions map from `console.tools.json`).
 - `server/dangerousPatterns.js` — hard blocklist (last resort, not a security boundary)
 - `server/confidenceModel.js` — pure-JS logistic regression trained on real accept/reject
   telemetry; see "Learned confidence model" below
@@ -202,10 +208,16 @@ the AI-mode input bar (real file upload via `FileReader`, Search/Reason/Deep Res
   per-query re-confirmation (the old `consent_request` double-gate was removed as pure friction).
 - `writeFile`, `editFile`, `insertAtLine`, `appendToFile`, and any `executeCommand` with
   `risky: true` from the AI path require explicit user approval (`tool_confirm_prompt` → user
-  clicks Approve/Reject) before they run — the model cannot self-approve. See `isGatedToolCall()`
-  in `server/tools.js`. `saveMemory` is the one tool with conditional gating — see "Persistent
-  cross-session AI memory" above — approval is required only when the model itself flags a save
-  as `importance: 'judgment'`, not for routine low-stakes saves.
+  clicks Approve/Reject) before they run — the model cannot self-approve. See `resolveToolGate()`
+  in `server/tools.js`. The ONLY exceptions are the Phase 5 session grants: the "Approve +
+  auto-approve file edits this conversation" button pre-approves the four non-risky file tools for
+  that project + session, and a `console.tools.json` `permissions` policy of
+  `allow-after-first-ask` records a grant after the first manual approval. **Neither mechanism can
+  ever auto-approve `risky: true` `executeCommand`, `runTests`, or `stopProcess`** —
+  `ALWAYS_CONFIRM_TOOLS` + the `executeCommand` parse-time coercion enforce that. `saveMemory` is
+  the one tool with conditional gating — see "Persistent cross-session AI memory" above — approval
+  is required only when the model itself flags a save as `importance: 'judgment'`, not for routine
+  low-stakes saves.
 - **Trigger mode (2026-07-28) can now also create/append files without AI mode or Ollama at
   all** — "create a file called X with the text '...'" / "append to X the text '...'" /
   "read file X" in `builtinIntents.js` parse the filename + quoted content directly with regex
@@ -1785,6 +1797,70 @@ handler level (fake ws + stubbed `chatOnce`, no Ollama needed) + `tsc --noEmit` 
 Verification status: handler-harness (9/9), full control battery (298/298), lint, check-intents all
 green; NOT yet exercised live through a real chat + real Ollama — expected, and the manual
 verification kit in the spec (§2, §5) covers it at the end of the whole upgrade.
+
+## AI-mode agentic loop upgrade (2026-08-04, Phase 5 of `console-chitchat-ai-upgrade-prompt.md`)
+
+Tool/wiring layer only — no intent/matcher/example-phrase changes, so the dispatch control battery
+is untouched. Implemented PASS 5.1–5.6; **5.6 (gitStage/gitCommit as dedicated tools) SKIPPED
+deliberately** — git operations are already reachable through `executeCommand` + the existing
+confirm flow, so dedicated tools would just duplicate that surface.
+
+- **PASS 5.1 — per-tool permissions policy + session grants.** `console.tools.json` gains an
+  optional `permissions` object (`"toolName": "ask" | "allow-after-first-ask" | "deny"`), validated
+  in `pluginTools.js`'s `sanitizePermissions` at parse time (invalid values dropped with a warning,
+  never crash; `executeCommand` is coerced back to 'ask' — it can never leave 'ask'). `getToolPermission()`
+  reads it per call; `resolveToolGate(toolName, args, projectRoot, sessionGrants)` (tools.js) is now
+  the single decision point for every tool invocation from BOTH the AI loop (`aiQuery.js`'s
+  `runToolCall`) and the frontend direct path (`connection.js`'s `handleToolCall`). Hierarchy: policy
+  deny (wins over everything, even grants) → not gated → always-confirm set → session grant
+  (auto-approved) → normal ask. `sessionContext.toolGrants` (new, per-connection `Set` of
+  `toolGrantKey(projectRoot, toolName)` strings) holds grants, filled two ways: the new
+  `approve_task` WS message (the green "Approve + auto-approve file edits this conversation" button
+  on the tool confirm card in `Terminal.tsx` — resolves the pending tool confirm by token AND
+  pre-grants the four non-risky GATED_TOOLS for that project+session), and auto-recorded after a
+  first approval when the policy is `allow-after-first-ask`. A session grant is scoped per project
+  root, so it can never leak to another project.
+- **Always-confirm invariant**: `ALWAYS_CONFIRM_TOOLS` (runTests, stopProcess) plus `risky: true`
+  `executeCommand` can NEVER be auto-approved — no policy value and no session grant bypasses them;
+  `resolveToolGate` enforces this before the grant check, and the `approve_task` handler doesn't
+  grant them anyway. Belt and suspenders, matching the parse-time `executeCommand` coercion.
+- **PASS 5.2 — confirmMode/approval** on tool calls: handled structurally rather than as a new
+  field — the gate now returns `ask | allow | deny` + `grantKey` + `autoApproved`, and the tool_start
+  events tell the user when something ran without asking ("Auto-approved: ...").
+- **PASS 5.3 — process/test/self-verify tools** (`tools.js`): `listProcesses({projectId})` —
+  read-only view of the `runningProcesses` map (command + dev URL + `child.spawnTime`-derived
+  runningSince), ungated; `stopProcess({projectId})` — the EXACT "stop server" flow (SIGTERM + map
+  delete + lastDevUrls delete + dashboard_update broadcast), always-confirm; `probeUrl({url})` —
+  liveness fetch (3s timeout) restricted to localhost/private http(s) ONLY via the SSRF-inverse
+  `isProbeableUrl` exported from `webSearch.js` (webSearch's own `isSafeExternalUrl` rejects
+  internal addresses; probeUrl must never reach a public site or the 169.254.169.254 metadata
+  endpoint — that one is deliberately excluded from the probe allowlist too); `runTests()` — runs
+  the project's real test command, detected by the shared exported `findTestCommand(project)`
+  (package.json scripts.test → npm test; cargo.toml → cargo test; go.mod → go test ./...;
+  pyproject.toml/requirements.txt → python -m pytest; keyFiles truncated-tail marker stripped
+  before JSON.parse). The trigger-mode `run_tests` handler in `builtinIntents.js` was refactored
+  onto that same helper so the two paths can never drift. Bounded exec (90s/10MB) so a hung suite
+  can't wedge the loop; always-confirm.
+- **PASS 5.4 — MAX_TOOL_ROUNDS env override** (default 6, unchanged). Plus the self-check nudge:
+  after any successful writeFile/editFile/insertAtLine/appendToFile, the tool result carries a
+  `note` telling the model to verify by reading the file back (rides the same `note` channel as the
+  console.config.json save-nudge).
+- **PASS 5.5 — multi-hunk editFile + webSearch exposure.** `editFile` now accepts
+  `oldStrings`/`newStrings` equal-length arrays; all hunks apply all-or-nothing against the evolving
+  content (exact match then the whitespace-normalized fallback, shared `applySingleEdit` helper) —
+  if any hunk fails, nothing is written and the error names the failing hunk. `webSearch`/
+  `deepResearch` were added to `createProjectTools`'s baseTools (SSRF-guarded by the existing
+  `isSafeExternalUrl`), so the AI loop can call them directly instead of only via the frontend
+  Search/Deep Research toggles. New tool defs added to `BUILTIN_TOOL_DEFS` in `ollamaContext.js`.
+- New WS message types (keep the useConsole.ts switch in sync, per conventions): `approve_task`
+  (client → server), `task_granted` (server → client acknowledgment).
+- Verification: **harness-verified** — standalone script against the real modules (48/48 checks:
+  resolveToolGate matrix incl. deny-wins-over-grant and always-confirm-despite-grant, findTestCommand
+  markers incl. truncated package.json, multi-hunk editFile all-or-nothing + normalized fallback,
+  isProbeableUrl allowlist incl. 172.32/169.254.169.254 exclusions, Phase 5 tool presence), `tsc
+  --noEmit` clean, `npm run check-intents` zero new dupes, all changed modules import cleanly.
+  NOT yet exercised live through a real Ollama chat session (new tools, permissions, approve-task
+  flow) — that's the end-of-upgrade live verification pass.
 
 ## Conventions
 

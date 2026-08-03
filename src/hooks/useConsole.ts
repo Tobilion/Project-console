@@ -333,6 +333,10 @@ export function useConsole() {
       case 'tool_confirm_prompt':
         terminal.setPendingToolConfirm({ token: payload.token, tool: payload.tool, args: payload.args || {} });
         break;
+      case 'task_granted':
+        // Phase 5 (PASS 5.1): "Approve this task" acknowledged server-side.
+        sessions.setMessages(prev => [...prev, { id, type: 'system', content: '✅ Approved this task — file edits for this conversation will run without further prompts (commands and tests still confirm).' }]);
+        break;
       case 'memory_suggestion':
         // Proactive Layer-4 self-learning nudge (repeated question / frequent command / frequent
         // file edit / candidate CLAUDE.md addition) — previously silently dropped here, so the
@@ -577,6 +581,7 @@ export function useConsole() {
     handleCancel,
     handleConfirm: terminal.handleConfirm,
     handleToolConfirm: terminal.handleToolConfirm,
+    handleApproveTask: terminal.handleApproveTask,
     handleMemorySuggestionRespond: terminal.handleMemorySuggestionRespond,
     toolHistory,
     showToolHistory,

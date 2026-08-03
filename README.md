@@ -48,11 +48,12 @@ The Console scans `C:\Users\tobil\Desktop\Projects` (or any specified directory)
 - **Opt-in toggle**: AI mode is OFF by default. Flipping it ON sends every message in that session to Ollama — no per-query re-consent. Detection order on toggle-on: is Ollama reachable at all → is the internet reachable (prefer an Ollama Cloud model as the default if so) → else fall back to a local model → if neither is available, AI mode fails with a message explaining why. This only picks a *default*; you can always override it via the model picker.
 - **Model selection**: Choose any model available in your local Ollama instance, or an Ollama Cloud model (`:cloud`-suffixed, e.g. `deepseek-v4-flash:cloud`, `qwen3.5:cloud`) for heavier requests — cloud models proxy through the same local Ollama daemon (`ollama signin` + internet required), so there's no separate API key or provider integration to configure.
 - **Mode picker**: Default / Search / Deep Research / Reason modes modify the system prompt for different AI behaviors.
-- **Tool-call loop**: The AI can call sandboxed tools — `readFile`, `writeFile`, `editFile`, `findFiles`, `insertAtLine`, `appendToFile`, `searchCode`, `listFiles`, `getProjectInfo`, `getGitStatus`, `undoLastChange`, `saveMemory`, and `executeCommand` (13 total) — with up to 6 rounds of tool calls.
+- **Tool-call loop**: The AI can call sandboxed tools — `readFile`, `writeFile`, `editFile`, `findFiles`, `insertAtLine`, `appendToFile`, `searchCode`, `listFiles`, `getProjectInfo`, `getGitStatus`, `undoLastChange`, `saveMemory`, `executeCommand`, plus the Phase 5 additions `listProcesses`, `stopProcess`, `probeUrl`, `runTests`, `webSearch`, `deepResearch` (19 total) — with up to 6 rounds of tool calls (`MAX_TOOL_ROUNDS` env var to override).
 - **Token streaming**: AI responses stream token-by-token to the UI. `<tool_call>` JSON blocks are intercepted server-side — the user never sees raw JSON.
 - **Reasoning/answer separation**: every Ollama call requests `think: true`, so a reasoning-capable model's internal deliberation (`message.thinking`) is kept separate from its actual answer (`message.content`) — only the answer is ever shown as the reply or scanned for tool calls, so a model "thinking out loud" can no longer be mistaken for a finished response or a real tool call. Safe no-op for models without thinking support. The reasoning text itself is now also surfaced live in the UI as a small scrollable italic trace under the "AI is thinking..." spinner — not just the spinner alone.
 - **Fabricated-action detection**: if a reply describes a completed mutating action (pushed, committed, deployed, deleted, installed, etc.) in success language but no tool was actually called anywhere in that exchange, an unmissable correction is sent right after — guards against a model inventing a plausible-looking "done ✅" result instead of admitting it never ran anything.
-- **Gated tools**: `writeFile`, `editFile`, `insertAtLine`, `appendToFile`, risky `executeCommand`, and judgment-level `saveMemory` calls require explicit user approval before execution; routine `saveMemory` calls run immediately (see Persistent Memory below).
+- **Gated tools**: `writeFile`, `editFile`, `insertAtLine`, `appendToFile`, risky `executeCommand`, `runTests`, `stopProcess`, and judgment-level `saveMemory` calls require explicit user approval before execution; routine `saveMemory` calls run immediately (see Persistent Memory below).
+- **Per-project permissions policy** (`console.tools.json` `permissions`): a project can set `"toolName": "ask" | "allow-after-first-ask" | "deny"` to tune the per-tool flow. Default is unchanged (`ask`); `executeCommand` can never be anything but `ask`, and `runTests`/`stopProcess` are always confirmed regardless of policy. Invalid values are dropped with a warning at scan time — a malformed manifest can never crash project loading. **"Approve this task"**: the tool confirm card has an extra button that approves the current edit AND pre-grants the non-risky file tools (`writeFile`/`editFile`/`insertAtLine`/`appendToFile`) for that session+project, so the rest of the task's edits run without further prompts — commands and tests still confirm every single time, enforced in `resolveToolGate` (tools.js), not just by what gets granted.
 - **Path sandbox**: All file tools are scoped to the active project's directory. Any attempt to resolve outside the project root is rejected.
 - **File upload**: Real files can be attached via `FileReader` in the AI input bar for the AI to analyze.
 - **Project context injection**: The AI's system prompt includes CLAUDE.md content (~6000 chars), entry-point code snippets, a whole-project repo map (top-level export/function/class names per file plus import/imported-by relationships, so the model can resolve "the config file" or "what uses this" without guessing), detected API routes (Express/Flask/FastAPI/Django), monorepo sub-package detection, and anything saved to persistent memory for that project.
@@ -391,8 +392,32 @@ new frontend event. All registered in `BUILTIN_INTENTS`.
   the matcher in the live app (connection.js's typed-command bypass runs it directly), so the
   harness's `git_status` misroute is unreachable in production; (3) `what is the dev url` is an
   unseeded shape that slips past both the link pre-check regex and `dev_server_status`'s
-  deliberately-excluded "what is the url" family → NLP-stage misroute to `stack`. Live chat
-  verification pending (Phase 4).
+   deliberately-excluded "what is the url" family → NLP-stage misroute to `stack`. Live chat
+   verification pending (Phase 4).
+
+**Phase 5 — AI-mode agentic loop upgrade (`console-chitchat-ai-upgrade-prompt.md` §6, 2026-08-04):**
+- **Per-tool permissions policy** — see the AI Mode "Per-project permissions policy" bullet above.
+- **Always-confirm tools**: `runTests`/`stopProcess` are command executions, so they're held to the
+  same invariant as risky `executeCommand` — no permissions policy or session grant can auto-approve
+  them; the user sees the confirm card every time (`ALWAYS_CONFIRM_TOOLS` in `tools.js`).
+- **New AI tools**: `listProcesses` (read-only — running processes + dev URL + since), `stopProcess`
+  (uses the exact same `runningProcesses`/`broadcast` flow as the "stop server" trigger, gated),
+  `probeUrl` (liveness check restricted to localhost/private http(s) by the SSRF-inverse `isProbeableUrl`
+  in webSearch.js — never a public-site or metadata-endpoint lever), `runTests` (runs the project's real
+  test command detected by the shared `findTestCommand` — package.json test script → Cargo.toml → go.mod
+  → Python — which also refactored the trigger-mode `run_tests` handler onto the same helper so the two
+  paths can't drift).
+- **`webSearch`/`deepResearch` exposed to the AI tool loop** (previously only wired to the frontend
+  toggles), each SSRF-guarded by the existing `isSafeExternalUrl` allowlist.
+- **Multi-hunk `editFile`**: pass `oldStrings`/`newStrings` arrays for multiple changes to one file —
+  all-or-nothing (if any hunk fails to match, nothing is written and the error names the failing hunk).
+- **`MAX_TOOL_ROUNDS` env override**: the 6-round tool-call cap is now configurable.
+- **Self-check nudge**: after any successful file write/edit, the tool result carries a reminder to
+  verify by reading the file back — the model can't see the disk directly.
+- Verification: **harness-verified** (48/48 gate/probe/editFile/findTestCommand checks against the real
+  modules + `tsc --noEmit` + zero new check-intents dupes). Live AI-loop behavior (a real Ollama session
+  exercising the new tools, permissions, and approve-task flow) still needs the end-of-upgrade live
+  verification pass.
 
 ## Architecture
 
@@ -420,7 +445,9 @@ server/
 ├── contextInjector.js          — Codebase context enrichment per intent type.
 ├── paramCommand.js             — Parameterized trigger-mode commands ({placeholder} params,
 │                                safe substitution, no AI needed).
-├── tools.js                    — 12 sandboxed file/git/memory tools for AI mode.
+├── tools.js                    — Sandboxed file/git/memory/process/test tools for AI mode + the
+│                                shared resolveToolGate decision point (permissions policy,
+│                                session grants, always-confirm set) + shared findTestCommand.
 ├── memoryStore.js              — Persistent cross-session AI memory (.console/memory.md).
 ├── confidenceModel.js          — Learned confidence model (Stage 1 ML — logistic regression).
 ├── ollama.js                   — REST client for localhost:11434, local + Cloud models.

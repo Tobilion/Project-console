@@ -39,6 +39,19 @@ export function useTerminal(
     setPendingToolConfirm(null);
   };
 
+  // Phase 5 (PASS 5.1): "Approve this task" — resolves the currently-pending tool confirmation
+  // AND pre-grants the non-risky gated file tools (writeFile/editFile/insertAtLine/appendToFile)
+  // for this session+project, so the rest of the current task's edits run without per-call
+  // prompts. Server-side, executeCommand/runTests/stopProcess can never be auto-granted.
+  const handleApproveTask = () => {
+    if (!pendingToolConfirm || !wsRef.current) return;
+    wsRef.current.send(JSON.stringify({
+      type: 'approve_task',
+      payload: { token: pendingToolConfirm.token, projectId: activeProject?.id },
+    }));
+    setPendingToolConfirm(null);
+  };
+
   // Responds to a proactive project-memory nudge (see PendingMemorySuggestion) — the server
   // keys these by active project, not a token, so no token is sent back.
   const handleMemorySuggestionRespond = (accept: boolean) => {
@@ -51,6 +64,6 @@ export function useTerminal(
     pendingConfirm, setPendingConfirm,
     pendingToolConfirm, setPendingToolConfirm,
     pendingMemorySuggestion, setPendingMemorySuggestion,
-    handleSendMessage, handleConfirm, handleToolConfirm, handleMemorySuggestionRespond,
+    handleSendMessage, handleConfirm, handleToolConfirm, handleApproveTask, handleMemorySuggestionRespond,
   };
 }

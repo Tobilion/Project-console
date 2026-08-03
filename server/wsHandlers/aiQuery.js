@@ -3,7 +3,7 @@ import { checkOllama } from '../ollama.js';
 import { buildSystemPrompt } from '../ollamaContext.js';
 import { injectContext } from '../contextInjector.js';
 import { getSession, appendMessage } from '../conversationStore.js';
-import { createProjectTools, isGatedToolCall, isCommandAllowed, isCustomToolRisky } from '../tools.js';
+import { createProjectTools, resolveToolGate, isCommandAllowed } from '../tools.js';
 import { executeCommand } from '../executor.js';
 import { createCheckpoint } from '../gitSafety.js';
 import { isCommandBlocked } from '../dangerousPatterns.js';
@@ -14,7 +14,9 @@ import { analyzeAIExchange } from '../distillation.js';
 import { trackFileEdit, trackQuestion, addCandidateAddition } from '../projectMemory.js';
 import { metrics } from '../metrics.js';
 
-const MAX_TOOL_ROUNDS = 6;
+// Phase 5 (PASS 5.4): the tool-call cap is env-overridable so heavy multi-step workflows don't
+// hit an artificial wall — defaults to 6, the original constant.
+const MAX_TOOL_ROUNDS = Number.parseInt(process.env.MAX_TOOL_ROUNDS ?? '', 10) || 6;
 
 /**
  * Detects a model narrating an intention to call a tool ("We need to call getGitStatus.") without
@@ -108,24 +110,22 @@ async function runGatedExecuteCommand(ws, project, args) {
   return result;
 }
 
-/** Executes a single parsed tool call, gating destructive ones behind user confirmation first. */
-async function runToolCall(ws, project, tools, call, workspaceTools = {}, workspaceProjects = []) {
+/**
+ * Executes a single parsed tool call. Gating goes through resolveToolGate (tools.js) — the single
+ * Phase 5 decision point that consults the project's permissions policy AND the session grant set
+ * (sessionContext.toolGrants, fed in as `sessionGrants`). Hierarchy: policy 'deny' → tool error;
+ * ungated → runs immediately; runTests/stopProcess/risky executeCommand → always the confirm flow;
+ * an existing session grant (including one just granted by "Approve this task") → auto-runs with
+ * an "auto-approved" label; otherwise → today's unchanged ask flow, and if the policy is
+ * allow-after-first-ask the grant is recorded once the user approves so later calls this session
+ * run without asking.
+ */
+async function runToolCall(ws, project, tools, call, workspaceTools = {}, workspaceProjects = [], sessionGrants = null) {
   const { tool, args } = call;
 
-  if (tool === 'executeCommand') {
-    if (isGatedToolCall(tool, args)) {
-      ws.send(JSON.stringify({ type: 'tool_start', data: `Requesting approval to run: ${args?.command}` }));
-      const approved = await requestToolConfirmation(ws, tool, args);
-      if (!approved) return { success: false, error: 'Command rejected by user.' };
-    }
-    return runGatedExecuteCommand(ws, project, args);
-  }
-
-  if (!tools[tool]) {
-    return { success: false, error: `Unknown tool: ${tool}` };
-  }
-
-  // If the AI specified a projectId, use that project's tools instead
+  // If the AI specified a projectId, use that project's tools instead — gates resolve against
+  // THAT project's root so permissions policy is always evaluated in the target project, never
+  // the calling one.
   const targetProjectId = args?.projectId;
   let resolvedTools = tools;
   let resolvedProject = project;
@@ -134,16 +134,53 @@ async function runToolCall(ws, project, tools, call, workspaceTools = {}, worksp
     resolvedProject = workspaceProjects.find(p => p.id === targetProjectId) || project;
   }
 
-  const needsApproval = isGatedToolCall(tool, args) || isCustomToolRisky(tool, resolvedProject?.path);
-  if (needsApproval) {
-    ws.send(JSON.stringify({ type: 'tool_start', data: `Requesting approval for ${tool}${targetProjectId ? ` (${targetProjectId})` : ''}: ${args?.path || args?.content || ''}` }));
-    const approved = await requestToolConfirmation(ws, tool, args);
-    if (!approved) return { success: false, error: `${tool} rejected by user.` };
-  } else {
-    ws.send(JSON.stringify({ type: 'tool_start', data: `Running ${tool}${targetProjectId ? ` on ${targetProjectId}` : ''}...` }));
+  if (tool === 'executeCommand') {
+    const gate = await resolveToolGate(tool, args, resolvedProject?.path, sessionGrants);
+    if (gate.action === 'deny') {
+      return { success: false, error: `Tool "${tool}" is denied by this project's permissions policy.` };
+    }
+    if (gate.action === 'ask') {
+      ws.send(JSON.stringify({ type: 'tool_start', data: `Requesting approval to run: ${args?.command}` }));
+      const approved = await requestToolConfirmation(ws, tool, args);
+      if (!approved) return { success: false, error: 'Command rejected by user.' };
+    } else {
+      const prefix = gate.autoApproved ? 'Auto-approved ' : '';
+      ws.send(JSON.stringify({ type: 'tool_start', data: `${prefix}Running: ${args?.command}` }));
+    }
+    return runGatedExecuteCommand(ws, resolvedProject, args);
   }
 
-  return resolvedTools[tool](args);
+  if (!resolvedTools[tool]) {
+    return { success: false, error: `Unknown tool: ${tool}` };
+  }
+
+  const gate = await resolveToolGate(tool, args, resolvedProject?.path, sessionGrants);
+  const loc = targetProjectId ? ` (${targetProjectId})` : '';
+  if (gate.action === 'deny') {
+    return { success: false, error: `Tool "${tool}" is denied by this project's permissions policy.` };
+  }
+  if (gate.action === 'ask') {
+    ws.send(JSON.stringify({ type: 'tool_start', data: `Requesting approval for ${tool}${loc}: ${args?.path || args?.content || ''}` }));
+    const approved = await requestToolConfirmation(ws, tool, args);
+    if (!approved) return { success: false, error: `${tool} rejected by user.` };
+    // allow-after-first-ask policy: record the grant so the remaining calls this session skip the
+    // prompt. executeCommand/runTests/stopProcess never reach here with a grantKey (see
+    // resolveToolGate), so this can't soften the always-confirm tools.
+    if (sessionGrants && gate.grantKey) sessionGrants.add(gate.grantKey);
+  } else {
+    const prefix = gate.autoApproved ? 'Auto-approved: ' : '';
+    ws.send(JSON.stringify({ type: 'tool_start', data: `${prefix}Running ${tool}${loc}...` }));
+  }
+
+  const result = await resolvedTools[tool](args);
+  // PASS 5.3 self-check nudge: the model can't see the filesystem, so after a successful write
+  // its job isn't done — a read-back is the only thing that can confirm what actually landed on
+  // disk. Ride the existing `note` field (same channel the console.config.json save-nudge uses)
+  // so it shows up fresh in every tool result, not as a remembered instruction.
+  if (result?.success && ['writeFile', 'editFile', 'insertAtLine', 'appendToFile'].includes(tool)) {
+    result.note = 'You cannot see the file on disk directly — verify the change by calling readFile right after this unless the user says otherwise.';
+  }
+  return result;
 }
 
 export async function handleAIQuery(ws, project, input, sessionContext, workspaceProjects = []) {
@@ -240,7 +277,7 @@ export async function handleAIQuery(ws, project, input, sessionContext, workspac
 
       const resultsSummary = [];
       for (const call of toolCalls) {
-        const result = await runToolCall(ws, project, tools, call, workspaceTools, workspaceProjects);
+        const result = await runToolCall(ws, project, tools, call, workspaceTools, workspaceProjects, sessionContext.toolGrants);
         ws.send(JSON.stringify({ type: 'tool_result', data: { tool: call.tool, args: call.args, result } }));
         resultsSummary.push(`Tool ${call.tool} returned: ${JSON.stringify(result)}`);
         // Track tool call for distillation

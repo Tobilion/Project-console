@@ -28,7 +28,7 @@ function App() {
     aiEnabled, ollamaStatus, aiThinking, aiThinkingText, commandPending, indexingProjectId,
     aiModel, aiMode, showWelcome, setShowWelcome, pendingToolConfirm,
     pendingMemorySuggestion, handleMemorySuggestionRespond,
-    handleSendMessage, handleCancel, handleConfirm, handleToolConfirm, handleAIToggle,
+    handleSendMessage, handleCancel, handleConfirm, handleToolConfirm, handleApproveTask, handleAIToggle,
     handleSetModel, handleSetMode, handleSelectProject,
     handleSearch, handleDeepResearch, handleNewChat, handleQuickStart, handleScan,
     createSession, switchSession, deleteSession, handleSwitchToProject,
@@ -253,6 +253,7 @@ function App() {
             onConfirm={handleConfirm}
             pendingToolConfirm={pendingToolConfirm}
             onToolConfirm={handleToolConfirm}
+            onApproveTask={handleApproveTask}
             pendingMemorySuggestion={pendingMemorySuggestion}
             onMemorySuggestionRespond={handleMemorySuggestionRespond}
             aiEnabled={aiEnabled}

@@ -36,6 +36,7 @@ interface TerminalProps {
   onConfirm: (confirmed: boolean) => void;
   pendingToolConfirm: PendingToolConfirm | null;
   onToolConfirm: (confirmed: boolean) => void;
+  onApproveTask?: () => void;
   pendingMemorySuggestion?: PendingMemorySuggestion | null;
   onMemorySuggestionRespond?: (accept: boolean) => void;
   aiEnabled: boolean;
@@ -128,7 +129,7 @@ const AI_MODES = [
   { value: 'structured', label: 'Structured' }
 ];
 
-export const Terminal = ({ messages, onSendMessage, onSearch, onDeepResearch, activeProject, pendingConfirm, onConfirm, pendingToolConfirm, onToolConfirm, pendingMemorySuggestion, onMemorySuggestionRespond, aiEnabled, aiThinking, aiThinkingText, commandPending, onCancel, ollamaStatus, aiModel, aiMode, onAIToggle, onSetModel, onSetMode, toolHistory, showToolHistory, onToggleToolHistory, onRerunToolCall, onExportMarkdown, onExportJson, onDirectCommand, workspaceProjects, addToWorkspace, removeFromWorkspace, clearWorkspace, onSwitchToProject, isFullscreen, onToggleFullscreen }: TerminalProps) => {
+export const Terminal = ({ messages, onSendMessage, onSearch, onDeepResearch, activeProject, pendingConfirm, onConfirm, pendingToolConfirm, onToolConfirm, onApproveTask, pendingMemorySuggestion, onMemorySuggestionRespond, aiEnabled, aiThinking, aiThinkingText, commandPending, onCancel, ollamaStatus, aiModel, aiMode, onAIToggle, onSetModel, onSetMode, toolHistory, showToolHistory, onToggleToolHistory, onRerunToolCall, onExportMarkdown, onExportJson, onDirectCommand, workspaceProjects, addToWorkspace, removeFromWorkspace, clearWorkspace, onSwitchToProject, isFullscreen, onToggleFullscreen }: TerminalProps) => {
   const [input, setInput] = useState('');
   const [showSearchOverlay, setShowSearchOverlay] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -511,6 +512,15 @@ export const Terminal = ({ messages, onSendMessage, onSearch, onDeepResearch, ac
                   <XCircle size={16} /> Reject
                 </button>
               </div>
+              {onApproveTask && pendingToolConfirm.tool !== 'executeCommand' && (
+                <button
+                  onClick={onApproveTask}
+                  className="mt-3 flex items-center gap-2 px-4 py-2 bg-emerald-500/20 hover:bg-emerald-500/40 text-emerald-300 rounded-lg border border-emerald-500/30 transition-colors text-sm"
+                  title="Approves this edit AND lets the rest of this task's file edits run without asking. Commands and tests still confirm every time."
+                >
+                  <CheckCircle size={16} /> Approve + auto-approve file edits this conversation
+                </button>
+              )}
             </div>
           </motion.div>
         )}

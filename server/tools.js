@@ -7,6 +7,10 @@ import util from 'util';
 import { performUndo } from './gitSafety.js';
 import { loadPluginManifest, createPluginToolFn } from './pluginTools.js';
 import { appendMemoryEntry } from './memoryStore.js';
+import { runningProcesses } from './executor.js';
+import { state } from './state.js';
+import { broadcast } from './wsServer.js';
+import { webSearch, deepResearch, isProbeableUrl } from './webSearch.js';
 
 const require = createRequire(import.meta.url);
 const RE2 = require('re2');
@@ -55,6 +59,26 @@ function findNormalizedLineMatch(contentLines, oldLines) {
     if (matched) return i;
   }
   return -1;
+}
+
+/**
+ * Phase 5 (PASS 5.5) — applies ONE hunk of an editFile request to a file's current content:
+ * exact substring match first, then the whitespace-normalized line-range fallback (see
+ * findNormalizedLineMatch). Returns { content, usedFallback } or null when neither match works.
+ * Shared by the single-pair editFile path and the multi-hunk path so both behave identically.
+ */
+function applySingleEdit(content, oldString, newString) {
+  if (content.includes(oldString)) {
+    const newContent = content.replace(oldString, newString);
+    return { content: newContent, usedFallback: false };
+  }
+  const contentLines = content.split('\n');
+  const oldLines = oldString.split('\n');
+  const startLine = findNormalizedLineMatch(contentLines, oldLines);
+  if (startLine === -1) return null;
+  const before = contentLines.slice(0, startLine);
+  const after = contentLines.slice(startLine + oldLines.length);
+  return { content: [...before, ...newString.split('\n'), ...after].join('\n'), usedFallback: true };
 }
 
 async function walkDir(dirPath, maxDepth = 6) {
@@ -252,34 +276,53 @@ export async function createProjectTools(project) {
     }
   }
 
-  async function editFile({ path: filePath, oldString, newString } = {}) {
+  async function editFile({ path: filePath, oldString, newString, oldStrings, newStrings } = {}) {
     if (!filePath) return { success: false, error: 'path is required.' };
-    if (typeof oldString !== 'string' || typeof newString !== 'string') {
-      return { success: false, error: 'oldString and newString are required.' };
+    const hasMulti = Array.isArray(oldStrings) || Array.isArray(newStrings);
+    if (hasMulti) {
+      if (!Array.isArray(oldStrings) || !Array.isArray(newStrings) || oldStrings.length === 0 || oldStrings.length !== newStrings.length) {
+        return { success: false, error: 'oldStrings and newStrings must be non-empty arrays of equal length.' };
+      }
+      for (const s of oldStrings) if (typeof s !== 'string') return { success: false, error: 'Every oldStrings entry must be a string.' };
+      for (const s of newStrings) if (typeof s !== 'string') return { success: false, error: 'Every newStrings entry must be a string.' };
+    } else {
+      if (typeof oldString !== 'string' || typeof newString !== 'string') {
+        return { success: false, error: 'oldString and newString are required.' };
+      }
     }
     try {
       const resolved = resolveSafe(filePath);
-      const content = await fs.readFile(resolved, 'utf-8');
+      const original = await fs.readFile(resolved, 'utf-8');
 
-      if (content.includes(oldString)) {
-        const newContent = content.replace(oldString, newString);
-        if (newContent === content) {
+      // Phase 5 (PASS 5.5): multi-hunk edits — pass oldStrings/newStrings arrays and every hunk
+      // is applied in order against the same content, ALL-OR-NOTHING: if any hunk fails to match
+      // (exact or whitespace-normalized), nothing is written and the error names the failing hunk,
+      // so a partial edit can never be left half-applied on disk.
+      if (hasMulti) {
+        let content = original;
+        let fallbackUsed = false;
+        for (let i = 0; i < oldStrings.length; i++) {
+          const attempt = applySingleEdit(content, oldStrings[i], newStrings[i]);
+          if (!attempt) {
+            return {
+              success: false,
+              error: `Hunk ${i + 1} of ${oldStrings.length} not found in ${filePath} (checked an exact match and a whitespace-tolerant fallback). ` +
+                `No changes were written — call readFile("${filePath}") again and copy oldString(s) directly from the current contents before retrying.`,
+            };
+          }
+          content = attempt.content;
+          fallbackUsed = fallbackUsed || attempt.usedFallback;
+        }
+        if (content === original) {
           return { success: false, error: 'No changes made (replacement identical to original).' };
         }
-        await fs.writeFile(resolved, newContent, 'utf-8');
-        return { success: true, data: `Edited ${filePath}` };
+        await fs.writeFile(resolved, content, 'utf-8');
+        const note = fallbackUsed ? ' (matched via whitespace-normalized fallback — verify the result looks right)' : '';
+        return { success: true, data: `Edited ${filePath} (${oldStrings.length} hunk${oldStrings.length === 1 ? '' : 's'})${note}` };
       }
 
-      // LOCAL_ROUTER_UPGRADE_PROMPT.md piece 3: exact match failed — a common failure mode for
-      // smaller local models that don't reproduce a file's exact whitespace/quoting when they
-      // compose oldString. Before giving up, try a whitespace-normalized line-range match: if a
-      // contiguous block of the file's real lines matches oldString's lines once each line is
-      // trimmed and its internal whitespace collapsed, replace that exact original block with
-      // newString (verbatim, as given) rather than silently failing.
-      const contentLines = content.split('\n');
-      const oldLines = oldString.split('\n');
-      const startLine = findNormalizedLineMatch(contentLines, oldLines);
-      if (startLine === -1) {
+      const attempt = applySingleEdit(original, oldString, newString);
+      if (!attempt) {
         return {
           success: false,
           error: `Text not found in ${filePath} (checked an exact match and a whitespace-tolerant fallback). ` +
@@ -287,14 +330,12 @@ export async function createProjectTools(project) {
             `call readFile("${filePath}") again and copy oldString directly from the current contents before retrying.`,
         };
       }
-      const before = contentLines.slice(0, startLine);
-      const after = contentLines.slice(startLine + oldLines.length);
-      const newContent = [...before, ...newString.split('\n'), ...after].join('\n');
-      if (newContent === content) {
+      if (attempt.content === original) {
         return { success: false, error: 'No changes made (replacement identical to original).' };
       }
-      await fs.writeFile(resolved, newContent, 'utf-8');
-      return { success: true, data: `Edited ${filePath} (matched via whitespace-normalized fallback — verify the result looks right)` };
+      await fs.writeFile(resolved, attempt.content, 'utf-8');
+      const note = attempt.usedFallback ? ' (matched via whitespace-normalized fallback — verify the result looks right)' : '';
+      return { success: true, data: `Edited ${filePath}${note}` };
     } catch (err) {
       return { success: false, error: `Failed to edit file: ${err.message}` };
     }
@@ -478,6 +519,96 @@ export async function createProjectTools(project) {
     return appendMemoryEntry(root, content);
   }
 
+  /**
+   * Phase 5 (PASS 5.3): read-only view of processes currently tracked for a project — the same
+   * runningProcesses map "stop server" reads, plus the detected dev URL if one exists. Never
+   * gated: it only reports state, it doesn't act on it.
+   */
+  async function listProcesses({ projectId } = {}) {
+    const pid = projectId || project.id;
+    const proc = runningProcesses.get(pid);
+    if (!proc) return { success: true, data: [] };
+    const since = proc.child?.spawnTime ? new Date(proc.child.spawnTime).toISOString() : null;
+    return {
+      success: true,
+      data: [{
+        projectId: pid,
+        command: proc.command,
+        url: state.lastDevUrls?.get(pid) || null,
+        runningSince: since,
+      }],
+    };
+  }
+
+  /**
+   * Phase 5 (PASS 5.3): stops a running process for a project via the EXACT same flow as "stop
+   * server" (connection.js) — child.kill('SIGTERM') + map delete + lastDevUrls delete + a
+   * dashboard_update broadcast so the UI grid reflects it immediately. Never a raw kill on the
+   * model's say-so: it's in ALWAYS_CONFIRM_TOOLS, so the user always approves it first.
+   */
+  async function stopProcess({ projectId } = {}) {
+    const pid = projectId || project.id;
+    const proc = runningProcesses.get(pid);
+    if (!proc) return { success: true, data: 'No running process for this project.' };
+    try {
+      if (proc.child && typeof proc.child.kill === 'function') {
+        proc.child.kill('SIGTERM');
+      }
+      runningProcesses.delete(pid);
+      state.lastDevUrls?.delete(pid);
+      broadcast({ type: 'dashboard_update' });
+      return { success: true, data: `Stopped \`${proc.command}\`.` };
+    } catch (err) {
+      return { success: false, error: `Failed to stop process: ${err.message}` };
+    }
+  }
+
+  /**
+   * Phase 5 (PASS 5.3): liveness check for a URL (e.g. "is the dev server up yet?"). Restricted
+   * to localhost/private http(s) addresses by the same SSRF discipline as webSearch's external
+   * allowlist — a probing tool must never become a lever for reaching internal services.
+   * Read-only, ungated.
+   */
+  async function probeUrl({ url } = {}) {
+    if (!url) return { success: false, error: 'url is required.' };
+    try {
+      const urlObj = new URL(url);
+      if (!isProbeableUrl(urlObj)) {
+        return { success: false, error: `Refusing to probe "${url}" — only localhost/private http(s) URLs are allowed.` };
+      }
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 3000);
+      try {
+        const res = await fetch(urlObj.toString(), { method: 'GET', redirect: 'follow', signal: controller.signal });
+        return { success: true, data: { ok: res.ok, status: res.status, url: urlObj.toString() } };
+      } finally {
+        clearTimeout(timer);
+      }
+    } catch (err) {
+      return { success: false, error: `Probe failed: ${err.message}` };
+    }
+  }
+
+  /**
+   * Phase 5 (PASS 5.3): runs the project's test command, detected by the same shared marker
+   * logic as trigger-mode run_tests (findTestCommand). A command execution — so it lives in
+   * ALWAYS_CONFIRM_TOOLS and the user approves every run. Bounded exec (90s / 10MB) so a hung
+   * test suite can't wedge the model loop.
+   */
+  async function runTests() {
+    const command = findTestCommand(project);
+    if (!command) {
+      return { success: true, data: 'No test setup detected for this project (no package.json test script, Cargo.toml, go.mod, or Python test marker).' };
+    }
+    try {
+      const { stdout, stderr } = await execAsync(command, { cwd: root, timeout: 90000, maxBuffer: 10 * 1024 * 1024, windowsHide: true });
+      return { success: true, data: { command, output: `${stdout || ''}${stderr ? `\n${stderr}` : ''}`.trim().slice(0, 20000) } };
+    } catch (err) {
+      const output = (err.stdout || '') + (err.stderr ? `\n${err.stderr}` : '');
+      return { success: false, error: `${command} failed (exit ${err.code ?? '?'}): ${output.trim().slice(0, 4000) || err.message}` };
+    }
+  }
+
   // Base tools that are always available
   const baseTools = {
     readFile,
@@ -491,7 +622,15 @@ export async function createProjectTools(project) {
     getProjectInfo,
     getGitStatus,
     undoLastChange,
-    saveMemory
+    saveMemory,
+    // Phase 5 (PASS 5.3) process/test tools
+    listProcesses,
+    stopProcess,
+    probeUrl,
+    runTests,
+    // Phase 5 (PASS 5.5): web research tools (SSRF-guarded, read-only network fetches)
+    webSearch,
+    deepResearch,
   };
 
   // Load and merge custom plugin tools from console.tools.json
@@ -515,6 +654,15 @@ export async function createProjectTools(project) {
 export const GATED_TOOLS = new Set(['writeFile', 'editFile', 'insertAtLine', 'appendToFile']);
 
 /**
+ * Phase 5 (2026-08-03, console-chitchat-ai-upgrade-prompt.md PASS 5.3): tools that ARE command
+ * executions themselves (not just file edits), so they're always confirm-gated regardless of any
+ * permissions policy or session grant — the same invariant that keeps `risky: true` executeCommand
+ * un-approvable by any auto-approval path. resolveToolGate checks this BEFORE the session-grant
+ * ("Approve this task") path can auto-approve them.
+ */
+export const ALWAYS_CONFIRM_TOOLS = new Set(['runTests', 'stopProcess']);
+
+/**
  * Per-project risky custom plugin tools. Populated by createProjectTools() when loading
  * console.tools.json — maps project root -> Set of tool names with risky: true.
  */
@@ -522,6 +670,7 @@ export const CUSTOM_RISKY_TOOLS = new Map();
 
 export function isGatedToolCall(toolName, args) {
   if (GATED_TOOLS.has(toolName)) return true;
+  if (ALWAYS_CONFIRM_TOOLS.has(toolName)) return true;
   if (toolName === 'executeCommand' && args?.risky) return true;
   // saveMemory is deliberately NOT in GATED_TOOLS — a flat gate would require approval for every
   // save, including trivial ones ("user prefers dark mode"), which defeats the point of letting
@@ -538,4 +687,93 @@ export function isGatedToolCall(toolName, args) {
 export function isCustomToolRisky(toolName, projectRoot) {
   const riskySet = CUSTOM_RISKY_TOOLS.get(projectRoot);
   return riskySet ? riskySet.has(toolName) : false;
+}
+
+/**
+ * Phase 5 (2026-08-03, console-chitchat-ai-upgrade-prompt.md PASS 5.1): reads a project's
+ * permissions policy for a single tool from its console.tools.json manifest. Returns the value
+ * ('ask' | 'allow-after-first-ask' | 'deny') or undefined when the manifest has no policy for it
+ * (undefined === the default 'ask'). executeCommand can never be anything but 'ask' (enforced at
+ * parse time in pluginTools.js), so `risky: true` commands stay gated forever regardless of policy.
+ */
+export async function getToolPermission(projectRoot, toolName) {
+  if (!projectRoot || !toolName) return undefined;
+  const manifest = await getPluginManifest(projectRoot);
+  return manifest?.permissions?.[toolName];
+}
+
+/** The session-scoped grant key for a (project, tool) pair — what allow-after-first-ask records
+ *  and what "Approve this task" grants. Scoped per project root so a grant in one project can
+ *  never leak to another. */
+export function toolGrantKey(projectRoot, toolName) {
+  return `${projectRoot}::${toolName}`;
+}
+
+/**
+ * Phase 5 — the single decision point for whether a tool call needs user approval. Hierarchy:
+ *  1. Policy 'deny'                    → never runs, no prompt (tool error instead).
+ *  2. Not gated at all               → runs immediately ('allow').
+ *  3. ALWAYS_CONFIRM_TOOLS members (runTests/stopProcess) and `risky: true` executeCommand →
+ *     always 'ask', even with a session grant or a permissive policy. Nothing can auto-approve
+ *     these — the belt-and-suspenders counterpart to PASS 5.1's parse-time enforcement.
+ *  4. A session grant (held in sessionContext.toolGrants — set by "Approve this task", or
+ *     recorded automatically after a first ask when the policy is 'allow-after-first-ask') →
+ *     runs immediately ('allow', frontend shows an "auto-approved" note). deny is still checked
+ *     first, so a policy 'deny' beats any grant.
+ *  5. Otherwise → today's unchanged ask flow ('ask'), with an optional grantKey to record once
+ *     the user approves, if policy is allow-after-first-ask.
+ * `sessionGrants` is the sessionContext.toolGrants Set (or null when not applicable, e.g. direct
+ * trigger-mode paths that shouldn't consult session grants).
+ */
+export async function resolveToolGate(toolName, args, projectRoot, sessionGrants) {
+  if (!toolName) return { action: 'allow' };
+  const permission = await getToolPermission(projectRoot, toolName);
+
+  if (permission === 'deny') {
+    return { action: 'deny' };
+  }
+
+  const gated = isGatedToolCall(toolName, args) || (projectRoot ? isCustomToolRisky(toolName, projectRoot) : false);
+  if (!gated) return { action: 'allow' };
+
+  // Command-execution tools and risky shell commands can never be auto-approved by ANY grant —
+  // they go through the normal confirm flow every time, exactly like executeCommand with risky.
+  if (ALWAYS_CONFIRM_TOOLS.has(toolName) || (toolName === 'executeCommand' && args?.risky)) {
+    return { action: 'ask', grantKey: null };
+  }
+
+  const grantKey = toolGrantKey(projectRoot, toolName);
+  if (sessionGrants && sessionGrants.has(grantKey)) {
+    return { action: 'allow', autoApproved: true };
+  }
+
+  if (permission === 'allow-after-first-ask') {
+    return { action: 'ask', grantKey };
+  }
+  return { action: 'ask', grantKey: null };
+}
+
+/**
+ * Phase 5 (2026-08-03, PASS 5.3) — single source of truth for test-command detection, shared by
+ * the AI-mode runTests tool (tools.js) and the trigger-mode run_tests handler
+ * (builtinIntents.js). Identical marker order to the original handler: package.json scripts.test
+ * → Cargo.toml → go.mod → Python (pyproject.toml/requirements.txt). keyFiles content is truncated
+ * at 2000 chars with a "\n... (truncated)" tail by readKeyFiles — stripped before parsing, same
+ * convention as detectFrameworks/configInitializer (a large package.json without that would
+ * silently report "no test setup detected"). Returns the command string or null.
+ */
+export function findTestCommand(project) {
+  const keyFiles = project?.codebaseIndex?.keyFiles || {};
+  const pkgJson = keyFiles['package.json'];
+  let scripts = {};
+  if (pkgJson) {
+    try {
+      scripts = JSON.parse(pkgJson.replace(/\n\.\.\. \(truncated\)$/, '')).scripts || {};
+    } catch {}
+  }
+  if (scripts.test) return 'npm test';
+  if (keyFiles['cargo.toml']) return 'cargo test';
+  if (keyFiles['go.mod']) return 'go test ./...';
+  if (keyFiles['pyproject.toml'] || keyFiles['requirements.txt']) return 'python -m pytest';
+  return null;
 }

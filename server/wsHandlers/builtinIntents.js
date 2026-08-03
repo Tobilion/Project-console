@@ -6,7 +6,7 @@ import { formatMemoryForPrompt } from '../memoryStore.js';
 import { executeCommand, runningProcesses } from '../executor.js';
 import { performUndo, isGitRepo, createCheckpoint } from '../gitSafety.js';
 import { pendingConfirmations, state, withPortCollisionWarning } from '../state.js';
-import { createProjectTools } from '../tools.js';
+import { createProjectTools, findTestCommand } from '../tools.js';
 import { findDocumentedRunCommands } from '../readmeRunParser.js';
 import { semanticMatcher } from '../semanticMatcher.js';
 import { formatApiRoutes, findTodos, findBiggestFiles, findRecentActivity } from '../codebaseIndexer.js';
@@ -1083,20 +1083,11 @@ export async function handleBuiltinIntent(ws, action, input, project, sessionCon
     // tests (project.context.tests, informational). This executes the project's real test command
     // by marker detection — same style as run_project's marker checks below. Tests re-run
     // freely (no dev-server duplicate guard, no confirm) per the existing npm_run rule.
-    const pkgJson = project.codebaseIndex?.keyFiles?.['package.json'];
-    let scripts = {};
-    // keyFiles content is truncated at 2000 chars with a "\n... (truncated)" tail marker by
-    // readKeyFiles — strip it before parsing, same convention as detectFrameworks/configInitializer.
-    if (pkgJson) { try { scripts = JSON.parse(pkgJson.replace(/\n\.\.\. \(truncated\)$/, '')).scripts || {}; } catch {} }
-    const keyFiles = project.codebaseIndex?.keyFiles || {};
-    if (scripts.test) {
-      executeCommand('npm test', project.path, ws, project.id);
-    } else if (keyFiles['cargo.toml']) {
-      executeCommand('cargo test', project.path, ws, project.id);
-    } else if (keyFiles['go.mod']) {
-      executeCommand('go test ./...', project.path, ws, project.id);
-    } else if (keyFiles['pyproject.toml'] || keyFiles['requirements.txt']) {
-      executeCommand('python -m pytest', project.path, ws, project.id);
+    // Detection shares runTests's single source of truth (tools.js findTestCommand) so the two
+    // paths can never drift — see Phase 5 PASS 5.3.
+    const testCommand = findTestCommand(project);
+    if (testCommand) {
+      executeCommand(testCommand, project.path, ws, project.id);
     } else {
       ws.send(JSON.stringify({ type: 'answer', data: `No test setup detected for **[${project.name}]** (no package.json test script, Cargo.toml, go.mod, or Python test marker). Say "tell me about the tests" to see what's here.` }));
     }

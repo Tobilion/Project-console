@@ -82,6 +82,23 @@ function isSafeExternalUrl(urlObj) {
   return true;
 }
 
+/**
+ * Phase 5 (PASS 5.3) — the probeUrl tool's inverse allowlist. webSearch fetches EXTERNAL pages
+ * (isSafeExternalUrl rejects internal addresses for SSRF). probeUrl is the opposite shape: the
+ * model checks whether a project's dev server is up, so it must ONLY be allowed to reach
+ * localhost/private http(s) URLs and must never reach a public site (or the metadata endpoint
+ * 169.254.x — deliberately excluded here; that's a known SSRF target and never a dev server).
+ * Mirrors the BLOCKED_HOSTNAME_RE deny-format above for the private ranges we DO permit.
+ */
+const PROBEABLE_HOSTNAME_RE = /^(localhost|127\.|10\.|192\.168\.|::1|\[::1\])/i;
+
+export function isProbeableUrl(urlObj) {
+  if (urlObj.protocol !== 'http:' && urlObj.protocol !== 'https:') return false;
+  const host = urlObj.hostname;
+  if (!PROBEABLE_HOSTNAME_RE.test(host) && !PRIVATE_172_RE.test(host)) return false;
+  return true;
+}
+
 export async function deepResearch(query) {
   try {
     const searchResults = await webSearch(query);
