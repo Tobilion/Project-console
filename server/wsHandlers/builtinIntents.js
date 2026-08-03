@@ -577,7 +577,19 @@ export async function handleBuiltinIntent(ws, action, input, project, sessionCon
       if (idx.frameworks?.length) parts.push(`**Detected stack:** ${idx.frameworks.join(', ')}`);
       if (idx.entryPoints?.length) parts.push(`**Entry point(s):** ${idx.entryPoints.join(', ')}`);
       msg = `No documented run command found in this project's README/CLAUDE.md, but here's what was detected from the code itself:\n\n${parts.join('\n')}\n\nSay "run project" and I'll suggest a command based on this, or turn AI mode on for it to work it out from the source directly.`;
-    } else {
+    }
+    // 2026-08-03 (requested directly): always also list every exact command this project has
+    // configured (console.config.json entries), so "how do I run/do X" gets the full precise
+    // command list even when the README documents nothing — and without duplicating an entry
+    // already shown as the documented command above.
+    const configured = (project.config?.entries || []).filter((e) => e.type === 'command' && e.action && e.action !== documented?.command);
+    if (configured.length) {
+      const list = configured
+        .map((e) => `- \`${e.action}\`${e.params?.length ? ` (asks for: ${e.params.map((p) => p.name).join(', ')})` : ''}`)
+        .join('\n');
+      msg = msg ? `${msg}\n\n**Configured commands (exact):**\n${list}` : `**Configured commands (exact):**\n${list}`;
+    }
+    if (!msg) {
       msg = `Nothing documented or detected about how to run this project. Try "run project" for a best-effort guess, or turn AI mode on.`;
     }
     ws.send(JSON.stringify({ type: 'answer', data: msg }));

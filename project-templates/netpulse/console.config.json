@@ -1,20 +1,33 @@
 {
   "projectName": "NetPulse",
   "entries": [
-    {
-      "triggers": ["start flask server", "run app", "run python"],
-      "type": "command",
-      "action": "python app.py"
-    },
-    {
-      "triggers": ["run tests", "pytest"],
-      "type": "command",
-      "action": "pytest"
-    },
-    {
-      "triggers": ["check isp status", "run pulse"],
-      "type": "answer",
-      "response": "NetPulse continuously pings target ISP DNS endpoints and logs latency, packet loss, and jitter into local SQLite."
-    }
+    { "triggers": ["start flask server", "run locally", "start netpulse"], "type": "command",
+      "action": "venv\\Scripts\\python.exe main.py serve",
+      "requires": ["venv/Scripts/python.exe"],
+      "requiresMessage": "NetPulse needs its virtual environment set up first: run `python -m venv venv`, then `venv\\Scripts\\python.exe -m pip install -r requirements.txt`.",
+      "followUp": { "ask": "Also start watching the network? Reply with an interval in minutes", "entry": "watch network", "param": "interval" } },
+    { "triggers": ["run one measurement", "run a single measurement", "run once", "run one cycle"], "type": "command",
+      "action": "venv\\Scripts\\python.exe main.py once",
+      "requires": ["venv/Scripts/python.exe"],
+      "requiresMessage": "NetPulse needs its virtual environment set up first: run `python -m venv venv`, then `venv\\Scripts\\python.exe -m pip install -r requirements.txt`." },
+    { "triggers": ["export data", "export to csv", "export the data"], "type": "command",
+      "action": "venv\\Scripts\\python.exe main.py export",
+      "requires": ["venv/Scripts/python.exe"],
+      "requiresMessage": "NetPulse needs its virtual environment set up first: run `python -m venv venv`, then `venv\\Scripts\\python.exe -m pip install -r requirements.txt`." },
+    { "triggers": ["seed demo data", "load demo data", "demo mode", "fill with fake data"], "type": "command",
+      "action": "venv\\Scripts\\python.exe main.py demo",
+      "requires": ["venv/Scripts/python.exe"],
+      "requiresMessage": "NetPulse needs its virtual environment set up first: run `python -m venv venv`, then `venv\\Scripts\\python.exe -m pip install -r requirements.txt`." },
+    { "triggers": ["watch network", "track network speed", "monitor network", "watch network at interval", "run network speed test on a loop", "keep checking the network"],
+      "type": "command", "action": "venv\\Scripts\\python.exe main.py watch --interval {interval}",
+      "requires": ["venv/Scripts/python.exe"],
+      "requiresMessage": "NetPulse needs its virtual environment set up first: run `python -m venv venv`, then `venv\\Scripts\\python.exe -m pip install -r requirements.txt`.",
+      "params": [ { "name": "interval", "prompt": "What interval, in minutes, should I check at? (e.g. 15)", "pattern": "\\d+" } ] },
+    { "triggers": ["run tests", "test project"], "type": "command",
+      "action": "venv\\Scripts\\python.exe -m pytest",
+      "requires": ["venv/Scripts/python.exe"],
+      "requiresMessage": "NetPulse needs its virtual environment set up first: run `python -m venv venv`, then `venv\\Scripts\\python.exe -m pip install -r requirements.txt`." },
+    { "triggers": ["git status", "show changes"], "type": "command", "action": "git status --short" },
+    { "triggers": ["what is the app", "describe project"], "type": "answer", "response": "An ISP performance tracker (CLI + dashboard). There's no app.py — main.py is the entrypoint. Subcommands: \"start netpulse\" (dashboard on :5000), \"run once\" (single measurement), \"watch network\" (loop at an interval — I'll ask how often), \"export data\" (CSV), \"demo mode\" (seed fake data)." }
   ]
 }

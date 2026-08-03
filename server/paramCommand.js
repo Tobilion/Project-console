@@ -20,13 +20,16 @@ const MAX_VALUE_LENGTH = 300;
  * - anchored: false (default) — used against the ORIGINAL trigger phrase, where the value (if
  *   present at all) is just one part of a longer sentence, e.g. "watch every 15 minutes".
  * - anchored: true — used against a direct follow-up ANSWER to a specific question, where the
- *   whole reply should just BE the value (allowing for incidental whitespace/units).
+ *   whole reply should start with the value (allowing for incidental whitespace/units). The
+ *   pattern is wrapped in a capture group so the returned value is just the pattern match, not
+ *   the entire reply: "15" and "15 minutes" against `\d+` both return "15", never "15 minutes"
+ *   (returning the whole reply would substitute "15 minutes" into `--interval 15 minutes`).
  */
 export function extractParamValue(text, pattern, { anchored = false } = {}) {
   if (typeof text !== 'string' || !text.trim()) return null;
   if (!pattern) return anchored ? text.trim() : null;
   try {
-    const re = new RegExp(anchored ? `^\\s*(?:${pattern})\\s*.*$` : pattern, 'i');
+    const re = new RegExp(anchored ? `^\\s*(${pattern})\\s*.*$` : pattern, 'i');
     const m = re.exec(text);
     if (!m) return null;
     return (m[1] !== undefined ? m[1] : m[0]).trim();

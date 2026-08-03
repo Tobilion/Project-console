@@ -1647,6 +1647,41 @@ review process yet. Found and fixed four real issues, all already patched in the
   mentions "push" without a success word and one that uses "wrote" in an unrelated context (both
   correctly don't fire).
 
+- **`followUp` entry field — "start the dashboard, and watch too?" (2026-08-03, requested
+  directly).** A hand-authored `console.config.json` command entry can now declare
+  `"followUp": { "ask": "...", "entry": "<trigger of another entry>", "param": "<param name>" }`
+  to ask a plain question BEFORE the command starts. `runCommandEntry()` (`matchedEntry.js`)
+  checks it after the `requires`/blocklist gates: if the matched input doesn't already contain
+  the target entry's parameter value (checked with the same `extractParamValue()` call the
+  trigger-flow uses — so "start netpulse and watch at interval of 5 minutes" never re-asks), it
+  stores `sessionContext.pendingFollowUp` (entry with `followUp` stripped so a later re-run can't
+  re-ask; plus the resolved target entry) and sends the ask. The reply is intercepted at the top
+  of `handleExecute` (`connection.js`), exactly like `pendingParam`: a value for the target's
+  param → runs the original entry then the target entry with the value substituted (both through
+  `runCommandEntry`, so `requires`/blocklist/confirm all still apply); "no"/"nope"/"not now" →
+  runs just the original entry; "cancel" → nothing starts; anything unparseable → re-asks.
+  Applied to NetPulse: "start netpulse" now asks "Also start watching the network? Reply with an
+  interval in minutes" before booting the dashboard, and all six of its Python command entries
+  now carry `requires: ["venv/Scripts/python.exe"]` + a setup `requiresMessage` (the existing
+  `runCommandEntry` requires-gate) so a missing venv gets guidance instead of a raw spawn error.
+  Note: a `risky` entry combined with `followUp` will emit the follow-up ask first and then the
+  usual confirm prompt(s) for each started command — fine for non-risky entries like NetPulse's,
+  worth revisiting if anyone marks a followUp entry risky.
+- **`extractParamValue` anchored-mode fix (2026-08-03, found while wiring the above).** The
+  anchored regex was `^\s*(?:pattern)\s*.*$` with the value read from `m[0]` — with a
+  group-less pattern like NetPulse's `\d+`, a reply of "15 minutes" returned the WHOLE reply,
+  so `--interval 15 minutes` got substituted into the command (argparse crash). This latent bug
+  affected the existing `pendingParam` reply flow too, not just the new followUp flow. Fixed by
+  wrapping the pattern in a capture group (`^\s*(pattern)\s*.*$`) so `m[1]` is just the pattern
+  match: "15" and "15 minutes" both return "15". Existing anchored call sites (both reply flows)
+  get the stricter, correct behavior; unanchored trigger-phrase extraction is unchanged.
+- **`how_to_run` now also lists every exact configured command (2026-08-03, requested
+  directly).** The `project.knowledge.how_to_run` handler appends a "**Configured commands
+  (exact):**" block listing each `console.config.json` command entry's `action` (with param
+  names for `{placeholder}` entries), deduped against the README/CLAUDE.md-documented command
+  already shown above — so "how do I run/do X" returns the full precise command list even for
+  projects whose docs don't document a run command at all.
+
 ## Conventions
 
 - No file over ~400 lines; split by concern (see `server/wsHandlers/` for the pattern).

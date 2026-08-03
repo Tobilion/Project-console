@@ -320,7 +320,45 @@ async function handleExecute(ws, parsed, sessionContext) {
     }
     sessionContext.pendingParam = null;
     const resolvedEntry = { ...pending.entry, action: substituteParams(pending.entry.action, pending.values) };
-    await runCommandEntry(ws, resolvedEntry, input, pending.matchedTrigger, project);
+    await runCommandEntry(ws, resolvedEntry, input, pending.matchedTrigger, project, sessionContext);
+    ws.send(JSON.stringify({ type: 'end' }));
+    return;
+  }
+
+  // A command entry that declared `followUp` (see matchedEntry.js) is waiting on a plain reply
+  // for this project — e.g. "start netpulse" asked "also watch the network? reply with an
+  // interval". A number starts the follow-up entry with that value substituted; "no" runs just
+  // the original entry; "cancel" aborts nothing having started. Same interception point and
+  // reason as pendingParam: this reply was never meant to be re-matched against the pipeline.
+  if (sessionContext.pendingFollowUp && sessionContext.pendingFollowUp.projectId === projectId) {
+    const pending = sessionContext.pendingFollowUp;
+    const lower = input.trim().toLowerCase();
+    if (/^(cancel|nevermind|never mind)\b/.test(lower)) {
+      sessionContext.pendingFollowUp = null;
+      ws.send(JSON.stringify({ type: 'answer', data: 'Cancelled — nothing was started.\n' }));
+      ws.send(JSON.stringify({ type: 'end' }));
+      return;
+    }
+    if (/^(no|nope|nah|not now|skip (?:it|the watch))\b/.test(lower)) {
+      sessionContext.pendingFollowUp = null;
+      await runCommandEntry(ws, pending.entry, input, pending.followUp.entry, project, sessionContext);
+      ws.send(JSON.stringify({ type: 'end' }));
+      return;
+    }
+    const param = pending.target.params.find((p) => p.name === pending.followUp.param);
+    const extracted = extractParamValue(input, param?.pattern, { anchored: true });
+    if (!extracted || !isSafeParamValue(extracted)) {
+      ws.send(JSON.stringify({
+        type: 'answer',
+        data: `That doesn't look like a valid ${param?.name || 'value'} — try again (e.g. 15), "no" to skip it, or "cancel" to stop.\n`,
+      }));
+      ws.send(JSON.stringify({ type: 'end' }));
+      return;
+    }
+    sessionContext.pendingFollowUp = null;
+    const resolvedWatch = { ...pending.target, action: substituteParams(pending.target.action, { [pending.followUp.param]: extracted }) };
+    await runCommandEntry(ws, pending.entry, input, pending.followUp.entry, project, sessionContext);
+    await runCommandEntry(ws, resolvedWatch, input, pending.followUp.entry, project, sessionContext);
     ws.send(JSON.stringify({ type: 'end' }));
     return;
   }

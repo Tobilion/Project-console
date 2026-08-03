@@ -13,7 +13,7 @@ import { extractParamValue, isSafeParamValue, substituteParams } from '../paramC
  * (isCommandBlocked runs again here on the SUBSTITUTED command, not just the template) and the
  * exact same risky/non-risky confirm behavior.
  */
-export async function runCommandEntry(ws, entry, input, matchedTrigger, project) {
+export async function runCommandEntry(ws, entry, input, matchedTrigger, project, sessionContext) {
   if (entry.requires?.length) {
     for (const rel of entry.requires) {
       try {
@@ -33,6 +33,31 @@ export async function runCommandEntry(ws, entry, input, matchedTrigger, project)
       data: `SAFETY BLOCK: Command "${entry.action}" matches a dangerous pattern and is prohibited.\n`
     }));
     return;
+  }
+  // Optional `followUp` on an entry (2026-08-03, requested directly): ask the user a plain
+  // question BEFORE this command starts — e.g. NetPulse's "start netpulse" asks "also watch the
+  // network? reply with an interval". The reply is handled by connection.js's pendingFollowUp
+  // branch (same interception point as pendingParam), which runs this entry and, when an interval
+  // was given, the follow-up entry with it substituted in. Skipped when the input that matched
+  // already contains the follow-up entry's parameter value ("start netpulse and watch at interval
+  // of 5 minutes" — the value is already there, no question needed).
+  if (entry.followUp && sessionContext) {
+    const target = project.config?.entries?.find((e) => e.triggers?.includes(entry.followUp.entry));
+    const param = target?.params?.find((p) => p.name === entry.followUp.param);
+    if (target && param && !extractParamValue(input, param.pattern)) {
+      sessionContext.pendingFollowUp = {
+        // Strip followUp from the stored entry so re-running it after the reply can't re-ask.
+        entry: { ...entry, followUp: undefined },
+        target,
+        followUp: entry.followUp,
+        projectId: project.id,
+      };
+      ws.send(JSON.stringify({
+        type: 'answer',
+        data: `${entry.followUp.ask} (reply "no" to skip it, or "cancel" to stop)`,
+      }));
+      return;
+    }
   }
   if (entry.risky) {
     const token = crypto.randomUUID();
@@ -77,7 +102,7 @@ async function resolveParamsAndRun(ws, entry, input, matchedTrigger, project, se
     return;
   }
   const resolvedEntry = { ...entry, action: substituteParams(entry.action, values) };
-  await runCommandEntry(ws, resolvedEntry, input, matchedTrigger, project);
+  await runCommandEntry(ws, resolvedEntry, input, matchedTrigger, project, sessionContext);
 }
 
 /** Handles a project.config.json trigger match: runs an "answer" or executes/confirms a "command". */
@@ -89,6 +114,6 @@ export async function handleMatchedEntry(ws, entry, input, matchedTrigger, proje
   } else if (entry.type === 'command' && entry.params?.length) {
     await resolveParamsAndRun(ws, entry, input, matchedTrigger, project, sessionContext);
   } else if (entry.type === 'command') {
-    await runCommandEntry(ws, entry, input, matchedTrigger, project);
+    await runCommandEntry(ws, entry, input, matchedTrigger, project, sessionContext);
   }
 }
