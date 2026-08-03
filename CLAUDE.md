@@ -1682,6 +1682,49 @@ review process yet. Found and fixed four real issues, all already patched in the
   already shown above — so "how do I run/do X" returns the full precise command list even for
   projects whose docs don't document a run command at all.
 
+## All run commands, site-aware suggestion, and dev-URL misroute fixes (2026-08-03, requested directly)
+
+One change set, all harness-verified (290/290 pass, `tsc --noEmit` clean, `npm run check-intents`
+zero new dupes — same baseline as the Phase-3 intent batch it follows):
+
+- **`readmeRunParser.js` collects ALL documented run commands, not just the first.** The old
+  `findDocumentedRunCommand()` returned only the first match from a project's docs, which is often
+  NOT the thing you want: NetPulse's `## Run` block lists `once` first and `serve` (the actual
+  web server) third. New `matchCommandLine(rawLine)` (per-line) + `allMatchingCommandLines(text)`
+  (all matching lines in first-seen order, deduplicated) + `findDocumentedRunCommands(project)`:
+  two-pass (labeled Install/Usage/Run/etc. sections first, all fenced blocks only if the first
+  pass found nothing), returns `[{ command, doc, header }]`, capped at `MAX_DOCUMENTED_COMMANDS`
+  (6). `findDocumentedRunCommand()` is kept as a first-element convenience wrapper.
+- **Site-flavored asks prefer a server-shaped documented command** (`builtinIntents.js`):
+  `projectTypeSuggestions()` now calls `findDocumentedRunCommands()` and picks via
+  `pickDocumentedRunCommand(documents, input)` — for site-flavored input ("run the site", "start
+  the web server", dashboard/frontend/page variants) it returns whichever documented command
+  actually *serves* the web app (`SERVER_SHAPED_COMMAND_RE`: serve/server/flask run/uvicorn/
+  gunicorn/vite/php artisan serve/npm run (dev|start|serve)/dotnet run/http.server) instead of the
+  raw first match; anything else keeps exact first-match behavior. Verified against NetPulse's real
+  doc set: "run the site"/"start the web server"/"run the website" → `main.py serve`; "run once"
+  and "how do I run this" → `main.py once` (unchanged). `how_to_run` also now lists EVERY
+  documented command as a numbered list with per-entry source labels (numbering suppressed when
+  there's exactly one), then appends the configured-commands block deduplicated against the full
+  documented set (was: dedupe against the single first command, a leftover of the old
+  single-command assumption).
+- **"what is the dev url" misroute fix** (`connection.js`): the link pre-check patterns are
+  hoisted + exported (`DEV_URL_WHERE_RE`, `DEV_URL_WHAT_RE`, `DEV_URL_BARE_RE`) and now allow an
+  optional determiner plus up to two in-between words ("what is the dev url", "what is the dev
+  server link") — before, an in-between word broke the old `(link|url|address)` immediacy and
+  "what is the dev url" fell through to the NLP stage, which misrouted it to
+  `project.knowledge.stack`. A git-context guard (`DEV_URL_GIT_CONTEXT_RE`: git/github/gitlab/
+  remote/repo/repository/branch/origin/merge/commit/push/pull/checkout/clone) keeps git-remote
+  questions ("what is the git remote url") from ever being answered with a dev-server URL.
+- **"open the project" no longer gets diverted by stage 1b** (`matcher.js`): bare "open the
+  project"/"open this project"/"launch the project" are run_project seed phrases (miscIntents.js)
+  that could score ≥ `CONFIG_RUN_ENTRY_FLOOR` against a project's own config entry (harness-
+  measured 0.590 vs the "test project" trigger) and get silently redirected into running that
+  specific command (pytest) instead of generic run_project. New `OPEN_PROJECT_RE`
+  (`/^(?:open|launch)\s+(?:the\s+|this\s+)?project$/i`) exempts exactly those phrasings from the
+  stage-1b config-earn redirect; the verified redirect cases ("run the site and watch at interval
+  of 5 minutes" 0.565, "run the network speed" 0.721) all start with a run verb and are untouched.
+
 ## Conventions
 
 - No file over ~400 lines; split by concern (see `server/wsHandlers/` for the pattern).

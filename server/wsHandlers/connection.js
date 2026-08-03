@@ -26,6 +26,19 @@ import { wss, broadcast } from '../wsServer.js';
 
 const pendingMemorySuggestions = new Map();
 
+// "Where is the link / what is the url" pre-check patterns (hoisted + exported so the harness can
+// assert the exact same truth the server uses — keep them in sync with any future edit here).
+// Confirmed live 2026-08-03: "what is the dev url" used to slip past the old `(link|url|address)`
+// immediacy (an in-between word like "dev" broke the match) and fell through to the NLP stage,
+// which misrouted it to project.knowledge.stack. Both patterns now allow an optional determiner
+// plus up to two in-between words ("what is the dev url", "what is the dev server link"), while
+// the git-context guard below keeps git-remote questions ("what is the git remote url", "where is
+// the github link") from ever being answered with a dev-server URL.
+export const DEV_URL_WHERE_RE = /where\s+(is|can I find|do I go|did it go)\s+(?:(?:the|a|my|our|their|this)\s+)?(?:[\w.]+\s+){0,2}(link|url|site|server|page)/i;
+export const DEV_URL_WHAT_RE = /\bwhat('s| is)\s+(?:(?:the|a|my|our|their|this)\s+)?(?:[\w.]+\s+){0,2}(link|url|address)\b/i;
+export const DEV_URL_BARE_RE = /^(link|url)\??$/i;
+const DEV_URL_GIT_CONTEXT_RE = /\b(git|github|gitlab|remote|repo|repository|branch|origin|merge|commit|push|pull|checkout|clone)\b/i;
+
 function heartbeat() {
   this.isAlive = true;
 }
@@ -642,10 +655,12 @@ async function handleExecute(ws, parsed, sessionContext) {
     return;
   }
 
-  // "Where is the link?" — answer from the last detected dev server URL
-  if (/where\s+(is|can I find|do I go|did it go)\s+(the\s+)?(link|url|site|server|page)/i.test(lowerInput)
-    || /\bwhat('s| is)\s+(the\s+)?(link|url|address)\b/i.test(lowerInput)
-    || /^(link|url)\??$/i.test(lowerInput.trim())) {
+  // "Where is the link?" — answer from the last detected dev server URL. Wide enough to catch
+  // "what is the dev url" / "where is the dev server" (confirmed misroute, fixed 2026-08-03),
+  // but never a git-remote question (gated by DEV_URL_GIT_CONTEXT_RE below — "what is the git
+  // remote url" should go to git_remote_info instead of being answered as the dev server).
+  if ((DEV_URL_WHERE_RE.test(lowerInput) || DEV_URL_WHAT_RE.test(lowerInput) || DEV_URL_BARE_RE.test(lowerInput.trim()))
+    && !DEV_URL_GIT_CONTEXT_RE.test(lowerInput)) {
     const devUrl = state.lastDevUrls.get(project.id);
     if (devUrl) {
       const answer = withPortCollisionWarning(`The dev server is running at **${devUrl}** — open it in your browser.`, devUrl);

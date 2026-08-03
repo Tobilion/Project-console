@@ -4,7 +4,7 @@ import { executeCommand, runningProcesses } from '../executor.js';
 import { performUndo, isGitRepo, createCheckpoint } from '../gitSafety.js';
 import { pendingConfirmations, state, withPortCollisionWarning } from '../state.js';
 import { createProjectTools } from '../tools.js';
-import { findDocumentedRunCommand } from '../readmeRunParser.js';
+import { findDocumentedRunCommands } from '../readmeRunParser.js';
 import { semanticMatcher } from '../semanticMatcher.js';
 import { formatApiRoutes, findTodos, findBiggestFiles, findRecentActivity } from '../codebaseIndexer.js';
 import { isSafeParamValue } from '../paramCommand.js';
@@ -248,6 +248,25 @@ function findMentionedScript(input, scripts) {
 // measured no-man's-land below the true positives.
 const CONFIG_SUGGESTION_FLOOR = 0.4;
 
+// Requested directly (2026-07-30): findDocumentedRunCommands() returns every run command a doc
+// documents, in doc order — and the FIRST one is often NOT the web server (NetPulse's "## Run"
+// block lists `once` first, `serve` third). For a site-flavored ask ("run the site" / "start the
+// web server") prefer whichever documented command actually SERVES the web app (serve/flask /
+// uvicorn/vite/npm dev shape) over the raw first match, so "run the site" doesn't land on a
+// one-shot command documented first. Non-site asks and single-command docs keep the first-match
+// behavior exactly as before.
+const SITE_FLAVORED_INPUT_RE = /\b(site|website|web ?(app|site|server)|dashboard|frontend|page)\b/i;
+const SERVER_SHAPED_COMMAND_RE = /\b(serve\b|server|flask\s+run|uvicorn|gunicorn|vite(\s|$)|php\s+artisan\s+serve|dev\b|npm\s+run\s+(dev|start|serve)|dotnet\s+run|\bhttp\.server)/i;
+
+function pickDocumentedRunCommand(documents, input) {
+  if (!documents || documents.length === 0) return null;
+  if (SITE_FLAVORED_INPUT_RE.test(input) && documents.length > 1) {
+    const serving = documents.find((d) => SERVER_SHAPED_COMMAND_RE.test(d.command));
+    if (serving) return serving;
+  }
+  return documents[0];
+}
+
 /**
  * Shared helper: detect project type and emit suggestion chips with runnable commands.
  * Used by both `npm_run` and `run_project` when no matching script is found.
@@ -312,7 +331,7 @@ async function projectTypeSuggestions(ws, project, input, scripts) {
       return;
     }
   }
-  const documented = findDocumentedRunCommand(project);
+  const documented = pickDocumentedRunCommand(findDocumentedRunCommands(project), input);
   if (documented) {
     const sourceNote = documented.header
       ? `Found in **${documented.doc}** under "${documented.header}":`
@@ -564,13 +583,19 @@ export async function handleBuiltinIntent(ws, action, input, project, sessionCon
     // answer "how much can trigger mode (no AI) understand from the README" specifically: it
     // never guesses silently, it always says where the answer came from (a documented command
     // vs. a language-based inference vs. "nothing found, turn on AI mode").
-    const documented = findDocumentedRunCommand(project);
+    const documented = findDocumentedRunCommands(project);
     const idx = project.codebaseIndex;
     let msg;
-    if (documented) {
-      msg = documented.header
-        ? `Documented in **${documented.doc}** under "${documented.header}":\n\n\`\`\`\n${documented.command}\n\`\`\``
-        : `Found this command in **${documented.doc}**:\n\n\`\`\`\n${documented.command}\n\`\`\``;
+    if (documented.length) {
+      const single = documented.length === 1;
+      const lines = documented.map((d, i) => {
+        const srcLabel = d.header
+          ? `Documented in **${d.doc}** under "${d.header}"`
+          : `Found this command in **${d.doc}**`;
+        const code = `\`\`\`\n${d.command}\n\`\`\``;
+        return single ? `${srcLabel}:\n\n${code}` : `${i + 1}. ${srcLabel}:\n\n${code}`;
+      });
+      msg = lines.join('\n\n');
     } else if (idx?.frameworks?.length || idx?.languages?.length) {
       const parts = [];
       if (idx.languages?.length) parts.push(`**Languages:** ${idx.languages.slice(0, 4).join(', ')}`);
@@ -582,7 +607,8 @@ export async function handleBuiltinIntent(ws, action, input, project, sessionCon
     // configured (console.config.json entries), so "how do I run/do X" gets the full precise
     // command list even when the README documents nothing — and without duplicating an entry
     // already shown as the documented command above.
-    const configured = (project.config?.entries || []).filter((e) => e.type === 'command' && e.action && e.action !== documented?.command);
+    const documentedCmds = new Set(documented.map((d) => d.command));
+    const configured = (project.config?.entries || []).filter((e) => e.type === 'command' && e.action && !documentedCmds.has(e.action));
     if (configured.length) {
       const list = configured
         .map((e) => `- \`${e.action}\`${e.params?.length ? ` (asks for: ${e.params.map((p) => p.name).join(', ')})` : ''}`)

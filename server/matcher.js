@@ -37,6 +37,18 @@ const ROUTER_REPO_MAP_CHARS = 1200;
 // project-authored entries are ever eligible and they are per-project, not global.
 const CONFIG_RUN_ENTRY_FLOOR = 0.55;
 
+// Confirmed via the Phase-3 harness (2026-08-03): bare "open the project" is a run_project seed
+// phrase (miscIntents.js) that can score ≥ CONFIG_RUN_ENTRY_FLOOR against a project's own config
+// entry (0.590 vs the harness "test project" trigger) and get silently diverted into running that
+// specific command (pytest) instead of the generic open-the-dev-server run path — a surprising
+// side effect, and exactly the kind of "it did something I didn't ask for" a shipping console
+// shouldn't do. "open the project"/"open this project"/"launch the project" are unambiguous
+// project-level phrases, not command requests, so they're exempted from the stage-1b config-entry
+// redirect and always dispatch through generic run_project. Keep this narrow — the verified
+// redirect cases ("run the site and watch at interval of 5 minutes" 0.565, "run the network speed"
+// 0.721) all start with a run verb, never "open/launch ... project".
+const OPEN_PROJECT_RE = /^(?:open|launch)\s+(?:the\s+|this\s+)?project$/i;
+
 // NOTE: file_append, file_read, and git_remote_add were previously missing from this set even
 // though builtinIntents.js has real handlers for all three, and git_remote_add's whole reason
 // for existing was a PRE_SEMANTIC_OVERRIDES literal-keyword hit in semanticMatcher.js (source:
@@ -262,7 +274,7 @@ export async function matchInput(input, project, projectIndex, options = {}) {
         // give the project's own `command`-type entries a separate chance above their own floor;
         // dispatch through the exact same config-entry path as stage 1a (safety checks and the
         // parameterized-command ask live in handleMatchedEntry / runCommandEntry, unchanged).
-        if (semanticResult.intent === 'run_project' || semanticResult.intent === 'npm_run') {
+        if ((semanticResult.intent === 'run_project' || semanticResult.intent === 'npm_run') && !OPEN_PROJECT_RE.test(input)) {
           const projEntry = await semanticMatcher.bestProjectCommandEntry(input, projectIndex);
           if (projEntry && projEntry.score >= CONFIG_RUN_ENTRY_FLOOR) {
             const entryResult = tryLookupEntry([project], 0, projEntry.entryIndex, input);
