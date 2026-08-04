@@ -119,7 +119,12 @@ function createBufferedSender(sendEvent, type, transform) {
     }
     if (!buffer) return;
     const out = transform ? transform(buffer) : buffer;
-    if (out) sendEvent(type, out);
+    if (out) {
+      // A transform may reroute the batch to a different channel entirely (e.g. the LF/CRLF
+      // collapse summary → `warning` instead of `error_output`) by returning { type, text }.
+      if (typeof out === 'object' && out.type && out.text) sendEvent(out.type, out.text);
+      else sendEvent(type, out);
+    }
     buffer = '';
   }
   return {
@@ -259,7 +264,18 @@ export function executeCommand(command, cwd, ws, projectId) {
     // final `data.stdout`/`data.stderr` summary and for live URL detection below; only the
     // *live-streamed* copy shown in chat is batched/collapsed.
     const stdoutSender = createBufferedSender(sendEvent, 'output');
-    const stderrSender = createBufferedSender(sendEvent, 'error_output', collapseLfCrlfWarnings);
+    const stderrSender = createBufferedSender(sendEvent, 'error_output', (text) => {
+      const out = collapseLfCrlfWarnings(text);
+      // The LF/CRLF collapse summary is a pure informational notice (the "(cosmetic, no action
+      // needed)" marker) — reroute it through the `warning` channel so the frontend renders an
+      // amber notice instead of a red error bubble. Only a summary standing completely alone
+      // (single line, no real error text mixed into the same batch) is rerouted; mixed batches
+      // keep the collapse but stay red so real errors are never downgraded.
+      if (out && out.includes('(cosmetic, no action needed)') && !out.includes('\n')) {
+        return { type: 'warning', text: out };
+      }
+      return out;
+    });
 
     try {
       child = spawn(finalCommand, {

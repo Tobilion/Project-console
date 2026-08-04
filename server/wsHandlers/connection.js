@@ -73,9 +73,9 @@ function onConnection(ws) {
   ws.send = (data) => {
     try {
       const parsed = JSON.parse(typeof data === 'string' ? data : data.toString());
-      if (sessionContext.currentSessionId && (parsed.type === 'answer' || parsed.type === 'error_output') && parsed.data) {
+      if (sessionContext.currentSessionId && (parsed.type === 'answer' || parsed.type === 'error_output' || parsed.type === 'warning') && parsed.data) {
         appendMessage(sessionContext.currentSessionId, {
-          role: parsed.type === 'error_output' ? 'error' : 'bot',
+          role: parsed.type === 'error_output' ? 'error' : parsed.type === 'warning' ? 'warning' : 'bot',
           content: typeof parsed.data === 'string' ? parsed.data : JSON.stringify(parsed.data)
         }).catch(() => {});
       } else if (sessionContext.currentSessionId && (parsed.type === 'start' || parsed.type === 'output') && parsed.data) {

@@ -1976,7 +1976,8 @@ Frontend-only; no intent/matcher/example-phrase or server changes (check-intents
   `background #121212`, `surface #18181b`, `overlay #1e1e20`, `primary #27272A`, fg ladder
   zinc-200/300/400/500/600, `panel`/`panel-strong` stay white-alpha (render ≈#1e1e20/#27272a over
   the new bg — the spec's elevated layers). Light theme is a `:root[data-theme="light"]` override
-  block (zinc neutrals: `#FAFAFA` bg, `#18181B` fg), not a separate stylesheet — no `dark:`
+  block (zinc neutrals: `#fcfcfc` bg, `#18181B` fg — bg updated to the redesign spec's exact
+  `#fcfcfc` on 2026-08-04), not a separate stylesheet — no `dark:`
   utilities anywhere, no rebuild needed (utilities compile via `@theme inline` to
   `var(--color-*)` refs, so the attribute swap re-themes at runtime).
 - **Toggle:** `src/components/ui/ThemeToggle.tsx` (sliding sun/moon pill, borrowed from
@@ -1992,7 +1993,7 @@ Frontend-only; no intent/matcher/example-phrase or server changes (check-intents
   `scrim #00000080→rgba(24,24,27,.06)`, `scrim-soft .4d→.04`, `scrim-faint .33→.03`,
   `scrim-strong .99→.08`; `panel #ffffff0a→#fff`, `panel-strong #ffffff1a→#F4F4F5`;
   `surface #18181b→#FFF`; `overlay #1e1e20→#FFF` (modal/terminal panel surfaces);
-  `background #121212→#FAFAFA`, `foreground #E4E4E7→#18181B`. Accent/status colors (teal
+  `background #121212→#fcfcfc`, `foreground #E4E4E7→#18181B`. Accent/status colors (teal
   `#00d4a3`, blue `#3d6bff`, indigo `#6366f1`, plus Tailwind teal/red/green/yellow/orange
   status classes) are CONSTANT across themes — do not tokenize them.
 - **Typography (Phase 1)**: `--font-sans` is now `'Inter', ui-sans-serif, system-ui, sans-serif`
@@ -2011,6 +2012,19 @@ Frontend-only; no intent/matcher/example-phrase or server changes (check-intents
   buttons stays `text-white` (constant accent backgrounds). Gray families only — never collapse
   onto `text-foreground`/`text-muted-foreground` (that's what the Phase-7 tokens are for);
   the new ladder exists because collapsing would have shifted dark shades.
+- **Warning/notice channel (2026-08-04, addendum to the redesign spec):** informational notices
+  now render as an amber banner instead of a red error bubble. `server/executor.js`'s stderr
+  sender reroutes the collapsed LF/CRLF summary (the single-line "(cosmetic, no action needed)"
+  case only — mixed batches with real error text stay `error_output`) to a new `warning` WS
+  message type; `createBufferedSender`'s transform may now return `{ type, text }` to reroute a
+  batch to a different channel. `connection.js`'s persistence interceptor stores it as role
+  `warning` so reloaded sessions keep the styling; `src/types.ts` gained `'warning'` on the
+  `TerminalMessage.type` union; `useConsole.ts` handles the `warning` WS case (mirrors
+  `error_output`, clears `commandPending`, appends to the dock log) and maps it to `**Notice**`
+  in markdown exports / `warning` in JSON exports; `Terminal.tsx` renders it as
+  `bg-amber-500/10 border-amber-500/30 text-amber-400` with an `AlertTriangle` icon (sans, not
+  mono). `useSessions.ts` needs no change (generic role cast). Light-theme background token was
+  also moved `#FAFAFA` → `#fcfcfc` to match the addendum's exact spec value.
 - `GlowOrbs.tsx` orbs got a `glow-orb` class + `:root[data-theme="light"] .glow-orb { opacity:
   0.5 }` rule (dark keeps full intensity). `DisplayCards.tsx`/`v0-ai-chat-demo.tsx` remain
   unused/unimported and were deliberately NOT tokenized (out of scope).

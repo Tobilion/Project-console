@@ -52,7 +52,7 @@ export interface Project {
 
 export interface TerminalMessage {
   id: string;
-  type: 'user' | 'bot' | 'system' | 'error' | 'output';
+  type: 'user' | 'bot' | 'system' | 'error' | 'warning' | 'output';
   content: string;
   suggestions?: string[];
   isMarkdown?: boolean;

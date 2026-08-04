@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react'
 import { TerminalMessage, Project, AIStatus, PendingToolConfirm, PendingMemorySuggestion, ToolCallEntry } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
 import ReactMarkdown from 'react-markdown';
-import { Terminal as TerminalIcon, Send, Search, CheckCircle, XCircle, Brain, Loader2, History, Copy, FileDown, ListChecks, Download, Square, Maximize2, Minimize2, ChevronDown, ChevronUp } from 'lucide-react';
+import { Terminal as TerminalIcon, Send, Search, CheckCircle, XCircle, Brain, Loader2, History, Copy, FileDown, ListChecks, Download, Square, Maximize2, Minimize2, ChevronDown, ChevronUp, AlertTriangle } from 'lucide-react';
 import { AIAssistantInterface } from './ui/AIAssistantInterface';
 import { ToolHistoryPanel } from './ToolHistoryPanel';
 import { ProcessDock, ProcessInfo } from './ProcessDock';
@@ -426,10 +426,17 @@ export const Terminal = ({ messages, onSendMessage, onSearch, onDeepResearch, ac
                     ? 'bg-[#3d6bff] text-white rounded-br-none' 
                     : msg.type === 'error'
                     ? 'bg-red-500/10 border border-red-500/20 text-red-400 rounded-bl-none font-mono text-sm'
+                    : msg.type === 'warning'
+                    ? 'bg-amber-500/10 border border-amber-500/30 text-amber-400 rounded-bl-none'
                     : 'bg-panel border border-border-soft text-fg rounded-bl-none'
                 }`}
               >
-                {msg.type === 'user' || !msg.isMarkdown ? (
+                {msg.type === 'warning' ? (
+                   <div className="flex items-start gap-2">
+                     <AlertTriangle size={14} className="flex-shrink-0 mt-0.5" />
+                     <div className="whitespace-pre-wrap text-sm leading-relaxed">{msg.content}</div>
+                   </div>
+                ) : msg.type === 'user' || !msg.isMarkdown ? (
                    <div className="whitespace-pre-wrap text-sm leading-relaxed">{msg.content}</div>
                 ) : (
                    <div className="prose prose-sm max-w-none prose-pre:bg-scrim prose-pre:border prose-pre:border-border-soft prose-pre:p-0 prose-p:leading-relaxed">

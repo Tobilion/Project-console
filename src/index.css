@@ -50,7 +50,7 @@
 /* Light theme — attribute override, mirrors the portfolio's inverted .dark block.
    Set by useTheme.ts + the index.html pre-paint script; default follows OS prefs. */
 :root[data-theme="light"] {
-  --color-background: #FAFAFA;
+  --color-background: #fcfcfc;
   --color-foreground: #18181B;
   --color-primary: #F4F4F5;
   --color-primary-on: #18181B;

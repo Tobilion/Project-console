@@ -163,7 +163,7 @@ export function useConsole() {
     const sessionTitle = sessions.sessions.find(s => s.id === sessions.activeSessionId)?.title || 'session';
     const lines = [`# ${projectName} — ${sessionTitle}`, `Exported: ${new Date().toISOString()}`, ''];
     sessions.messages.forEach(m => {
-      const role = m.type === 'user' ? '**User**' : m.type === 'error' ? '**Error**' : '**Assistant**';
+      const role = m.type === 'user' ? '**User**' : m.type === 'error' ? '**Error**' : m.type === 'warning' ? '**Notice**' : '**Assistant**';
       lines.push(`## ${role}`);
       if (m.type === 'bot') {
         lines.push(m.content);
@@ -191,7 +191,7 @@ export function useConsole() {
       exportedAt: new Date().toISOString(),
       messages: sessions.messages.map(m => ({
         id: m.id,
-        role: m.type === 'user' ? 'user' : m.type === 'error' ? 'error' : 'assistant',
+        role: m.type === 'user' ? 'user' : m.type === 'error' ? 'error' : m.type === 'warning' ? 'warning' : 'assistant',
         content: m.content,
         suggestions: m.suggestions,
         isMarkdown: m.isMarkdown,
@@ -302,6 +302,16 @@ export function useConsole() {
         sessions.setMessages(prev => [...prev, {
           id, type: 'error', content: payload.data,
           switchProjectAction: payload.switchProjectAction,
+        }]);
+        break;
+      case 'warning':
+        // Informational notices (e.g. the collapsed LF/CRLF "line endings will be normalized"
+        // summary) — rendered as an amber banner by Terminal, persisted as role 'warning' so
+        // reloaded sessions keep the styling.
+        setCommandPending(false);
+        if (payload.data) appendProcessOutput(payload.data);
+        sessions.setMessages(prev => [...prev, {
+          id, type: 'warning', content: payload.data,
         }]);
         break;
       case 'suggestions':
