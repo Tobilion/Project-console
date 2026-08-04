@@ -1,6 +1,6 @@
 import fs from 'fs';
 import path from 'path';
-import { readTelemetry } from './intentTelemetry.js';
+import { TELEMETRY_DIR, readTelemetry, listTelemetryProjectIds, ensureDir } from './telemetryFile.js';
 
 // Stage 1 of the "use ML instead of hardcoding" work (2026-07-29, requested directly): a small,
 // pure-JS logistic regression trained on real accept/reject outcomes, used to replace the fixed
@@ -9,7 +9,6 @@ import { readTelemetry } from './intentTelemetry.js';
 // learning over numbers already being logged (intentTelemetry.js's stages/confidence/margin data
 // plus the falsePositive label set in connection.js whenever a gated action is approved or
 // rejected), so it works identically whether or not AI mode has ever been used.
-const TELEMETRY_DIR = path.join(process.cwd(), 'data', 'telemetry');
 const MODEL_FILE = path.join(TELEMETRY_DIR, 'confidence-model.json');
 
 // Below this many labeled examples, don't trust the model at all — a handful of accept/reject
@@ -29,21 +28,6 @@ const FLOOR_SEARCH_MIN = 0.35;
 const FLOOR_SEARCH_MAX = 0.95;
 const FLOOR_SEARCH_STEP = 0.02;
 const TARGET_ACCEPT_PROB = 0.7;
-
-function ensureDir() {
-  if (!fs.existsSync(TELEMETRY_DIR)) fs.mkdirSync(TELEMETRY_DIR, { recursive: true });
-}
-
-function listTelemetryProjectIds() {
-  ensureDir();
-  try {
-    return fs.readdirSync(TELEMETRY_DIR)
-      .filter((f) => f.endsWith('.jsonl'))
-      .map((f) => f.replace(/\.jsonl$/, ''));
-  } catch {
-    return [];
-  }
-}
 
 function sigmoid(z) {
   return 1 / (1 + Math.exp(-z));

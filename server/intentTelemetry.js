@@ -1,40 +1,23 @@
-import fs from 'fs';
-import path from 'path';
+// Intent-matching telemetry: records what each match stage returned and whether the user
+// accepted the result (via the confirm flow in connection.js). Drives the per-intent threshold
+// suggestions (suggestThresholds / autoApplyThresholds*) and feeds confidenceModel.js's learned
+// confidence floor.
+//
+// Phase 3 split note: file I/O lives in telemetryFile.js (leaf) and the persistable threshold
+// overrides live in telemetryThresholds.js. This module owns only the in-memory write queue +
+// the suggestion/aggregation logic, and re-exports the file/threshold ops below so existing
+// callers (matcher.js, semanticMatcher.js, connection.js, index.js) keep importing from here.
 import crypto from 'crypto';
+import { readTelemetry, appendTelemetry, updateTelemetryEntry, clearTelemetry, listTelemetryProjectIds } from './telemetryFile.js';
 import { learnedFloor, getModelInfo } from './confidenceModel.js';
+import { getEffectiveThreshold, setThresholdOverride } from './telemetryThresholds.js';
+import { getIntentStats } from './telemetryStats.js';
 
-const TELEMETRY_DIR = path.join(process.cwd(), 'data', 'telemetry');
-const THRESHOLDS_FILE = path.join(TELEMETRY_DIR, 'thresholds.json');
-
-const DEFAULT_FLOOR = 0.6;
-
-let thresholdOverrides = {};
-
-function ensureDir() {
-  if (!fs.existsSync(TELEMETRY_DIR)) {
-    fs.mkdirSync(TELEMETRY_DIR, { recursive: true });
-  }
-}
-
-function filePath(projectId) {
-  return path.join(TELEMETRY_DIR, `${projectId}.jsonl`);
-}
-
-function loadThresholdOverrides() {
-  try {
-    if (fs.existsSync(THRESHOLDS_FILE)) {
-      return JSON.parse(fs.readFileSync(THRESHOLDS_FILE, 'utf-8'));
-    }
-  } catch {}
-  return {};
-}
-
-function saveThresholdOverrides() {
-  ensureDir();
-  fs.writeFileSync(THRESHOLDS_FILE, JSON.stringify(thresholdOverrides, null, 2));
-}
-
-thresholdOverrides = loadThresholdOverrides();
+export {
+  getEffectiveThreshold, getThresholdOverrides, setThresholdOverride, removeThresholdOverride,
+} from './telemetryThresholds.js';
+export { clearTelemetry, updateTelemetryEntry } from './telemetryFile.js';
+export { getIntentStats } from './telemetryStats.js';
 
 // Batched async write queue — debounces writes so rapid sequential logMatch calls
 // (e.g. during project discovery with many intents) coalesce into a single disk write.
@@ -45,11 +28,8 @@ function flushTelemetryQueue() {
   flushTimer = null;
   for (const [projectId, entries] of writeQueue) {
     writeQueue.delete(projectId);
-    const lines = entries.map(e => JSON.stringify(e)).join('\n') + '\n';
-    const fp = filePath(projectId);
-    ensureDir();
     try {
-      fs.appendFileSync(fp, lines);
+      appendTelemetry(projectId, entries);
     } catch {}
   }
 }
@@ -73,58 +53,21 @@ export function logMatch(projectId, entry) {
   return record.id;
 }
 
-export function readTelemetry(projectId) {
-  const fp = filePath(projectId);
-  if (!fs.existsSync(fp)) return [];
-  return fs.readFileSync(fp, 'utf-8').split('\n').filter(l => l.trim()).map(l => {
-    try { return JSON.parse(l); } catch { return null; }
-  }).filter(Boolean);
-}
-
-export function getIntentStats(projectId) {
-  const entries = readTelemetry(projectId);
-  const stats = new Map();
-
-  for (const entry of entries) {
-    const intent = entry.finalIntent;
-    if (!intent) continue;
-    if (!stats.has(intent)) {
-      stats.set(intent, { matches: 0, confidences: [], falsePositives: 0, stages: {} });
-    }
-    const s = stats.get(intent);
-    s.matches++;
-    s.confidences.push(entry.finalConfidence || 0);
-    if (entry.winner) {
-      s.stages[entry.winner] = (s.stages[entry.winner] || 0) + 1;
-    }
-    if (entry.falsePositive === true) s.falsePositives++;
-  }
-
-  for (const [, s] of stats) {
-    s.avgConfidence = s.confidences.reduce((a, b) => a + b, 0) / s.confidences.length;
-    s.minConfidence = Math.min(...s.confidences);
-    s.maxConfidence = Math.max(...s.confidences);
-    s.falsePositiveRate = s.matches > 0 ? s.falsePositives / s.matches : 0;
-  }
-
-  return stats;
-}
-
 export function suggestThresholds(projectId) {
   const stats = getIntentStats(projectId);
   const suggestions = [];
 
   // Stage 1 ML work (2026-07-29, requested directly): once enough real accept/reject outcomes
   // have accumulated (see confidenceModel.js), prefer its learned floor over the hardcoded
-  // if/else bump rules below for every intent — a single data-driven number instead of guessed
-  // ±0.03/±0.05 nudges. Below MIN_LABELED examples this returns null and every intent falls
-  // through to exactly the original heuristic, so a fresh install behaves identically to before.
+  // if/else bump rules below for every intent. Below MIN_LABELED examples this returns null and
+  // every intent falls through to exactly the original heuristic, so a fresh install behaves
+  // identically to before.
   const modelFloor = learnedFloor();
 
   for (const [intent, s] of stats) {
     if (s.matches < 5) continue;
 
-    const currentFloor = thresholdOverrides[intent] ?? DEFAULT_FLOOR;
+    const currentFloor = getEffectiveThreshold(intent);
     let recommendedFloor = currentFloor;
     let reason = null;
 
@@ -168,43 +111,6 @@ export function suggestThresholds(projectId) {
   return suggestions;
 }
 
-export function setThresholdOverride(intent, floor) {
-  thresholdOverrides[intent] = Math.max(0, Math.min(1, floor));
-  saveThresholdOverrides();
-}
-
-export function removeThresholdOverride(intent) {
-  delete thresholdOverrides[intent];
-  saveThresholdOverrides();
-}
-
-export function getEffectiveThreshold(intent) {
-  return thresholdOverrides[intent] ?? DEFAULT_FLOOR;
-}
-
-export function getThresholdOverrides() {
-  return { ...thresholdOverrides };
-}
-
-export function updateTelemetryEntry(projectId, id, updates) {
-  const fp = filePath(projectId);
-  if (!fs.existsSync(fp)) return;
-  const lines = fs.readFileSync(fp, 'utf-8').split('\n').filter(l => l.trim());
-  let changed = false;
-  for (let i = 0; i < lines.length; i++) {
-    try {
-      const record = JSON.parse(lines[i]);
-      if (record.id === id) {
-        Object.assign(record, updates);
-        lines[i] = JSON.stringify(record);
-        changed = true;
-        break;
-      }
-    } catch {}
-  }
-  if (changed) fs.writeFileSync(fp, lines.join('\n') + '\n');
-}
-
 export function autoApplyThresholds(projectId) {
   const suggestions = suggestThresholds(projectId);
   let applied = 0;
@@ -218,24 +124,14 @@ export function autoApplyThresholds(projectId) {
 }
 
 export function autoApplyThresholdsForAll() {
-  ensureDir();
   const results = [];
   try {
-    const files = fs.readdirSync(TELEMETRY_DIR);
-    for (const f of files) {
-      if (f.endsWith('.jsonl') && f !== 'thresholds.json') {
-        const projectId = f.replace('.jsonl', '');
-        const result = autoApplyThresholds(projectId);
-        if (result.applied > 0) {
-          results.push({ projectId, ...result });
-        }
+    for (const projectId of listTelemetryProjectIds()) {
+      const result = autoApplyThresholds(projectId);
+      if (result.applied > 0) {
+        results.push({ projectId, ...result });
       }
     }
   } catch {}
   return results;
-}
-
-export function clearTelemetry(projectId) {
-  const fp = filePath(projectId);
-  if (fs.existsSync(fp)) fs.unlinkSync(fp);
 }
