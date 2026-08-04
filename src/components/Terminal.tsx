@@ -1,12 +1,12 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { TerminalMessage, Project, AIStatus, PendingToolConfirm, PendingMemorySuggestion, ToolCallEntry } from '../types';
-import { motion, AnimatePresence } from 'motion/react';
-import { Send, Brain, History } from 'lucide-react';
+import { Send, Brain } from 'lucide-react';
 import { AIAssistantInterface } from './ui/AIAssistantInterface';
 import { ToolHistoryPanel } from './ToolHistoryPanel';
 import { ProcessDock, ProcessInfo } from './ProcessDock';
 import { TerminalHeader } from './TerminalHeader';
 import { TerminalMessages } from './TerminalMessages';
+import { TerminalSearchOverlay } from './TerminalSearchOverlay';
 
 const MAX_HISTORY = 200;
 
@@ -91,7 +91,6 @@ export const Terminal = ({ messages, onSendMessage, onSearch, onDeepResearch, ac
   const [historyVersion, setHistoryVersion] = useState(0);
   const endRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
-  const searchInputRef = useRef<HTMLInputElement>(null);
 
   // Command history
   const commandHistory = useRef<string[]>([]);
@@ -197,12 +196,6 @@ export const Terminal = ({ messages, onSendMessage, onSearch, onDeepResearch, ac
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, pendingConfirm, pendingToolConfirm, pendingMemorySuggestion]);
-
-  useEffect(() => {
-    if (showSearchOverlay && searchInputRef.current) {
-      searchInputRef.current.focus();
-    }
-  }, [showSearchOverlay]);
 
   const isBlocked = !!pendingConfirm || !!pendingToolConfirm;
 
@@ -375,62 +368,16 @@ export const Terminal = ({ messages, onSendMessage, onSearch, onDeepResearch, ac
         </form>
       )}
 
-      {/* Ctrl+R Search Overlay */}
-      <AnimatePresence>
-        {showSearchOverlay && (
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 10 }}
-            className={`absolute bottom-20 z-50 ${isFullscreen ? 'inset-x-0 mx-auto max-w-3xl' : 'left-4 right-4'} bg-surface border border-border-soft rounded-xl shadow-2xl overflow-hidden`}
-          >
-            <div className="flex items-center gap-2 px-4 py-3 border-b border-border-soft bg-panel">
-              <History size={14} className="text-fg-dim" />
-              <input
-                ref={searchInputRef}
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && filteredHistory.length > 0) {
-                    handleSearchOverlaySelect(filteredHistory[0]);
-                  } else if (e.key === 'Escape') {
-                    setShowSearchOverlay(false);
-                    setSearchQuery('');
-                    inputRef.current?.focus();
-                  }
-                }}
-                placeholder="Search command history..."
-                className="flex-1 bg-transparent text-fg text-sm outline-none placeholder:text-fg-faint"
-                autoFocus
-              />
-              <button
-                onClick={() => { setShowSearchOverlay(false); setSearchQuery(''); inputRef.current?.focus(); }}
-                className="text-fg-faint hover:text-fg-muted transition-colors"
-              >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-              </button>
-            </div>
-            <div className="max-h-48 overflow-y-auto">
-              {filteredHistory.length === 0 ? (
-                <div className="px-4 py-6 text-center text-fg-faint text-sm">
-                  {searchQuery.trim() ? 'No matching commands found' : 'No command history yet'}
-                </div>
-              ) : (
-                filteredHistory.map((cmd, i) => (
-                  <button
-                    key={i}
-                    onClick={() => handleSearchOverlaySelect(cmd)}
-                    className="w-full text-left px-4 py-2 hover:bg-panel transition-colors font-mono text-sm text-fg-muted border-b border-border-faint last:border-b-0"
-                  >
-                    {cmd}
-                  </button>
-                ))
-              )}
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      <TerminalSearchOverlay
+        show={showSearchOverlay}
+        isFullscreen={isFullscreen}
+        query={searchQuery}
+        onQueryChange={setSearchQuery}
+        onClose={() => { setShowSearchOverlay(false); setSearchQuery(''); inputRef.current?.focus(); }}
+        onSelect={handleSearchOverlaySelect}
+        history={filteredHistory}
+        inputRef={inputRef}
+      />
     </div>
   );
 };
