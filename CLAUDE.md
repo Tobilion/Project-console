@@ -2137,6 +2137,19 @@ Frontend-only; no intent/matcher/example-phrase or server changes (check-intents
 - Client-only for now: server-side chit-chat greeting pools (`builtinIntents.js`) are untouched
   — making them profile-aware would need server-side profile reads and was explicitly out of
   scope for this feature.
+- **Randomized personalized greetings (2026-08-04):** new `src/utils/greetings.ts` — pure client
+  display text, zero server involvement. `getRandomGreeting(formattedName)` (20 templates,
+  "Welcome back, ${name}." family) feeds the welcome hero: `App.tsx` memoizes it as
+  `heroGreeting` keyed on `profile`, so it re-rolls only when the profile loads/saves, not per
+  render, and passes it through the existing `greeting` prop (WelcomeScreen unchanged).
+  `getRandomChatPrompt(name)` (10 templates) feeds the chat empty-state placeholders: `Terminal`
+  gained an optional `userName?: string` prop (App passes `profile.name`), computes
+  `chatPrompt` via `useMemo` keyed on `[userName, activeProject?.id]`, and swapped the final
+  placeholder fallback in both the plain input ("Ask a question or enter a command..." → the
+  random prompt) and the AIAssistantInterface `'Ask me anything...'` fallback. The earlier
+  conditional placeholders (no-project / thinking / running / blocked) are all unchanged.
+  `UserProfileModal`'s Title input gained a `<datalist>` (Master / Engineer / Dev / Dr. / None)
+  so the field is a dropdown-or-type per the spec.
 
 ## Conventions
 
