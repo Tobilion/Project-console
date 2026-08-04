@@ -1,22 +1,16 @@
 import React, { useRef } from 'react';
 import { GlowOrbs } from './components/GlowOrbs';
 import { TextScramble } from './components/TextScramble';
-import { BentoGrid } from './components/BentoGrid';
+import { SidebarDrawer } from './components/SidebarDrawer';
 import { Terminal } from './components/Terminal';
 import { WelcomeScreen } from './components/WelcomeScreen';
 import { Dashboard } from './components/Dashboard';
 import { useConsole } from './hooks/useConsole';
-import { FolderSearch, Plus, MessageSquare, Trash2, Home, LayoutDashboard } from 'lucide-react';
+import { FolderSearch, Home, LayoutDashboard } from 'lucide-react';
 import { ThemeToggle } from './components/ui/ThemeToggle';
 
 function App() {
   const folderInputRef = useRef<HTMLInputElement>(null);
-  // Claude/ChatGPT-style scoping: when a project is active, the sidebar shows only that
-  // project's chats by default (matches "each project has its own chat history"). The toggle
-  // is a deliberate escape hatch, not a redesign away from per-project scoping — sometimes you
-  // do want to see everything at once (e.g. hunting for a chat you can't remember the project
-  // for).
-  const [showAllChats, setShowAllChats] = React.useState(false);
   // Requested directly — the chat panel always shared the screen with the sessions sidebar and
   // the project grid, with no way to just focus on the conversation. Purely a layout toggle: it
   // doesn't touch any chat state, so switching in and out of it never loses anything.
@@ -25,7 +19,7 @@ function App() {
 
   const {
     projects, activeProject, scanPath, setScanPath, messages,
-    pendingConfirm, sessions, activeSessionId, showSessions, setShowSessions,
+    pendingConfirm, sessions, activeSessionId,
     aiEnabled, ollamaStatus, aiThinking, aiThinkingText, commandPending, indexingProjectId,
     aiModel, aiMode, showWelcome, setShowWelcome, pendingToolConfirm,
     pendingMemorySuggestion, handleMemorySuggestionRespond,
@@ -120,24 +114,6 @@ function App() {
             <span className="text-xs text-yellow-400 animate-pulse">⏳ Indexing...</span>
           )}
         </div>
-        <form onSubmit={handleScan} className="flex items-center gap-2 bg-surface/50 p-1.5 rounded-lg border border-border-soft backdrop-blur-sm">
-          <button type="button" onClick={handleBrowseFolder} className="flex items-center gap-1 px-2 text-fg-subtle hover:text-fg-strong transition-colors" title="Browse for a folder near your current scan directory (for any other location, paste the full path instead)">
-            <FolderSearch size={14} />
-          </button>
-          <input
-            type="text"
-            value={scanPath}
-            onChange={(e) => setScanPath(e.target.value)}
-            placeholder="C:\Users\...\Projects"
-            className="bg-transparent border-none outline-none text-sm font-mono w-56 text-fg"
-          />
-          <button
-            type="submit"
-            className="px-2.5 py-1 bg-[#00d4a3]/20 text-[#00d4a3] rounded-md text-[10px] font-bold tracking-wider uppercase hover:bg-[#00d4a3]/30 transition-colors"
-          >
-            Scan
-          </button>
-        </form>
         <div className="flex items-center gap-2 ml-auto flex-shrink-0">
           {activeServers.length > 0 && (
             <span className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-green-400 bg-green-500/10 rounded-lg border border-green-500/20 whitespace-nowrap flex-shrink-0">
@@ -172,132 +148,84 @@ function App() {
       </header>
       )}
 
-      <main className={`relative z-10 flex-1 min-h-0 overflow-hidden ${showDashboard ? '' : chatFullscreen ? 'block' : 'grid grid-cols-1 gap-6 lg:grid-cols-12'}`}>
+      <main className={`relative z-10 flex-1 min-h-0 overflow-hidden ${showDashboard ? '' : chatFullscreen ? 'block' : 'flex flex-col lg:flex-row gap-6'}`}>
         {showDashboard ? (
           <div className="h-full p-4">
             <Dashboard onClose={() => setShowDashboard(false)} refreshSignal={dashboardUpdateSignal} />
           </div>
         ) : (<>
-        {!chatFullscreen && showSessions && (() => {
-          const visibleSessions = (showAllChats || !activeProject)
-            ? sessions
-            : sessions.filter(s => s.projectId === activeProject.id);
-          return (
-          <div className="lg:col-span-2 flex flex-col gap-2 overflow-y-auto min-h-0 bg-panel rounded-2xl border border-border-soft p-3">
-            <div className="flex items-center justify-between mb-1">
-              <span className="text-xs tracking-[0.2em] uppercase text-fg-dim font-bold">Chats</span>
-              <button onClick={() => createSession(activeProject?.id, activeProject?.name)} className="p-1 text-fg-subtle hover:text-teal-400 transition-colors">
-                <Plus size={16} />
-              </button>
-            </div>
-            {activeProject && (
-              <button
-                onClick={() => setShowAllChats(v => !v)}
-                className="text-[10px] text-fg-dim hover:text-fg-muted text-left mb-1 transition-colors"
-              >
-                {showAllChats ? `Showing all projects — show only "${activeProject.name}"` : 'Show chats from all projects'}
-              </button>
-            )}
-            {visibleSessions.length === 0 && (
-              <button onClick={() => createSession(activeProject?.id, activeProject?.name)} className="text-xs text-fg-dim italic text-left py-2 px-2 rounded-lg hover:bg-panel transition-colors">
-                {activeProject && !showAllChats ? `No chats yet for "${activeProject.name}" — create one` : 'No chats yet — create one'}
-              </button>
-            )}
-            {visibleSessions.map(s => (
-              <div
-                key={s.id}
-                onClick={() => switchSession(s.id)}
-                className={`flex items-center gap-2 px-2 py-2 rounded-lg cursor-pointer text-xs transition-colors group ${
-                  activeSessionId === s.id ? 'bg-teal-500/15 text-teal-300' : 'text-fg-subtle hover:bg-panel'
-                }`}
-              >
-                <MessageSquare size={14} className="flex-shrink-0" />
-                <span className="truncate flex-1 flex flex-col">
-                  <span className="truncate">{s.title}</span>
-                  {s.projectName && (
-                    <span className="truncate text-[10px] text-fg-dim normal-case tracking-normal">{s.projectName}</span>
-                  )}
-                </span>
-                <button onClick={(e) => { e.stopPropagation(); deleteSession(s.id); }} className="opacity-0 group-hover:opacity-100 text-fg-dim hover:text-red-400 transition-all">
-                  <Trash2 size={12} />
-                </button>
-              </div>
-            ))}
-          </div>
-          );
-        })()}
         {!chatFullscreen && (
-          <div className={`flex flex-col gap-6 overflow-y-auto pr-2 pb-6 min-h-0 ${showSessions ? 'lg:col-span-4' : 'lg:col-span-5'}`}>
-            <div className="flex items-center gap-2 flex-shrink-0">
-              <button onClick={() => setShowSessions(!showSessions)} className="p-1 text-fg-dim hover:text-fg-muted transition-colors">
-                <MessageSquare size={16} />
-              </button>
-              <h2 className="text-xs tracking-[0.2em] uppercase text-fg-dim font-bold">
-                Discovered Projects
-              </h2>
-            </div>
-            {projects.length === 0 ? (
-               <div className="text-sm text-fg-dim italic">No projects found. Try scanning a different path.</div>
-            ) : (
-                <BentoGrid
-                  projects={projects}
-                  activeProject={activeProject}
-                  onSelect={handleSelectProject}
-                  workspaceProjects={workspaceProjects}
-                  addToWorkspace={addToWorkspace}
-                  removeFromWorkspace={removeFromWorkspace}
-                />
-            )}
-          </div>
-        )}
-
-        <div className={`${chatFullscreen ? 'h-full lg:col-span-12' : `h-[calc(100vh-140px)] ${showSessions ? 'lg:col-span-6' : 'lg:col-span-7'}`}`}>
-          <Terminal
-            isFullscreen={chatFullscreen}
-            onToggleFullscreen={() => setChatFullscreen(v => !v)}
-            messages={messages}
-            onSendMessage={handleSendMessage}
-            onSearch={handleSearch}
-            onDeepResearch={handleDeepResearch}
+          <SidebarDrawer
+            projects={projects}
             activeProject={activeProject}
-            pendingConfirm={pendingConfirm}
-            onConfirm={handleConfirm}
-            pendingToolConfirm={pendingToolConfirm}
-            onToolConfirm={handleToolConfirm}
-            onApproveTask={handleApproveTask}
-            pendingMemorySuggestion={pendingMemorySuggestion}
-            onMemorySuggestionRespond={handleMemorySuggestionRespond}
-            aiEnabled={aiEnabled}
-            aiThinking={aiThinking}
-            aiThinkingText={aiThinkingText}
-            commandPending={commandPending}
-            onCancel={handleCancel}
-            ollamaStatus={ollamaStatus}
-            aiModel={aiModel}
-            aiMode={aiMode}
-            onAIToggle={handleAIToggle}
-            onSetModel={handleSetModel}
-            onSetMode={handleSetMode}
-            toolHistory={toolHistory}
-            showToolHistory={showToolHistory}
-            onToggleToolHistory={() => setShowToolHistory(v => !v)}
-            onRerunToolCall={rerunToolCall}
-            onExportMarkdown={exportAsMarkdown}
-            onExportJson={exportAsJson}
-            onDirectCommand={handleDirectCommand}
+            sessions={sessions}
+            activeSessionId={activeSessionId}
+            scanPath={scanPath}
+            setScanPath={setScanPath}
+            handleScan={handleScan}
+            handleBrowseFolder={handleBrowseFolder}
+            createSession={createSession}
+            switchSession={switchSession}
+            deleteSession={deleteSession}
+            handleSelectProject={handleSelectProject}
             workspaceProjects={workspaceProjects}
             addToWorkspace={addToWorkspace}
             removeFromWorkspace={removeFromWorkspace}
-            clearWorkspace={clearWorkspace}
-            onSwitchToProject={handleSwitchToProject}
-            processes={processes}
-            processLogs={processLogs}
-            selectedProcessId={selectedProcessId}
-            onSelectProcess={setSelectedProcessId}
-            onStopProcess={handleStopProcess}
-            dockExpanded={dockExpanded}
-            onToggleDock={() => setDockExpanded(v => !v)}
+            aiEnabled={aiEnabled}
+            aiModel={aiModel}
+            activeServersCount={activeServers.length}
           />
+        )}
+
+        <div className={chatFullscreen ? 'h-full w-full' : 'flex-1 min-h-0 min-w-0'}>
+          <div className={`h-full w-full ${chatFullscreen ? '' : 'max-w-4xl mx-auto'}`}>
+            <Terminal
+              isFullscreen={chatFullscreen}
+              onToggleFullscreen={() => setChatFullscreen(v => !v)}
+              messages={messages}
+              onSendMessage={handleSendMessage}
+              onSearch={handleSearch}
+              onDeepResearch={handleDeepResearch}
+              activeProject={activeProject}
+              pendingConfirm={pendingConfirm}
+              onConfirm={handleConfirm}
+              pendingToolConfirm={pendingToolConfirm}
+              onToolConfirm={handleToolConfirm}
+              onApproveTask={handleApproveTask}
+              pendingMemorySuggestion={pendingMemorySuggestion}
+              onMemorySuggestionRespond={handleMemorySuggestionRespond}
+              aiEnabled={aiEnabled}
+              aiThinking={aiThinking}
+              aiThinkingText={aiThinkingText}
+              commandPending={commandPending}
+              onCancel={handleCancel}
+              ollamaStatus={ollamaStatus}
+              aiModel={aiModel}
+              aiMode={aiMode}
+              onAIToggle={handleAIToggle}
+              onSetModel={handleSetModel}
+              onSetMode={handleSetMode}
+              toolHistory={toolHistory}
+              showToolHistory={showToolHistory}
+              onToggleToolHistory={() => setShowToolHistory(v => !v)}
+              onRerunToolCall={rerunToolCall}
+              onExportMarkdown={exportAsMarkdown}
+              onExportJson={exportAsJson}
+              onDirectCommand={handleDirectCommand}
+              workspaceProjects={workspaceProjects}
+              addToWorkspace={addToWorkspace}
+              removeFromWorkspace={removeFromWorkspace}
+              clearWorkspace={clearWorkspace}
+              onSwitchToProject={handleSwitchToProject}
+              processes={processes}
+              processLogs={processLogs}
+              selectedProcessId={selectedProcessId}
+              onSelectProcess={setSelectedProcessId}
+              onStopProcess={handleStopProcess}
+              dockExpanded={dockExpanded}
+              onToggleDock={() => setDockExpanded(v => !v)}
+            />
+          </div>
         </div>
         </>)}
       </main>

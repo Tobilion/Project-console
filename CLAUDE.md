@@ -71,13 +71,18 @@ when the cmd.exe wrapper exits before npm.
   are not valid ESM loader URLs.
 
 Frontend: `src/hooks/useConsole.ts` owns all state + WS/fetch handlers; `src/App.tsx` is
-render-only; `src/components/Terminal.tsx` renders chat + the two remaining confirmation card
-types (risky command, AI tool approval); `src/components/Dashboard.tsx` polls `/api/dashboard`
-every 5s and re-fetches immediately on `dashboard_update` WS events (broadcast from executor.js
-on process/URL changes) — conditional `LayoutDashboard` button in the header scan bar
-highlights when the view is active and replaces the main content area with a per-project status
-grid (uncommitted files, recent commits, dev URL, running command). A green pulsing pill in the
-header (`N running`) shows the live count from `/api/active-servers` with zero layout shift.
+render-only; `src/components/SidebarDrawer.tsx` is the collapsible left rail (scan bar, New
+Chat button, per-project chat list with show-all toggle, compact Discovered Projects list with
+workspace add/remove, AI status + running count in the bottom slot; collapses to a ~48px icon
+rail); `src/components/Terminal.tsx` renders chat + the two remaining confirmation card
+types (risky command, AI tool approval), centered on a `max-w-4xl` canvas beside the drawer
+(fullscreen chat stays full-bleed and hides the drawer); `src/components/Dashboard.tsx` polls
+`/api/dashboard` every 5s and re-fetches immediately on `dashboard_update` WS events
+(broadcast from executor.js on process/URL changes) — conditional `LayoutDashboard` button in
+the header highlights when the view is active and replaces the main content area with a
+per-project status grid (uncommitted files, recent commits, dev URL, running command). A green
+pulsing pill in the header (`N running`) shows the live count from `/api/active-servers` with
+zero layout shift.
 `src/components/WelcomeScreen.tsx` now includes a 4-step guided tour overlay (fixed z-50
 backdrop-blur card, local state machine, dismissible at any step) activated via a "Take the Tour"
 button alongside New Chat / Quick Start Guide. `src/components/ui/AIAssistantInterface.tsx` is
@@ -368,7 +373,7 @@ the AI-mode input bar (real file upload via `FileReader`, Search/Reason/Deep Res
   auto-renames a session to the first ~60 chars of its first user message (as long as the title
   hasn't been customized yet) — so a chat linked to Project A can end up *titled* like it's about
   Project B just because of what you happened to type first in it. Always trust `projectName`
-  (shown as a small subtitle under the chat title in the sidebar in `App.tsx`), never the title
+  (shown as a small subtitle under the chat title in the sidebar list in `SidebarDrawer.tsx`), never the title
   string, when figuring out which project a chat belongs to.
 - Clicking a project card in the grid (`handleSelectProject` in `useConsole.ts`) always creates a
   **new** session scoped to that project — it deliberately does not relink whatever chat happened
