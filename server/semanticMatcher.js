@@ -4,6 +4,7 @@ import { INTENTS } from './intentsData.js';
 import { getEffectiveThreshold } from './intentTelemetry.js';
 import { broadcast } from './wsServer.js';
 import { findPreSemanticOverride } from './preSemanticOverrides.js';
+import { matchKeywordRule } from './keywordRules.js';
 
 env.cacheDir = './.cache/xenova';
 
@@ -369,148 +370,16 @@ class SemanticMatcher {
       _stages.push({ stage: 'fuzzy', matched: false, error: 'exception' });
     }
 
-    // 3. Keyword fallback for common patterns
-    let kwMatched = false;
-    if (/\b(run|start|launch|open|execute)\b/.test(inputStr) &&
-        /\b(project|site|app|code|server|application)\b/.test(inputStr)) {
-      kwMatched = true; _stages.push({ stage: 'keyword', intent: 'run_project', confidence: 0.45, matched: true });
-      this._lastTelemetry = { stages: _stages, winner: 'keyword', finalIntent: 'run_project', finalConfidence: 0.45 };
-      return { intent: 'run_project', confidence: 0.45, source: 'keyword' };
-    }
-    if (/\b(thanks|thank|thx|appreciate|cheers)\b/.test(inputStr)) {
-      kwMatched = true; _stages.push({ stage: 'keyword', intent: 'system.chit_chat.gratitude', confidence: 0.5, matched: true });
-      this._lastTelemetry = { stages: _stages, winner: 'keyword', finalIntent: 'system.chit_chat.gratitude', finalConfidence: 0.5 };
-      return { intent: 'system.chit_chat.gratitude', confidence: 0.5, source: 'keyword' };
-    }
-    if (/\b(hi|hello|hey|howdy|sup|yo)\b/.test(inputStr) && inputStr.length < 30) {
-      kwMatched = true; _stages.push({ stage: 'keyword', intent: 'system.chit_chat.greeting', confidence: 0.4, matched: true });
-      this._lastTelemetry = { stages: _stages, winner: 'keyword', finalIntent: 'system.chit_chat.greeting', finalConfidence: 0.4 };
-      return { intent: 'system.chit_chat.greeting', confidence: 0.4, source: 'keyword' };
-    }
-    if (/\b(clear|cls|clean|wipe)\b/.test(inputStr) &&
-        (/\b(console|screen|chat)\b/.test(inputStr) || inputStr.length < 10)) {
-      kwMatched = true; _stages.push({ stage: 'keyword', intent: 'system.chit_chat.clear', confidence: 0.5, matched: true });
-      this._lastTelemetry = { stages: _stages, winner: 'keyword', finalIntent: 'system.chit_chat.clear', finalConfidence: 0.5 };
-      return { intent: 'system.chit_chat.clear', confidence: 0.5, source: 'keyword' };
-    }
-    if (/\b(git|change|commit)\b/.test(inputStr) &&
-        /\b(status|changed|log|diff|commit)\b/.test(inputStr)) {
-      kwMatched = true; _stages.push({ stage: 'keyword', intent: 'system.chit_chat.git_status', confidence: 0.4, matched: true });
-      this._lastTelemetry = { stages: _stages, winner: 'keyword', finalIntent: 'system.chit_chat.git_status', finalConfidence: 0.4 };
-      return { intent: 'system.chit_chat.git_status', confidence: 0.4, source: 'keyword' };
-    }
-    if (/\b(push|deploy.*git|upload.*github|send.*remote)\b/i.test(inputStr)) {
-      kwMatched = true; _stages.push({ stage: 'keyword', intent: 'git_push', confidence: 0.4, matched: true });
-      this._lastTelemetry = { stages: _stages, winner: 'keyword', finalIntent: 'git_push', finalConfidence: 0.4 };
-      return { intent: 'git_push', confidence: 0.4, source: 'keyword' };
-    }
-    if (/\binitialize git|init.*repo|start git/i.test(inputStr)) {
-      kwMatched = true; _stages.push({ stage: 'keyword', intent: 'git_init', confidence: 0.45, matched: true });
-      this._lastTelemetry = { stages: _stages, winner: 'keyword', finalIntent: 'git_init', finalConfidence: 0.45 };
-      return { intent: 'git_init', confidence: 0.45, source: 'keyword' };
-    }
-    if (/\bgiti?gnore\b/i.test(inputStr)) {
-      kwMatched = true; _stages.push({ stage: 'keyword', intent: 'git_ignore_add', confidence: 0.4, matched: true });
-      this._lastTelemetry = { stages: _stages, winner: 'keyword', finalIntent: 'git_ignore_add', finalConfidence: 0.4 };
-      return { intent: 'git_ignore_add', confidence: 0.4, source: 'keyword' };
-    }
-    if (/\b(remove|untrack|stop tracking).*git/i.test(inputStr)) {
-      kwMatched = true; _stages.push({ stage: 'keyword', intent: 'git_rm_cached', confidence: 0.45, matched: true });
-      this._lastTelemetry = { stages: _stages, winner: 'keyword', finalIntent: 'git_rm_cached', finalConfidence: 0.45 };
-      return { intent: 'git_rm_cached', confidence: 0.45, source: 'keyword' };
-    }
-    if (/\brun\s+(dev|start|serve|the\s+(site|project|app))\b/i.test(inputStr)) {
-      kwMatched = true; _stages.push({ stage: 'keyword', intent: 'run_project', confidence: 0.5, matched: true });
-      this._lastTelemetry = { stages: _stages, winner: 'keyword', finalIntent: 'run_project', finalConfidence: 0.5 };
-      return { intent: 'run_project', confidence: 0.5, source: 'keyword' };
-    }
-    if (/\bnpm\s+(serve|start|dev|build|test|run)\b/i.test(inputStr)) {
-      kwMatched = true; _stages.push({ stage: 'keyword', intent: 'npm_run', confidence: 0.5, matched: true });
-      this._lastTelemetry = { stages: _stages, winner: 'keyword', finalIntent: 'npm_run', finalConfidence: 0.5 };
-      return { intent: 'npm_run', confidence: 0.5, source: 'keyword' };
-    }
-    if (/\bnpx\s+serve\b/i.test(inputStr)) {
-      kwMatched = true; _stages.push({ stage: 'keyword', intent: 'run_project', confidence: 0.5, matched: true });
-      this._lastTelemetry = { stages: _stages, winner: 'keyword', finalIntent: 'run_project', finalConfidence: 0.5 };
-      return { intent: 'run_project', confidence: 0.5, source: 'keyword' };
-    }
-    if (/^(python|node)\s+\S+/i.test(inputStr)) {
-      kwMatched = true; _stages.push({ stage: 'keyword', intent: 'run_project', confidence: 0.45, matched: true });
-      this._lastTelemetry = { stages: _stages, winner: 'keyword', finalIntent: 'run_project', finalConfidence: 0.45 };
-      return { intent: 'run_project', confidence: 0.45, source: 'keyword' };
-    }
-    if (/\b(install|npm i)\b/i.test(inputStr) && !/\bremove|delete|uninstall\b/i.test(inputStr)) {
-      kwMatched = true; _stages.push({ stage: 'keyword', intent: 'npm_install', confidence: 0.4, matched: true });
-      this._lastTelemetry = { stages: _stages, winner: 'keyword', finalIntent: 'npm_install', finalConfidence: 0.4 };
-      return { intent: 'npm_install', confidence: 0.4, source: 'keyword' };
-    }
-    if (/\bcommit\b.*\b(changes?|work|code|files?|message|save)\b/i.test(inputStr)) {
-      kwMatched = true; _stages.push({ stage: 'keyword', intent: 'git_commit', confidence: 0.4, matched: true });
-      this._lastTelemetry = { stages: _stages, winner: 'keyword', finalIntent: 'git_commit', finalConfidence: 0.4 };
-      return { intent: 'git_commit', confidence: 0.4, source: 'keyword' };
-    }
-    if (/\bcommit\b.*\bpush\b|\bpush\b.*\bcommit\b/i.test(inputStr)) {
-      kwMatched = true; _stages.push({ stage: 'keyword', intent: 'git_commit_push', confidence: 0.5, matched: true });
-      this._lastTelemetry = { stages: _stages, winner: 'keyword', finalIntent: 'git_commit_push', finalConfidence: 0.5 };
-      return { intent: 'git_commit_push', confidence: 0.5, source: 'keyword' };
-    }
-    if (/\bpull\b.*\b(remote|origin|latest|changes|update)\b|\bgit pull\b/i.test(inputStr)) {
-      kwMatched = true; _stages.push({ stage: 'keyword', intent: 'git_pull', confidence: 0.45, matched: true });
-      this._lastTelemetry = { stages: _stages, winner: 'keyword', finalIntent: 'git_pull', finalConfidence: 0.45 };
-      return { intent: 'git_pull', confidence: 0.45, source: 'keyword' };
-    }
-    if (/\bbuild\b.*\b(project|app|site|code|bundle)\b|\bnpm run build\b/i.test(inputStr)) {
-      kwMatched = true; _stages.push({ stage: 'keyword', intent: 'npm_build', confidence: 0.45, matched: true });
-      this._lastTelemetry = { stages: _stages, winner: 'keyword', finalIntent: 'npm_build', finalConfidence: 0.45 };
-      return { intent: 'npm_build', confidence: 0.45, source: 'keyword' };
-    }
-    if (/\b(rescan|reindex|rescann|refresh index)\b/i.test(inputStr)) {
-      kwMatched = true; _stages.push({ stage: 'keyword', intent: 'project_scan', confidence: 0.5, matched: true });
-      this._lastTelemetry = { stages: _stages, winner: 'keyword', finalIntent: 'project_scan', finalConfidence: 0.5 };
-      return { intent: 'project_scan', confidence: 0.5, source: 'keyword' };
-    }
-    if (/\bcommit history|git log|recent commits\b/i.test(inputStr)) {
-      kwMatched = true; _stages.push({ stage: 'keyword', intent: 'git_log', confidence: 0.45, matched: true });
-      this._lastTelemetry = { stages: _stages, winner: 'keyword', finalIntent: 'git_log', finalConfidence: 0.45 };
-      return { intent: 'git_log', confidence: 0.45, source: 'keyword' };
-    }
-    if (/\b(git )?branch\b.*\b(list|show|current|what)\b|\bwhat branch\b/i.test(inputStr)) {
-      kwMatched = true; _stages.push({ stage: 'keyword', intent: 'git_branch', confidence: 0.4, matched: true });
-      this._lastTelemetry = { stages: _stages, winner: 'keyword', finalIntent: 'git_branch', finalConfidence: 0.4 };
-      return { intent: 'git_branch', confidence: 0.4, source: 'keyword' };
-    }
-    if (/\b(switch branch|checkout|change branch)\b/i.test(inputStr)) {
-      kwMatched = true; _stages.push({ stage: 'keyword', intent: 'git_checkout', confidence: 0.45, matched: true });
-      this._lastTelemetry = { stages: _stages, winner: 'keyword', finalIntent: 'git_checkout', finalConfidence: 0.45 };
-      return { intent: 'git_checkout', confidence: 0.45, source: 'keyword' };
-    }
-    if (/\b(create|make|generate|write)\b.*\bfile\b/i.test(inputStr)) {
-      kwMatched = true; _stages.push({ stage: 'keyword', intent: 'file_create', confidence: 0.4, matched: true });
-      this._lastTelemetry = { stages: _stages, winner: 'keyword', finalIntent: 'file_create', finalConfidence: 0.4 };
-      return { intent: 'file_create', confidence: 0.4, source: 'keyword' };
-    }
-    if (/\b(delete|remove|erase|trash)\b.*\bfile\b/i.test(inputStr)) {
-      kwMatched = true; _stages.push({ stage: 'keyword', intent: 'file_delete', confidence: 0.4, matched: true });
-      this._lastTelemetry = { stages: _stages, winner: 'keyword', finalIntent: 'file_delete', finalConfidence: 0.4 };
-      return { intent: 'file_delete', confidence: 0.4, source: 'keyword' };
-    }
-    if (/\b(undo|revert|rollback|go back)\b/i.test(inputStr)) {
-      kwMatched = true; _stages.push({ stage: 'keyword', intent: 'system.chit_chat.undo', confidence: 0.5, matched: true });
-      this._lastTelemetry = { stages: _stages, winner: 'keyword', finalIntent: 'system.chit_chat.undo', finalConfidence: 0.5 };
-      return { intent: 'system.chit_chat.undo', confidence: 0.5, source: 'keyword' };
-    }
-    if (/\b(help|commands?|what can you|how.*use|tutorial)\b/i.test(inputStr)) {
-      kwMatched = true; _stages.push({ stage: 'keyword', intent: 'system.chit_chat.help', confidence: 0.45, matched: true });
-      this._lastTelemetry = { stages: _stages, winner: 'keyword', finalIntent: 'system.chit_chat.help', finalConfidence: 0.45 };
-      return { intent: 'system.chit_chat.help', confidence: 0.45, source: 'keyword' };
-    }
-    if (/\b(test|testing|spec)\b.*\b(run|how|show|what|suite|coverage)\b/i.test(inputStr)) {
-      kwMatched = true; _stages.push({ stage: 'keyword', intent: 'project.context.tests', confidence: 0.4, matched: true });
-      this._lastTelemetry = { stages: _stages, winner: 'keyword', finalIntent: 'project.context.tests', finalConfidence: 0.4 };
-      return { intent: 'project.context.tests', confidence: 0.4, source: 'keyword' };
+    // 3. Keyword fallback for common patterns (rules + first-match-wins semantics in
+    // keywordRules.js, Phase 5 split — per-rule confidences and telemetry shape unchanged)
+    const kwRule = matchKeywordRule(inputStr);
+    if (kwRule) {
+      _stages.push({ stage: 'keyword', intent: kwRule.intent, confidence: kwRule.confidence, matched: true });
+      this._lastTelemetry = { stages: _stages, winner: 'keyword', finalIntent: kwRule.intent, finalConfidence: kwRule.confidence };
+      return { intent: kwRule.intent, confidence: kwRule.confidence, source: 'keyword' };
     }
 
-    if (!kwMatched) _stages.push({ stage: 'keyword', matched: false });
+    _stages.push({ stage: 'keyword', matched: false });
     this._lastTelemetry = { stages: _stages, winner: null, finalIntent: null, finalConfidence: 0 };
     return null;
   }
