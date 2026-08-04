@@ -3,7 +3,7 @@ import { semanticMatcher } from './semanticMatcher.js';
 import { INTENTS } from './intentsData.js';
 import { persistLearnedPhrases } from './learnedIntents.js';
 import { nlpEngine } from './nlpEngine.js';
-import { GUESS_TO_INTENT } from './guessToIntent.js';
+import { mapNearMissToIntent } from './nearMissIntentMap.js';
 
 // Minimum occurrences before a pattern is suggested for promotion to an intent
 const MIN_OCCURRENCES = 3;
@@ -43,29 +43,8 @@ export function generateSuggestions(projectId) {
   for (const [command, group] of groups) {
     if (group.inputs.length < MIN_OCCURRENCES) continue;
 
-    // Determine which intent this maps to
-    let intent = null;
-    if (group.description) {
-      for (const [pattern, intentName] of Object.entries(GUESS_TO_INTENT)) {
-        if (new RegExp(pattern, 'i').test(group.description)) {
-          intent = intentName;
-          break;
-        }
-      }
-    }
-
-    // If no mapping, try to infer from the command itself
-    if (!intent) {
-      if (command.startsWith('git rm --cached')) intent = 'git_rm_cached';
-      else if (command.includes('>> .gitignore') || command.includes('echo')) intent = 'git_ignore_add';
-      else if (command.startsWith('npm install')) intent = 'npm_install';
-      else if (command.startsWith('npm uninstall')) intent = 'npm_install';
-      else if (command.startsWith('npm run')) intent = 'npm_run';
-      else if (command.startsWith('git add')) intent = 'git_add';
-      else if (command.includes('del /f') || command.includes('rm ')) intent = 'file_delete';
-      else if (command.includes('>') && !command.includes('git')) intent = 'file_create';
-    }
-
+    // Resolve the pattern's intent (GUESS_TO_INTENT description match, else command inference)
+    const intent = mapNearMissToIntent(command, group.description);
     if (!intent) continue;
 
     // Deduplicate input phrases
