@@ -1,7 +1,3 @@
-import fs from 'fs';
-import path from 'path';
-import { TELEMETRY_DIR, readTelemetry, listTelemetryProjectIds, ensureDir } from './telemetryFile.js';
-
 // Stage 1 of the "use ML instead of hardcoding" work (2026-07-29, requested directly): a small,
 // pure-JS logistic regression trained on real accept/reject outcomes, used to replace the fixed
 // if/else threshold-bump rules in intentTelemetry.js's suggestThresholds() with a learned floor.
@@ -9,16 +5,18 @@ import { TELEMETRY_DIR, readTelemetry, listTelemetryProjectIds, ensureDir } from
 // learning over numbers already being logged (intentTelemetry.js's stages/confidence/margin data
 // plus the falsePositive label set in connection.js whenever a gated action is approved or
 // rejected), so it works identically whether or not AI mode has ever been used.
-const MODEL_FILE = path.join(TELEMETRY_DIR, 'confidence-model.json');
+//
+// Phase 3 (2026-08-04): the gradient-descent math lives in logisticRegression.js and the model
+// file persistence in modelStore.js; this module owns feature extraction, labeled-example
+// collection, and the retrain/predict/floor-search orchestration on top of those two leaves.
+import { readTelemetry, listTelemetryProjectIds } from './telemetryFile.js';
+import { loadModel, saveModel } from './modelStore.js';
+import { sigmoid, trainLogisticRegression } from './logisticRegression.js';
 
 // Below this many labeled examples, don't trust the model at all — a handful of accept/reject
 // outcomes would just overfit to noise. suggestThresholds() falls back to its original hardcoded
 // heuristic until real usage crosses this bar, so there's zero regression for a fresh install.
 const MIN_LABELED = 12;
-
-const EPOCHS = 400;
-const LEARNING_RATE = 0.3;
-const L2 = 0.01;
 
 const FEATURE_NAMES = ['confidence', 'margin', 'isSemantic', 'isFuzzy', 'isKeyword', 'isLiteralOverride', 'inputLenNorm'];
 
@@ -29,17 +27,13 @@ const FLOOR_SEARCH_MAX = 0.95;
 const FLOOR_SEARCH_STEP = 0.02;
 const TARGET_ACCEPT_PROB = 0.7;
 
-function sigmoid(z) {
-  return 1 / (1 + Math.exp(-z));
-}
-
 /**
- * Turns one telemetry record (see intentTelemetry.js's logMatch/getIntentStats) into a numeric
- * feature vector. Pooled across every project rather than trained per-project or per-intent —
- * a single personal user generates too few labeled examples for either to have enough data on
- * its own, and the underlying dispatcher behavior these features describe (how a semantic score/
- * margin/winning stage relates to whether the user actually wanted that result) doesn't really
- * differ by project.
+ * Turns one telemetry record (see telemetryStats.js's getIntentStats / intentTelemetry.js's
+ * logMatch) into a numeric feature vector. Pooled across every project rather than trained
+ * per-project or per-intent — a single personal user generates too few labeled examples for
+ * either to have enough data on its own, and the underlying dispatcher behavior these features
+ * describe (how a semantic score/margin/winning stage relates to whether the user actually wanted
+ * that result) doesn't really differ by project.
  */
 export function extractFeatures(record) {
   const stages = record.stages || [];
@@ -58,35 +52,6 @@ export function extractFeatures(record) {
   ];
 }
 
-/**
- * Plain batch gradient-descent logistic regression — no ML library needed for a handful of
- * features over what will realistically be dozens to low hundreds of examples for a single-user
- * tool. L2-regularized so it doesn't swing wildly on a small dataset.
- */
-function trainLogisticRegression(X, y, { epochs = EPOCHS, lr = LEARNING_RATE, l2 = L2 } = {}) {
-  const n = X.length;
-  const d = X[0].length;
-  let weights = new Array(d).fill(0);
-  let bias = 0;
-
-  for (let epoch = 0; epoch < epochs; epoch++) {
-    const gradW = new Array(d).fill(0);
-    let gradB = 0;
-    for (let i = 0; i < n; i++) {
-      const z = bias + X[i].reduce((s, x, j) => s + x * weights[j], 0);
-      const pred = sigmoid(z);
-      const err = pred - y[i];
-      for (let j = 0; j < d; j++) gradW[j] += err * X[i][j];
-      gradB += err;
-    }
-    for (let j = 0; j < d; j++) {
-      weights[j] -= lr * (gradW[j] / n + l2 * weights[j]);
-    }
-    bias -= lr * (gradB / n);
-  }
-  return { weights, bias };
-}
-
 /** Every labeled telemetry record across every project — falsePositive is only set (true/false)
  *  when a gated action's confirm/reject response actually got linked back to a telemetry entry
  *  (see connection.js's handleConfirmResponse); everything else is unlabeled and skipped. */
@@ -102,25 +67,6 @@ function collectLabeledExamples() {
     }
   }
   return { X, y };
-}
-
-let cachedModel = null;
-
-function loadModel() {
-  if (cachedModel) return cachedModel;
-  try {
-    if (fs.existsSync(MODEL_FILE)) {
-      cachedModel = JSON.parse(fs.readFileSync(MODEL_FILE, 'utf-8'));
-      return cachedModel;
-    }
-  } catch {}
-  return null;
-}
-
-function saveModel(model) {
-  ensureDir();
-  fs.writeFileSync(MODEL_FILE, JSON.stringify(model, null, 2));
-  cachedModel = model;
 }
 
 /**
