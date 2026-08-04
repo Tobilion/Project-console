@@ -76,7 +76,23 @@ Chat button, per-project chat list with show-all toggle, compact Discovered Proj
 workspace add/remove, AI status + running count in the bottom slot; collapses to a ~48px icon
 rail); `src/components/Terminal.tsx` renders chat + the two remaining confirmation card
 types (risky command, AI tool approval), centered on a `max-w-4xl` canvas beside the drawer
-(fullscreen chat stays full-bleed and hides the drawer); `src/components/Dashboard.tsx` polls
+(fullscreen chat stays full-bleed and hides the drawer). Since the 2026-08-04 Phase 4
+modularization, `Terminal.tsx` (~520 lines) is a thin orchestrator that composes six
+sibling components, all in `src/components/`: `TerminalHeader.tsx` (top bar — connection
+badge, fullscreen toggle, workspace chips, export buttons, tool-history toggle, ⚙ session
+menu), `TerminalMessages.tsx` (scrollable thread: chat bubbles with markdown/JSON/output
+rendering, telemetry-footer stripping, suggestion chips, the AI/trigger-mode busy
+indicators + their Stop buttons, and the `endRef` scroll anchor), `TerminalConfirmCards.tsx`
+(the three inline confirm chips — risky command, AI tool approval incl. the
+"Approve + auto-approve file edits" grant button, memory suggestion), `TerminalOutputBlock.tsx`
+(the collapsible command-output block from Phase 6 PASS 6.3), `StructuredJsonBlock.tsx`
+(the ` ```json ` block with copy/apply actions used by structured AI mode), and
+`TerminalSearchOverlay.tsx` (the Ctrl+R command-history overlay, which owns only its
+autofocus ref; query/visibility/history stay in Terminal). Terminal still owns: input state,
+command history (localStorage per project, `MAX_HISTORY` 200) + tab completion
+(`KNOWN_COMMANDS`), `centerCol` fullscreen centering, `isBlocked`, the AI status row (ON/OFF
+toggle + model/mode selects), the input form, and the Ctrl+K/Ctrl+R keydown wiring.
+`src/components/Dashboard.tsx` polls
 `/api/dashboard` every 5s and re-fetches immediately on `dashboard_update` WS events
 (broadcast from executor.js on process/URL changes) — conditional `LayoutDashboard` button in
 the header highlights when the view is active and replaces the main content area with a
