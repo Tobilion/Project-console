@@ -88,7 +88,7 @@ function App() {
       <div className="h-screen relative flex flex-col p-6">
         <header className="relative z-10 flex-shrink-0 flex items-center justify-end gap-4 mb-4">
           {indexingProjectId && (
-            <span className="text-xs text-yellow-400 font-mono animate-pulse">⏳ Indexing project...</span>
+            <span className="text-xs text-yellow-400 animate-pulse">⏳ Indexing project...</span>
           )}
           <form onSubmit={handleScan} className="flex items-center gap-2 bg-panel p-1.5 rounded-xl border border-border-soft">
             <button type="button" onClick={handleBrowseFolder} className="p-1 text-fg-subtle hover:text-fg-strong transition-colors" title="Browse for a folder near your current scan directory (for any other location, paste the full path instead)">
@@ -110,14 +110,14 @@ function App() {
       {!chatFullscreen && (
       <header className="relative z-10 flex-shrink-0 flex flex-wrap items-center gap-3 mb-4">
         <div className="flex items-center gap-3 min-w-0">
-          <h1 className="text-lg font-serif italic text-fg-strong whitespace-nowrap">
+          <h1 className="text-lg font-semibold italic text-fg-strong whitespace-nowrap">
             <TextScramble text="V4 Knowledge Engine" />
           </h1>
           <p className="text-[10px] tracking-[0.2em] uppercase text-fg-dim font-bold hidden sm:inline">
             Project Console &amp; Analytics
           </p>
           {indexingProjectId && (
-            <span className="text-xs text-yellow-400 font-mono animate-pulse">⏳ Indexing...</span>
+            <span className="text-xs text-yellow-400 animate-pulse">⏳ Indexing...</span>
           )}
         </div>
         <form onSubmit={handleScan} className="flex items-center gap-2 bg-surface/50 p-1.5 rounded-lg border border-border-soft backdrop-blur-sm">
@@ -140,7 +140,7 @@ function App() {
         </form>
         <div className="flex items-center gap-2 ml-auto flex-shrink-0">
           {activeServers.length > 0 && (
-            <span className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-green-400 font-mono bg-green-500/10 rounded-lg border border-green-500/20 whitespace-nowrap flex-shrink-0">
+            <span className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-green-400 bg-green-500/10 rounded-lg border border-green-500/20 whitespace-nowrap flex-shrink-0">
               <span className="w-1.5 h-1.5 rounded-full bg-green-400 inline-block animate-pulse" />
               {activeServers.length} running
             </span>
@@ -193,13 +193,13 @@ function App() {
             {activeProject && (
               <button
                 onClick={() => setShowAllChats(v => !v)}
-                className="text-[10px] text-fg-dim hover:text-fg-muted font-mono text-left mb-1 transition-colors"
+                className="text-[10px] text-fg-dim hover:text-fg-muted text-left mb-1 transition-colors"
               >
                 {showAllChats ? `Showing all projects — show only "${activeProject.name}"` : 'Show chats from all projects'}
               </button>
             )}
             {visibleSessions.length === 0 && (
-              <button onClick={() => createSession(activeProject?.id, activeProject?.name)} className="text-xs text-fg-dim font-mono italic text-left py-2 px-2 rounded-lg hover:bg-panel transition-colors">
+              <button onClick={() => createSession(activeProject?.id, activeProject?.name)} className="text-xs text-fg-dim italic text-left py-2 px-2 rounded-lg hover:bg-panel transition-colors">
                 {activeProject && !showAllChats ? `No chats yet for "${activeProject.name}" — create one` : 'No chats yet — create one'}
               </button>
             )}
@@ -237,7 +237,7 @@ function App() {
               </h2>
             </div>
             {projects.length === 0 ? (
-               <div className="text-sm text-fg-dim font-mono italic">No projects found. Try scanning a different path.</div>
+               <div className="text-sm text-fg-dim italic">No projects found. Try scanning a different path.</div>
             ) : (
                 <BentoGrid
                   projects={projects}

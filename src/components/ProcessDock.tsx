@@ -78,10 +78,10 @@ export function ProcessDock({
                 className="overflow-hidden"
               >
                 <div className="flex items-center justify-between px-4 pt-2">
-                  <span className="text-[10px] text-fg-faint font-mono uppercase">Live output</span>
+                  <span className="text-[10px] text-fg-faint uppercase">Live output</span>
                   <button
                     onClick={() => navigator.clipboard.writeText(logText)}
-                    className="flex items-center gap-1 px-2 py-0.5 rounded bg-panel hover:bg-panel-strong text-fg-dim hover:text-fg-strong transition-colors text-[10px] font-mono"
+                    className="flex items-center gap-1 px-2 py-0.5 rounded bg-panel hover:bg-panel-strong text-fg-dim hover:text-fg-strong transition-colors text-[10px]"
                     title="Copy log"
                   >
                     <Copy size={10} /> Copy
@@ -98,7 +98,7 @@ export function ProcessDock({
           <div className="flex items-center gap-1.5 px-2 py-1.5 overflow-x-auto">
             <button
               onClick={onToggleExpanded}
-              className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-mono text-fg-subtle hover:text-fg-strong hover:bg-panel transition-colors flex-shrink-0"
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] text-fg-subtle hover:text-fg-strong hover:bg-panel transition-colors flex-shrink-0"
               title={expanded ? 'Collapse dock' : 'Expand dock'}
             >
               <TerminalIcon size={12} className="text-[#3d6bff]" />

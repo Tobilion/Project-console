@@ -56,7 +56,7 @@ export const BentoGrid = ({ projects, activeProject, onSelect, workspaceProjects
               {project.path}
             </p>
             
-            <div className="mt-auto pt-4 flex items-center gap-4 text-xs text-fg-dim font-mono">
+            <div className="mt-auto pt-4 flex items-center gap-4 text-xs text-fg-dim">
               <span className="flex items-center gap-1">
                 <BookOpen size={14} />
                 {project.contextFiles?.length || 0} Docs

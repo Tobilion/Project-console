@@ -118,7 +118,7 @@ export function AIAssistantInterface({ onSend, onSearch, onDeepResearch, disable
             onKeyDown={handleKeyDown}
             disabled={disabled}
             placeholder={placeholder || 'Ask me anything...'}
-            className="w-full bg-transparent text-fg text-base outline-none placeholder:text-fg-faint font-mono"
+            className="w-full bg-transparent text-fg text-base outline-none placeholder:text-fg-faint"
           />
         </div>
 
@@ -207,7 +207,7 @@ export function AIAssistantInterface({ onSend, onSearch, onDeepResearch, disable
           <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="overflow-hidden mt-2">
             <div className="bg-surface/80 border border-border-soft rounded-xl overflow-hidden">
               <div className="px-3 py-2 border-b border-border-faint">
-                <span className="text-xs font-mono text-fg-dim uppercase tracking-wider">{activeCategory} Suggestions</span>
+                <span className="text-xs text-fg-dim uppercase tracking-wider">{activeCategory} Suggestions</span>
               </div>
               <ul className="divide-y divide-border-faint">
                 {(suggestions[activeCategory] || []).map((s, i) => (
@@ -232,7 +232,7 @@ function ToggleButton({ icon, label, active, onClick }: { icon: React.ReactNode;
   return (
     <button
       onClick={onClick}
-      className={cn('flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-mono border transition-all', active ? 'bg-[#3d6bff]/20 border-[#3d6bff]/40 text-[#3d6bff]' : 'bg-panel border-border-soft text-fg-subtle hover:text-fg-strong hover:border-border-strong')}
+      className={cn('flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs border transition-all', active ? 'bg-[#3d6bff]/20 border-[#3d6bff]/40 text-[#3d6bff]' : 'bg-panel border-border-soft text-fg-subtle hover:text-fg-strong hover:border-border-strong')}
     >
       {icon}
       <span>{label}</span>

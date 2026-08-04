@@ -1,38 +1,42 @@
-/* JetBrains Mono - primary font per ui-ux-pro-max "Developer Tool" design tokens */
+/* Redesign Phase 1 typography hierarchy: Inter (sans) for all UI controls, headers, and
+   conversation text; JetBrains Mono reserved strictly for code snippets, raw terminal logs,
+   shell paths, and port indicators. */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
 @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,100;0,200;0,300;0,400;0,500;0,600;0,700;0,800;1,100;1,200;1,300;1,400;1,500;1,600;1,700;1,800&display=swap');
 
 @import "tailwindcss";
 @plugin "@tailwindcss/typography";
 
-/* Dark-first identity: these tokens are the app's default (dark) palette.
-   The [data-theme="light"] block further down overrides them. Accent colors
-   (teal/blue/indigo) stay constant across themes — see CLAUDE.md theme entry. */
+/* Dark-first identity: these tokens are the app's default (dark) palette — matte zinc
+   (redesign Phase 1), replacing the old midnight navy. The [data-theme="light"] block
+   further down overrides them. Accent colors (teal/blue/indigo) stay constant across
+   themes — see CLAUDE.md theme entry. */
 :root {
-  --color-background: #0F172A;
-  --color-foreground: #F8FAFC;
-  --color-primary: #1E293B;
+  --color-background: #121212;
+  --color-foreground: #E4E4E7;
+  --color-primary: #27272A;
   --color-primary-on: #FFFFFF;
-  --color-secondary: #334155;
+  --color-secondary: #3F3F46;
   --color-accent: #00d4a3;
   --color-accent-dim: #00d4a366;
   --color-blue: #3d6bff;
   --color-indigo: #6366f1;
-  --color-surface: #12151c;
-  --color-muted: #1f2937;
-  --color-muted-foreground: #94a3b8;
-  --color-border: #334155;
-  --color-input: #334155;
+  --color-surface: #18181b;
+  --color-muted: #27272a;
+  --color-muted-foreground: #A1A1AA;
+  --color-border: #3F3F46;
+  --color-input: #3F3F46;
   --color-destructive: #EF4444;
   --color-success: #22C55E;
   --color-ring: #00d4a3;
   --color-panel: #ffffff0a;
   --color-panel-strong: #ffffff1a;
   --color-fg-strong: #FFFFFF;
-  --color-fg: #E5E7EB;
-  --color-fg-muted: #D1D5DB;
-  --color-fg-subtle: #9CA3AF;
-  --color-fg-dim: #6B7280;
-  --color-fg-faint: #4B5563;
+  --color-fg: #E4E4E7;
+  --color-fg-muted: #D4D4D8;
+  --color-fg-subtle: #A1A1AA;
+  --color-fg-dim: #71717A;
+  --color-fg-faint: #52525B;
   --color-border-faint: #ffffff0d;
   --color-border-soft: #ffffff1a;
   --color-border-strong: #ffffff33;
@@ -40,37 +44,37 @@
   --color-scrim-soft: #0000004d;
   --color-scrim-faint: #00000033;
   --color-scrim-strong: #00000099;
-  --color-overlay: #0a0c10;
+  --color-overlay: #1e1e20;
 }
 
 /* Light theme — attribute override, mirrors the portfolio's inverted .dark block.
    Set by useTheme.ts + the index.html pre-paint script; default follows OS prefs. */
 :root[data-theme="light"] {
-  --color-background: #F8FAFC;
-  --color-foreground: #0F172A;
-  --color-primary: #E2E8F0;
-  --color-primary-on: #0F172A;
-  --color-secondary: #CBD5E1;
+  --color-background: #FAFAFA;
+  --color-foreground: #18181B;
+  --color-primary: #F4F4F5;
+  --color-primary-on: #18181B;
+  --color-secondary: #E4E4E7;
   --color-surface: #FFFFFF;
-  --color-muted: #E2E8F0;
-  --color-muted-foreground: #64748B;
-  --color-border: #CBD5E1;
-  --color-input: #CBD5E1;
+  --color-muted: #F4F4F5;
+  --color-muted-foreground: #71717A;
+  --color-border: #D4D4D8;
+  --color-input: #D4D4D8;
   --color-panel: #ffffff;
-  --color-panel-strong: #F1F5F9;
-  --color-fg-strong: #0F172A;
-  --color-fg: #1E293B;
-  --color-fg-muted: #334155;
-  --color-fg-subtle: #475569;
-  --color-fg-dim: #64748B;
-  --color-fg-faint: #94A3B8;
-  --color-border-faint: #E2E8F0;
-  --color-border-soft: #CBD5E1;
-  --color-border-strong: #94A3B8;
-  --color-scrim: rgba(15, 23, 42, 0.06);
-  --color-scrim-soft: rgba(15, 23, 42, 0.04);
-  --color-scrim-faint: rgba(15, 23, 42, 0.03);
-  --color-scrim-strong: rgba(15, 23, 42, 0.08);
+  --color-panel-strong: #F4F4F5;
+  --color-fg-strong: #18181B;
+  --color-fg: #27272A;
+  --color-fg-muted: #3F3F46;
+  --color-fg-subtle: #52525B;
+  --color-fg-dim: #71717A;
+  --color-fg-faint: #A1A1AA;
+  --color-border-faint: #F4F4F5;
+  --color-border-soft: #E4E4E7;
+  --color-border-strong: #D4D4D8;
+  --color-scrim: rgba(24, 24, 27, 0.06);
+  --color-scrim-soft: rgba(24, 24, 27, 0.04);
+  --color-scrim-faint: rgba(24, 24, 27, 0.03);
+  --color-scrim-strong: rgba(24, 24, 27, 0.08);
   --color-overlay: #FFFFFF;
   color-scheme: light;
 }
@@ -79,7 +83,7 @@
    reference these vars at runtime, so the [data-theme] override takes effect
    without rebuilding — the Tailwind v4 way to support multiple themes. */
 @theme inline {
-  --font-sans: 'JetBrains Mono', monospace;
+  --font-sans: 'Inter', ui-sans-serif, system-ui, sans-serif;
   --font-mono: 'JetBrains Mono', monospace;
 
   --color-background: var(--color-background);
@@ -121,7 +125,7 @@ html, body {
   margin: 0;
   height: 100%;
   overflow: hidden;
-  font-family: 'JetBrains Mono', monospace;
+  font-family: 'Inter', ui-sans-serif, system-ui, sans-serif;
   background-color: var(--color-background);
   color: var(--color-foreground);
 }

@@ -24,7 +24,7 @@ className="border-t border-border-soft bg-surface/60 overflow-hidden"
           >
             <div className="max-h-64 overflow-y-auto p-3 space-y-2">
               {toolHistory.length === 0 ? (
-              <div className="text-center py-6 text-fg-faint text-xs font-mono">No tool calls yet</div>
+              <div className="text-center py-6 text-fg-faint text-xs">No tool calls yet</div>
             ) : (
               toolHistory.map((entry) => {
                 const isExpanded = expandedId === entry.id;
@@ -37,8 +37,8 @@ className="border-t border-border-soft bg-surface/60 overflow-hidden"
                     >
                       <TerminalIcon size={12} className={hasError ? 'text-red-400' : 'text-[#3d6bff]'} />
                       <span className="text-xs font-mono text-fg-muted flex-1">{entry.tool}</span>
-                      {entry.gated && <span className="text-[10px] text-orange-400/60 font-mono">gated</span>}
-                      <span className="text-[10px] text-fg-faint font-mono">
+                      {entry.gated && <span className="text-[10px] text-orange-400/60">gated</span>}
+                      <span className="text-[10px] text-fg-faint">
                         {new Date(entry.timestamp).toLocaleTimeString()}
                       </span>
                       {isExpanded ? <ChevronUp size={12} className="text-fg-dim" /> : <ChevronDown size={12} className="text-fg-dim" />}
@@ -46,13 +46,13 @@ className="border-t border-border-soft bg-surface/60 overflow-hidden"
                     {isExpanded && (
                       <div className="px-3 pb-3 space-y-2">
                         <div>
-                          <p className="text-[10px] text-fg-faint font-mono mb-1 uppercase">Args</p>
+                          <p className="text-[10px] text-fg-faint mb-1 uppercase">Args</p>
                           <pre className="text-[11px] text-fg-subtle font-mono bg-scrim-faint rounded p-2 overflow-x-auto whitespace-pre-wrap">
                             {JSON.stringify(entry.args, null, 2)}
                           </pre>
                         </div>
                         <div>
-                          <p className="text-[10px] text-fg-faint font-mono mb-1 uppercase">Result</p>
+                          <p className="text-[10px] text-fg-faint mb-1 uppercase">Result</p>
                           <pre className={`text-[11px] font-mono bg-scrim-faint rounded p-2 overflow-x-auto whitespace-pre-wrap ${hasError ? 'text-red-400' : 'text-fg-subtle'}`}>
                             {typeof entry.result === 'string' ? entry.result : JSON.stringify(entry.result, null, 2)}
                           </pre>
@@ -63,13 +63,13 @@ className="border-t border-border-soft bg-surface/60 overflow-hidden"
                               const text = JSON.stringify({ tool: entry.tool, args: entry.args }, null, 2);
                               navigator.clipboard.writeText(text);
                             }}
-                            className="flex items-center gap-1 px-2 py-1 rounded bg-panel hover:bg-panel-strong text-fg-dim hover:text-fg-strong transition-colors text-[10px] font-mono"
+                            className="flex items-center gap-1 px-2 py-1 rounded bg-panel hover:bg-panel-strong text-fg-dim hover:text-fg-strong transition-colors text-[10px]"
                           >
                             <Copy size={10} /> Copy
                           </button>
                           <button
                             onClick={() => onRerun(entry)}
-                            className="flex items-center gap-1 px-2 py-1 rounded bg-panel hover:bg-panel-strong text-fg-dim hover:text-teal-400 transition-colors text-[10px] font-mono"
+                            className="flex items-center gap-1 px-2 py-1 rounded bg-panel hover:bg-panel-strong text-fg-dim hover:text-teal-400 transition-colors text-[10px]"
                           >
                             <RotateCcw size={10} /> {entry.gated ? 'Switch to AI' : 'Re-run'}
                           </button>

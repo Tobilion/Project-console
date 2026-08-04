@@ -1972,9 +1972,11 @@ edits are `Terminal.tsx`/`App.tsx` class-only restyles + one new header element:
 Frontend-only; no intent/matcher/example-phrase or server changes (check-intents unchanged).
 
 - **Dark-first identity + additive light override.** The `:root` block in `src/index.css` is the
-  dark palette (byte-identical to the pre-theme literals — the token values were taken from the
-  exact classes they replace, so dark mode looks pixel-for-pixel the same as before). Light theme
-  is a `:root[data-theme="light"]` override block, not a separate stylesheet — no `dark:`
+  dark palette — **matte zinc since the 2026-08-04 UI-redesign Phase 1** (was midnight navy):
+  `background #121212`, `surface #18181b`, `overlay #1e1e20`, `primary #27272A`, fg ladder
+  zinc-200/300/400/500/600, `panel`/`panel-strong` stay white-alpha (render ≈#1e1e20/#27272a over
+  the new bg — the spec's elevated layers). Light theme is a `:root[data-theme="light"]` override
+  block (zinc neutrals: `#FAFAFA` bg, `#18181B` fg), not a separate stylesheet — no `dark:`
   utilities anywhere, no rebuild needed (utilities compile via `@theme inline` to
   `var(--color-*)` refs, so the attribute swap re-themes at runtime).
 - **Toggle:** `src/components/ui/ThemeToggle.tsx` (sliding sun/moon pill, borrowed from
@@ -1983,16 +1985,22 @@ Frontend-only; no intent/matcher/example-phrase or server changes (check-intents
   owns state: initial value = `localStorage.theme` else `matchMedia('(prefers-color-scheme:
   dark)')`, sets `document.documentElement.dataset.theme`, persists on change. `index.html` has
   a pre-paint script mirroring the same initializer so light-mode users never see a dark flash.
-- **Token ladder** (dark → light): `fg-strong #FFFFFF→#0F172A`, `fg #E5E7EB→#1E293B`,
-  `fg-muted #D1D5DB→#334155`, `fg-subtle #9CA3AF→#475569`, `fg-dim #6B7280→#64748B`,
-  `fg-faint #4B5563→#94A3B8`; `border-faint #ffffff0d→#E2E8F0`,
-  `border-soft #ffffff1a→#CBD5E1`, `border-strong #ffffff33→#94A3B8`;
-  `scrim #00000080→rgba(15,23,42,.06)`, `scrim-soft .4d→.04`, `scrim-faint .33→.03`,
-  `scrim-strong .99→.08`; `panel #ffffff0a→#fff`, `panel-strong #ffffff1a→#F1F5F9`;
-  `surface #12151c→#FFF`; `overlay #0a0c10→#FFF` (modal/terminal panel surfaces);
-  `background #0F172A→#F8FAFC`, `foreground #F8FAFC→#0F172A`. Accent/status colors (teal
+- **Token ladder** (dark → light, zinc after Phase 1): `fg-strong #FFFFFF→#18181B`,
+  `fg #E4E4E7→#27272A`, `fg-muted #D4D4D8→#3F3F46`, `fg-subtle #A1A1AA→#52525B`,
+  `fg-dim #71717A→#71717A`, `fg-faint #52525B→#A1A1AA`; `border-faint #ffffff0d→#F4F4F5`,
+  `border-soft #ffffff1a→#E4E4E7`, `border-strong #ffffff33→#D4D4D8`;
+  `scrim #00000080→rgba(24,24,27,.06)`, `scrim-soft .4d→.04`, `scrim-faint .33→.03`,
+  `scrim-strong .99→.08`; `panel #ffffff0a→#fff`, `panel-strong #ffffff1a→#F4F4F5`;
+  `surface #18181b→#FFF`; `overlay #1e1e20→#FFF` (modal/terminal panel surfaces);
+  `background #121212→#FAFAFA`, `foreground #E4E4E7→#18181B`. Accent/status colors (teal
   `#00d4a3`, blue `#3d6bff`, indigo `#6366f1`, plus Tailwind teal/red/green/yellow/orange
   status classes) are CONSTANT across themes — do not tokenize them.
+- **Typography (Phase 1)**: `--font-sans` is now `'Inter', ui-sans-serif, system-ui, sans-serif`
+  (Google Fonts import, offline falls back to system sans) — the base for ALL UI controls,
+  headers, and conversation text. `--font-mono` stays `'JetBrains Mono'` and is reserved
+  strictly for code snippets, raw terminal logs, shell paths, and port indicators. The two
+  `font-serif` hero titles (App header, WelcomeScreen) were switched to sans. Grep
+  `font-mono` before adding new UI text: if it isn't code/log/path/port, it should be sans.
 - **Mapping conventions** (all 12 rendered components now use tokens): `text-white/100→fg-strong`,
   `text-gray-100/200→fg`, `text-gray-300→fg-muted`, `text-gray-400→fg-subtle`,
   `text-gray-500→fg-dim`, `text-gray-600→fg-faint`; `bg-white/5→bg-panel`,

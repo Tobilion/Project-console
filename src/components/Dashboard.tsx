@@ -52,16 +52,16 @@ export const Dashboard = ({ onClose, refreshSignal = 0 }: DashboardProps) => {
       <div className="flex items-center justify-between flex-shrink-0">
         <div className="flex items-center gap-3">
           <h2 className="text-lg font-bold text-fg-strong">Dashboard</h2>
-          <span className="text-xs text-fg-dim font-mono">
+          <span className="text-xs text-fg-dim">
             {entries.length} projects
           </span>
           {totalUncommitted > 0 && (
-            <span className="text-xs text-yellow-400 font-mono bg-yellow-400/10 px-2 py-0.5 rounded">
+            <span className="text-xs text-yellow-400 bg-yellow-400/10 px-2 py-0.5 rounded">
               {totalUncommitted} uncommitted
             </span>
           )}
           {totalRunning > 0 && (
-            <span className="text-xs text-green-400 font-mono bg-green-500/10 px-2 py-0.5 rounded">
+            <span className="text-xs text-green-400 bg-green-500/10 px-2 py-0.5 rounded">
               {totalRunning} running
             </span>
           )}
@@ -90,19 +90,19 @@ export const Dashboard = ({ onClose, refreshSignal = 0 }: DashboardProps) => {
               </div>
               <div className="flex items-center gap-2 flex-shrink-0">
                 {entry.uncommitted.length > 0 && (
-                  <span className="flex items-center gap-1 text-[10px] text-yellow-400 font-mono bg-yellow-400/10 px-1.5 py-0.5 rounded">
+                  <span className="flex items-center gap-1 text-[10px] text-yellow-400 bg-yellow-400/10 px-1.5 py-0.5 rounded">
                     <FileWarning size={12} />
                     {entry.uncommitted.length}
                   </span>
                 )}
                 {entry.runningCommand && (
-                  <span className="flex items-center gap-1 text-[10px] text-blue-400 font-mono bg-blue-500/10 px-1.5 py-0.5 rounded">
+                  <span className="flex items-center gap-1 text-[10px] text-blue-400 bg-blue-500/10 px-1.5 py-0.5 rounded">
                     <Terminal size={12} />
                     running
                   </span>
                 )}
                 {entry.devUrl && (
-                  <span className="flex items-center gap-1 text-[10px] text-green-400 font-mono bg-green-500/10 px-1.5 py-0.5 rounded">
+                  <span className="flex items-center gap-1 text-[10px] text-green-400 bg-green-500/10 px-1.5 py-0.5 rounded">
                     <Globe size={12} />
                     live
                   </span>
@@ -173,7 +173,7 @@ export const Dashboard = ({ onClose, refreshSignal = 0 }: DashboardProps) => {
         ))}
 
         {entries.length === 0 && (
-          <div className="text-sm text-fg-dim font-mono italic text-center py-12">
+          <div className="text-sm text-fg-dim italic text-center py-12">
             No projects loaded — scan a directory to get started.
           </div>
         )}

@@ -360,7 +360,7 @@ export const Terminal = ({ messages, onSendMessage, onSearch, onDeepResearch, ac
     <div className="flex flex-col h-full bg-overlay/80 backdrop-blur-md rounded-2xl border border-border-soft relative">
       <div className="flex items-center gap-3 px-6 py-4 border-b border-border-soft bg-panel">
         <TerminalIcon size={18} className="text-[#3d6bff]" />
-        <span className="font-mono text-sm text-fg-muted flex-1">
+        <span className="text-sm text-fg-muted flex-1">
           {activeProject ? `Connected: ${activeProject.name}` : 'No Project Selected'}
         </span>
         {onToggleFullscreen && (
@@ -372,9 +372,9 @@ export const Terminal = ({ messages, onSendMessage, onSearch, onDeepResearch, ac
           <div className="flex items-center gap-2 flex-wrap justify-end">
             {workspaceProjects.length > 0 && (
               <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-panel border border-border-soft">
-                <span className="text-[10px] text-fg-dim font-mono">Workspace:</span>
+                <span className="text-[10px] text-fg-dim">Workspace:</span>
                 {workspaceProjects.map((p) => (
-                  <span key={p.id} className="flex items-center gap-1 px-2 py-0.5 rounded bg-[#3d6bff]/10 border border-[#3d6bff]/30 text-xs text-[#3d6bff] font-mono">
+                  <span key={p.id} className="flex items-center gap-1 px-2 py-0.5 rounded bg-[#3d6bff]/10 border border-[#3d6bff]/30 text-xs text-[#3d6bff]">
                     {p.name}
                     <button onClick={() => removeFromWorkspace(p.id)} className="text-[#3d6bff]/60 hover:text-[#3d6bff] transition-colors">×</button>
                   </span>
@@ -387,10 +387,10 @@ export const Terminal = ({ messages, onSendMessage, onSearch, onDeepResearch, ac
                 <Download size={14} />
               </button>
               <button onClick={onExportJson} className="p-1.5 flex items-center gap-0.5 text-fg-dim hover:text-teal-400 transition-colors" title="Export session as JSON">
-                <Download size={11} /><span className="text-[9px] font-mono">JSON</span>
+                <Download size={11} /><span className="text-[9px]">JSON</span>
               </button>
             </div>
-            <button onClick={onToggleToolHistory} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-mono transition-colors border ${showToolHistory ? 'bg-[#3d6bff]/20 border-[#3d6bff]/40 text-[#3d6bff]' : 'bg-panel border-border-soft text-fg-dim hover:text-fg-muted'}`} title="Tool Call History">
+            <button onClick={onToggleToolHistory} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs transition-colors border ${showToolHistory ? 'bg-[#3d6bff]/20 border-[#3d6bff]/40 text-[#3d6bff]' : 'bg-panel border-border-soft text-fg-dim hover:text-fg-muted'}`} title="Tool Call History">
               <ListChecks size={14} />
               {toolHistory.length > 0 && <span className="text-[10px]">{toolHistory.length}</span>}
             </button>
@@ -430,7 +430,7 @@ export const Terminal = ({ messages, onSendMessage, onSearch, onDeepResearch, ac
                 }`}
               >
                 {msg.type === 'user' || !msg.isMarkdown ? (
-                   <div className="whitespace-pre-wrap font-mono text-sm leading-relaxed">{msg.content}</div>
+                   <div className="whitespace-pre-wrap text-sm leading-relaxed">{msg.content}</div>
                 ) : (
                    <div className="prose prose-sm max-w-none prose-pre:bg-scrim prose-pre:border prose-pre:border-border-soft prose-pre:p-0 prose-p:leading-relaxed">
                       <ReactMarkdown components={markdownComponents}>{msg.content}</ReactMarkdown>
@@ -439,7 +439,7 @@ export const Terminal = ({ messages, onSendMessage, onSearch, onDeepResearch, ac
                 
                 {msg.suggestions && msg.suggestions.length > 0 && (
                   <div className="mt-4 pt-4 border-t border-border-soft">
-                    <p className="text-xs text-fg-dim font-mono mb-2">SUGGESTIONS:</p>
+                    <p className="text-xs text-fg-dim mb-2">SUGGESTIONS:</p>
                     <div className="flex flex-wrap gap-2">
                       {msg.suggestions.map((sug, idx) => (
                         <button
@@ -466,7 +466,7 @@ export const Terminal = ({ messages, onSendMessage, onSearch, onDeepResearch, ac
                   <div className="mt-3 pt-3 border-t border-red-500/20">
                     <button
                       onClick={() => onSwitchToProject(msg.switchProjectAction!.projectId)}
-                      className="px-3 py-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-xs text-red-300 font-mono transition-colors"
+                      className="px-3 py-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-xs text-red-300 transition-colors"
                     >
                       Switch to "{msg.switchProjectAction.projectName}"
                     </button>
@@ -585,7 +585,7 @@ export const Terminal = ({ messages, onSendMessage, onSearch, onDeepResearch, ac
 
         {aiThinking && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex flex-col gap-1.5">
-            <div className="flex items-center gap-3 text-teal-400/60 text-xs font-mono">
+            <div className="flex items-center gap-3 text-teal-400/60 text-xs">
               <Loader2 size={14} className="animate-spin" />
               AI is thinking...
               {/* Requested directly (2026-07-29) after a query ran 5+ minutes with no way to stop
@@ -618,7 +618,7 @@ export const Terminal = ({ messages, onSendMessage, onSearch, onDeepResearch, ac
             sign the console was still working on a slow-starting command (e.g. a dev server
             still booting), leaving no way to tell "still running" from "silently done". */}
         {commandPending && !aiThinking && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex items-center gap-3 text-[#00d4a3]/60 text-xs font-mono">
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex items-center gap-3 text-[#00d4a3]/60 text-xs">
             <Loader2 size={14} className="animate-spin" />
             Running...
             {onCancel && (
@@ -648,7 +648,7 @@ export const Terminal = ({ messages, onSendMessage, onSearch, onDeepResearch, ac
 
       {ollamaStatus && (
         <div className="flex items-center gap-2 px-4 py-1.5 bg-panel border-t border-border-soft flex-wrap">
-          <button onClick={onAIToggle} className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-mono transition-colors border flex-shrink-0 ${aiEnabled ? 'bg-teal-500/20 border-teal-500/40 text-teal-300' : 'bg-panel border-border-soft text-fg-dim hover:text-fg-muted'}`}>
+          <button onClick={onAIToggle} className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] transition-colors border flex-shrink-0 ${aiEnabled ? 'bg-teal-500/20 border-teal-500/40 text-teal-300' : 'bg-panel border-border-soft text-fg-dim hover:text-fg-muted'}`}>
             <Brain size={13} />
             <span>AI {aiEnabled ? 'ON' : 'OFF'}</span>
           </button>
@@ -658,7 +658,7 @@ export const Terminal = ({ messages, onSendMessage, onSearch, onDeepResearch, ac
                 value={aiModel}
                 onChange={(e) => onSetModel(e.target.value)}
                 title={ollamaStatus.cloudModels?.some(m => m.name === aiModel) ? 'Running on Ollama Cloud — needs internet + `ollama signin`' : 'Running locally'}
-                className="bg-surface border border-border-soft rounded-md px-1.5 py-1 text-[11px] font-mono text-fg-muted focus:outline-none focus:border-teal-500/40 flex-shrink-0 max-w-[220px]"
+                className="bg-surface border border-border-soft rounded-md px-1.5 py-1 text-[11px] text-fg-muted focus:outline-none focus:border-teal-500/40 flex-shrink-0 max-w-[220px]"
               >
                 {(ollamaStatus.models?.length ?? 0) > 0 && (
                   <optgroup label="Local (offline)">
@@ -678,7 +678,7 @@ export const Terminal = ({ messages, onSendMessage, onSearch, onDeepResearch, ac
               <select
                 value={aiMode}
                 onChange={(e) => onSetMode(e.target.value)}
-                className="bg-surface border border-border-soft rounded-md px-1.5 py-1 text-[11px] font-mono text-fg-muted focus:outline-none focus:border-teal-500/40 flex-shrink-0"
+                className="bg-surface border border-border-soft rounded-md px-1.5 py-1 text-[11px] text-fg-muted focus:outline-none focus:border-teal-500/40 flex-shrink-0"
               >
                 {AI_MODES.map(m => (
                   <option key={m.value} value={m.value}>{m.label}</option>
@@ -704,7 +704,7 @@ export const Terminal = ({ messages, onSendMessage, onSearch, onDeepResearch, ac
               onKeyDown={handleInputKeyDown}
               disabled={!activeProject || aiThinking || commandPending}
               placeholder={!activeProject ? "Select a project to start..." : aiThinking ? "AI is thinking..." : commandPending ? "Running..." : "Ask a question or enter a command... (Ctrl+R for history)"}
-              className="w-full bg-surface border border-border-soft rounded-xl py-3 pl-4 pr-12 text-fg font-mono text-sm focus:outline-none focus:border-[#3d6bff] transition-colors disabled:opacity-50"
+              className="w-full bg-surface border border-border-soft rounded-xl py-3 pl-4 pr-12 text-fg text-sm focus:outline-none focus:border-[#3d6bff] transition-colors disabled:opacity-50"
             />
             <button
               type="submit"
@@ -744,7 +744,7 @@ export const Terminal = ({ messages, onSendMessage, onSearch, onDeepResearch, ac
                   }
                 }}
                 placeholder="Search command history..."
-                className="flex-1 bg-transparent text-fg font-mono text-sm outline-none placeholder:text-fg-faint"
+                className="flex-1 bg-transparent text-fg text-sm outline-none placeholder:text-fg-faint"
                 autoFocus
               />
               <button
@@ -756,7 +756,7 @@ export const Terminal = ({ messages, onSendMessage, onSearch, onDeepResearch, ac
             </div>
             <div className="max-h-48 overflow-y-auto">
               {filteredHistory.length === 0 ? (
-                <div className="px-4 py-6 text-center text-fg-faint text-sm font-mono">
+                <div className="px-4 py-6 text-center text-fg-faint text-sm">
                   {searchQuery.trim() ? 'No matching commands found' : 'No command history yet'}
                 </div>
               ) : (

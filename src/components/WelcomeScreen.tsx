@@ -51,7 +51,7 @@ export function WelcomeScreen({ projects, ollamaStatus, aiEnabled, onAIToggle, o
       <GlowOrbs />
       <div className="relative z-10 max-w-4xl w-full px-6">
         <div className="text-center mb-8">
-          <h1 className="text-5xl md:text-7xl font-serif italic text-fg-strong mb-4">
+          <h1 className="text-5xl md:text-7xl font-semibold italic text-fg-strong mb-4">
             <TextScramble text="Welcome Master Tobi" />
           </h1>
           <p className="text-sm tracking-[0.2em] uppercase text-fg-dim font-bold">
@@ -61,7 +61,7 @@ export function WelcomeScreen({ projects, ollamaStatus, aiEnabled, onAIToggle, o
 
         {ollamaStatus && (
           <div className="flex justify-center gap-4 mb-10">
-            <button onClick={onAIToggle} className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-mono transition-all border ${aiEnabled ? 'bg-teal-500/20 border-teal-500/40 text-teal-300 shadow-lg shadow-teal-500/10' : 'bg-panel border-border-soft text-fg-subtle hover:text-fg-strong'}`}>
+            <button onClick={onAIToggle} className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm transition-all border ${aiEnabled ? 'bg-teal-500/20 border-teal-500/40 text-teal-300 shadow-lg shadow-teal-500/10' : 'bg-panel border-border-soft text-fg-subtle hover:text-fg-strong'}`}>
               <Brain size={16} />
               AI Assistant — {aiEnabled ? 'ON' : 'OFF'}
             </button>
@@ -82,7 +82,7 @@ export function WelcomeScreen({ projects, ollamaStatus, aiEnabled, onAIToggle, o
           ].map((stat, i) => (
             <div key={i} className="bg-panel border border-border-soft rounded-xl px-4 py-3 text-center hover:bg-panel-strong transition-colors">
               <div className="text-[#3d6bff] mb-1 flex justify-center">{stat.icon}</div>
-              <div className="text-fg-strong text-lg font-bold font-mono">{stat.value}</div>
+              <div className="text-fg-strong text-lg font-bold">{stat.value}</div>
               <div className="text-fg-dim text-xs">{stat.label}</div>
             </div>
           ))}
@@ -122,7 +122,7 @@ export function WelcomeScreen({ projects, ollamaStatus, aiEnabled, onAIToggle, o
                 <div className="p-2 bg-[#00d4a3]/10 rounded-lg text-[#00d4a3]">
                   {TOUR_STEPS[tourStep - 1].icon}
                 </div>
-                <div className="text-xs font-mono text-fg-dim">
+                <div className="text-xs text-fg-dim">
                   Step {tourStep} of 4
                 </div>
               </div>
@@ -144,7 +144,7 @@ export function WelcomeScreen({ projects, ollamaStatus, aiEnabled, onAIToggle, o
               </div>
               <div className="flex items-center gap-2">
                 {tourStep > 1 && (
-                  <button onClick={() => setTourStep(s => s - 1)} className="flex items-center gap-1 px-3 py-2 text-xs text-fg-subtle hover:text-fg-strong transition-colors font-mono">
+                  <button onClick={() => setTourStep(s => s - 1)} className="flex items-center gap-1 px-3 py-2 text-xs text-fg-subtle hover:text-fg-strong transition-colors">
                     <ChevronLeft size={14} /> Back
                   </button>
                 )}
