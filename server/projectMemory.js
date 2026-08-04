@@ -1,10 +1,8 @@
 import fs from 'fs';
 import path from 'path';
+import { QUESTION_THRESHOLD, COMMAND_THRESHOLD, FILE_EDIT_THRESHOLD, adaptiveThreshold } from './memoryThresholds.js';
 
 const MEMORY_FILENAME = 'project-memory.json';
-const QUESTION_THRESHOLD = 3;
-const COMMAND_THRESHOLD = 20;
-const FILE_EDIT_THRESHOLD = 10;
 
 function memoryPath(projectPath) {
   return path.join(projectPath, '.console', MEMORY_FILENAME);
@@ -108,18 +106,6 @@ export function addCandidateAddition(projectPath, topic, content, confidence) {
       createdAt: Date.now(),
     });
   });
-}
-
-// Scales a base threshold to a project's actual activity volume instead of applying the same
-// fixed number everywhere. A brand-new/lightly-used project surfaces patterns sooner (so a
-// quiet project isn't stuck waiting to hit a threshold sized for a busy one); a heavily-used
-// project raises the bar so routine, high-volume activity doesn't spam a nudge every few
-// minutes. Mirrors the same "adjust based on observed usage" idea intentTelemetry.js already
-// applies to semantic-match confidence floors.
-function adaptiveThreshold(base, totalActivity) {
-  if (totalActivity < 15) return Math.max(2, base - 1);
-  if (totalActivity > 150) return base + Math.ceil(base * 0.5);
-  return base;
 }
 
 export function checkThresholds(projectPath, memory) {

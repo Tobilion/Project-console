@@ -3,22 +3,10 @@ import { semanticMatcher } from './semanticMatcher.js';
 import { INTENTS } from './intentsData.js';
 import { persistLearnedPhrases } from './learnedIntents.js';
 import { nlpEngine } from './nlpEngine.js';
+import { GUESS_TO_INTENT } from './guessToIntent.js';
 
 // Minimum occurrences before a pattern is suggested for promotion to an intent
 const MIN_OCCURRENCES = 3;
-
-// Maps guessCommand pattern descriptions to intent names
-const GUESS_TO_INTENT = {
-  'Remove .* from git tracking': 'git_rm_cached',
-  'Add .* to .gitignore': 'git_ignore_add',
-  'Create file': 'file_create',
-  'Delete file': 'file_delete',
-  'Install npm package': 'npm_install',
-  'Uninstall npm package': 'npm_install',
-  'Run npm script': 'npm_run',
-  'Start the project': 'npm_run',
-  'Stage .* for commit': 'git_add',
-};
 
 /**
  * Reviews near-miss log entries for a project and generates suggestions for

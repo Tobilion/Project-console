@@ -8,34 +8,13 @@
  * tuned for coverage over precision.
  */
 import { extractFencedBlocks, splitIntoSections } from './markdownUtils.js';
+import { RUN_COMMAND_PATTERNS } from './runCommandPatterns.js';
 
 // Markdown headings (any level) that conventionally contain "how to run/use/install this" —
 // wider than projectScanner.js's own parsedKnowledge bucketing (which only recognizes "## Commands"
 // / "## Run" and dumps everything else into a generic "architecture" bucket). Real-world READMEs
 // overwhelmingly use one of these instead.
 const RUN_HEADER_RE = /^#{1,6}\s*(install(ation)?|getting started|quick ?start|usage|run(ning)?|development|setup|how to run|local development|starting the (?:app|server|project))\b/i;
-
-// One pattern per well-known run-command shape, across languages/frameworks. Deliberately a
-// closed, literal list (not a general "looks like a shell command" detector) — precision over
-// recall, since a false positive here would present the wrong command as if it were documented.
-// The Python entries accept an optional interpreter path prefix ([\w.:\\\/-]*) because venv-style
-// interpreters are the norm on Windows: `venv\Scripts\python.exe main.py ...` must be recognized
-// exactly like the bare `python main.py ...` form.
-const RUN_COMMAND_PATTERNS = [
-  /\bnpm run [\w:-]+/i, /\byarn [\w:-]+/i, /\bpnpm run [\w:-]+/i, /\bnpm start\b/i,
-  /\bcargo run(?:\s+--\S+)*\b/i,
-  /\bgo run\s+\S+/i, /\bgo build\s+.*&&\s*\S+/i,
-  /\bmvn spring-boot:run\b/i, /\bmvn (?:compile\s+)?exec:java\b/i, /\bmvn (?:clean\s+)?package\b/i,
-  /\.\/gradlew\s+(?:bootRun|run)\b/i, /\bgradlew\.bat\s+(?:bootRun|run)\b/i,
-  /\bdotnet run\b/i, /\bdotnet watch run\b/i,
-  /\bbundle exec \S+(?:\s+\S+){0,3}/i, /\brails s(?:erver)?\b/i, /\brackup\b/i,
-  /\bphp artisan serve\b/i, /\bphp -S\s+\S+/i,
-  /\b[\w.:\\\/-]*python(?:3)?(?:\.exe)?\s+manage\.py\s+runserver\b/i, /\bflask run\b/i, /\buvicorn\s+\S+/i,
-  /\bgunicorn\s+\S+/i, /\bstreamlit run\s+\S+/i,
-  /\bdocker-compose up\b/i, /\bdocker compose up\b/i,
-  /\bnode\s+\S+\.m?js\b/i,
-  /\b[\w.:\\\/-]*python(?:3)?(?:\.exe)?\s+\S+\.py\b/i,
-];
 
 // Cap on how many distinct documented run commands a single project can report. Beyond this the
 // doc is likely a tutorial with dozens of one-off invocations, not a "how to run this" reference.
