@@ -275,6 +275,19 @@ class SemanticMatcher {
       // second alternative requires the "which/what + files/modules + verb" shape so "what is
       // imported" (project.context.dependencies) and "what does this file import" stay untouched.
       { intent: 'project.context.file_relations', pattern: /\bwho\s+(?:uses?|imports?|references?|depends\s+on)\b|\b(?:which|what)\s+(?:files?|modules?)\s+(?:use|import|reference)\b/i },
+      // Confirmed via the Matchday-Exchange harness (2026-08-04, real embeddings): bare
+      // imperative "run server" scored for project.context.scan_servers and "run its server"
+      // scored for project.context.dev_server_status — both informative intents whose example
+      // clusters share the "server/run" tokens. Neither is ever a legitimate match for an
+      // imperative launch request (scan/status phrases are question-shaped: "is the server
+      // running", "which servers are up", "scan the servers" — all begin with a non-run verb),
+      // so a leading run-family verb + a server/backend/api noun is unambiguous here and wins
+      // outright before embedding. Once routed to run_project, stage 1b's config-entry check or
+      // builtinIntents.js's findMentionedScript picks the real server script. Deliberately
+      // anchored to the START (so "check the server status" / "is the server up" are untouched)
+      // AND the noun to the END with an optional trailing "please" — "run api tests" / "run
+      // server tests" must stay with run_tests, not be stolen by the run_project redirect.
+      { intent: 'run_project', pattern: /^(?:run|start|launch|boot|restart|spin\s+up)\s+(?:the\s+|its\s+|your\s+|my\s+)?(?:server|backend|api)\b(?:\s+please)?$/i },
     ];
     for (const { intent, pattern } of PRE_SEMANTIC_OVERRIDES) {
       if (pattern.test(inputStr)) {
