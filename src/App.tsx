@@ -83,7 +83,7 @@ function App() {
     e.target.value = '';
   };
 
-  if (showWelcome && !activeProject) {
+  if (showWelcome) {
     return (
       <div className="h-screen relative flex flex-col p-6">
         <header className="relative z-10 flex-shrink-0 flex items-center justify-end gap-4 mb-4">
@@ -152,7 +152,7 @@ function App() {
               :{window.location.port}
             </span>
           )}
-          <button onClick={() => setShowWelcome(true)} className="p-2 text-fg-dim hover:text-fg-strong transition-colors" title="Home">
+          <button onClick={() => { setShowDashboard(false); setChatFullscreen(false); setShowWelcome(true); }} className="p-2 text-fg-dim hover:text-fg-strong transition-colors" title="Home">
             <Home size={18} />
           </button>
           <button onClick={() => setShowDashboard(v => !v)} className={`p-2 transition-colors ${showDashboard ? 'text-accent' : 'text-fg-dim hover:text-fg-strong'}`} title="Dashboard">
@@ -172,7 +172,7 @@ function App() {
       </header>
       )}
 
-      <main className={`relative z-10 flex-1 min-h-0 overflow-hidden ${showDashboard ? '' : `grid grid-cols-1 gap-6 ${chatFullscreen ? '' : 'lg:grid-cols-12'}`}`}>
+      <main className={`relative z-10 flex-1 min-h-0 overflow-hidden ${showDashboard ? '' : chatFullscreen ? 'block' : 'grid grid-cols-1 gap-6 lg:grid-cols-12'}`}>
         {showDashboard ? (
           <div className="h-full p-4">
             <Dashboard onClose={() => setShowDashboard(false)} refreshSignal={dashboardUpdateSignal} />

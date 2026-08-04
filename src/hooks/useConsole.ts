@@ -207,6 +207,10 @@ export function useConsole() {
 
   const tokenBuffer = useRef('');
   const flushTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // True once any token event has arrived for the current stream — lets stream_end tell
+  // a genuinely empty AI completion (zero content, seen in real exported chats) apart from
+  // one whose tokens were merely flushed by the 16ms timer already.
+  const streamHadTokenRef = useRef(false);
   const activeProjectRef = useRef(projects.activeProject);
   activeProjectRef.current = projects.activeProject;
 
@@ -378,6 +382,7 @@ export function useConsole() {
       case 'token': {
         const streamId = wsHandler.wsRef.current ? (wsHandler.wsRef.current as any)._streamId : null;
         if (!streamId || !payload.data) break;
+        streamHadTokenRef.current = true;
         tokenBuffer.current += payload.data;
         if (!flushTimer.current) {
           flushTimer.current = setTimeout(() => {
@@ -404,6 +409,21 @@ export function useConsole() {
           sessions.setMessages(prev => prev.map(m => m.id === streamId ? { ...m, content: m.content + content } : m));
         }
         if (wsHandler.wsRef.current) (wsHandler.wsRef.current as any)._streamId = null;
+        // The placeholder bot message opened by stream_start carries `streaming: true` and was
+        // never cleared on stream_end. If the stream produced zero tokens at all, that message
+        // would otherwise stay as an empty bubble (real NetPulse transcript bug) — replace it
+        // with an honest fallback so a silent AI completion is never invisible.
+        if (streamId) {
+          sessions.setMessages(prev => prev.map(m => {
+            if (m.id !== streamId) return m;
+            return {
+              ...m,
+              streaming: false,
+              content: !m.content.trim() ? '(AI returned no response — try rephrasing your request.)' : m.content,
+            };
+          }));
+        }
+        streamHadTokenRef.current = false;
         break;
       }
       case 'tool_confirm_prompt':

@@ -1568,7 +1568,17 @@ review process yet. Found and fixed four real issues, all already patched in the
   ("V4 Knowledge Engine" + scan bar) and page padding in place. Now also hides the header and
   removes the outer `p-6` padding when `chatFullscreen` is true, and the chat panel's height calc
   switches from a hardcoded `calc(100vh-140px)` (assumes the header's height) to `h-full` in that
-  state.
+  state. **Fixed 2026-08-04:** that `h-full` never actually resolved — in fullscreen `main`
+  remained `grid grid-cols-1` with an implicit auto-height row, and percentage heights against an
+  auto-sized grid track are indeterminate (classic CSS Grid gotcha), so the Terminal sized to its
+  *content* instead of the viewport. Symptom (reported live): at start the Terminal sat at the top
+  as a ~150px strip, then as messages accumulated it grew downward and its bottom edge — the input
+  bar with the send button — was clipped by `main`'s `overflow-hidden`; the scrollbar also
+  appeared dead because the `flex-1 overflow-y-auto` messages area never overflowed (the container
+  grew instead). Fixed: `main` switches to plain `block` in fullscreen (`src/App.tsx`, one class
+  change), so the wrapper's `h-full` resolves against `main`'s definite flex height — Terminal
+  fills the viewport, messages scroll internally, input bar stays pinned. Non-fullscreen path
+  (`h-[calc(100vh-140px)]`) untouched.
 - **403 error hint refined (2026-07-29).** A 403 from Ollama Cloud is a different failure shape
   than a 401 — it usually means either the running Ollama app hasn't picked up a sign-in that
   happened after it launched (needs a full quit+reopen, not just re-running `ollama signin`), or
@@ -2001,6 +2011,35 @@ Frontend-only; no intent/matcher/example-phrase or server changes (check-intents
   **NOT yet visually verified** in a real browser at both themes — manual checklist: dark looks
   identical to pre-theme, light reads well across welcome/tour/dashboard/terminal/dock, toggle
   persists across reloads, no scroll/flex changes anywhere (all edits were class-string swaps).
+- **Fixed 2026-08-04 (found during the manual light-mode pass):** AI markdown replies wrapped in
+  `prose prose-invert` (`Terminal.tsx`) — `prose-invert` is Tailwind Typography's *hardcoded light
+  palette* regardless of theme, so light mode showed pale text on white. `prose-invert` removed;
+  `src/index.css` now carries a plain `.prose` rule mapping the typography variables to the theme
+  tokens (`--tw-prose-body: var(--color-fg)`, headings `fg-strong`, links `accent`, code `fg`,
+  pre-code `fg-muted`, quotes/bullets/hr/table borders from the border/fg ladder). Deliberately
+  does NOT set `--tw-prose-pre-bg` so the existing `prose-pre:bg-scrim` utility keeps supplying
+  the (theme-aware) code-block background — an unlayered rule would otherwise beat the layered
+  utility. Dark mode reads essentially identical to the old invert palette; light gets dark text.
+
+## UI + AI-stream fixes (2026-08-04, found in the NetPulse chat export + fullscreen/light testing)
+
+- **Home button did nothing once a project was selected.** `App.tsx`'s Home set `showWelcome`,
+  but the welcome tree only rendered when `showWelcome && !activeProject` — with an active project
+  (the normal state) it was a dead button. The `!activeProject` condition was dropped (WelcomeScreen
+  has no activeProject dependency — verified) and Home now also closes the Dashboard and exits
+  fullscreen chat, so it's a true "home" that keeps the current project/session (per request).
+- **Empty AI reply (real NetPulse export: first "Add a line to my read me" got an empty bubble).**
+  `stream_start` commits a placeholder bot message; if a stream ends with zero `token` events
+  (empty completion), `stream_end` left it empty. `useConsole.ts` now tracks
+  `streamHadTokenRef` (set on any token event — the 16ms flush timer can empty `tokenBuffer`
+  legitimately, so the ref, not the buffer, is the signal) and on `stream_end` replaces a
+  content-less message with "(AI returned no response — try rephrasing your request.)". Also fixed
+  in the same pass: `streaming: true` was never cleared on any stream — every AI message kept the
+  flag forever; `stream_end` now clears it.
+- **Triple "AI Assistant activated" banner (same export).** `useAI.ts`'s `handleAIToggle` ON path
+  is async (Ollama status fetch + possible model auto-pick); rapid re-clicks ran it multiple times
+  over, each appending its own activation banner. Wrapped in a `toggleBusyRef` in-flight guard
+  (try/finally, so error paths reset it too).
 
 ## Conventions
 

@@ -432,7 +432,7 @@ export const Terminal = ({ messages, onSendMessage, onSearch, onDeepResearch, ac
                 {msg.type === 'user' || !msg.isMarkdown ? (
                    <div className="whitespace-pre-wrap font-mono text-sm leading-relaxed">{msg.content}</div>
                 ) : (
-                   <div className="prose prose-invert prose-sm max-w-none prose-pre:bg-scrim prose-pre:border prose-pre:border-border-soft prose-pre:p-0 prose-p:leading-relaxed">
+                   <div className="prose prose-sm max-w-none prose-pre:bg-scrim prose-pre:border prose-pre:border-border-soft prose-pre:p-0 prose-p:leading-relaxed">
                       <ReactMarkdown components={markdownComponents}>{msg.content}</ReactMarkdown>
                     </div>
                 )}
