@@ -1913,6 +1913,50 @@ messages), and a new Processes dock shows every tracked process with a per-proce
   404 paths). `tsc --noEmit` clean, `npm run check-intents` zero new dupes. NOT yet visually
   verified — see the checklist below.
 
+## UI restyle (2026-08-04, Phase 7 of `console-chitchat-ai-upgrade-prompt.md` §8)
+
+Frontend-only, no intent/matcher/example-phrase changes (check-intents unchanged), no server
+changes, no spacing/scroll/flexbox changes to anything outside the targeted components. All
+edits are `Terminal.tsx`/`App.tsx` class-only restyles + one new header element:
+
+- **Top bar slimmed** (`App.tsx`): `text-3xl` title + big scan form + action buttons were
+  three separate rows; now one compact row (`flex flex-wrap items-center gap-3 mb-3`, was
+  `mb-8`): `text-lg` title on the left, scan input compacted to `bg-surface/50 p-1.5 rounded-lg`
+  (was `p-2 rounded-xl`), and the right edge carries the active-servers pill, a NEW console-port
+  pill (reads `window.location.port` directly — there was no port display in the UI before, only
+  the "what port are you running on" chat intent / `state.serverPort`), Home, and Dashboard
+  buttons. Header is `flex-wrap` so it can't clip at narrow widths. The scan form's
+  `handleScan`/`setScanPath` wiring is unchanged.
+- **Chat bubbles tightened** (`Terminal.tsx`): the scroll container is now `p-4 space-y-3`
+  (was `p-6 space-y-6`). The scroll container itself is untouched beyond padding — the `flex-1
+  overflow-y-auto` chatting region still owns scrolling, and the input pre-detach logic is
+  unchanged.
+- **Confirm cards became inline chips** (`Terminal.tsx`, same `onConfirm`/`onToolConfirm`/
+  `onApproveTask`/`onMemorySuggestionRespond` handlers and same WS message types — display-only
+  restyle): all three confirm-card types (risky command, AI tool approval, memory suggestion)
+  dropped their `rounded-2xl rounded-bl-none px-5 py-4` bubble look for a compact `rounded-xl
+  px-4 py-3` inline chip with a `[10px] tracking-wider uppercase` label and smaller buttons. The
+  "Approve + auto-approve file edits" grant button survives intact (same tool gate).
+- **Output blocks use theme tokens** (`Terminal.tsx` `OutputBlock`): the copy/collapse header
+  no longer hardcodes `bg-black/50 border-white/10 text-gray-300`; it now uses the same
+  `bg-surface border-border text-muted-foreground text-accent text-foreground` tokens as the
+  rest of the opencode-styled surface, and the chevron/`background` motion on expand is the same.
+- **AI status row** (`Terminal.tsx`, above the input bar): the AI ON/OFF toggle + model picker
+  + mode picker moved out of the terminal header (reached/toggle overflow pinned the toggle off
+  screen) into a slim `px-4 py-1.5 bg-white/5 border-t border-white/10 flex-wrap` row above the
+  `AIAssistantInterface`/input area, keeping the `flex-shrink-0` wrapping protection from
+  CLAUDE.md's earlier fix. The busy indicators ("Thinking... "/"Running... ") were NOT moved —
+  they stay in the chat stream next to the message they describe; adding duplicates to the status
+  row would have been redundant, so that went in the same pass.
+- **Dashboard** (`Dashboard.tsx`): left as-is — its `bg-white/5 rounded-xl border
+  border-white/10 p-4` cards, `space-y-2` list, and `.space-y-2` gap set already match the app's
+  prevailing surface/radius/padding rhythm, so restyling it would be a no-op churn.
+- Verification: `tsc --noEmit`/`npm run lint` clean; the phase is a pure class-string edit, so
+  no behavior change to matcher/handlers/WS routes (no new message types, check-intents
+  unchanged). **NOT yet visually verified** — the explicit "still needed" includes dark-mode
+  (if the theme has one), the fullscreen-chat toggle, the welcome/tour overlay, and 1280/1920px
+  cropping of the new slim header — per the end-of-upgrade consolidated visual pass.
+
 ## Conventions
 
 - No file over ~400 lines; split by concern (see `server/wsHandlers/` for the pattern).

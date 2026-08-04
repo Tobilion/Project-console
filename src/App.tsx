@@ -107,50 +107,57 @@ function App() {
       <GlowOrbs />
 
       {!chatFullscreen && (
-      <header className="relative z-10 flex-shrink-0 flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-8">
-        <div>
-          <h1 className="text-3xl font-serif italic text-white mb-2">
+      <header className="relative z-10 flex-shrink-0 flex flex-wrap items-center gap-3 mb-4">
+        <div className="flex items-center gap-3 min-w-0">
+          <h1 className="text-lg font-serif italic text-white whitespace-nowrap">
             <TextScramble text="V4 Knowledge Engine" />
           </h1>
-          <p className="text-xs tracking-[0.2em] uppercase text-gray-500 font-bold">
-            Project Console & Analytics
+          <p className="text-[10px] tracking-[0.2em] uppercase text-gray-500 font-bold hidden sm:inline">
+            Project Console &amp; Analytics
           </p>
           {indexingProjectId && (
-            <p className="text-xs text-yellow-400 font-mono mt-1 animate-pulse">
-              ⏳ Indexing project...
-            </p>
+            <span className="text-xs text-yellow-400 font-mono animate-pulse">⏳ Indexing...</span>
           )}
         </div>
-        <form onSubmit={handleScan} className="flex items-center gap-3 bg-surface/50 p-2 rounded-xl border border-white/10 backdrop-blur-sm">
-          <button type="button" onClick={handleBrowseFolder} className="flex items-center gap-2 px-3 text-gray-400 hover:text-gray-200 transition-colors" title="Browse for a folder near your current scan directory (for any other location, paste the full path instead)">
-            <FolderSearch size={18} />
+        <form onSubmit={handleScan} className="flex items-center gap-2 bg-surface/50 p-1.5 rounded-lg border border-white/10 backdrop-blur-sm">
+          <button type="button" onClick={handleBrowseFolder} className="flex items-center gap-1 px-2 text-gray-400 hover:text-gray-200 transition-colors" title="Browse for a folder near your current scan directory (for any other location, paste the full path instead)">
+            <FolderSearch size={14} />
           </button>
           <input
             type="text"
             value={scanPath}
             onChange={(e) => setScanPath(e.target.value)}
             placeholder="C:\Users\...\Projects"
-            className="bg-transparent border-none outline-none text-sm font-mono w-64 text-gray-200"
+            className="bg-transparent border-none outline-none text-sm font-mono w-56 text-gray-200"
           />
           <button
             type="submit"
-            className="px-4 py-2 bg-[#00d4a3]/20 text-[#00d4a3] rounded-lg text-xs font-bold tracking-wider uppercase hover:bg-[#00d4a3]/30 transition-colors"
+            className="px-2.5 py-1 bg-[#00d4a3]/20 text-[#00d4a3] rounded-md text-[10px] font-bold tracking-wider uppercase hover:bg-[#00d4a3]/30 transition-colors"
           >
             Scan
           </button>
-          <button onClick={() => setShowWelcome(true)} className="p-2 text-gray-500 hover:text-gray-300 transition-colors" title="Home">
-            <Home size={18} />
-          </button>
+        </form>
+        <div className="flex items-center gap-2 ml-auto flex-shrink-0">
           {activeServers.length > 0 && (
             <span className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-green-400 font-mono bg-green-500/10 rounded-lg border border-green-500/20 whitespace-nowrap flex-shrink-0">
               <span className="w-1.5 h-1.5 rounded-full bg-green-400 inline-block animate-pulse" />
               {activeServers.length} running
             </span>
           )}
+          {window.location.port && (
+            <span className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-gray-300 font-mono bg-black/20 rounded-lg border border-white/10 whitespace-nowrap flex-shrink-0"
+              title={`Console running at http://${window.location.hostname}:${window.location.port}`}>
+              <span className="w-1.5 h-1.5 rounded-full bg-[#00d4a3] inline-block animate-pulse" />
+              :{window.location.port}
+            </span>
+          )}
+          <button onClick={() => setShowWelcome(true)} className="p-2 text-gray-500 hover:text-gray-300 transition-colors" title="Home">
+            <Home size={18} />
+          </button>
           <button onClick={() => setShowDashboard(v => !v)} className={`p-2 transition-colors ${showDashboard ? 'text-[#00d4a3]' : 'text-gray-500 hover:text-gray-300'}`} title="Dashboard">
             <LayoutDashboard size={18} />
           </button>
-        </form>
+        </div>
         <input
           ref={folderInputRef}
           type="file"

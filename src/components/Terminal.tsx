@@ -88,11 +88,11 @@ function OutputBlock({ content }: { content: string }) {
     setTimeout(() => setCopied(false), 1500);
   };
   return (
-    <div className="w-full rounded-lg border border-white/10 bg-black/50 overflow-hidden">
+    <div className="w-full rounded-lg border border-border bg-surface overflow-hidden">
       <div className="flex items-center gap-2 px-3 py-1.5">
         <button onClick={() => setExpanded(!expanded)} className="flex items-center gap-2 flex-1 text-left min-w-0" title={expanded ? 'Collapse output' : 'Expand output'}>
-          <TerminalIcon size={12} className="text-[#3d6bff] flex-shrink-0" />
-          <span className="text-xs font-mono text-gray-300 truncate">▶ {displayCommand || 'command output'}</span>
+          <TerminalIcon size={12} className="text-accent flex-shrink-0" />
+          <span className="text-xs font-mono text-muted-foreground truncate">▶ {displayCommand || 'command output'}</span>
         </button>
         <button onClick={handleCopy} className="text-gray-500 hover:text-gray-200 transition-colors flex-shrink-0" title="Copy output">
           {copied ? <span className="text-[10px] text-teal-400">Copied</span> : <Copy size={11} />}
@@ -107,9 +107,9 @@ function OutputBlock({ content }: { content: string }) {
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: 'auto', opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
-            className="overflow-hidden border-t border-white/10"
+            className="overflow-hidden border-t border-border"
           >
-            <pre className="max-h-64 overflow-y-auto p-3 text-xs text-gray-300 font-mono whitespace-pre-wrap">{content}</pre>
+            <pre className="max-h-64 overflow-y-auto p-3 text-xs text-foreground font-mono whitespace-pre-wrap bg-muted/40">{content}</pre>
           </motion.div>
         )}
       </AnimatePresence>
@@ -370,44 +370,6 @@ export const Terminal = ({ messages, onSendMessage, onSearch, onDeepResearch, ac
         )}
         {ollamaStatus && (
           <div className="flex items-center gap-2 flex-wrap justify-end">
-            <button onClick={onAIToggle} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-mono transition-colors border flex-shrink-0 ${aiEnabled ? 'bg-teal-500/20 border-teal-500/40 text-teal-300' : 'bg-white/5 border-white/10 text-gray-500 hover:text-gray-300'}`}>
-              <Brain size={14} />
-              <span>AI {aiEnabled ? 'ON' : 'OFF'}</span>
-            </button>
-            {aiEnabled && ((ollamaStatus.models?.length ?? 0) > 0 || (ollamaStatus.cloudModels?.length ?? 0) > 0) && (
-              <>
-                <select
-                  value={aiModel}
-                  onChange={(e) => onSetModel(e.target.value)}
-                  title={ollamaStatus.cloudModels?.some(m => m.name === aiModel) ? 'Running on Ollama Cloud — needs internet + `ollama signin`' : 'Running locally'}
-                  className="bg-[#12151c] border border-white/10 rounded-lg px-2 py-1 text-xs font-mono text-gray-300 focus:outline-none focus:border-teal-500/40"
-                >
-                  {(ollamaStatus.models?.length ?? 0) > 0 && (
-                    <optgroup label="Local (offline)">
-                      {ollamaStatus.models.map((m: any) => (
-                        <option key={m.name} value={m.name}>{m.name}</option>
-                      ))}
-                    </optgroup>
-                  )}
-                  {(ollamaStatus.cloudModels?.length ?? 0) > 0 && (
-                    <optgroup label="🌐 Ollama Cloud (needs sign-in + internet)">
-                      {ollamaStatus.cloudModels!.map((m) => (
-                        <option key={m.name} value={m.name}>{m.label}</option>
-                      ))}
-                    </optgroup>
-                  )}
-                </select>
-                <select
-                  value={aiMode}
-                  onChange={(e) => onSetMode(e.target.value)}
-                  className="bg-[#12151c] border border-white/10 rounded-lg px-2 py-1 text-xs font-mono text-gray-300 focus:outline-none focus:border-teal-500/40"
-                >
-                  {AI_MODES.map(m => (
-                    <option key={m.value} value={m.value}>{m.label}</option>
-                  ))}
-                </select>
-              </>
-            )}
             {workspaceProjects.length > 0 && (
               <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-white/5 border border-white/10">
                 <span className="text-[10px] text-gray-500 font-mono">Workspace:</span>
@@ -436,7 +398,7 @@ export const Terminal = ({ messages, onSendMessage, onSearch, onDeepResearch, ac
         )}
       </div>
       
-      <div className="flex-1 overflow-y-auto p-6 space-y-6">
+      <div className="flex-1 overflow-y-auto p-4 space-y-3">
         <AnimatePresence initial={false}>
           {messages.map((msg, i) => {
             if (msg.type === 'output') {
@@ -522,27 +484,26 @@ export const Terminal = ({ messages, onSendMessage, onSearch, onDeepResearch, ac
             animate={{ opacity: 1, y: 0 }}
             className="flex flex-col items-start"
           >
-            <div className="bg-orange-500/10 border border-orange-500/20 text-orange-200 rounded-2xl rounded-bl-none px-5 py-4 max-w-[85%]">
-              <div className="flex items-center gap-2 mb-2 text-orange-400">
-                <Search size={16} />
-                <span className="font-bold text-sm tracking-wider uppercase">Safety Confirmation</span>
+            <div className="bg-orange-500/10 border border-orange-500/20 text-orange-200 rounded-xl px-4 py-3 max-w-[85%]">
+              <div className="flex items-center gap-2 text-orange-400">
+                <Search size={13} />
+                <span className="font-bold text-[10px] tracking-wider uppercase">Safety Confirmation</span>
               </div>
-              <p className="font-mono text-sm mb-4">
-                You are about to execute a risky command:<br/>
-                <span className="text-white bg-black/50 px-2 py-1 rounded mt-2 inline-block border border-white/10">{pendingConfirm.command}</span>
+              <p className="font-mono text-xs mt-2">
+                Execute: <span className="text-white bg-black/50 px-1.5 py-0.5 rounded border border-white/10 break-all">{pendingConfirm.command}</span>
               </p>
-              <div className="flex gap-3">
+              <div className="flex flex-wrap gap-2 mt-3">
                 <button
                   onClick={() => onConfirm(true)}
-                  className="flex items-center gap-2 px-4 py-2 bg-red-500/20 hover:bg-red-500/40 text-red-400 rounded-lg border border-red-500/30 transition-colors text-sm font-bold"
+                  className="flex items-center gap-1.5 px-3 py-1 bg-red-500/20 hover:bg-red-500/40 text-red-400 rounded-md border border-red-500/30 transition-colors text-xs font-bold"
                 >
-                  <CheckCircle size={16} /> Execute
+                  <CheckCircle size={13} /> Execute
                 </button>
                 <button
                   onClick={() => onConfirm(false)}
-                  className="flex items-center gap-2 px-4 py-2 bg-white/5 hover:bg-white/10 text-gray-300 rounded-lg border border-white/10 transition-colors text-sm"
+                  className="flex items-center gap-1.5 px-3 py-1 bg-white/5 hover:bg-white/10 text-gray-300 rounded-md border border-white/10 transition-colors text-xs"
                 >
-                  <XCircle size={16} /> Cancel
+                  <XCircle size={13} /> Cancel
                 </button>
               </div>
             </div>
@@ -555,35 +516,35 @@ export const Terminal = ({ messages, onSendMessage, onSearch, onDeepResearch, ac
             animate={{ opacity: 1, y: 0 }}
             className="flex flex-col items-start"
           >
-            <div className="bg-orange-500/10 border border-orange-500/20 text-orange-200 rounded-2xl rounded-bl-none px-5 py-4 max-w-[85%]">
-              <div className="flex items-center gap-2 mb-2 text-orange-400">
-                <Brain size={16} />
-                <span className="font-bold text-sm tracking-wider uppercase">AI wants to run: {pendingToolConfirm.tool}</span>
+            <div className="bg-orange-500/10 border border-orange-500/20 text-orange-200 rounded-xl px-4 py-3 max-w-[85%]">
+              <div className="flex items-center gap-2 text-orange-400">
+                <Brain size={13} />
+                <span className="font-bold text-[10px] tracking-wider uppercase">AI wants to run: {pendingToolConfirm.tool}</span>
               </div>
-              <pre className="font-mono text-xs mb-4 whitespace-pre-wrap break-all bg-black/50 px-3 py-2 rounded border border-white/10 text-gray-300">
+              <pre className="font-mono text-xs mt-2 mb-3 whitespace-pre-wrap break-all bg-black/50 px-2 py-1.5 rounded border border-white/10 text-gray-300 max-h-32 overflow-y-auto">
                 {JSON.stringify(pendingToolConfirm.args, null, 2)}
               </pre>
-              <div className="flex gap-3">
+              <div className="flex flex-wrap gap-2">
                 <button
                   onClick={() => onToolConfirm(true)}
-                  className="flex items-center gap-2 px-4 py-2 bg-red-500/20 hover:bg-red-500/40 text-red-400 rounded-lg border border-red-500/30 transition-colors text-sm font-bold"
+                  className="flex items-center gap-1.5 px-3 py-1 bg-red-500/20 hover:bg-red-500/40 text-red-400 rounded-md border border-red-500/30 transition-colors text-xs font-bold"
                 >
-                  <CheckCircle size={16} /> Approve
+                  <CheckCircle size={13} /> Approve
                 </button>
                 <button
                   onClick={() => onToolConfirm(false)}
-                  className="flex items-center gap-2 px-4 py-2 bg-white/5 hover:bg-white/10 text-gray-300 rounded-lg border border-white/10 transition-colors text-sm"
+                  className="flex items-center gap-1.5 px-3 py-1 bg-white/5 hover:bg-white/10 text-gray-300 rounded-md border border-white/10 transition-colors text-xs"
                 >
-                  <XCircle size={16} /> Reject
+                  <XCircle size={13} /> Reject
                 </button>
               </div>
               {onApproveTask && pendingToolConfirm.tool !== 'executeCommand' && (
                 <button
                   onClick={onApproveTask}
-                  className="mt-3 flex items-center gap-2 px-4 py-2 bg-emerald-500/20 hover:bg-emerald-500/40 text-emerald-300 rounded-lg border border-emerald-500/30 transition-colors text-sm"
+                  className="mt-2 flex items-center gap-1.5 px-3 py-1 bg-emerald-500/20 hover:bg-emerald-500/40 text-emerald-300 rounded-md border border-emerald-500/30 transition-colors text-xs"
                   title="Approves this edit AND lets the rest of this task's file edits run without asking. Commands and tests still confirm every time."
                 >
-                  <CheckCircle size={16} /> Approve + auto-approve file edits this conversation
+                  <CheckCircle size={13} /> Approve + auto-approve file edits this conversation
                 </button>
               )}
             </div>
@@ -596,24 +557,24 @@ export const Terminal = ({ messages, onSendMessage, onSearch, onDeepResearch, ac
             animate={{ opacity: 1, y: 0 }}
             className="flex flex-col items-start"
           >
-            <div className="bg-teal-500/10 border border-teal-500/20 text-teal-200 rounded-2xl rounded-bl-none px-5 py-4 max-w-[85%]">
-              <div className="flex items-center gap-2 mb-2 text-teal-400">
-                <Brain size={16} />
-                <span className="font-bold text-sm tracking-wider uppercase">Memory suggestion</span>
+            <div className="bg-teal-500/10 border border-teal-500/20 text-teal-200 rounded-xl px-4 py-3 max-w-[85%]">
+              <div className="flex items-center gap-2 text-teal-400">
+                <Brain size={13} />
+                <span className="font-bold text-[10px] tracking-wider uppercase">Memory suggestion</span>
               </div>
-              <p className="text-sm mb-4">{pendingMemorySuggestion.message}</p>
-              <div className="flex gap-3">
+              <p className="text-xs mt-2">{pendingMemorySuggestion.message}</p>
+              <div className="flex flex-wrap gap-2 mt-3">
                 <button
                   onClick={() => onMemorySuggestionRespond?.(true)}
-                  className="flex items-center gap-2 px-4 py-2 bg-teal-500/20 hover:bg-teal-500/40 text-teal-300 rounded-lg border border-teal-500/30 transition-colors text-sm font-bold"
+                  className="flex items-center gap-1.5 px-3 py-1 bg-teal-500/20 hover:bg-teal-500/40 text-teal-300 rounded-md border border-teal-500/30 transition-colors text-xs font-bold"
                 >
-                  <CheckCircle size={16} /> Add to CLAUDE.md
+                  <CheckCircle size={13} /> Add to CLAUDE.md
                 </button>
                 <button
                   onClick={() => onMemorySuggestionRespond?.(false)}
-                  className="flex items-center gap-2 px-4 py-2 bg-white/5 hover:bg-white/10 text-gray-300 rounded-lg border border-white/10 transition-colors text-sm"
+                  className="flex items-center gap-1.5 px-3 py-1 bg-white/5 hover:bg-white/10 text-gray-300 rounded-md border border-white/10 transition-colors text-xs"
                 >
-                  <XCircle size={16} /> Not now
+                  <XCircle size={13} /> Not now
                 </button>
               </div>
             </div>
@@ -684,6 +645,49 @@ export const Terminal = ({ messages, onSendMessage, onSearch, onDeepResearch, ac
         expanded={!!dockExpanded}
         onToggleExpanded={() => onToggleDock?.()}
       />
+
+      {ollamaStatus && (
+        <div className="flex items-center gap-2 px-4 py-1.5 bg-white/5 border-t border-white/10 flex-wrap">
+          <button onClick={onAIToggle} className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-mono transition-colors border flex-shrink-0 ${aiEnabled ? 'bg-teal-500/20 border-teal-500/40 text-teal-300' : 'bg-white/5 border-white/10 text-gray-500 hover:text-gray-300'}`}>
+            <Brain size={13} />
+            <span>AI {aiEnabled ? 'ON' : 'OFF'}</span>
+          </button>
+          {aiEnabled && ((ollamaStatus.models?.length ?? 0) > 0 || (ollamaStatus.cloudModels?.length ?? 0) > 0) && (
+            <>
+              <select
+                value={aiModel}
+                onChange={(e) => onSetModel(e.target.value)}
+                title={ollamaStatus.cloudModels?.some(m => m.name === aiModel) ? 'Running on Ollama Cloud — needs internet + `ollama signin`' : 'Running locally'}
+                className="bg-[#12151c] border border-white/10 rounded-md px-1.5 py-1 text-[11px] font-mono text-gray-300 focus:outline-none focus:border-teal-500/40 flex-shrink-0 max-w-[220px]"
+              >
+                {(ollamaStatus.models?.length ?? 0) > 0 && (
+                  <optgroup label="Local (offline)">
+                    {ollamaStatus.models.map((m: any) => (
+                      <option key={m.name} value={m.name}>{m.name}</option>
+                    ))}
+                  </optgroup>
+                )}
+                {(ollamaStatus.cloudModels?.length ?? 0) > 0 && (
+                  <optgroup label="🌐 Ollama Cloud (needs sign-in + internet)">
+                    {ollamaStatus.cloudModels!.map((m) => (
+                      <option key={m.name} value={m.name}>{m.label}</option>
+                    ))}
+                  </optgroup>
+                )}
+              </select>
+              <select
+                value={aiMode}
+                onChange={(e) => onSetMode(e.target.value)}
+                className="bg-[#12151c] border border-white/10 rounded-md px-1.5 py-1 text-[11px] font-mono text-gray-300 focus:outline-none focus:border-teal-500/40 flex-shrink-0"
+              >
+                {AI_MODES.map(m => (
+                  <option key={m.value} value={m.value}>{m.label}</option>
+                ))}
+              </select>
+            </>
+          )}
+        </div>
+      )}
 
       {aiEnabled ? (
         <div className="p-3 bg-white/5 border-t border-white/10">
