@@ -2254,6 +2254,45 @@ zero behavior change; one commit per phase; lint + check-intents must stay green
   import smoke + guessCommand battery pass. Phase 1 commit excludes the
   data/user-profile.json write (live dev server on :3000).
 
+## Matchday Exchange transcript fixes (2026-08-04, reported directly — 4 bugs, 4 commits)
+
+- **"run server" misrouted to `project.context.scan_servers` and "run its server" to
+  `project.context.dev_server_status` instead of starting the server** (harness-confirmed with
+  real embeddings). Fixed with a `PRE_SEMANTIC_OVERRIDES` entry in `semanticMatcher.js`
+  (start-anchored `run/start/launch/boot/restart/spin up` + `server|backend|api` noun, optional
+  trailing "please") routing to `run_project` — narrow, same rule as the rest of that list
+  (only for confirmed traps). Status/scan phrasing ("is the server running", "scan for servers")
+  verified unaffected. Commit `5fc7729`.
+- **The duplicate-dev-server guard blocked "run the site" whenever a process was tracked AND any
+  dev-family script existed.** `run_project`/`npm_run` in `builtinIntents.js` now only refuse when
+  the tracked command equals the exact requested script (`npm run dev`/`npm start`/`npm run
+  serve`) — Matchday Exchange legitimately runs vite:3001 AND tsx backend:4400 concurrently, and
+  both are startable. Same commit.
+- **Reloaded sessions lost styling and the whole AI tool trace.** `conversationStore.js`
+  `appendMessage` now persists an optional `isMarkdown` field; the `connection.js` interceptor
+  persists `isMarkdown: true` for answers (false for buffered command output), plus
+  `tool_start`/`tool_result` as new `role: 'system'` lines (previously dropped entirely);
+  `storedToTerminalMessages.ts` maps it back with a `role === 'bot'` legacy fallback. Round-trip
+  smoke-tested. Commit `f4263aa`.
+- **Stop/cancel didn't reflect live in the Dashboard: `/api/dashboard`'s 30s cache was never
+  invalidated** — the WS-triggered refetch hit a stale payload, so a stopped process kept showing
+  "running" for up to 30s. Now gated on a `volatileSignature()` (project ids + runningProcesses +
+  lastDevUrls); any process/URL change bypasses the cache while the expensive git calls stay
+  TTL-cached. Harness-verified (start/URL/stop each invalidate). Commit `77ae265`.
+- **Servers started OUTSIDE the console were invisible to "scan for servers" / "is the server
+  running" / "what is the link"** when the console had never recorded a URL. New
+  `candidateDevUrls(project)` in `livenessProbe.js`: derives candidate `http://localhost:<port>`
+  URLs from the project's own package.json script port hints (`--port N`, `-p N`, `PORT=N`;
+  truncation marker stripped before parse; console's own `state.serverPort` excluded so a
+  port-collision can't false-positive). `scanProjectServers` probes candidates (1s bound, global
+  cap 10, separate worker index — the first draft shared a counter between the two pools and
+  raced) for URL-less projects and `recordDevUrl`s alive hits; `dev_server_status` and the "what
+  is the link" pre-check probe candidates as a last-resort before giving guidance. Harness: 18/18
+  (unit port-hint parsing + live HTTP server integration incl. console-port exclusion and
+  record-on-hit). Commit `a6f15c7`.
+- All four: `tsc --noEmit` clean, check-intents at baseline (1/5/80), harness-verified only —
+  the live server at :3000 predates these commits and needs a restart to pick them up.
+
 ## Conventions
 
 - No file over ~400 lines; split by concern (see `server/wsHandlers/` for the pattern).
