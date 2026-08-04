@@ -279,4 +279,14 @@ export const PROJECT_CONTEXT_INTENTS = {
       'show my sessions', 'list sessions', 'what chats do i have',
     ],
   },
+  'project.context.scan_servers': {
+    examples: [
+      'scan for servers', 'scan for running servers', 'which servers are up',
+      'which servers are running', 'what servers are up', 'scan the servers',
+      'are any servers running', 'check which servers are up', 'scan all projects for servers',
+      'what servers are live', 'are the dev servers up', 'scan for dev servers',
+      'check all dev servers', 'which dev servers are running', 'are any sites live',
+      'scan the projects for servers', 'check every project for a server',
+    ],
+  },
 };

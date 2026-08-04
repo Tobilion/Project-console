@@ -55,6 +55,7 @@ function App() {
     workspaceProjects, addToWorkspace, removeFromWorkspace, clearWorkspace,
     processes, processLogs, selectedProcessId, setSelectedProcessId,
     dockExpanded, setDockExpanded, handleStopProcess,
+    handleDidYouMeanPick,
   } = useConsole();
 
   // `showDirectoryPicker()` opens Chromium's actual native "Select Folder" dialog — distinct
@@ -238,6 +239,7 @@ function App() {
               onExportMarkdown={exportAsMarkdown}
               onExportJson={exportAsJson}
               onDirectCommand={handleDirectCommand}
+              onDidYouMeanPick={handleDidYouMeanPick}
               workspaceProjects={workspaceProjects}
               addToWorkspace={addToWorkspace}
               removeFromWorkspace={removeFromWorkspace}

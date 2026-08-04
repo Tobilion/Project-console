@@ -2151,6 +2151,65 @@ Frontend-only; no intent/matcher/example-phrase or server changes (check-intents
   `UserProfileModal`'s Title input gained a `<datalist>` (Master / Engineer / Dev / Dr. / None)
   so the field is a dropdown-or-type per the spec.
 
+## Empty-state greeting, persisted dev URLs + server scan, and did-you-mean chips (2026-08-04, requested directly)
+
+Three approved features, one combined commit:
+
+- **Centered empty-state greeting + action chips (Feature A, frontend-only).** `TerminalMessages.tsx`
+  renders `TerminalEmptyState.tsx` (new, ~30 lines, pure display) when `messages.length === 0`,
+  inside `${centerCol} min-h-full flex flex-col items-center justify-center` (the old `space-y-3`
+  list renders otherwise — one ternary, both branches share the same scroll container so
+  `flex-1 overflow-y-auto` scrolling and the `endRef` anchor are untouched; `endRef` only mounts
+  when non-empty and the auto-scroll effect uses `?.` so the empty state is a safe no-op).
+  Prompts come from `getRandomEmptyStatePrompt(name)` (22 templates in `src/utils/greetings.ts`)
+  and chips from `getEmptyStateActions(activeProject)` — 4 with a project (`check git status`,
+  `what is this project`, `run the site`, `show running processes`) / 3 without (`help`, `what
+  can you do`, `list projects`). Chips are plain chat messages (`onSendMessage`), so every
+  confirm gate still applies. `Terminal.tsx` memoizes both (`useMemo` keyed on
+  `[userName, activeProject?.id]` / `[activeProject]`).
+- **Persisted dev URLs + on-demand liveness probe + `scan for servers` intent (Feature B).
+  Root cause of NetPulse "idle": `/api/active-servers` only lists the in-memory
+  `runningProcesses` map (populated only when the console itself spawns a command) and
+  `state.lastDevUrls` was in-memory too — servers started outside the console were invisible.
+  New `server/devUrlStore.js`: `loadDevUrls()` (startup, in `index.js`), `recordDevUrl`/
+  `forgetDevUrl` (debounced 500ms atomic persist to `data/dev-urls.json`, gitignored — NOT
+  like the tracked `data/user-profile.json`) wired at executor.js's URL-detect/cleanup sites.
+  New `server/livenessProbe.js`: `probeUrl(url, timeoutMs)` (fetch + AbortController, reuses
+  `isProbeableUrl` from webSearch.js — SSRF-inverse: localhost/private http(s) only, refuses
+  public URLs AND the 169.254.169.254 metadata endpoint) and `scanProjectServers(projects,
+  {timeoutMs, concurrency})` — probes ONLY projects that have a recorded URL, 2s bound, worker
+  pool 3. **No background scanning ever — probe only when asked** (the "is the server running"
+  family, the "what is the link" pre-check at connection.js ~line 703, or the new intent).
+  Honesty rule: never claim a server is up from a stale URL — `dev_server_status`
+  (builtinIntents.js) and the pre-check now probe the persisted URL when nothing is tracked →
+  "still responding at <url> — started outside the console, so I can't stop it from here" vs
+  "not responding — say 'run the site' to start it". New intent `project.context.scan_servers`
+  ("scan for servers", "which servers are up" — 17 phrases in projectContextIntents.js,
+  registered in `BUILTIN_INTENTS`) answers a live/dead table; harness-verified: alive probe,
+  dead port, public-URL refusal, metadata-endpoint refusal, only-URL-having-projects probed.
+  `check-intents`: identical pre-existing set, 0 new (baseline re-measured at 2254 phrases/78
+  intents before, 2271/79 after — the documented "6 cross / 72 near" was older, the current
+  baseline is 5 cross / 80 near).
+- **Did-you-mean buttons (Feature C).** `semanticMatcher.match()` now also returns
+  `closeSecond` (best DIFFERENT intent when the true margin is within `CLOSE_MARGIN` 0.10 —
+  the existing 0.03 blocking-collision question is untouched and takes precedence) and a new
+  `nearestIntent(input)` method (raw best intent with no floor/margin gating). `matcher.js`
+  passes `closeSecond` through stage 1b (guarded by the same trust checks + `BUILTIN_INTENTS`
+  membership as the winner) and on total no-match computes `didYouMean` from `nearestIntent`
+  when ≥0.45 (skipped for pure-chitchat intents on real-request inputs — same trap as
+  `PURE_CHITCHAT_INTENTS`). `connection.js` sends a new `did_you_mean` WS event (data includes
+  a `label` from the existing `describeIntent()`) after builtin answers and on the fallback
+  path (before `suggestions`), and handles a new `did_you_mean_pick` message: resolves a
+  pending blocking-disambiguation question if one is active for this project, else dispatches
+  `handleBuiltinIntent` directly — same path a typed "1"/"2" reply uses. Frontend (keep the
+  `useConsole.ts` switch in sync, per conventions — both new message types added there):
+  `TerminalMessage.didYouMean` in `src/types.ts`, chips rendered under the bubble in
+  `TerminalMessages.tsx` ("DID YOU MEAN:" label + one teal chip, same style as suggestion
+  chips), `handleDidYouMeanPick` in `useConsole.ts` wired through `Terminal` → `App`.
+  Harness-verified: clean matches carry `closeSecond: null`, garbage input scores 0.33 →
+  no chip, "please to running the site for me today" (0.63, below floor) → chip for
+  `run_project`.
+
 ## Conventions
 
 - No file over ~400 lines; split by concern (see `server/wsHandlers/` for the pattern).

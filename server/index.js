@@ -16,6 +16,7 @@ import { autoApplyThresholdsForAll } from './intentTelemetry.js';
 import { retrainConfidenceModel } from './confidenceModel.js';
 import { autoApplySuggestionsForAll } from './learningEngine.js';
 import { loadLearnedIntents } from './learnedIntents.js';
+import { loadDevUrls } from './devUrlStore.js';
 import { wss, broadcast } from './wsServer.js';
 import { initWebSocketServer } from './wsHandlers/connection.js';
 import { registerProjectRoutes } from './routes/projectRoutes.js';
@@ -93,6 +94,10 @@ async function init() {
   // Restore any phrases learned (and confirmed) in previous runs before the semantic matcher
   // builds its embeddings, so restarts don't silently forget cross-project learning.
   loadLearnedIntents();
+
+  // Restore last-known dev-server URLs so "is the server running" can probe servers that were
+  // started outside the console or before this restart.
+  loadDevUrls();
 
   // Initialize semantic matcher (embedding + Fuse.js)
   await semanticMatcher.initialize().catch((err) => console.error('SemanticMatcher init failed:', err.message));

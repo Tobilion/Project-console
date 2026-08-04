@@ -19,6 +19,8 @@ npm-debug.log*
 data/near-misses/
 data/telemetry/
 data/conversations/
+# Last-known dev-server URLs (runtime mirror of state.lastDevUrls, see devUrlStore.js)
+data/dev-urls.json
 
 # Local Project Console chat memory (not for git)
 .console/

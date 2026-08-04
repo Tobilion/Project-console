@@ -71,7 +71,7 @@ const BUILTIN_INTENTS = new Set([
   'project.context.routes', 'project.context.file_relations', 'project.context.monorepo',
   'project.context.todos', 'project.context.biggest_files', 'project.context.dev_server_status',
   'project.context.recent_activity', 'project.context.running_processes',
-  'project.context.session_info',
+  'project.context.session_info', 'project.context.scan_servers',
   'run_project', 'project.knowledge.how_to_run', 'run_tests', 'project.workflow.checkpoint',
   'git_push', 'git_commit', 'git_commit_push', 'git_add',
   'git_init', 'git_ignore_add', 'git_rm_cached', 'npm_install',
@@ -308,6 +308,15 @@ export async function matchInput(input, project, projectIndex, options = {}) {
           };
         }
         metrics.event({ type: 'match_result', input: input.slice(0, 80), outcome: 'semantic_builtin', duration: Date.now() - t0 });
+        // Requested directly (2026-08-04): a near-tie (margin 0.03-0.10) that isn't ambiguous
+        // enough to block on (that's the collision question above) surfaces as a non-blocking
+        // "did you mean" chip on the answer. Same dispatchability + trust guards as the winner.
+        const closeSecond = semanticResult.closeSecond &&
+          BUILTIN_INTENTS.has(semanticResult.closeSecond.intent) &&
+          isTrustworthyChitChat(semanticResult.closeSecond.intent, input) &&
+          isTrustworthyKnowledgeIntent(semanticResult.closeSecond.intent, input)
+          ? { intent: semanticResult.closeSecond.intent, confidence: semanticResult.closeSecond.confidence }
+          : null;
         return {
           match: null,
           builtin: semanticResult.intent,
@@ -315,6 +324,7 @@ export async function matchInput(input, project, projectIndex, options = {}) {
           semanticConfidence: semanticResult.confidence,
           semanticSource: semanticResult.source,
           telemetryId,
+          closeSecond,
         };
       }
     }
@@ -396,10 +406,32 @@ export async function matchInput(input, project, projectIndex, options = {}) {
   // 5. Fuzzy fallback (lowest confidence — just for suggestion chips)
   metrics.observe('matching.total_time', Date.now() - t0);
   metrics.event({ type: 'match_result', input: input.slice(0, 80), outcome: 'fallback', duration: Date.now() - t0 });
+
+  // Requested directly (2026-08-04): on total no-match, offer the single nearest intent as a
+  // non-blocking "did you mean" chip when the embedding still strongly favors it (>= 0.45),
+  // alongside the canned fallback chips. Never a blocking question, and never a
+  // pure-chitchat intent for an input that looks like a real request (same trap as the
+  // PURE_CHITCHAT_INTENTS guard above).
+  let didYouMean = null;
+  try {
+    const nearest = await semanticMatcher.nearestIntent(input);
+    if (
+      nearest &&
+      nearest.confidence >= 0.45 &&
+      BUILTIN_INTENTS.has(nearest.intent) &&
+      !(looksLikeRealRequest(input) && PURE_CHITCHAT_INTENTS.has(nearest.intent))
+    ) {
+      didYouMean = { intent: nearest.intent, confidence: nearest.confidence };
+    }
+  } catch {
+    didYouMean = null;
+  }
+
   return {
     match: null,
     builtin: null,
     suggestions: getFallbackSuggestions(input),
     telemetryId,
+    didYouMean,
   };
 }

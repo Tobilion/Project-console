@@ -6,6 +6,7 @@ import { Loader2, Square, AlertTriangle } from 'lucide-react';
 import { OutputBlock } from './TerminalOutputBlock';
 import { StructuredJsonBlock } from './StructuredJsonBlock';
 import { TerminalConfirmCards } from './TerminalConfirmCards';
+import { TerminalEmptyState } from './TerminalEmptyState';
 
 /** The server appends a performance note to the end of streamed AI replies (see
  * server/ollama.js chatStream): `\n\n_(2.0s, 9 tok/s)_`. Strip it from the rendered
@@ -37,6 +38,9 @@ interface TerminalMessagesProps {
   onApproveTask?: () => void;
   pendingMemorySuggestion?: PendingMemorySuggestion | null;
   onMemorySuggestionRespond?: (accept: boolean) => void;
+  emptyStatePrompt: string;
+  emptyStateActions: string[];
+  onDidYouMeanPick?: (intent: string) => void;
 }
 
 /** The scrollable message thread: chat bubbles (markdown/JSON/output), inline confirm
@@ -61,6 +65,9 @@ export function TerminalMessages({
   onApproveTask,
   pendingMemorySuggestion,
   onMemorySuggestionRespond,
+  emptyStatePrompt,
+  emptyStateActions,
+  onDidYouMeanPick,
 }: TerminalMessagesProps) {
   // Custom markdown components for structured JSON blocks
   const markdownComponents = useMemo(() => ({
@@ -76,6 +83,11 @@ export function TerminalMessages({
 
   return (
     <div className="flex-1 overflow-y-auto p-4">
+      {messages.length === 0 ? (
+        <div className={`${centerCol} min-h-full flex flex-col items-center justify-center`}>
+          <TerminalEmptyState greeting={emptyStatePrompt} actions={emptyStateActions} onAction={onSendMessage} />
+        </div>
+      ) : (
       <div className={`${centerCol} space-y-3`}>
       <AnimatePresence initial={false}>
         {messages.map((msg, i) => {
@@ -149,6 +161,22 @@ export function TerminalMessages({
                         {sug}
                       </button>
                     ))}
+                  </div>
+                </div>
+              )}
+
+              {msg.didYouMean && onDidYouMeanPick && (
+                <div className="mt-3 pt-3 border-t border-border-soft">
+                  <p className="text-xs text-fg-dim mb-2">DID YOU MEAN:</p>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      onClick={() => {
+                        if (!isBlocked) onDidYouMeanPick(msg.didYouMean!.intent);
+                      }}
+                      className="px-3 py-1 rounded-full bg-panel hover:bg-panel-strong border border-border-soft text-xs text-[#00d4a3] transition-colors"
+                    >
+                      {msg.didYouMean.label || msg.didYouMean.intent}
+                    </button>
                   </div>
                 </div>
               )}
@@ -231,6 +259,7 @@ export function TerminalMessages({
         </motion.div>
       )}
       </div>
+      )}
     </div>
   );
 }

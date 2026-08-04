@@ -22,6 +22,7 @@ import { semanticMatcher } from '../semanticMatcher.js';
 import { readDistillations, generateDistillationSuggestions, applyDistillation, clearDistillations } from '../distillation.js';
 import { trackCommand, trackFileEdit, trackQuestion, addCandidateAddition, getMemorySummary, addToClaudeMd } from '../projectMemory.js';
 import { state, pendingConfirmations, pendingToolConfirmations, sweepExpiredConfirmations, withPortCollisionWarning } from '../state.js';
+import { probeUrl } from '../livenessProbe.js';
 import { wss, broadcast } from '../wsServer.js';
 
 const pendingMemorySuggestions = new Map();
@@ -175,6 +176,29 @@ async function routeMessage(ws, parsed, sessionContext) {
       } else {
         ws.send(JSON.stringify({ type: 'answer', data: 'No running process for that project.' }));
       }
+      ws.send(JSON.stringify({ type: 'end' }));
+      return;
+    }
+    case 'did_you_mean_pick': {
+      // Requested directly (2026-08-04): click on a non-blocking "did you mean" chip. If a
+      // blocking disambiguation question happens to be pending (collision question from the
+      // same feature family), resolve it with this pick; otherwise dispatch the picked intent
+      // directly through the exact same path a typed "1"/"2" reply uses.
+      const pick = parsed.payload?.intent;
+      if (!pick || typeof pick !== 'string') return;
+      const project = sessionContext.activeProjectId
+        ? state.activeProjectsCache.find((p) => p.id === sessionContext.activeProjectId)
+        : null;
+      if (sessionContext.pendingDisambiguation && sessionContext.pendingDisambiguation.projectId === sessionContext.activeProjectId) {
+        const pending = sessionContext.pendingDisambiguation;
+        sessionContext.pendingDisambiguation = null;
+        if (pending.candidates.includes(pick)) {
+          await handleBuiltinIntent(ws, pick, pending.originalInput, project, sessionContext);
+          ws.send(JSON.stringify({ type: 'end' }));
+        }
+        return;
+      }
+      await handleBuiltinIntent(ws, pick, '', project, sessionContext);
       ws.send(JSON.stringify({ type: 'end' }));
       return;
     }
@@ -704,8 +728,16 @@ async function handleExecute(ws, parsed, sessionContext) {
     && !DEV_URL_GIT_CONTEXT_RE.test(lowerInput)) {
     const devUrl = state.lastDevUrls.get(project.id);
     if (devUrl) {
-      const answer = withPortCollisionWarning(`The dev server is running at **${devUrl}** — open it in your browser.`, devUrl);
-      ws.send(JSON.stringify({ type: 'answer', data: answer }));
+      // Liveness-check the last-known URL (2026-08-04): the URL may survive a console restart
+      // via devUrlStore.js even when the process itself isn't tracked anymore — probe before
+      // claiming it's up. On-demand only, 3s bound.
+      const probe = await probeUrl(devUrl, 3000);
+      if (probe.alive) {
+        const answer = withPortCollisionWarning(`The dev server is running at **${devUrl}** — open it in your browser.`, devUrl);
+        ws.send(JSON.stringify({ type: 'answer', data: answer }));
+      } else {
+        ws.send(JSON.stringify({ type: 'answer', data: `**${project.name}**'s last-known address **${devUrl}** isn't responding right now. Say "run the site" to start it.` }));
+      }
     } else {
       const pkgJson = project.codebaseIndex?.keyFiles?.['package.json'];
       let scripts = {};
@@ -884,6 +916,14 @@ async function handleExecute(ws, parsed, sessionContext) {
   // 1. Builtin conversational intents
   if (matchResult.builtin) {
     await handleBuiltinIntent(ws, matchResult.builtin, input, project, sessionContext);
+    if (matchResult.closeSecond) {
+      // Requested directly (2026-08-04): a non-blocking "did you mean" chip when a different
+      // intent scored within the near-tie band (margin 0.03-0.10) of the winner.
+      ws.send(JSON.stringify({
+        type: 'did_you_mean',
+        data: { ...matchResult.closeSecond, label: describeIntent(matchResult.closeSecond.intent) },
+      }));
+    }
     if (matchResult.builtin !== 'system.chit_chat.git_status') {
       ws.send(JSON.stringify({ type: 'end' }));
     }
@@ -966,6 +1006,14 @@ async function handleExecute(ws, parsed, sessionContext) {
   if (ctxFb) fallback += `\n${ctxFb}\n`;
   fallback += `\nTry **"help"** for available triggers, **"overview"** for project summary, or **"structure"** to explore directories.`;
   ws.send(JSON.stringify({ type: 'answer', data: fallback }));
+  if (matchResult.didYouMean) {
+    // Requested directly (2026-08-04): no-match inputs with a strongly favored nearest intent
+    // get a non-blocking "did you mean" chip alongside the canned suggestions.
+    ws.send(JSON.stringify({
+      type: 'did_you_mean',
+      data: { ...matchResult.didYouMean, label: describeIntent(matchResult.didYouMean.intent) },
+    }));
+  }
   if (matchResult.suggestions && matchResult.suggestions.length > 0) {
     ws.send(JSON.stringify({ type: 'suggestions', data: matchResult.suggestions }));
   }

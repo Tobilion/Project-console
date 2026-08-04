@@ -12,6 +12,7 @@ import { semanticMatcher } from '../semanticMatcher.js';
 import { formatApiRoutes, findTodos, findBiggestFiles, findRecentActivity } from '../codebaseIndexer.js';
 import { isSafeParamValue } from '../paramCommand.js';
 import { chatOnce } from '../ollama.js';
+import { probeUrl, scanProjectServers } from '../livenessProbe.js';
 
 /**
  * Pulls a filename and (optionally) quoted content out of a natural-language trigger-mode
@@ -1539,8 +1540,35 @@ export async function handleBuiltinIntent(ws, action, input, project, sessionCon
       if (url) msg += `\n\nOpen it at **${url}** — or say "what is the link" to see it again.`;
       else msg += `\n\nThe process is tracked but no local URL was detected yet — it may still be starting up, or it doesn't expose an HTTP server.`;
       ws.send(JSON.stringify({ type: 'answer', data: withPortCollisionWarning(msg, url) }));
+    } else if (url) {
+      // Not console-tracked (started outside the console or before a restart) but we have a
+      // persisted last-known URL — probe it instead of guessing. On-demand only, 3s bound.
+      const probe = await probeUrl(url, 3000);
+      if (probe.alive) {
+        ws.send(JSON.stringify({ type: 'answer', data: withPortCollisionWarning(
+          `**[${project.name}]** is still responding at **${url}** — but it was started outside the console (or before a restart), so I can't stop it from here.`,
+          url
+        ) }));
+      } else {
+        ws.send(JSON.stringify({ type: 'answer', data: `**[${project.name}]** has no console-tracked server, and its last-known address **${url}** isn't responding${probe.error === 'timeout' ? ' (timed out)' : ''}. Say "run the site" to start it.` }));
+      }
     } else {
       ws.send(JSON.stringify({ type: 'answer', data: `**[${project.name}]** has no server running right now. Say "run the site" to start it, or "how do I run this" for instructions.` }));
+    }
+  } else if (action === 'project.context.scan_servers') {
+    // Requested directly (2026-08-04): probe every project's last-known dev URL on demand and
+    // report which are still alive. Deliberately never runs in the background — a scan happens
+    // only when asked, with a 2s per-URL bound and a small worker pool, and only projects that
+    // HAVE a recorded URL are probed at all.
+    const found = await scanProjectServers(state.activeProjectsCache, { timeoutMs: 2000, concurrency: 3 });
+    if (found.length === 0) {
+      ws.send(JSON.stringify({ type: 'answer', data: `No dev-server URLs are known for any project right now. Start something with "run the site" first, then scan again.` }));
+    } else {
+      const lines = found.map((f) =>
+        `- **[${f.projectName}]** ${f.url} — ${f.alive ? `✅ responding${f.status ? ` (HTTP ${f.status})` : ''}` : `❌ not responding`}`
+      ).join('\n');
+      const liveCount = found.filter((f) => f.alive).length;
+      ws.send(JSON.stringify({ type: 'answer', data: `### Server scan (${liveCount}/${found.length} alive)\n\n${lines}\n\nServers started outside the console (or before a restart) show as not console-tracked — I can only probe their URLs, not stop them.` }));
     }
   } else if (action === 'project.context.recent_activity') {
     // Intent expansion (Phase 2, 2026-08-03): on-demand file-mtime scan via findRecentActivity

@@ -55,6 +55,8 @@ export interface TerminalMessage {
   type: 'user' | 'bot' | 'system' | 'error' | 'warning' | 'output';
   content: string;
   suggestions?: string[];
+  /** Non-blocking "did you mean" suggestion (intent id + confidence + human label) attached to a bot answer. */
+  didYouMean?: { intent: string; confidence: number; label?: string } | null;
   isMarkdown?: boolean;
   /** True while an AI response is still streaming into this message's content. */
   streaming?: boolean;

@@ -4,6 +4,7 @@ import fs from 'fs';
 import crypto from 'crypto';
 import { state, withPortCollisionWarning, pendingConfirmations } from './state.js';
 import { summarizeCommandOutput } from './outputSummarizer.js';
+import { recordDevUrl, forgetDevUrl } from './devUrlStore.js';
 import { broadcast } from './wsServer.js';
 
 // Strips ANSI escape sequences so URL detection isn't fooled by color/bold codes
@@ -194,7 +195,7 @@ export function stopTrackedProcess(projectId) {
   } catch {}
   runningProcesses.delete(projectId);
   processLogs.delete(projectId);
-  state.lastDevUrls.delete(projectId);
+  forgetDevUrl(projectId);
   broadcast({ type: 'dashboard_update' });
   broadcast({ type: 'processes_update' });
   return { ok: true, command: proc.command };
@@ -352,7 +353,7 @@ export function executeCommand(command, cwd, ws, projectId) {
         for (const url of unique) {
           sendEvent('server_url', url);
           if (projectId) {
-            state.lastDevUrls.set(projectId, url);
+            recordDevUrl(projectId, url);
             broadcast({ type: 'dashboard_update' });
             broadcast({ type: 'processes_update' });
           }

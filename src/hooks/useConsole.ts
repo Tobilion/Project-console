@@ -234,6 +234,15 @@ export function useConsole() {
     }
   }, [wsHandler.wsRef]);
 
+  // Requested directly (2026-08-04): click on a non-blocking "did you mean" chip — sends
+  // 'did_you_mean_pick' (server resolves a pending disambiguation question with the pick, or
+  // dispatches the intent directly — see connection.js's routeMessage).
+  const handleDidYouMeanPick = useCallback((intent: string) => {
+    if (wsHandler.wsRef.current?.readyState === WebSocket.OPEN) {
+      wsHandler.wsRef.current.send(JSON.stringify({ type: 'did_you_mean_pick', payload: { intent } }));
+    }
+  }, [wsHandler.wsRef]);
+
   // Override wsRef in terminal with the real one
   terminal.handleSendMessage.bind = Function.prototype.bind;
   const origHandleSendMessage = terminal.handleSendMessage;
@@ -320,6 +329,17 @@ export function useConsole() {
           if (last) {
             const newMsgs = [...prev];
             newMsgs[newMsgs.length - 1] = { ...last, suggestions: payload.data };
+            return newMsgs;
+          }
+          return prev;
+        });
+        break;
+      case 'did_you_mean':
+        sessions.setMessages(prev => {
+          const last = prev[prev.length - 1];
+          if (last) {
+            const newMsgs = [...prev];
+            newMsgs[newMsgs.length - 1] = { ...last, didYouMean: payload.data };
             return newMsgs;
           }
           return prev;
@@ -707,6 +727,7 @@ export function useConsole() {
     dockExpanded,
     setDockExpanded,
     handleStopProcess,
+    handleDidYouMeanPick,
     indexingProjectId: projects.indexingProjectId,
     aiModel: ai.aiModel,
     aiMode: ai.aiMode,

@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react'
 import { TerminalMessage, Project, AIStatus, PendingToolConfirm, PendingMemorySuggestion, ToolCallEntry } from '../types';
 import { Send, Brain } from 'lucide-react';
 import { AIAssistantInterface } from './ui/AIAssistantInterface';
-import { getRandomChatPrompt } from '../utils/greetings';
+import { getRandomChatPrompt, getRandomEmptyStatePrompt, getEmptyStateActions } from '../utils/greetings';
 import { ToolHistoryPanel } from './ToolHistoryPanel';
 import { ProcessDock, ProcessInfo } from './ProcessDock';
 import { TerminalHeader } from './TerminalHeader';
@@ -61,6 +61,7 @@ interface TerminalProps {
   onExportMarkdown: () => void;
   onExportJson: () => void;
   onDirectCommand?: (command: string) => void;
+  onDidYouMeanPick?: (intent: string) => void;
   workspaceProjects: Project[];
   addToWorkspace: (project: Project) => void;
   removeFromWorkspace: (projectId: string) => void;
@@ -86,7 +87,7 @@ const AI_MODES = [
   { value: 'structured', label: 'Structured' }
 ];
 
-export const Terminal = ({ messages, onSendMessage, onSearch, onDeepResearch, activeProject, userName, pendingConfirm, onConfirm, pendingToolConfirm, onToolConfirm, onApproveTask, pendingMemorySuggestion, onMemorySuggestionRespond, aiEnabled, aiThinking, aiThinkingText, commandPending, onCancel, ollamaStatus, aiModel, aiMode, onAIToggle, onSetModel, onSetMode, toolHistory, showToolHistory, onToggleToolHistory, onRerunToolCall, onExportMarkdown, onExportJson, onDirectCommand, workspaceProjects, addToWorkspace, removeFromWorkspace, clearWorkspace, onSwitchToProject, isFullscreen, onToggleFullscreen, processes, processLogs, selectedProcessId, onSelectProcess, onStopProcess, dockExpanded, onToggleDock }: TerminalProps) => {
+export const Terminal = ({ messages, onSendMessage, onSearch, onDeepResearch, activeProject, userName, pendingConfirm, onConfirm, pendingToolConfirm, onToolConfirm, onApproveTask, pendingMemorySuggestion, onMemorySuggestionRespond, aiEnabled, aiThinking, aiThinkingText, commandPending, onCancel, ollamaStatus, aiModel, aiMode, onAIToggle, onSetModel, onSetMode, toolHistory, showToolHistory, onToggleToolHistory, onRerunToolCall, onExportMarkdown, onExportJson, onDirectCommand, onDidYouMeanPick, workspaceProjects, addToWorkspace, removeFromWorkspace, clearWorkspace, onSwitchToProject, isFullscreen, onToggleFullscreen, processes, processLogs, selectedProcessId, onSelectProcess, onStopProcess, dockExpanded, onToggleDock }: TerminalProps) => {
   const [input, setInput] = useState('');
   const [showSearchOverlay, setShowSearchOverlay] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -101,6 +102,9 @@ export const Terminal = ({ messages, onSendMessage, onSearch, onDeepResearch, ac
   const storageKey = `lpc:history:${activeProject?.id || 'global'}`;
   // Random personalized input placeholder; re-rolls on profile name change or project switch.
   const chatPrompt = useMemo(() => getRandomChatPrompt(userName || 'there'), [userName, activeProject?.id]);
+  // Centered empty-thread greeting + quick actions; re-rolls per project/chat, gone on first send.
+  const emptyStatePrompt = useMemo(() => getRandomEmptyStatePrompt(userName || 'there'), [userName, activeProject?.id]);
+  const emptyStateActions = useMemo(() => getEmptyStateActions(activeProject), [activeProject]);
 
   const loadHistory = useCallback(() => {
     try {
@@ -286,6 +290,9 @@ export const Terminal = ({ messages, onSendMessage, onSearch, onDeepResearch, ac
         onApproveTask={onApproveTask}
         pendingMemorySuggestion={pendingMemorySuggestion}
         onMemorySuggestionRespond={onMemorySuggestionRespond}
+        emptyStatePrompt={emptyStatePrompt}
+        emptyStateActions={emptyStateActions}
+        onDidYouMeanPick={onDidYouMeanPick}
       />
 
       <ToolHistoryPanel toolHistory={toolHistory} show={showToolHistory} onToggle={onToggleToolHistory} onRerun={onRerunToolCall} />

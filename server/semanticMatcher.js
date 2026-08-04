@@ -322,6 +322,11 @@ class SemanticMatcher {
 
       const effectiveFloor = bestIntent ? getEffectiveThreshold(bestIntent) : 0.6;
       const MIN_MARGIN = 0.03;
+      // Non-blocking "did you mean" band (2026-08-04): a different intent within this margin
+      // of the winner is NOT ambiguous enough to block on (that's `collision` below), but is
+      // close enough that surfacing it as a chip on the answer is worth it. Only applies to
+      // accepted semantic matches — the no-match case uses nearestIntent() instead.
+      const CLOSE_MARGIN = 0.10;
       const margin = bestScore - secondBestScore;
       _stages.push({ stage: 'semantic', intent: bestIntent, confidence: bestScore, margin, floor: effectiveFloor, matched: bestScore >= effectiveFloor && margin >= MIN_MARGIN });
 
@@ -359,9 +364,12 @@ class SemanticMatcher {
         const collision = (bestOtherIntent && trueMargin < MIN_MARGIN)
           ? { intent: bestOtherIntent, confidence: bestOtherScore, meta: bestOtherMeta }
           : null;
+        const closeSecond = (bestOtherIntent && !collision && trueMargin <= CLOSE_MARGIN)
+          ? { intent: bestOtherIntent, confidence: bestOtherScore, meta: bestOtherMeta }
+          : null;
 
         this._lastTelemetry = { stages: _stages, winner: 'semantic', finalIntent: bestIntent, finalConfidence: bestScore };
-        return { intent: bestIntent, confidence: bestScore, source: 'semantic', meta: bestMeta, collision };
+        return { intent: bestIntent, confidence: bestScore, source: 'semantic', meta: bestMeta, collision, closeSecond };
       }
     } catch (err) {
       _stages.push({ stage: 'semantic', matched: false, error: err.message });
@@ -625,6 +633,47 @@ class SemanticMatcher {
     const separators = /\s+(?:and|also|then|plus)\s+|,\s*|;\s*|\s+&\s+|\s+as well as\s+/i;
     const parts = input.split(separators).map(s => s.trim()).filter(s => s && s.length > 3);
     return parts.length > 1 ? parts : null;
+  }
+
+  /**
+   * Raw best-scoring intent with NO floor or margin gating — used by matcher.js's no-match
+   * path to offer a non-blocking "did you mean" chip when nothing cleared the normal gates but
+   * the embedding still strongly favors one intent (callers gate on the returned confidence
+   * themselves; this app's threshold is 0.45). Returns { intent, confidence, meta } or null.
+   */
+  async nearestIntent(inputStr) {
+    if (!this.extractor) return null;
+    try {
+      const inputVec = await this.extractor(inputStr, {
+        pooling: 'mean',
+        normalize: true,
+      });
+      const inputData = inputVec.data;
+      let bestIntent = null;
+      let bestScore = -1;
+      let bestMeta = null;
+      const consider = (sim, intent, meta) => {
+        if (sim > bestScore) {
+          bestScore = sim;
+          bestIntent = intent;
+          bestMeta = meta;
+        }
+      };
+      for (const [intent, data] of Object.entries(this.projectIntentVectors)) {
+        for (const vec of data.vectors) {
+          consider(this._cosineSimilarity(inputData, vec), intent, { projectIndex: data.projectIndex, entryIndex: data.entryIndex });
+        }
+      }
+      for (const [intent, vectors] of Object.entries(this.intentVectors)) {
+        for (const vec of vectors) {
+          consider(this._cosineSimilarity(inputData, vec), intent, null);
+        }
+      }
+      if (bestIntent) return { intent: bestIntent, confidence: bestScore, meta: bestMeta };
+      return null;
+    } catch (err) {
+      return null;
+    }
   }
 
   async matchMulti(input) {
