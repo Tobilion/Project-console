@@ -82,10 +82,20 @@ types (risky command, AI tool approval), centered on a `max-w-4xl` canvas beside
 the header highlights when the view is active and replaces the main content area with a
 per-project status grid (uncommitted files, recent commits, dev URL, running command). A green
 pulsing pill in the header (`N running`) shows the live count from `/api/active-servers` with
-zero layout shift.
-`src/components/WelcomeScreen.tsx` now includes a 4-step guided tour overlay (fixed z-50
-backdrop-blur card, local state machine, dismissible at any step) activated via a "Take the Tour"
-button alongside New Chat / Quick Start Guide. `src/components/ui/AIAssistantInterface.tsx` is
+zero layout shift. `src/components/CommandDeck.tsx` is the Ctrl+K command palette (header
+Search button too): navigation, the active project's `console.config.json` command entries
+(`{param}` entries defer to chat so the param-ask flow owns them), and project switching —
+execution routes through the same `onDirectCommand`/`onSendMessage` handlers the rest of the
+UI uses, nothing bypasses the confirm flows; sidebar collapse state is lifted to `App.tsx` so
+the deck can toggle it.
+`src/components/WelcomeScreen.tsx` is the canvas hero state (rendered in the centered canvas
+when no chat is open — `showWelcome` is true, the old full-screen welcome fork is gone): hero
+title, a compact per-project stat strip (active project's `codebaseIndex` files/dirs/
+languages/entry points, global totals as fallback when none selected), the action buttons,
+and the full `BentoGrid` of Discovered Projects below the hero, plus the 4-step guided tour
+overlay (fixed z-50 backdrop-blur card, local state machine, dismissible at any step)
+activated via a "Take the Tour" button alongside New Chat / Quick Start Guide.
+`src/components/ui/AIAssistantInterface.tsx` is
 the AI-mode input bar (real file upload via `FileReader`, Search/Reason/Deep Research toggles).
 
 ## How the AI gets project context
