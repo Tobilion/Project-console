@@ -265,6 +265,33 @@ the AI-mode input bar (real file upload via `FileReader`, Search/Reason/Deep Res
 
 ## Matching pipeline gotchas
 
+- **Semantic matcher modularization (2026-08-04, 5 commits: `497e9df` → `9a88785`).**
+  `server/semanticMatcher.js` was 762 lines; it is now ~448 lines of pure orchestration (init,
+  fuse maintenance, project sync, `match()` dispatching to the stage runners, `matchMulti`,
+  `getSuggestions`, `nearestIntent`, `bestProjectCommandEntry`, `findIntentCollisions`). The
+  logic moved out with **zero behavior change** — telemetry stage entries and per-rule
+  confidences are byte-identical, guarded by a new real-embedding regression harness
+  (`npm run check-matcher` → `server/scripts/checkMatcherCoverage.js`): 68 inputs across 9
+  batteries (CONTROL/PHASE1-3/BASICS/MATCHDAY/TRAPS/MUST_NOT_STEAL/GARBAGE), self-asserting
+  `{input, expect}` pairs, `--probe` mode to print routing without asserts when an intent
+  intentionally changes. Run it after ANY matcher edit. New module map:
+  - `server/preSemanticOverrides.js` — stage 0 data + `findPreSemanticOverride()` (the 7
+    confirmed-trap literal rules; the old inline array in `semanticMatcher.js`'s `match()`).
+  - `server/keywordRules.js` — stage 3 data + `matchKeywordRule()` (the 28-rule keyword
+    fallback chain, first-match-wins, in original if-chain order; rule shape
+    `{ intent, confidence, re?, and?, or?, orLength?, notRe?, maxLength? }`).
+  - `server/matcherStages.js` — `runSemanticStage()` (embedding scan + per-intent effective
+    floor + 0.03 margin + collision/closeSecond second-pass, returns `{ result, stage }`) and
+    `runFuzzyStage()` (Fuse search + length-scaled fuzzy floor, project meta reconstruction).
+  - `server/intentVectorScan.js` — pure vector machinery: `cosineSimilarity`,
+    `scanAllVectors` (the dual project-then-base scan shared by `match()`/`nearestIntent()`),
+    `bestProjectActionVector` (stage-1b config-entry scan), `averageIntentVectors`
+    (collision check).
+  Also in the same session: commit `497e9df` fixed reloaded sessions rendering persisted
+  command output as a plain bubble instead of the collapsible `OutputBlock` — the persisted
+  `Executing: ...`-prefixed bot message now maps back to type `'output'` in
+  `src/utils/storedToTerminalMessages.ts`. Verified: `npm run check-matcher` 68/68,
+  `tsc --noEmit` clean, `npm run check-intents` at baseline (1/5/80, all pre-existing).
 - Trigger mode (AI off) is a pure dispatcher — it can only answer with what's canned in
   `builtinIntents.js` or a project's `console.config.json`. It will never handle open-ended
   requests — that's what AI mode's tools are for. Don't expect trigger mode to "figure things out."
@@ -2246,9 +2273,10 @@ zero behavior change; one commit per phase; lint + check-intents must stay green
   intentTelemetry; intentTelemetry also imports telemetryFile + telemetryThresholds +
   telemetryStats, re-exports threshold/file/stats ops so matcher.js/connection.js/index.js
   callers unchanged). intentTelemetry.js 241 → 122 lines; confidenceModel.js 214 → 179
-  (still >150 — optional logisticRegression/modelStore split deferred). Remaining large
-  files for later phases: semanticMatcher.js (matcher phase — re-run intent-coverage
-  harness incl. per-project config entries before splitting), nearMissLogger.js,
+  (still >150 — optional logisticRegression/modelStore split deferred). semanticMatcher.js
+  has since been split too (2026-08-04, 5 commits `497e9df` → `9a88785` — see "Matching
+  pipeline gotchas" for the new module map and the `check-matcher` harness). Remaining large
+  files for later phases: nearMissLogger.js,
   learningEngine.js (151), projectMemory.js (210), conversationStore.js.
 - Verification: Phases 1–3 lint-clean; check-intents identical to baseline (1/5/80);
   import smoke + guessCommand battery pass. Phase 1 commit excludes the
