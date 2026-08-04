@@ -1,0 +1,133 @@
+import React from 'react';
+import { PendingToolConfirm, PendingMemorySuggestion } from '../types';
+import { motion } from 'motion/react';
+import { Search, Brain, CheckCircle, XCircle } from 'lucide-react';
+
+interface TerminalConfirmCardsProps {
+  pendingConfirm: { token: string; command: string } | null;
+  onConfirm: (confirmed: boolean) => void;
+  pendingToolConfirm: PendingToolConfirm | null;
+  onToolConfirm: (confirmed: boolean) => void;
+  onApproveTask?: () => void;
+  pendingMemorySuggestion?: PendingMemorySuggestion | null;
+  onMemorySuggestionRespond?: (accept: boolean) => void;
+}
+
+/** Inline confirm chips rendered inside the message thread: risky command approval,
+ *  AI tool approval (with the optional session-grant button), and memory suggestions. */
+export function TerminalConfirmCards({
+  pendingConfirm,
+  onConfirm,
+  pendingToolConfirm,
+  onToolConfirm,
+  onApproveTask,
+  pendingMemorySuggestion,
+  onMemorySuggestionRespond,
+}: TerminalConfirmCardsProps) {
+  return (
+    <>
+      {pendingConfirm && (
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="flex flex-col items-start"
+        >
+          <div className="bg-orange-500/10 border border-orange-500/20 text-orange-200 rounded-xl px-4 py-3 max-w-[85%]">
+            <div className="flex items-center gap-2 text-orange-400">
+              <Search size={13} />
+              <span className="font-bold text-[10px] tracking-wider uppercase">Safety Confirmation</span>
+            </div>
+            <p className="font-mono text-xs mt-2">
+              Execute: <span className="text-fg-strong bg-scrim px-1.5 py-0.5 rounded border border-border-soft break-all">{pendingConfirm.command}</span>
+            </p>
+            <div className="flex flex-wrap gap-2 mt-3">
+              <button
+                onClick={() => onConfirm(true)}
+                className="flex items-center gap-1.5 px-3 py-1 bg-red-500/20 hover:bg-red-500/40 text-red-400 rounded-md border border-red-500/30 transition-colors text-xs font-bold"
+              >
+                <CheckCircle size={13} /> Execute
+              </button>
+              <button
+                onClick={() => onConfirm(false)}
+                className="flex items-center gap-1.5 px-3 py-1 bg-panel hover:bg-panel-strong text-fg-muted rounded-md border border-border-soft transition-colors text-xs"
+              >
+                <XCircle size={13} /> Cancel
+              </button>
+            </div>
+          </div>
+        </motion.div>
+      )}
+
+      {pendingToolConfirm && (
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="flex flex-col items-start"
+        >
+          <div className="bg-orange-500/10 border border-orange-500/20 text-orange-200 rounded-xl px-4 py-3 max-w-[85%]">
+            <div className="flex items-center gap-2 text-orange-400">
+              <Brain size={13} />
+              <span className="font-bold text-[10px] tracking-wider uppercase">AI wants to run: {pendingToolConfirm.tool}</span>
+            </div>
+            <pre className="font-mono text-xs mt-2 mb-3 whitespace-pre-wrap break-all bg-scrim px-2 py-1.5 rounded border border-border-soft text-fg-muted max-h-32 overflow-y-auto">
+              {JSON.stringify(pendingToolConfirm.args, null, 2)}
+            </pre>
+            <div className="flex flex-wrap gap-2">
+              <button
+                onClick={() => onToolConfirm(true)}
+                className="flex items-center gap-1.5 px-3 py-1 bg-red-500/20 hover:bg-red-500/40 text-red-400 rounded-md border border-red-500/30 transition-colors text-xs font-bold"
+              >
+                <CheckCircle size={13} /> Approve
+              </button>
+              <button
+                onClick={() => onToolConfirm(false)}
+                className="flex items-center gap-1.5 px-3 py-1 bg-panel hover:bg-panel-strong text-fg-muted rounded-md border border-border-soft transition-colors text-xs"
+              >
+                <XCircle size={13} /> Reject
+              </button>
+            </div>
+            {onApproveTask && pendingToolConfirm.tool !== 'executeCommand' && (
+              <button
+                onClick={onApproveTask}
+                className="mt-2 flex items-center gap-1.5 px-3 py-1 bg-emerald-500/20 hover:bg-emerald-500/40 text-emerald-300 rounded-md border border-emerald-500/30 transition-colors text-xs"
+                title="Approves this edit AND lets the rest of this task's file edits run without asking. Commands and tests still confirm every time."
+              >
+                <CheckCircle size={13} /> Approve + auto-approve file edits this conversation
+              </button>
+            )}
+          </div>
+        </motion.div>
+      )}
+
+      {pendingMemorySuggestion && (
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="flex flex-col items-start"
+        >
+          <div className="bg-teal-500/10 border border-teal-500/20 text-teal-200 rounded-xl px-4 py-3 max-w-[85%]">
+            <div className="flex items-center gap-2 text-teal-400">
+              <Brain size={13} />
+              <span className="font-bold text-[10px] tracking-wider uppercase">Memory suggestion</span>
+            </div>
+            <p className="text-xs mt-2">{pendingMemorySuggestion.message}</p>
+            <div className="flex flex-wrap gap-2 mt-3">
+              <button
+                onClick={() => onMemorySuggestionRespond?.(true)}
+                className="flex items-center gap-1.5 px-3 py-1 bg-teal-500/20 hover:bg-teal-500/40 text-teal-300 rounded-md border border-teal-500/30 transition-colors text-xs font-bold"
+              >
+                <CheckCircle size={13} /> Add to CLAUDE.md
+              </button>
+              <button
+                onClick={() => onMemorySuggestionRespond?.(false)}
+                className="flex items-center gap-1.5 px-3 py-1 bg-panel hover:bg-panel-strong text-fg-muted rounded-md border border-border-soft transition-colors text-xs"
+              >
+                <XCircle size={13} /> Not now
+              </button>
+            </div>
+          </div>
+        </motion.div>
+      )}
+    </>
+  );
+}
