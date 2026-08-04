@@ -22,7 +22,8 @@ import { semanticMatcher } from '../semanticMatcher.js';
 import { readDistillations, generateDistillationSuggestions, applyDistillation, clearDistillations } from '../distillation.js';
 import { trackCommand, trackFileEdit, trackQuestion, addCandidateAddition, getMemorySummary, addToClaudeMd } from '../projectMemory.js';
 import { state, pendingConfirmations, pendingToolConfirmations, sweepExpiredConfirmations, withPortCollisionWarning } from '../state.js';
-import { probeUrl } from '../livenessProbe.js';
+import { probeUrl, candidateDevUrls } from '../livenessProbe.js';
+import { recordDevUrl } from '../devUrlStore.js';
 import { wss, broadcast } from '../wsServer.js';
 
 const pendingMemorySuggestions = new Map();
@@ -756,6 +757,23 @@ async function handleExecute(ws, parsed, sessionContext) {
         ws.send(JSON.stringify({ type: 'answer', data: `**${project.name}**'s last-known address **${devUrl}** isn't responding right now. Say "run the site" to start it.` }));
       }
     } else {
+      // Nothing recorded (2026-08-04, reported directly): a server started OUTSIDE the console
+      // that it never observed was invisible. Best-effort discovery before giving guidance —
+      // probe the ports the project's own package.json scripts reference (vite --port=N etc.,
+      // console's own port excluded), 1.5s bound each, and answer honestly if one responds.
+      const candidates = candidateDevUrls(project);
+      let found = null;
+      for (const candidate of candidates) {
+        const probe = await probeUrl(candidate, 1500);
+        if (probe.alive) { found = candidate; break; }
+      }
+      if (found) {
+        recordDevUrl(project.id, found);
+        const answer = withPortCollisionWarning(`The dev server is running at **${found}** — open it in your browser. It was started outside the console, so I found it by probing the ports its own \`package.json\` scripts reference.`, found);
+        ws.send(JSON.stringify({ type: 'answer', data: answer }));
+        ws.send(JSON.stringify({ type: 'end' }));
+        return;
+      }
       const pkgJson = project.codebaseIndex?.keyFiles?.['package.json'];
       let scripts = {};
       if (pkgJson) { try { scripts = JSON.parse(pkgJson).scripts || {}; } catch {} }

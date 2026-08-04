@@ -12,7 +12,8 @@ import { semanticMatcher } from '../semanticMatcher.js';
 import { formatApiRoutes, findTodos, findBiggestFiles, findRecentActivity } from '../codebaseIndexer.js';
 import { isSafeParamValue } from '../paramCommand.js';
 import { chatOnce } from '../ollama.js';
-import { probeUrl, scanProjectServers } from '../livenessProbe.js';
+import { probeUrl, scanProjectServers, candidateDevUrls } from '../livenessProbe.js';
+import { recordDevUrl } from '../devUrlStore.js';
 
 /**
  * Pulls a filename and (optionally) quoted content out of a natural-language trigger-mode
@@ -1562,7 +1563,25 @@ export async function handleBuiltinIntent(ws, action, input, project, sessionCon
         ws.send(JSON.stringify({ type: 'answer', data: `**[${project.name}]** has no console-tracked server, and its last-known address **${url}** isn't responding${probe.error === 'timeout' ? ' (timed out)' : ''}. Say "run the site" to start it.` }));
       }
     } else {
-      ws.send(JSON.stringify({ type: 'answer', data: `**[${project.name}]** has no server running right now. Say "run the site" to start it, or "how do I run this" for instructions.` }));
+      // Nothing tracked and no recorded URL (2026-08-04, reported directly: a server started
+      // OUTSIDE the console that it never observed was invisible). Best-effort discovery —
+      // probe the ports the project's own package.json scripts reference (vite --port=N etc.,
+      // console's own port excluded), each bounded at 1.5s, and report honestly if one answers.
+      const candidates = candidateDevUrls(project);
+      let found = null;
+      for (const candidate of candidates) {
+        const probe = await probeUrl(candidate, 1500);
+        if (probe.alive) { found = candidate; break; }
+      }
+      if (found) {
+        recordDevUrl(project.id, found);
+        ws.send(JSON.stringify({ type: 'answer', data: withPortCollisionWarning(
+          `**[${project.name}]** is responding at **${found}** — started outside the console (I probed the ports its own \`package.json\` scripts reference), so I can't stop it from here.`,
+          found
+        ) }));
+      } else {
+        ws.send(JSON.stringify({ type: 'answer', data: `**[${project.name}]** has no server running right now. Say "run the site" to start it, or "how do I run this" for instructions.` }));
+      }
     }
   } else if (action === 'project.context.scan_servers') {
     // Requested directly (2026-08-04): probe every project's last-known dev URL on demand and
@@ -1571,10 +1590,10 @@ export async function handleBuiltinIntent(ws, action, input, project, sessionCon
     // HAVE a recorded URL are probed at all.
     const found = await scanProjectServers(state.activeProjectsCache, { timeoutMs: 2000, concurrency: 3 });
     if (found.length === 0) {
-      ws.send(JSON.stringify({ type: 'answer', data: `No dev-server URLs are known for any project right now. Start something with "run the site" first, then scan again.` }));
+      ws.send(JSON.stringify({ type: 'answer', data: `No dev-server URLs are known for any project right now, and none of the ports its \`package.json\` scripts reference are responding either. Start something with "run the site" first, then scan again.` }));
     } else {
       const lines = found.map((f) =>
-        `- **[${f.projectName}]** ${f.url} — ${f.alive ? `✅ responding${f.status ? ` (HTTP ${f.status})` : ''}` : `❌ not responding`}`
+        `- **[${f.projectName}]** ${f.url} — ${f.alive ? `✅ responding${f.status ? ` (HTTP ${f.status})` : ''}${f.viaCandidate ? ' *(found by probing its package.json ports — not previously recorded)*' : ''}` : `❌ not responding${f.viaCandidate ? ' *(candidate port from its package.json)*' : ''}`}`
       ).join('\n');
       const liveCount = found.filter((f) => f.alive).length;
       ws.send(JSON.stringify({ type: 'answer', data: `### Server scan (${liveCount}/${found.length} alive)\n\n${lines}\n\nServers started outside the console (or before a restart) show as not console-tracked — I can only probe their URLs, not stop them.` }));
