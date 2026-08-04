@@ -3,6 +3,7 @@ import Fuse from 'fuse.js';
 import { INTENTS } from './intentsData.js';
 import { getEffectiveThreshold } from './intentTelemetry.js';
 import { broadcast } from './wsServer.js';
+import { findPreSemanticOverride } from './preSemanticOverrides.js';
 
 env.cacheDir = './.cache/xenova';
 
@@ -239,62 +240,15 @@ class SemanticMatcher {
 
     const _stages = [];
 
-    // 0. Literal pre-checks for phrases confirmed (via live user testing, not just theory) to get
-    // misclassified by pure embedding similarity to a superficially-similar but wrong intent —
-    // e.g. "initialize git" / "deploy to my git" both landed on git_status ("check git") instead
-    // of git_init / system.chit_chat.deploy, and "add X to gitignore" landed on a generic tech
-    // preview response instead of git_ignore_add. These three tokens are unambiguous enough in
-    // this app's domain that a literal match should always win outright, before the embedding
-    // stage ever gets a vote. Keep this list short and deliberately narrow — it's a targeted fix
-    // for confirmed traps, not a replacement for the semantic/fuzzy/keyword pipeline below.
-    const PRE_SEMANTIC_OVERRIDES = [
-      { intent: 'git_init', pattern: /\bgit\s+init\b|\b(initialize|init)\b.*\brepo(sitory)?\b|\b(initialize|init)\b.*\bgit\b/i },
-      { intent: 'git_ignore_add', pattern: /\bgiti?gnore\b/i },
-      { intent: 'system.chit_chat.deploy', pattern: /\bdeploy\b|\bpush\s+live\b/i },
-      // Confirmed live: "add a file" / "can you help me add a file" (no filename, no git
-      // context) was resolving to git_add instead of file_create — both intents' example
-      // phrases share the bag-of-words "add" + "file(s)", and git_add's semantic-embedding
-      // cluster was winning even for plain file-creation requests. Only fires when there's no
-      // git-specific word anywhere in the input, so "add files to git" / "stage all files" /
-      // "add new files to git" still resolve to git_add normally. Also excludes "(add/append)
-      // ... to (the/this) file" phrasing — that's file_append territory ("add this to the
-      // file"), not a new-file request, so it's left to fall through to normal matching instead.
-      { intent: 'file_create', pattern: /^(?!.*\b(git|stage|staging|track|tracking|index|commit|repo|repository)\b)(?!.*\bto\s+(?:the\s+|this\s+|that\s+)?file\b).*\b(add|create|make|write|generate)\b.*\bfile\b/i },
-      // Confirmed live: "Can I attach the github link" had no matching intent at all before
-      // git_remote_add existed, and fell through to an unrelated generic help response. Requires
-      // both a connect-style verb AND a github/remote-url noun so it doesn't collide with
-      // "push to github" / "deploy to github" (system.chit_chat.deploy), which mention github
-      // without asking to attach/set a link.
-      { intent: 'git_remote_add', pattern: /\b(attach|add|set|connect|link|point)\b.{0,20}\b(github|remote)\b.{0,20}\b(link|url|repo|repository|address|origin)\b/i },
-      // Phase 1 (2026-08-03, measured live with real embeddings): "who uses main.py" scored
-      // 0.826 for the new file_find intent ("where is main.py" — the filename dominates the
-      // vector) vs 0.770 for project.context.file_relations, silently flipping a documented,
-      // confirmed-live intent's own territory. The "who/which ... uses/imports/references"
-      // question-verb is unambiguous in this app's domain — it's always file_relations, never a
-      // locate request — so it wins outright before the embedding stage. Deliberately narrow:
-      // second alternative requires the "which/what + files/modules + verb" shape so "what is
-      // imported" (project.context.dependencies) and "what does this file import" stay untouched.
-      { intent: 'project.context.file_relations', pattern: /\bwho\s+(?:uses?|imports?|references?|depends\s+on)\b|\b(?:which|what)\s+(?:files?|modules?)\s+(?:use|import|reference)\b/i },
-      // Confirmed via the Matchday-Exchange harness (2026-08-04, real embeddings): bare
-      // imperative "run server" scored for project.context.scan_servers and "run its server"
-      // scored for project.context.dev_server_status — both informative intents whose example
-      // clusters share the "server/run" tokens. Neither is ever a legitimate match for an
-      // imperative launch request (scan/status phrases are question-shaped: "is the server
-      // running", "which servers are up", "scan the servers" — all begin with a non-run verb),
-      // so a leading run-family verb + a server/backend/api noun is unambiguous here and wins
-      // outright before embedding. Once routed to run_project, stage 1b's config-entry check or
-      // builtinIntents.js's findMentionedScript picks the real server script. Deliberately
-      // anchored to the START (so "check the server status" / "is the server up" are untouched)
-      // AND the noun to the END with an optional trailing "please" — "run api tests" / "run
-      // server tests" must stay with run_tests, not be stolen by the run_project redirect.
-      { intent: 'run_project', pattern: /^(?:run|start|launch|boot|restart|spin\s+up)\s+(?:the\s+|its\s+|your\s+|my\s+)?(?:server|backend|api)\b(?:\s+please)?$/i },
-    ];
-    for (const { intent, pattern } of PRE_SEMANTIC_OVERRIDES) {
-      if (pattern.test(inputStr)) {
-        _stages.push({ stage: 'literal_override', intent, confidence: 0.9, matched: true });
-        this._lastTelemetry = { stages: _stages, winner: 'literal_override', finalIntent: intent, finalConfidence: 0.9 };
-        return { intent, confidence: 0.9, source: 'keyword' };
-      }
+    // 0. Literal pre-checks for phrases confirmed (via live user testing, not just theory) to
+    // get misclassified by pure embedding similarity to a superficially-similar but wrong
+    // intent. Data + rationale live in preSemanticOverrides.js (Phase 5 split, 2026-08-04) —
+    // the check itself is unchanged.
+    const override = findPreSemanticOverride(inputStr);
+    if (override) {
+      _stages.push({ stage: 'literal_override', intent: override.intent, confidence: 0.9, matched: true });
+      this._lastTelemetry = { stages: _stages, winner: 'literal_override', finalIntent: override.intent, finalConfidence: 0.9 };
+      return { intent: override.intent, confidence: 0.9, source: 'keyword' };
     }
 
     // 1. Semantic matching via embedding cosine similarity
