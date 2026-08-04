@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react'
 import { TerminalMessage, Project, AIStatus, PendingToolConfirm, PendingMemorySuggestion, ToolCallEntry } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
 import ReactMarkdown from 'react-markdown';
-import { Terminal as TerminalIcon, Send, Search, CheckCircle, XCircle, Brain, Loader2, History, Copy, FileDown, ListChecks, Download, Square, Maximize2, Minimize2, ChevronDown, ChevronUp, AlertTriangle } from 'lucide-react';
+import { Terminal as TerminalIcon, Send, Search, CheckCircle, XCircle, Brain, Loader2, History, Copy, FileDown, ListChecks, Download, Square, Maximize2, Minimize2, ChevronDown, ChevronUp, AlertTriangle, Settings } from 'lucide-react';
 import { AIAssistantInterface } from './ui/AIAssistantInterface';
 import { ToolHistoryPanel } from './ToolHistoryPanel';
 import { ProcessDock, ProcessInfo } from './ProcessDock';
@@ -117,6 +117,16 @@ function OutputBlock({ content }: { content: string }) {
   );
 }
 
+/** The server appends a performance note to the end of streamed AI replies (see
+ * server/ollama.js chatStream): `\n\n_(2.0s, 9 tok/s)_`. Strip it from the rendered
+ * markdown and surface it as a muted footer below the response block instead. */
+const TELEMETRY_RE = /\n\n_\(([\d.]+s, \d+ tok\/s)\)_$/;
+function splitTelemetry(content: string): { body: string; meta: string | null } {
+  const m = content.match(TELEMETRY_RE);
+  if (!m) return { body: content, meta: null };
+  return { body: content.slice(0, content.length - m[0].length), meta: m[1] };
+}
+
 /** Parses a JSON code-block child string and returns the parsed object, or null. */
 function tryParseJsonBlock(children: React.ReactNode): Record<string, unknown> | null {
   const text = typeof children === 'string' ? children : '';
@@ -185,6 +195,7 @@ export const Terminal = ({ messages, onSendMessage, onSearch, onDeepResearch, ac
   const [showSearchOverlay, setShowSearchOverlay] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [historyVersion, setHistoryVersion] = useState(0);
+  const [showSessionMenu, setShowSessionMenu] = useState(false);
   const endRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -302,6 +313,10 @@ export const Terminal = ({ messages, onSendMessage, onSearch, onDeepResearch, ac
 
   const isBlocked = !!pendingConfirm || !!pendingToolConfirm;
 
+  // Full-screen mode centers the whole chat column (thread + input) so bubbles never stretch
+  // across a wide monitor — Claude/ChatGPT-style readable column. Non-fullscreen is untouched.
+  const centerCol = isFullscreen ? 'mx-auto w-full max-w-3xl' : '';
+
   // Custom markdown components for structured JSON blocks
   const markdownComponents = useMemo(() => ({
     code({ className, children, ...props }: any) {
@@ -358,7 +373,7 @@ export const Terminal = ({ messages, onSendMessage, onSearch, onDeepResearch, ac
 
   return (
     <div className="flex flex-col h-full bg-overlay/80 backdrop-blur-md rounded-2xl border border-border-soft relative">
-      <div className="flex items-center gap-3 px-6 py-4 border-b border-border-soft bg-panel">
+      <div className="flex items-center gap-3 px-6 py-4 border-b border-border-soft bg-panel flex-wrap">
         <TerminalIcon size={18} className="text-[#3d6bff]" />
         <span className="text-sm text-fg-muted flex-1">
           {activeProject ? `Connected: ${activeProject.name}` : 'No Project Selected'}
@@ -394,11 +409,38 @@ export const Terminal = ({ messages, onSendMessage, onSearch, onDeepResearch, ac
               <ListChecks size={14} />
               {toolHistory.length > 0 && <span className="text-[10px]">{toolHistory.length}</span>}
             </button>
+            <div className="relative flex-shrink-0">
+              <button onClick={() => setShowSessionMenu(!showSessionMenu)} className={`p-1.5 rounded-lg transition-colors flex-shrink-0 ${showSessionMenu ? 'text-fg-strong bg-panel-strong' : 'text-fg-dim hover:text-fg-strong'}`} title="Session menu">
+                <Settings size={14} />
+              </button>
+              {showSessionMenu && (
+                <>
+                  <div className="fixed inset-0 z-40" onClick={() => setShowSessionMenu(false)} />
+                  <div className="absolute right-0 top-full mt-1 z-50 bg-surface border border-border-soft rounded-lg shadow-2xl py-1 min-w-[200px]">
+                    <button onClick={() => { setShowSessionMenu(false); onExportMarkdown(); }} className="w-full text-left px-3 py-1.5 text-xs text-fg-muted hover:bg-panel flex items-center gap-2 transition-colors">
+                      <Download size={12} /> Export as Markdown
+                    </button>
+                    <button onClick={() => { setShowSessionMenu(false); onExportJson(); }} className="w-full text-left px-3 py-1.5 text-xs text-fg-muted hover:bg-panel flex items-center gap-2 transition-colors">
+                      <FileDown size={12} /> Export as JSON
+                    </button>
+                    <button onClick={() => { setShowSessionMenu(false); onToggleToolHistory(); }} className="w-full text-left px-3 py-1.5 text-xs text-fg-muted hover:bg-panel flex items-center gap-2 transition-colors">
+                      <ListChecks size={12} /> Tool Call History
+                    </button>
+                    {workspaceProjects.length > 0 && (
+                      <button onClick={() => { setShowSessionMenu(false); clearWorkspace(); }} className="w-full text-left px-3 py-1.5 text-xs text-fg-muted hover:bg-panel flex items-center gap-2 transition-colors">
+                        <XCircle size={12} /> Clear Workspace
+                      </button>
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
           </div>
         )}
       </div>
       
-      <div className="flex-1 overflow-y-auto p-4 space-y-3">
+      <div className="flex-1 overflow-y-auto p-4">
+        <div className={`${centerCol} space-y-3`}>
         <AnimatePresence initial={false}>
           {messages.map((msg, i) => {
             if (msg.type === 'output') {
@@ -413,6 +455,7 @@ export const Terminal = ({ messages, onSendMessage, onSearch, onDeepResearch, ac
                 </motion.div>
               );
             }
+            const tel = splitTelemetry(msg.content);
             return (
             <motion.div
               key={msg.id || i}
@@ -437,11 +480,16 @@ export const Terminal = ({ messages, onSendMessage, onSearch, onDeepResearch, ac
                      <div className="whitespace-pre-wrap text-sm leading-relaxed">{msg.content}</div>
                    </div>
                 ) : msg.type === 'user' || !msg.isMarkdown ? (
-                   <div className="whitespace-pre-wrap text-sm leading-relaxed">{msg.content}</div>
+                   <div className="whitespace-pre-wrap text-sm leading-relaxed">{tel.body}</div>
                 ) : (
-                   <div className="prose prose-sm max-w-none prose-pre:bg-scrim prose-pre:border prose-pre:border-border-soft prose-pre:p-0 prose-p:leading-relaxed">
-                      <ReactMarkdown components={markdownComponents}>{msg.content}</ReactMarkdown>
-                    </div>
+                   <>
+                     <div className="prose prose-sm max-w-none prose-pre:bg-scrim prose-pre:border prose-pre:border-border-soft prose-pre:p-0 prose-p:leading-relaxed">
+                       <ReactMarkdown components={markdownComponents}>{tel.body}</ReactMarkdown>
+                     </div>
+                     {tel.meta && (
+                       <div className="mt-2 text-xs font-mono text-fg-dim">{tel.meta}</div>
+                     )}
+                   </>
                 )}
                 
                 {msg.suggestions && msg.suggestions.length > 0 && (
@@ -639,6 +687,7 @@ export const Terminal = ({ messages, onSendMessage, onSearch, onDeepResearch, ac
             )}
           </motion.div>
         )}
+        </div>
       </div>
 
       <ToolHistoryPanel toolHistory={toolHistory} show={showToolHistory} onToggle={onToggleToolHistory} onRerun={onRerunToolCall} />
@@ -654,7 +703,7 @@ export const Terminal = ({ messages, onSendMessage, onSearch, onDeepResearch, ac
       />
 
       {ollamaStatus && (
-        <div className="flex items-center gap-2 px-4 py-1.5 bg-panel border-t border-border-soft flex-wrap">
+        <div className={`${centerCol} flex items-center gap-2 px-4 py-1.5 bg-panel border-t border-border-soft flex-wrap`}>
           <button onClick={onAIToggle} className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] transition-colors border flex-shrink-0 ${aiEnabled ? 'bg-teal-500/20 border-teal-500/40 text-teal-300' : 'bg-panel border-border-soft text-fg-dim hover:text-fg-muted'}`}>
             <Brain size={13} />
             <span>AI {aiEnabled ? 'ON' : 'OFF'}</span>
@@ -697,11 +746,11 @@ export const Terminal = ({ messages, onSendMessage, onSearch, onDeepResearch, ac
       )}
 
       {aiEnabled ? (
-        <div className="p-3 bg-panel border-t border-border-soft">
+        <div className={`${centerCol} p-3 bg-panel border-t border-border-soft`}>
           <AIAssistantInterface onSend={(text) => { onSendMessage(text); setInput(''); }} onSearch={(q) => { onSearch?.(q); }} onDeepResearch={(q) => { onDeepResearch?.(q); }} disabled={!activeProject || aiThinking || isBlocked} placeholder={isBlocked ? 'Resolve the pending confirmation first (Esc to cancel)...' : aiThinking ? 'AI is thinking...' : 'Ask me anything...'} />
         </div>
       ) : (
-        <form onSubmit={handleSubmit} className="p-4 bg-panel border-t border-border-soft">
+        <form onSubmit={handleSubmit} className={`${centerCol} p-4 bg-panel border-t border-border-soft`}>
           <div className="relative flex items-center">
             <input
               ref={inputRef}
@@ -732,7 +781,7 @@ export const Terminal = ({ messages, onSendMessage, onSearch, onDeepResearch, ac
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 10 }}
-            className="absolute bottom-20 left-4 right-4 bg-surface border border-border-soft rounded-xl shadow-2xl overflow-hidden z-50"
+            className={`absolute bottom-20 z-50 ${isFullscreen ? 'inset-x-0 mx-auto max-w-3xl' : 'left-4 right-4'} bg-surface border border-border-soft rounded-xl shadow-2xl overflow-hidden`}
           >
             <div className="flex items-center gap-2 px-4 py-3 border-b border-border-soft bg-panel">
               <History size={14} className="text-fg-dim" />

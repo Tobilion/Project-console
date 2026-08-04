@@ -2045,6 +2045,26 @@ Frontend-only; no intent/matcher/example-phrase or server changes (check-intents
 
 ## UI + AI-stream fixes (2026-08-04, found in the NetPulse chat export + fullscreen/light testing)
 
+- **ADDENDUM 2 (full-screen layout + telemetry, 2026-08-04):** all in `Terminal.tsx` only.
+  Fullscreen mode now centers the entire chat column (`mx-auto w-full max-w-3xl` via
+  `centerCol`, applied to the message thread, the AI status row, and both input containers)
+  so bubbles never stretch across a wide monitor; the Ctrl+R history overlay centers itself
+  too (`inset-x-0 mx-auto max-w-3xl` when fullscreen, `left-4 right-4` otherwise). Non-
+  fullscreen layout is untouched. Header keeps the fullscreen toggle, Markdown/JSON exports,
+  and `>_ Connected: <Project>` badge (top-left, unchanged); the header row gained
+  `flex-wrap` and a new **session menu** (⚙ `Settings` icon) that reuses existing handlers
+  only — Export Markdown / Export JSON / Tool Call History / Clear Workspace (when the
+  workspace is non-empty) — no new WS messages. Performance telemetry: the server's trailing
+  `\n\n_(2.0s, 9 tok/s)_` content note (appended by `server/ollama.js` `chatStream`) is now
+  stripped from the rendered markdown by `splitTelemetry()` (module-level `TELEMETRY_RE`,
+  exact end-anchored match so real content can't be eaten) and rendered as a muted footer
+  (`text-xs font-mono text-fg-dim`) below the response block; raw content in storage/exports
+  is unchanged. Status-card styling (item 3b: "subtle dark surface cards") was already
+  delivered by Phase 7 — `OutputBlock` is `bg-surface border-border` with a `p-3 font-mono`
+  body and no heavy grey/maroon boxes remain — no further change needed. Ctrl+R history was
+  already implemented (Terminal.tsx keydown handler + overlay) and is preserved as-is.
+  Verified: `tsc --noEmit` clean, Vite serves the new module; NOT visually re-checked in a
+  browser at 1920px fullscreen — the centered column and menu need a live look.
 - **Home button did nothing once a project was selected.** `App.tsx`'s Home set `showWelcome`,
   but the welcome tree only rendered when `showWelcome && !activeProject` — with an active project
   (the normal state) it was a dead button. The `!activeProject` condition was dropped (WelcomeScreen
