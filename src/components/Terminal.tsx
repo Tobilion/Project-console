@@ -2,10 +2,12 @@ import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react'
 import { TerminalMessage, Project, AIStatus, PendingToolConfirm, PendingMemorySuggestion, ToolCallEntry } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
 import ReactMarkdown from 'react-markdown';
-import { Terminal as TerminalIcon, Send, Search, CheckCircle, XCircle, Brain, Loader2, History, Copy, FileDown, ListChecks, Download, Square, Maximize2, Minimize2, ChevronDown, ChevronUp, AlertTriangle, Settings } from 'lucide-react';
+import { Terminal as TerminalIcon, Send, Search, CheckCircle, XCircle, Brain, Loader2, History, FileDown, ListChecks, Download, Square, Maximize2, Minimize2, AlertTriangle, Settings } from 'lucide-react';
 import { AIAssistantInterface } from './ui/AIAssistantInterface';
 import { ToolHistoryPanel } from './ToolHistoryPanel';
 import { ProcessDock, ProcessInfo } from './ProcessDock';
+import { OutputBlock } from './TerminalOutputBlock';
+import { StructuredJsonBlock } from './StructuredJsonBlock';
 
 const MAX_HISTORY = 200;
 
@@ -74,49 +76,6 @@ interface TerminalProps {
   onToggleDock?: () => void;
 }
 
-/** Phase 6 (PASS 6.3): a command's output rendered as a collapsible terminal-style block —
- *  dark mono, capped height + scroll, copy button, auto-collapsed. The header keeps the ▶
- *  start line visible at all times; the body expands on click. */
-function OutputBlock({ content }: { content: string }) {
-  const [expanded, setExpanded] = useState(false);
-  const [copied, setCopied] = useState(false);
-  const firstLine = content.split('\n').find(l => l.trim()) || content;
-  const displayCommand = firstLine.replace(/^Executing:\s*/, '').trim();
-  const handleCopy = () => {
-    navigator.clipboard.writeText(content);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1500);
-  };
-  return (
-    <div className="w-full rounded-lg border border-border bg-surface overflow-hidden">
-      <div className="flex items-center gap-2 px-3 py-1.5">
-        <button onClick={() => setExpanded(!expanded)} className="flex items-center gap-2 flex-1 text-left min-w-0" title={expanded ? 'Collapse output' : 'Expand output'}>
-          <TerminalIcon size={12} className="text-accent flex-shrink-0" />
-          <span className="text-xs font-mono text-muted-foreground truncate">▶ {displayCommand || 'command output'}</span>
-        </button>
-        <button onClick={handleCopy} className="text-fg-dim hover:text-fg-strong transition-colors flex-shrink-0" title="Copy output">
-          {copied ? <span className="text-[10px] text-teal-400">Copied</span> : <Copy size={11} />}
-        </button>
-        <button onClick={() => setExpanded(!expanded)} className="text-fg-dim hover:text-fg-strong transition-colors flex-shrink-0" title={expanded ? 'Collapse output' : 'Expand output'}>
-          {expanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
-        </button>
-      </div>
-      <AnimatePresence initial={false}>
-        {expanded && (
-          <motion.div
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: 'auto', opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            className="overflow-hidden border-t border-border"
-          >
-            <pre className="max-h-64 overflow-y-auto p-3 text-xs text-foreground font-mono whitespace-pre-wrap bg-muted/40">{content}</pre>
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </div>
-  );
-}
-
 /** The server appends a performance note to the end of streamed AI replies (see
  * server/ollama.js chatStream): `\n\n_(2.0s, 9 tok/s)_`. Strip it from the rendered
  * markdown and surface it as a muted footer below the response block instead. */
@@ -125,60 +84,6 @@ function splitTelemetry(content: string): { body: string; meta: string | null } 
   const m = content.match(TELEMETRY_RE);
   if (!m) return { body: content, meta: null };
   return { body: content.slice(0, content.length - m[0].length), meta: m[1] };
-}
-
-/** Parses a JSON code-block child string and returns the parsed object, or null. */
-function tryParseJsonBlock(children: React.ReactNode): Record<string, unknown> | null {
-  const text = typeof children === 'string' ? children : '';
-  if (!text) return null;
-  try {
-    const parsed = JSON.parse(text);
-    if (parsed && typeof parsed === 'object') return parsed;
-  } catch {}
-  return null;
-}
-
-/** Renders a ```json block with copy button and type-specific actions when in structured mode. */
-function StructuredJsonBlock({ content, onSendMessage }: { content: string; onSendMessage: (msg: string) => void }) {
-  const [copied, setCopied] = useState(false);
-  const parsed = tryParseJsonBlock(content);
-  const dataType = parsed?.type as string || 'generic';
-  const handleCopy = () => {
-    navigator.clipboard.writeText(content);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1500);
-  };
-  const handleApply = () => {
-    const path = parsed?.data && typeof parsed.data === 'object' ? (parsed.data as any).path || null : null;
-    if (path) {
-      onSendMessage(`Write the following to ${path}:\n\`\`\`\n${JSON.stringify(parsed.data, null, 2)}\n\`\`\``);
-    } else {
-      onSendMessage(`Apply this to the project:\n\`\`\`json\n${content}\n\`\`\``);
-    }
-  };
-
-  return (
-    <div className="relative group">
-      <div className="flex items-center justify-between px-3 py-1.5 bg-scrim-faint border-b border-border-soft rounded-t-lg">
-        <span className="text-[10px] font-mono text-fg-dim uppercase tracking-wider">
-          JSON {dataType !== 'generic' ? `— ${dataType.replace('_', ' ')}` : ''}
-        </span>
-        <div className="flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
-          <button onClick={handleCopy} className="p-1 text-fg-dim hover:text-fg-strong transition-colors" title="Copy JSON">
-            {copied ? <span className="text-[10px] text-teal-400">Copied</span> : <Copy size={12} />}
-          </button>
-          {parsed && (
-            <button onClick={handleApply} className="p-1 text-fg-dim hover:text-teal-400 transition-colors" title={parsed?.data && typeof parsed.data === 'object' && (parsed.data as any).path ? `Apply to ${(parsed.data as any).path}` : 'Apply to project'}>
-              <FileDown size={12} />
-            </button>
-          )}
-        </div>
-      </div>
-      <pre className="bg-scrim border border-border-soft rounded-b-lg p-3 overflow-x-auto">
-        <code className="text-xs text-fg">{content}</code>
-      </pre>
-    </div>
-  );
 }
 
 const AI_MODES = [
