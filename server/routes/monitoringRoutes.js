@@ -70,14 +70,33 @@ export function registerMonitoringRoutes(app) {
   });
 
   // Per-project dashboard aggregating git status, recent commits, dev URLs, and
-  // running processes. Cached for 30s to avoid hammering git on every request.
+  // running processes. Cached for 30s to avoid hammering git on every request —
+  // but only served while the cheap volatile state (project list, running
+  // processes, dev URLs) is byte-identical to what the cache was built from.
+  // Any start/stop/URL-detect invalidates it implicitly, so a stopped process
+  // can never stay "running" in the grid until the TTL expires (fixed 2026-08-04:
+  // reported directly — stop/cancel didn't reflect live; the WS-triggered refetch
+  // was hitting a stale cache). The git calls are the expensive part and they're
+  // still TTL-gated.
   let dashboardCache = null;
   let dashboardCacheTime = 0;
+  let dashboardCacheSig = '';
   const CACHE_TTL = 30000;
+
+  function volatileSignature() {
+    const parts = [];
+    for (const project of state.activeProjectsCache) parts.push(`p:${project.id}`);
+    for (const [pid, proc] of runningProcesses) {
+      parts.push(`r:${pid}|${proc.command}|${proc.startedAt || ''}`);
+    }
+    for (const [pid, url] of state.lastDevUrls) parts.push(`u:${pid}|${url}`);
+    return parts.sort().join(';');
+  }
 
   app.get('/api/dashboard', async (req, res) => {
     const now = Date.now();
-    if (dashboardCache && (now - dashboardCacheTime < CACHE_TTL)) {
+    const sig = volatileSignature();
+    if (dashboardCache && sig === dashboardCacheSig && (now - dashboardCacheTime < CACHE_TTL)) {
       return res.json(dashboardCache);
     }
 
@@ -118,6 +137,7 @@ export function registerMonitoringRoutes(app) {
 
     dashboardCache = results;
     dashboardCacheTime = now;
+    dashboardCacheSig = sig;
     res.json(results);
   });
 }
