@@ -2115,6 +2115,29 @@ Frontend-only; no intent/matcher/example-phrase or server changes (check-intents
   over, each appending its own activation banner. Wrapped in a `toggleBusyRef` in-flight guard
   (try/finally, so error paths reset it too).
 
+## User profile (2026-08-04, requested directly)
+
+- App-global identity (name/title/customRole) persisted to `data/user-profile.json` (NOT per-
+  project `console.config.json` — deliberate: the profile is user identity, not project config,
+  so it has one owner, never triggers the per-project config file watcher, and `data/` is already
+  excluded from Vite's watch so saves never cause an HMR reload). `data/user-profile.json` is
+  tracked by git (personal config, not a secret) — unlike the gitignored `data/conversations/`,
+  `data/near-misses/`, `data/telemetry/`.
+- `server/routes/profileRoutes.js` — `GET /api/profile` (reads file, missing/corrupt → defaults,
+  never writes) and `POST /api/profile` (sanitizes: strings only, trimmed, control chars
+  stripped, 120-char cap, invalid fields fall back to current value; mkdir + write; returns the
+  sanitized profile so the client can reflect it). Both registered in `server/index.js`.
+- Frontend: `src/hooks/useUserProfile.ts` (fetch on mount with the same defaults as the server —
+  first paint is identical to the old hardcoded hero; `updateProfile` is optimistic + POST and
+  reflects the server's sanitized response back; `getFormattedName()` returns bare name when
+  title is empty/'none'), `src/components/UserProfileModal.tsx` (gear ⚙ `Settings` button in
+  App's header right cluster → modal with Name/Title/Custom Role, Esc/backdrop close, Save
+  disabled while any field is empty). The welcome hero's `TextScramble` now takes a `greeting`
+  prop built from `getFormattedName()` — TextScramble re-animates when the profile loads/updates.
+- Client-only for now: server-side chit-chat greeting pools (`builtinIntents.js`) are untouched
+  — making them profile-aware would need server-side profile reads and was explicitly out of
+  scope for this feature.
+
 ## Conventions
 
 - No file over ~400 lines; split by concern (see `server/wsHandlers/` for the pattern).
