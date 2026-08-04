@@ -303,6 +303,10 @@ export async function appendMessage(sessionId, message) {
     role: message.role,
     content: message.content,
     timestamp: Date.now(),
+    // Persisted so a reloaded session can restore markdown rendering (and plain output)
+    // exactly as it appeared live. Omitted (not false) when the caller doesn't say —
+    // storedToTerminalMessages then falls back to role-based defaults for legacy records.
+    ...(message.isMarkdown !== undefined ? { isMarkdown: message.isMarkdown } : {}),
   };
 
   // Append to NDJSON log (append-only — safe, fast)

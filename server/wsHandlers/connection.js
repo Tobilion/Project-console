@@ -77,16 +77,33 @@ function onConnection(ws) {
       if (sessionContext.currentSessionId && (parsed.type === 'answer' || parsed.type === 'error_output' || parsed.type === 'warning') && parsed.data) {
         appendMessage(sessionContext.currentSessionId, {
           role: parsed.type === 'error_output' ? 'error' : parsed.type === 'warning' ? 'warning' : 'bot',
-          content: typeof parsed.data === 'string' ? parsed.data : JSON.stringify(parsed.data)
+          content: typeof parsed.data === 'string' ? parsed.data : JSON.stringify(parsed.data),
+          // Answers are always markdown-rendered live (useConsole.ts sets isMarkdown: true);
+          // persisting the flag is what lets a reloaded chat keep the styling.
+          isMarkdown: parsed.type === 'answer',
         }).catch(() => {});
       } else if (sessionContext.currentSessionId && (parsed.type === 'start' || parsed.type === 'output') && parsed.data) {
         commandOutputBuffer += parsed.data;
       } else if (sessionContext.currentSessionId && parsed.type === 'end') {
         if (parsed.data) commandOutputBuffer += parsed.data;
         if (commandOutputBuffer.trim()) {
-          appendMessage(sessionContext.currentSessionId, { role: 'bot', content: commandOutputBuffer.trim() }).catch(() => {});
+          // Raw command output — explicitly NOT markdown, so the renderer keeps the mono/plain
+          // treatment it had live in the output block.
+          appendMessage(sessionContext.currentSessionId, { role: 'bot', content: commandOutputBuffer.trim(), isMarkdown: false }).catch(() => {});
         }
         commandOutputBuffer = '';
+      } else if (sessionContext.currentSessionId && parsed.type === 'tool_start' && parsed.data) {
+        // AI-mode tool trace ("Running: ..." / "Requesting approval ...") — previously never
+        // persisted, so a reloaded AI session lost every tool line. Mirrors the live system
+        // message formatting from useConsole.ts's tool_start case.
+        appendMessage(sessionContext.currentSessionId, { role: 'system', content: `⚙️ ${parsed.data}` }).catch(() => {});
+      } else if (sessionContext.currentSessionId && parsed.type === 'tool_result' && parsed.data && parsed.data.tool && !parsed.data.error) {
+        const r = parsed.data.result;
+        const resultStr = typeof r === 'string' ? r : JSON.stringify(r, null, 2);
+        appendMessage(sessionContext.currentSessionId, {
+          role: 'system',
+          content: `🔧 Tool: ${parsed.data.tool}\n${resultStr.slice(0, 500)}${resultStr.length > 500 ? '…' : ''}`,
+        }).catch(() => {});
       }
     } catch {}
     origSend(data);

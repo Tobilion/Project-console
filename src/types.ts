@@ -80,7 +80,7 @@ export interface StoredSession {
   title: string;
   projectId?: string;
   projectName?: string;
-  messages: { id: string; role: string; content: string; timestamp: number }[];
+  messages: { id: string; role: string; content: string; timestamp: number; isMarkdown?: boolean }[];
   createdAt: number;
   updatedAt: number;
 }

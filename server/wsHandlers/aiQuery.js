@@ -380,7 +380,7 @@ export async function handleAIQuery(ws, project, input, sessionContext, workspac
   // Persist the final assistant text explicitly — token/stream events aren't auto-saved
   // the way single 'answer' messages are (see the ws.send interceptor in wsHandlers/connection.js).
   if (sessionContext.currentSessionId && finalText.trim()) {
-    appendMessage(sessionContext.currentSessionId, { role: 'bot', content: finalText.trim() }).catch(() => {});
+    appendMessage(sessionContext.currentSessionId, { role: 'bot', content: finalText.trim(), isMarkdown: true }).catch(() => {});
   }
 
   ws.send(JSON.stringify({ type: 'end' }));
