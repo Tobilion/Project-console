@@ -2210,6 +2210,50 @@ Three approved features, one combined commit:
   no chip, "please to running the site for me today" (0.63, below floor) → chip for
   `run_project`.
 
+## Modularization phases (2026-08-04, file-splitting refactors)
+
+Ongoing effort to keep every logic file under ~150 lines (data-only registries may reach
+150; the "~400 lines" guidance in Conventions is the older, looser rule). Pure copy-moves,
+zero behavior change; one commit per phase; lint + check-intents must stay green each phase
+(baseline: 1 within / 5 cross / 80 near @ 2271 phrases / 79 intents).
+
+- **Phase 1 (ffd882c) — leaf utils + shared UI atoms.** NEW `server/urlSafety.js`
+  (isSafeExternalUrl + isProbeableUrl from webSearch.js), `server/regexUtils.js`
+  (escapeRegExp + keywordRegex from contextResolver.js), `server/markdownUtils.js`
+  (extractFencedBlocks + splitIntoSections from readmeRunParser.js); NEW `src/utils/`
+  helpers (apiFetch, formatPath, formatUserName, getWebSocketUrl, makeMessage, process,
+  storedToTerminalMessages, waitForSocketOpen) and `src/components/ui/` atoms
+  (CopyButton, ModalShell, WorkspaceToggleButton). webSearch.js re-exports isProbeableUrl
+  to preserve its original export surface.
+- **Phase 2 (a6a5ece) — data registries.** Pure-data tables extracted from logic modules:
+  `runCommandPatterns.js` (from readmeRunParser), `guessData.js` (GUESSES, 16 entries, from
+  commandGuesser), `platformCommand.js` (isWindows only), `routerData.js`
+  (INTENT_DESCRIPTIONS, from localRouter), `toolDefs.js` (BUILTIN_TOOL_DEFS, 20 tools,
+  from ollamaContext), `aiModePrompts.js` (MODE_INSTRUCTIONS, from ollamaContext),
+  `promptRenderers.js` (formatIndex/formatProjectDoc/formatMinimalProject + 6000-char caps,
+  from ollamaContext), `guessToIntent.js` (GUESS_TO_INTENT, from learningEngine),
+  `nlpSeedIntents.js` (NLP_SEED_INTENTS as [phrase, intent] tuples, from nlpEngine),
+  `memoryThresholds.js` (QUESTION/COMMAND/FILE_EDIT thresholds + adaptiveThreshold, from
+  projectMemory). Rewired: commandGuesser (now JSDoc + import + guessCommand only),
+  localRouter, nlpEngine, learningEngine, projectMemory, readmeRunParser, ollamaContext
+  (244 → 126 lines).
+- **Phase 3 (c193291) — telemetry cycle-break + threshold/stats extraction.** NEW
+  `server/telemetryFile.js` (leaf: TELEMETRY_DIR, filePath, ensureDir, readTelemetry,
+  appendTelemetry, updateTelemetryEntry, clearTelemetry, listTelemetryProjectIds),
+  `server/telemetryThresholds.js` (DEFAULT_FLOOR + persistable overrides),
+  `server/telemetryStats.js` (getIntentStats aggregation). Rewired: confidenceModel.js
+  imports telemetryFile only (cycle broken: telemetryFile ← confidenceModel ←
+  intentTelemetry; intentTelemetry also imports telemetryFile + telemetryThresholds +
+  telemetryStats, re-exports threshold/file/stats ops so matcher.js/connection.js/index.js
+  callers unchanged). intentTelemetry.js 241 → 122 lines; confidenceModel.js 214 → 179
+  (still >150 — optional logisticRegression/modelStore split deferred). Remaining large
+  files for later phases: semanticMatcher.js (matcher phase — re-run intent-coverage
+  harness incl. per-project config entries before splitting), nearMissLogger.js,
+  learningEngine.js (151), projectMemory.js (210), conversationStore.js.
+- Verification: Phases 1–3 lint-clean; check-intents identical to baseline (1/5/80);
+  import smoke + guessCommand battery pass. Phase 1 commit excludes the
+  data/user-profile.json write (live dev server on :3000).
+
 ## Conventions
 
 - No file over ~400 lines; split by concern (see `server/wsHandlers/` for the pattern).
