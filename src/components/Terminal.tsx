@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react'
 import { TerminalMessage, Project, AIStatus, PendingToolConfirm, PendingMemorySuggestion, ToolCallEntry } from '../types';
 import { Send, Brain } from 'lucide-react';
 import { AIAssistantInterface } from './ui/AIAssistantInterface';
+import { getRandomChatPrompt } from '../utils/greetings';
 import { ToolHistoryPanel } from './ToolHistoryPanel';
 import { ProcessDock, ProcessInfo } from './ProcessDock';
 import { TerminalHeader } from './TerminalHeader';
@@ -34,6 +35,7 @@ interface TerminalProps {
   onSearch?: (query: string) => void;
   onDeepResearch?: (query: string) => void;
   activeProject: Project | null;
+  userName?: string;
   pendingConfirm: { token: string; command: string } | null;
   onConfirm: (confirmed: boolean) => void;
   pendingToolConfirm: PendingToolConfirm | null;
@@ -84,7 +86,7 @@ const AI_MODES = [
   { value: 'structured', label: 'Structured' }
 ];
 
-export const Terminal = ({ messages, onSendMessage, onSearch, onDeepResearch, activeProject, pendingConfirm, onConfirm, pendingToolConfirm, onToolConfirm, onApproveTask, pendingMemorySuggestion, onMemorySuggestionRespond, aiEnabled, aiThinking, aiThinkingText, commandPending, onCancel, ollamaStatus, aiModel, aiMode, onAIToggle, onSetModel, onSetMode, toolHistory, showToolHistory, onToggleToolHistory, onRerunToolCall, onExportMarkdown, onExportJson, onDirectCommand, workspaceProjects, addToWorkspace, removeFromWorkspace, clearWorkspace, onSwitchToProject, isFullscreen, onToggleFullscreen, processes, processLogs, selectedProcessId, onSelectProcess, onStopProcess, dockExpanded, onToggleDock }: TerminalProps) => {
+export const Terminal = ({ messages, onSendMessage, onSearch, onDeepResearch, activeProject, userName, pendingConfirm, onConfirm, pendingToolConfirm, onToolConfirm, onApproveTask, pendingMemorySuggestion, onMemorySuggestionRespond, aiEnabled, aiThinking, aiThinkingText, commandPending, onCancel, ollamaStatus, aiModel, aiMode, onAIToggle, onSetModel, onSetMode, toolHistory, showToolHistory, onToggleToolHistory, onRerunToolCall, onExportMarkdown, onExportJson, onDirectCommand, workspaceProjects, addToWorkspace, removeFromWorkspace, clearWorkspace, onSwitchToProject, isFullscreen, onToggleFullscreen, processes, processLogs, selectedProcessId, onSelectProcess, onStopProcess, dockExpanded, onToggleDock }: TerminalProps) => {
   const [input, setInput] = useState('');
   const [showSearchOverlay, setShowSearchOverlay] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -97,6 +99,8 @@ export const Terminal = ({ messages, onSendMessage, onSearch, onDeepResearch, ac
   const historyIndex = useRef(-1);
   const savedInput = useRef('');
   const storageKey = `lpc:history:${activeProject?.id || 'global'}`;
+  // Random personalized input placeholder; re-rolls on profile name change or project switch.
+  const chatPrompt = useMemo(() => getRandomChatPrompt(userName || 'there'), [userName, activeProject?.id]);
 
   const loadHistory = useCallback(() => {
     try {
@@ -341,7 +345,7 @@ export const Terminal = ({ messages, onSendMessage, onSearch, onDeepResearch, ac
 
       {aiEnabled ? (
         <div className={`${centerCol} p-3 bg-panel border-t border-border-soft`}>
-          <AIAssistantInterface onSend={(text) => { onSendMessage(text); setInput(''); }} onSearch={(q) => { onSearch?.(q); }} onDeepResearch={(q) => { onDeepResearch?.(q); }} disabled={!activeProject || aiThinking || isBlocked} placeholder={isBlocked ? 'Resolve the pending confirmation first (Esc to cancel)...' : aiThinking ? 'AI is thinking...' : 'Ask me anything...'} />
+          <AIAssistantInterface onSend={(text) => { onSendMessage(text); setInput(''); }} onSearch={(q) => { onSearch?.(q); }} onDeepResearch={(q) => { onDeepResearch?.(q); }} disabled={!activeProject || aiThinking || isBlocked} placeholder={isBlocked ? 'Resolve the pending confirmation first (Esc to cancel)...' : aiThinking ? 'AI is thinking...' : chatPrompt} />
         </div>
       ) : (
         <form onSubmit={handleSubmit} className={`${centerCol} p-4 bg-panel border-t border-border-soft`}>
@@ -353,7 +357,7 @@ export const Terminal = ({ messages, onSendMessage, onSearch, onDeepResearch, ac
               onChange={(e) => { setInput(e.target.value); resetTab(); }}
               onKeyDown={handleInputKeyDown}
               disabled={!activeProject || aiThinking || commandPending}
-              placeholder={!activeProject ? "Select a project to start..." : aiThinking ? "AI is thinking..." : commandPending ? "Running..." : "Ask a question or enter a command... (Ctrl+R for history)"}
+              placeholder={!activeProject ? "Select a project to start..." : aiThinking ? "AI is thinking..." : commandPending ? "Running..." : chatPrompt}
               className="w-full bg-surface border border-border-soft rounded-xl py-3 pl-4 pr-12 text-fg text-sm focus:outline-none focus:border-[#3d6bff] transition-colors disabled:opacity-50"
             />
             <button

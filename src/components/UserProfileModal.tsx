@@ -76,11 +76,19 @@ export function UserProfileModal({ open, profile, onClose, onSave }: UserProfile
             <label className="block text-xs text-fg-dim mb-1.5">Title</label>
             <input
               type="text"
+              list="lpc-titles"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               placeholder="e.g. Master (or 'none')"
               className="w-full bg-surface border border-border-soft rounded-lg px-3 py-2 text-sm text-fg focus:outline-none focus:border-[#3d6bff] transition-colors"
             />
+            <datalist id="lpc-titles">
+              <option value="Master" />
+              <option value="Engineer" />
+              <option value="Dev" />
+              <option value="Dr." />
+              <option value="None" />
+            </datalist>
           </div>
           <div>
             <label className="block text-xs text-fg-dim mb-1.5">Custom Role</label>

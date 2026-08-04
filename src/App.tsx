@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useMemo, useRef } from 'react';
 import { GlowOrbs } from './components/GlowOrbs';
 import { TextScramble } from './components/TextScramble';
 import { SidebarDrawer } from './components/SidebarDrawer';
@@ -8,6 +8,7 @@ import { Dashboard } from './components/Dashboard';
 import { CommandDeck } from './components/CommandDeck';
 import { useConsole } from './hooks/useConsole';
 import { useUserProfile } from './hooks/useUserProfile';
+import { getRandomGreeting } from './utils/greetings';
 import { Home, LayoutDashboard, Search, Settings } from 'lucide-react';
 import { ThemeToggle } from './components/ui/ThemeToggle';
 import { UserProfileModal } from './components/UserProfileModal';
@@ -23,6 +24,9 @@ function App() {
   const [deckOpen, setDeckOpen] = React.useState(false);
   const [profileOpen, setProfileOpen] = React.useState(false);
   const { profile, updateProfile, getFormattedName } = useUserProfile();
+  // Re-rolls the hero greeting only when the profile itself changes (load or save) —
+  // not on every render, and not on every keystroke.
+  const heroGreeting = useMemo(() => getRandomGreeting(getFormattedName()), [profile]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -191,7 +195,7 @@ function App() {
               activeProject={activeProject}
               ollamaStatus={ollamaStatus}
               aiEnabled={aiEnabled}
-              greeting={`Welcome ${getFormattedName()}`}
+              greeting={heroGreeting}
               onAIToggle={handleAIToggle}
               onSelectProject={handleSelectProject}
               onNewChat={handleNewChat}
@@ -246,6 +250,7 @@ function App() {
               onStopProcess={handleStopProcess}
               dockExpanded={dockExpanded}
               onToggleDock={() => setDockExpanded(v => !v)}
+              userName={profile.name}
             />
             )}
           </div>
