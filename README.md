@@ -419,6 +419,24 @@ new frontend event. All registered in `BUILTIN_INTENTS`.
   exercising the new tools, permissions, and approve-task flow) still needs the end-of-upgrade live
   verification pass.
 
+**Phase 6 — Processes dock + terminal output blocks (`console-chitchat-ai-upgrade-prompt.md` §7, 2026-08-04):**
+- **Real command output in chat**: `start`/`output`/`end` now render as a single collapsible
+  terminal-style block (dark mono, auto-collapsed with the `▶ Executing: ...` header visible, expand
+  to scroll the full output, copy button) instead of being folded into a plain `bot` bubble. `answer`
+  messages stay their own markdown bubble. Trade-off: sessions reloaded from disk show the merged
+  output as plain text (the server persists the stream as one `bot` message).
+- **Processes dock**: a footer strip in the chat panel lists every tracked running process (one tab
+  per project, pulsing live dot, shortened command, port when a dev URL was detected, red Stop
+  button). Expanding a tab shows the tail of that process's output (server-side ring buffer,
+  capped 2000 lines) with copy; clicking Stop uses the same single kill path as "stop server"
+  (`stopTrackedProcess` in `executor.js` — also the one the AI-mode `stopProcess` tool and the
+  `stop_process` WS message use). The dock auto-hides when nothing is running.
+- **New endpoints**: `GET /api/processes` (running commands with pid/url/startedAt) and
+  `GET /api/processes/:projectId/log` (ring-buffer replay, 404 when untracked).
+- Verification: standalone harness 18/18 + live WS/HTTP harness against the running server 16/16
+  (`tsc --noEmit` clean, zero new check-intents dupes). Visual layout still needs the manual
+  checklist (dock rendering, output-block expand/collapse, chat scroll unaffected at 1280px/1920px).
+
 ## Architecture
 
 ```

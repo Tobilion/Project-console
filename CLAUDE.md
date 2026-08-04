@@ -1862,6 +1862,57 @@ confirm flow, so dedicated tools would just duplicate that surface.
   NOT yet exercised live through a real Ollama chat session (new tools, permissions, approve-task
   flow) — that's the end-of-upgrade live verification pass.
 
+## Processes dock + terminal output blocks (2026-08-04, Phase 6 of `console-chitchat-ai-upgrade-prompt.md` §7)
+
+Frontend + server — no intent/matcher/example-phrase changes (check-intents unchanged). The chat
+side now renders real command output (previously `start`/`output`/`end` were folded into `bot`
+messages), and a new Processes dock shows every tracked process with a per-process log replay.
+
+- **PASS 6.1 — server ring buffer + single stop path.** `server/executor.js` now keeps
+  `processLogs` (projectId → `LineRingBuffer`, tail-capped 2000 lines, memory-only; handles a line
+  split across two `data` chunks by holding the unterminated tail in `pending`). New exports:
+  `getProcessLog(projectId)` (`{ command, lines }` or null) and `stopTrackedProcess(projectId)` —
+  the single kill+cleanup path (SIGTERM + runningProcesses.delete + processLogs.delete +
+  lastDevUrls.delete + `dashboard_update` AND `processes_update` broadcasts; `{ok:false}` when
+  nothing is tracked). The old three way-copies of this cleanup ("stop server" regex in
+  connection.js, the AI-mode `stopProcess` tool in tools.js, and the new dock stop button) now all
+  route through it. Registration also records `startedAt: Date.now()` — `child.spawnTime` turned
+  out to be `undefined` on Node v24 in this repo, so the timestamp is owned by the map entry, not
+  the ChildProcess. Every process start/URL-detect/close/error now ALSO broadcasts
+  `processes_update` alongside the existing `dashboard_update`.
+- **New endpoints** (`server/routes/monitoringRoutes.js`): `GET /api/processes` (projectId,
+  command, pid, url, startedAt) and `GET /api/processes/:projectId/log` (404 when untracked;
+  returns `{ command, lines }` from the ring buffer). Both live next to `/api/active-servers`.
+- **PASS 6.1b — new WS message `stop_process`** (`connection.js` routeMessage): payload
+  `projectId` (falls back to activeProjectId), dispatches through `stopTrackedProcess`, answers
+  `Stopped \`<command>\`.` or "No running process for that project." + `end`. Same convention as
+  every other message type — keep the `useConsole.ts` switch in sync.
+- **PASS 6.2 — frontend Processes dock.** New `src/components/ProcessDock.tsx` (mounted in
+  `Terminal.tsx` in the ToolHistoryPanel slot — the footer column is `flex-shrink-0` and the chat
+  scroll container stays `flex-1 overflow-y-auto`; the dock auto-hides when nothing is running).
+  Collapsed state: process count toggle + one tab per running process (pulsing live dot, shortened
+  command, port if a URL was detected, red Stop button). Expanded state: copy button + `max-h-64`
+  auto-scrolling mono log over the server ring buffer. `src/hooks/useConsole.ts` owns the state —
+  `processes`, `processLogs`, `selectedProcessId`, `dockExpanded`; `fetchProcesses()` runs on
+  mount, every 5s, and on every `processes_update` WS event (prunes dead-project logs, keeps the
+  selection valid preferring the active project); `fetchProcessLog()` replays the ring buffer on
+  first selection; `appendProcessOutput()` tails live output (capped 2000) into the selected
+  project's log; `handleStopProcess()` sends the `stop_process` message.
+- **PASS 6.3 — chat renders real output blocks.** `TerminalMessage.type` gains `'output'`.
+  `start` no longer opens a `bot` markdown bubble — it opens a `{ type: 'output' }` message and
+  `output`/`end` append into it. New `OutputBlock` (`Terminal.tsx`): dark mono block, auto-
+  collapsed, header keeps the `▶ Executing: ...` first line visible, click to expand the
+  `max-h-64` scrollable body, copy button, stays a single bubble for the whole command. `answer`
+  messages remain their own separate markdown bubble. Known trade-off: sessions reloaded from disk
+  lose the block styling — the server persists the merged `start`/`output`/`end` stream as one
+  `bot` message on `end`, so content is preserved but the renderer can't re-split it.
+- Verification: standalone harness against the real modules (18/18: buffer feed/cleanup, chunk-
+  split lines kept whole, 2000-line cap + tail, `stopTrackedProcess` cleanup + double-stop) and a
+  live WS+HTTP harness against the restarted server (16/16: `/api/processes` empty → populated →
+  empty, startedAt, log replay, `processes_update` broadcast received, `stop_process` answers,
+  404 paths). `tsc --noEmit` clean, `npm run check-intents` zero new dupes. NOT yet visually
+  verified — see the checklist below.
+
 ## Conventions
 
 - No file over ~400 lines; split by concern (see `server/wsHandlers/` for the pattern).

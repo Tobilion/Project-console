@@ -7,9 +7,8 @@ import util from 'util';
 import { performUndo } from './gitSafety.js';
 import { loadPluginManifest, createPluginToolFn } from './pluginTools.js';
 import { appendMemoryEntry } from './memoryStore.js';
-import { runningProcesses } from './executor.js';
+import { runningProcesses, stopTrackedProcess } from './executor.js';
 import { state } from './state.js';
-import { broadcast } from './wsServer.js';
 import { webSearch, deepResearch, isProbeableUrl } from './webSearch.js';
 
 const require = createRequire(import.meta.url);
@@ -541,26 +540,17 @@ export async function createProjectTools(project) {
   }
 
   /**
-   * Phase 5 (PASS 5.3): stops a running process for a project via the EXACT same flow as "stop
-   * server" (connection.js) — child.kill('SIGTERM') + map delete + lastDevUrls delete + a
-   * dashboard_update broadcast so the UI grid reflects it immediately. Never a raw kill on the
-   * model's say-so: it's in ALWAYS_CONFIRM_TOOLS, so the user always approves it first.
+   * Phase 5 (PASS 5.3): stops a running process for a project via the shared stopTrackedProcess
+   * helper (executor.js) — the SAME single kill path as the "stop server" trigger phrase and the
+   * Processes-dock stop button, so the cleanup (kill + map delete + log delete + lastDevUrls
+   * delete + broadcasts) can never drift between callers. Never a raw kill on the model's say-so:
+   * it's in ALWAYS_CONFIRM_TOOLS, so the user always approves it first.
    */
   async function stopProcess({ projectId } = {}) {
     const pid = projectId || project.id;
-    const proc = runningProcesses.get(pid);
-    if (!proc) return { success: true, data: 'No running process for this project.' };
-    try {
-      if (proc.child && typeof proc.child.kill === 'function') {
-        proc.child.kill('SIGTERM');
-      }
-      runningProcesses.delete(pid);
-      state.lastDevUrls?.delete(pid);
-      broadcast({ type: 'dashboard_update' });
-      return { success: true, data: `Stopped \`${proc.command}\`.` };
-    } catch (err) {
-      return { success: false, error: `Failed to stop process: ${err.message}` };
-    }
+    const stopped = stopTrackedProcess(pid);
+    if (!stopped.ok) return { success: true, data: 'No running process for this project.' };
+    return { success: true, data: `Stopped \`${stopped.command}\`.` };
   }
 
   /**

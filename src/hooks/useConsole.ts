@@ -36,12 +36,68 @@ export function useConsole() {
   const [commandPending, setCommandPending] = useState(false);
   const [activeServers, setActiveServers] = useState<Array<{projectId: string; command: string; pid: number | null; url: string | null}>>([]);
   const [dashboardUpdateSignal, setDashboardUpdateSignal] = useState(0);
+  // Phase 6 (PASS 6.1/6.2): Processes-dock state. `processes` mirrors GET /api/processes
+  // (refetched on mount, on every 'processes_update' WS event, and with the 5s active-servers
+  // poll). `processLogs` is a per-process line tail capped at 2000 (matching the server-side
+  // ring buffer): live chunks append from the incoming output/error_output stream, and the
+  // server-side history is replayed into the log the first time a tab is selected so a
+  // reconnecting client still sees recent output.
+  const [processes, setProcesses] = useState<Array<{projectId: string; command: string; pid: number | null; url: string | null; startedAt: string | null}>>([]);
+  const [processLogs, setProcessLogs] = useState<Record<string, string[]>>({});
+  const [selectedProcessId, setSelectedProcessId] = useState<string | null>(null);
+  const [dockExpanded, setDockExpanded] = useState(false);
 
   const fetchActiveServers = useCallback(async () => {
     try {
       const res = await fetch('/api/active-servers');
       if (res.ok) setActiveServers(await res.json());
     } catch {}
+  }, []);
+
+  // Phase 6 (PASS 6.1): live view of runningProcesses for the dock. Prunes logs of dead
+  // projects and keeps the selected tab valid (prefer the session's active project, fall back
+  // to the first running one).
+  const fetchProcesses = useCallback(async () => {
+    try {
+      const res = await fetch('/api/processes');
+      if (!res.ok) return;
+      const list = await res.json();
+      setProcesses(list);
+      const runningIds = new Set(list.map((p: any) => p.projectId));
+      setProcessLogs(prev => {
+        const next: Record<string, string[]> = {};
+        for (const [k, v] of Object.entries(prev)) if (runningIds.has(k)) next[k] = v;
+        return next;
+      });
+      setSelectedProcessId(cur => {
+        if (cur && runningIds.has(cur)) return cur;
+        const activeId = activeProjectRef.current?.id;
+        if (activeId && runningIds.has(activeId)) return activeId;
+        return list[0]?.projectId || null;
+      });
+    } catch {}
+  }, []);
+
+  // Phase 6 (PASS 6.2): replay the server ring buffer for a process log into the dock.
+  const fetchProcessLog = useCallback(async (projectId: string) => {
+    try {
+      const res = await fetch(`/api/processes/${encodeURIComponent(projectId)}/log`);
+      if (!res.ok) return;
+      const data = await res.json();
+      if (Array.isArray(data.lines)) setProcessLogs(prev => ({ ...prev, [projectId]: data.lines }));
+    } catch {}
+  }, []);
+
+  // Phase 6 (PASS 6.2): tail accumulation for the dock log. Commands always run for the
+  // session's active project, so incoming stdout/stderr chunks are attributed to it.
+  const appendProcessOutput = useCallback((text: string) => {
+    const pid = activeProjectRef.current?.id;
+    if (!pid) return;
+    setProcessLogs(prev => {
+      const lines = [...(prev[pid] || []), ...text.split('\n')];
+      if (lines.length > 2000) lines.splice(0, lines.length - 2000);
+      return { ...prev, [pid]: lines };
+    });
   }, []);
 
   const addToolCall = useCallback((tool: string, args: Record<string, any>, result: any) => {
@@ -165,6 +221,15 @@ export function useConsole() {
     }
   }, [wsHandler]);
 
+  // Phase 6 (PASS 6.2): Processes-dock stop button — sends 'stop_process' (server routes it
+  // through the same shared stopTrackedProcess path "stop server" and the AI stopProcess tool
+  // use; no new kill logic).
+  const handleStopProcess = useCallback((projectId: string) => {
+    if (wsHandler.wsRef.current?.readyState === WebSocket.OPEN) {
+      wsHandler.wsRef.current.send(JSON.stringify({ type: 'stop_process', payload: { projectId } }));
+    }
+  }, [wsHandler.wsRef]);
+
   // Override wsRef in terminal with the real one
   terminal.handleSendMessage.bind = Function.prototype.bind;
   const origHandleSendMessage = terminal.handleSendMessage;
@@ -192,33 +257,44 @@ export function useConsole() {
     const id = Date.now().toString() + Math.random().toString();
     switch (payload.type) {
       case 'answer':
+        // Plain informational message (intent answers, the command-output summarizer callout on
+        // 'end') — its own bubble, unchanged.
+        ai.setAiThinking(false);
+        if (!payload.data?.trim()) break;
+        sessions.setMessages(prev => [...prev, { id, type: 'bot', content: payload.data, isMarkdown: true }]);
+        break;
       case 'output':
       case 'start':
       case 'end':
+        // Phase 6 (PASS 6.3): command output no longer accumulates into the previous chat bubble
+        // — 'start' opens a fresh collapsible 'output'-type block per command and 'output'/'end'
+        // append into the open block, so the chat keeps the ▶ start line and the rest of the
+        // stream lives inside a terminal-style block (the summarizer callout and URL links come
+        // as their own 'answer'/'server_url' bubbles and stay separate). 'end' opens a block
+        // only defensively if none is open (executor always sends 'start' first).
         ai.setAiThinking(false);
         // 'end' is the one reliable "this turn is fully finished" signal across every
         // trigger-mode path (including ones with no visible text, e.g. a bare `{type:'end'}`
         // after a builtin intent) — deliberately NOT cleared on 'start'/'output' alone, since a
         // still-booting dev server keeps emitting those without actually being done yet.
         if (payload.type === 'end') setCommandPending(false);
+        if (payload.type === 'output' && payload.data) appendProcessOutput(payload.data);
         if (!payload.data?.trim()) break;
         sessions.setMessages(prev => {
           const lastMsg = prev[prev.length - 1];
-          if (lastMsg && (lastMsg.type === 'bot' || lastMsg.type === 'system') && !lastMsg.isMarkdown && payload.type !== 'answer') {
+          if (lastMsg && lastMsg.type === 'output' && payload.type !== 'start') {
             const newMsgs = [...prev];
-            newMsgs[newMsgs.length - 1] = {
-              ...lastMsg,
-              content: lastMsg.content + '\n' + payload.data
-            };
+            newMsgs[newMsgs.length - 1] = { ...lastMsg, content: lastMsg.content + '\n' + payload.data };
             return newMsgs;
           }
-          return [...prev, { id, type: 'bot', content: payload.data, isMarkdown: payload.type === 'answer' }];
+          return [...prev, { id, type: 'output', content: payload.data }];
         });
         break;
       case 'error_output':
         // Some paths (a top-level WS parse error) send only this with no 'end' to follow —
         // don't leave the busy indicator stuck on.
         setCommandPending(false);
+        if (payload.data) appendProcessOutput(payload.data);
         sessions.setMessages(prev => [...prev, {
           id, type: 'error', content: payload.data,
           switchProjectAction: payload.switchProjectAction,
@@ -376,6 +452,11 @@ export function useConsole() {
       case 'dashboard_update':
         setDashboardUpdateSignal(n => n + 1);
         break;
+      case 'processes_update':
+        // Phase 6: any process started, detached, stopped, or got a URL → refresh the dock
+        // registry (selection/log pruning handled inside fetchProcesses).
+        fetchProcesses();
+        break;
       case 'learning_suggestion': {
         const { suggestions } = payload.data;
         if (suggestions.length === 0) {
@@ -401,13 +482,32 @@ export function useConsole() {
     wsHandler.connectWebSocket();
     fetch('/api/ollama/status').then(r => r.ok ? r.json() : null).then(s => { if (s) ai.fetchOllamaStatus(); }).catch(() => {});
     fetchActiveServers();
-    const serverPollId = setInterval(fetchActiveServers, 5000);
+    fetchProcesses();
+    const serverPollId = setInterval(() => {
+      fetchActiveServers();
+      fetchProcesses();
+    }, 5000);
     return () => {
       clearInterval(serverPollId);
       wsHandler.disconnect();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Phase 6 (PASS 6.2): replay the server-side ring buffer the first time a dock tab is
+  // selected. After that the live output/error_output stream (client-side accumulation) keeps
+  // the log current — re-fetching later would overwrite fresher client lines with a slightly
+  // older server snapshot, so it's fetch-on-first-selection only.
+  const prevSelectedProcessRef = useRef<string | null>(null);
+  useEffect(() => {
+    const pid = selectedProcessId;
+    if (!pid) return;
+    setProcessLogs(prev => (prev[pid] ? prev : { ...prev, [pid]: [] }));
+    const firstTime = prevSelectedProcessRef.current !== pid;
+    prevSelectedProcessRef.current = pid;
+    if (firstTime) fetchProcessLog(pid);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedProcessId, fetchProcessLog]);
 
   // A brand-new chat with zero messages sent isn't "committed" to anything yet — deleting it
   // when the user navigates away (new chat / picks a different project) avoids piling up empty
@@ -570,6 +670,13 @@ export function useConsole() {
     commandPending,
     activeServers,
     dashboardUpdateSignal,
+    processes,
+    processLogs,
+    selectedProcessId,
+    setSelectedProcessId,
+    dockExpanded,
+    setDockExpanded,
+    handleStopProcess,
     indexingProjectId: projects.indexingProjectId,
     aiModel: ai.aiModel,
     aiMode: ai.aiMode,

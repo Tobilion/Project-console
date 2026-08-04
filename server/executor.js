@@ -136,6 +136,65 @@ function createBufferedSender(sendEvent, type, transform) {
 //  are orphaned; we start fresh each time the module re-executes.)
 export const runningProcesses = new Map(); // projectId -> { child, command }
 
+// --- Phase 6: per-process output ring buffer (memory only) ---
+// Keeps the tail of each tracked process's stdout/stderr so the Processes dock can replay
+// recent output to a (re)connecting client — the live chat stream itself is connection-scoped
+// (sendEvent → originating ws only) and is deliberately NOT re-broadcast.
+const MAX_LOG_LINES = 2000;
+
+/** Tail-capped line buffer. Handles chunks that split a line across two `data` events by
+ *  holding the unterminated tail in `pending` until the next chunk completes it. */
+class LineRingBuffer {
+  constructor(cap) {
+    this.cap = cap;
+    this.lines = [];
+    this.pending = '';
+  }
+  push(text) {
+    this.pending += text;
+    const parts = this.pending.split('\n');
+    this.pending = parts.pop();
+    this.lines.push(...parts);
+    if (this.lines.length > this.cap) {
+      this.lines.splice(0, this.lines.length - this.cap);
+    }
+  }
+  snapshot() {
+    return this.pending ? [...this.lines, this.pending] : [...this.lines];
+  }
+}
+
+export const processLogs = new Map(); // projectId -> LineRingBuffer
+
+/** Returns { command, lines } for a tracked process's log (or null when untracked). */
+export function getProcessLog(projectId) {
+  const proc = runningProcesses.get(projectId);
+  if (!proc) return null;
+  const buf = processLogs.get(projectId);
+  return { command: proc.command, lines: buf ? buf.snapshot() : [] };
+}
+
+/**
+ * Single kill path for every caller that stops a tracked process — the "stop server" trigger
+ * phrase (connection.js), the `stop_process` WS message (dock stop button), and the AI-mode
+ * `stopProcess` tool. Was previously copy-pasted three times; all three now route here so the
+ * cleanup (kill + map delete + log delete + lastDevUrls delete + both broadcasts) can never
+ * drift. Returns { ok: false } when nothing is tracked for that project.
+ */
+export function stopTrackedProcess(projectId) {
+  const proc = runningProcesses.get(projectId);
+  if (!proc) return { ok: false };
+  try {
+    proc.child.kill('SIGTERM');
+  } catch {}
+  runningProcesses.delete(projectId);
+  processLogs.delete(projectId);
+  state.lastDevUrls.delete(projectId);
+  broadcast({ type: 'dashboard_update' });
+  broadcast({ type: 'processes_update' });
+  return { ok: true, command: proc.command };
+}
+
 // Clean up on exit — kills tracked children before Node shuts down
 process.on('exit', () => {
   for (const [, proc] of runningProcesses) {
@@ -226,8 +285,10 @@ export function executeCommand(command, cwd, ws, projectId) {
 
     // Register so user can stop the server later
     if (projectId) {
-      runningProcesses.set(projectId, { child, command: finalCommand });
+      runningProcesses.set(projectId, { child, command: finalCommand, startedAt: Date.now() });
+      processLogs.set(projectId, new LineRingBuffer(MAX_LOG_LINES));
       broadcast({ type: 'dashboard_update' });
+      broadcast({ type: 'processes_update' });
     }
 
     function detach() {
@@ -266,6 +327,7 @@ export function executeCommand(command, cwd, ws, projectId) {
       if (detached) return;
 
       stdoutSender.push(s);
+      if (projectId) processLogs.get(projectId)?.push(s);
 
       const clean = s.replace(ANSI_RE, '');
       const urls = clean.match(URL_PATTERN);
@@ -276,6 +338,7 @@ export function executeCommand(command, cwd, ws, projectId) {
           if (projectId) {
             state.lastDevUrls.set(projectId, url);
             broadcast({ type: 'dashboard_update' });
+            broadcast({ type: 'processes_update' });
           }
         }
         // If this is a dev server command, detach after URL + short grace to show it
@@ -320,6 +383,7 @@ export function executeCommand(command, cwd, ws, projectId) {
       const s = data.toString();
       stderr += s;
       stderrSender.push(s);
+      if (projectId) processLogs.get(projectId)?.push(s);
     });
 
     // For dev server commands, force-detach after 10s even without URL. Kept in a variable now
@@ -359,7 +423,9 @@ export function executeCommand(command, cwd, ws, projectId) {
       // "stop server" call, which is a harmless no-op kill instead of a false "nothing running".
       if (!detached) {
         runningProcesses.delete(projectId);
+        processLogs.delete(projectId);
         broadcast({ type: 'dashboard_update' });
+        broadcast({ type: 'processes_update' });
       }
       if (detached) return;
       stdoutSender.flush();
@@ -413,7 +479,9 @@ export function executeCommand(command, cwd, ws, projectId) {
     child.on('error', (err) => {
       if (forceDetachTimer) clearTimeout(forceDetachTimer);
       runningProcesses.delete(projectId);
+      processLogs.delete(projectId);
       broadcast({ type: 'dashboard_update' });
+      broadcast({ type: 'processes_update' });
       sendEvent('error_output', `Failed to start process: ${err.message}`);
       sendEvent('end', `\nProcess failed.`);
       resolve({ success: false, error: err.message });

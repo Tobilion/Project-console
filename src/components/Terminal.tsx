@@ -2,9 +2,10 @@ import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react'
 import { TerminalMessage, Project, AIStatus, PendingToolConfirm, PendingMemorySuggestion, ToolCallEntry } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
 import ReactMarkdown from 'react-markdown';
-import { Terminal as TerminalIcon, Send, Search, CheckCircle, XCircle, Brain, Loader2, History, Copy, FileDown, ListChecks, Download, Square, Maximize2, Minimize2 } from 'lucide-react';
+import { Terminal as TerminalIcon, Send, Search, CheckCircle, XCircle, Brain, Loader2, History, Copy, FileDown, ListChecks, Download, Square, Maximize2, Minimize2, ChevronDown, ChevronUp } from 'lucide-react';
 import { AIAssistantInterface } from './ui/AIAssistantInterface';
 import { ToolHistoryPanel } from './ToolHistoryPanel';
+import { ProcessDock, ProcessInfo } from './ProcessDock';
 
 const MAX_HISTORY = 200;
 
@@ -64,6 +65,56 @@ interface TerminalProps {
   onSwitchToProject?: (projectId: string) => void;
   isFullscreen?: boolean;
   onToggleFullscreen?: () => void;
+  processes?: ProcessInfo[];
+  processLogs?: Record<string, string[]>;
+  selectedProcessId?: string | null;
+  onSelectProcess?: (projectId: string) => void;
+  onStopProcess?: (projectId: string) => void;
+  dockExpanded?: boolean;
+  onToggleDock?: () => void;
+}
+
+/** Phase 6 (PASS 6.3): a command's output rendered as a collapsible terminal-style block —
+ *  dark mono, capped height + scroll, copy button, auto-collapsed. The header keeps the ▶
+ *  start line visible at all times; the body expands on click. */
+function OutputBlock({ content }: { content: string }) {
+  const [expanded, setExpanded] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const firstLine = content.split('\n').find(l => l.trim()) || content;
+  const displayCommand = firstLine.replace(/^Executing:\s*/, '').trim();
+  const handleCopy = () => {
+    navigator.clipboard.writeText(content);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  };
+  return (
+    <div className="w-full rounded-lg border border-white/10 bg-black/50 overflow-hidden">
+      <div className="flex items-center gap-2 px-3 py-1.5">
+        <button onClick={() => setExpanded(!expanded)} className="flex items-center gap-2 flex-1 text-left min-w-0" title={expanded ? 'Collapse output' : 'Expand output'}>
+          <TerminalIcon size={12} className="text-[#3d6bff] flex-shrink-0" />
+          <span className="text-xs font-mono text-gray-300 truncate">▶ {displayCommand || 'command output'}</span>
+        </button>
+        <button onClick={handleCopy} className="text-gray-500 hover:text-gray-200 transition-colors flex-shrink-0" title="Copy output">
+          {copied ? <span className="text-[10px] text-teal-400">Copied</span> : <Copy size={11} />}
+        </button>
+        <button onClick={() => setExpanded(!expanded)} className="text-gray-500 hover:text-gray-200 transition-colors flex-shrink-0" title={expanded ? 'Collapse output' : 'Expand output'}>
+          {expanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+        </button>
+      </div>
+      <AnimatePresence initial={false}>
+        {expanded && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            className="overflow-hidden border-t border-white/10"
+          >
+            <pre className="max-h-64 overflow-y-auto p-3 text-xs text-gray-300 font-mono whitespace-pre-wrap">{content}</pre>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
 }
 
 /** Parses a JSON code-block child string and returns the parsed object, or null. */
@@ -129,7 +180,7 @@ const AI_MODES = [
   { value: 'structured', label: 'Structured' }
 ];
 
-export const Terminal = ({ messages, onSendMessage, onSearch, onDeepResearch, activeProject, pendingConfirm, onConfirm, pendingToolConfirm, onToolConfirm, onApproveTask, pendingMemorySuggestion, onMemorySuggestionRespond, aiEnabled, aiThinking, aiThinkingText, commandPending, onCancel, ollamaStatus, aiModel, aiMode, onAIToggle, onSetModel, onSetMode, toolHistory, showToolHistory, onToggleToolHistory, onRerunToolCall, onExportMarkdown, onExportJson, onDirectCommand, workspaceProjects, addToWorkspace, removeFromWorkspace, clearWorkspace, onSwitchToProject, isFullscreen, onToggleFullscreen }: TerminalProps) => {
+export const Terminal = ({ messages, onSendMessage, onSearch, onDeepResearch, activeProject, pendingConfirm, onConfirm, pendingToolConfirm, onToolConfirm, onApproveTask, pendingMemorySuggestion, onMemorySuggestionRespond, aiEnabled, aiThinking, aiThinkingText, commandPending, onCancel, ollamaStatus, aiModel, aiMode, onAIToggle, onSetModel, onSetMode, toolHistory, showToolHistory, onToggleToolHistory, onRerunToolCall, onExportMarkdown, onExportJson, onDirectCommand, workspaceProjects, addToWorkspace, removeFromWorkspace, clearWorkspace, onSwitchToProject, isFullscreen, onToggleFullscreen, processes, processLogs, selectedProcessId, onSelectProcess, onStopProcess, dockExpanded, onToggleDock }: TerminalProps) => {
   const [input, setInput] = useState('');
   const [showSearchOverlay, setShowSearchOverlay] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -387,7 +438,20 @@ export const Terminal = ({ messages, onSendMessage, onSearch, onDeepResearch, ac
       
       <div className="flex-1 overflow-y-auto p-6 space-y-6">
         <AnimatePresence initial={false}>
-          {messages.map((msg, i) => (
+          {messages.map((msg, i) => {
+            if (msg.type === 'output') {
+              return (
+                <motion.div
+                  key={msg.id || i}
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="flex flex-col items-start max-w-[85%]"
+                >
+                  <OutputBlock content={msg.content} />
+                </motion.div>
+              );
+            }
+            return (
             <motion.div
               key={msg.id || i}
               initial={{ opacity: 0, y: 10 }}
@@ -447,8 +511,9 @@ export const Terminal = ({ messages, onSendMessage, onSearch, onDeepResearch, ac
                   </div>
                 )}
               </div>
-            </motion.div>
-          ))}
+              </motion.div>
+            );
+          })}
         </AnimatePresence>
 
         {pendingConfirm && (
@@ -609,6 +674,16 @@ export const Terminal = ({ messages, onSendMessage, onSearch, onDeepResearch, ac
       </div>
 
       <ToolHistoryPanel toolHistory={toolHistory} show={showToolHistory} onToggle={onToggleToolHistory} onRerun={onRerunToolCall} />
+
+      <ProcessDock
+        processes={processes || []}
+        processLogs={processLogs || {}}
+        selectedProcessId={selectedProcessId || null}
+        onSelectProcess={(pid) => onSelectProcess?.(pid)}
+        onStopProcess={(pid) => onStopProcess?.(pid)}
+        expanded={!!dockExpanded}
+        onToggleExpanded={() => onToggleDock?.()}
+      />
 
       {aiEnabled ? (
         <div className="p-3 bg-white/5 border-t border-white/10">

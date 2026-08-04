@@ -8,7 +8,7 @@ import { isCommandBlocked } from '../dangerousPatterns.js';
 import { createCheckpoint } from '../gitSafety.js';
 import { createProjectTools, isCommandAllowed, GATED_TOOLS, toolGrantKey, resolveToolGate } from '../tools.js';
 import { metrics } from '../metrics.js';
-import { runningProcesses } from '../executor.js';
+import { runningProcesses, stopTrackedProcess } from '../executor.js';
 import { handleBuiltinIntent } from './builtinIntents.js';
 import { handleMatchedEntry, runCommandEntry } from './matchedEntry.js';
 import { extractParamValue, isSafeParamValue, substituteParams } from '../paramCommand.js';
@@ -163,6 +163,19 @@ async function routeMessage(ws, parsed, sessionContext) {
         ws.send(JSON.stringify({ type: 'answer', data: 'Nothing is currently running to cancel.' }));
         ws.send(JSON.stringify({ type: 'end' }));
       }
+      return;
+    }
+    case 'stop_process': {
+      // Phase 6 (PASS 6.2): Processes-dock stop button. Same single kill path as the "stop
+      // server" trigger phrase (stopTrackedProcess) — no new kill logic.
+      const stopProjectId = parsed.payload?.projectId || sessionContext.activeProjectId;
+      const stopped = stopProjectId ? stopTrackedProcess(stopProjectId) : { ok: false };
+      if (stopped.ok) {
+        ws.send(JSON.stringify({ type: 'answer', data: `Stopped \`${stopped.command}\`.\n` }));
+      } else {
+        ws.send(JSON.stringify({ type: 'answer', data: 'No running process for that project.' }));
+      }
+      ws.send(JSON.stringify({ type: 'end' }));
       return;
     }
     case 'tool_call':
@@ -673,13 +686,9 @@ async function handleExecute(ws, parsed, sessionContext) {
     /^(stop|kill|shutdown|end)\s+(the\s+)?(server|process|dev)/i.test(lowerInput) ||
     (hasTrackedProcess && /^(stop|kill|cancel)\s+it\.?$/i.test(lowerInput.trim()))
   ) {
-    const proc = runningProcesses.get(project.id);
-    if (proc) {
-      proc.child.kill('SIGTERM');
-      runningProcesses.delete(project.id);
-      state.lastDevUrls.delete(project.id);
-      broadcast({ type: 'dashboard_update' });
-      ws.send(JSON.stringify({ type: 'answer', data: `Stopped \`${proc.command}\`.\n` }));
+    const stopped = stopTrackedProcess(project.id);
+    if (stopped.ok) {
+      ws.send(JSON.stringify({ type: 'answer', data: `Stopped \`${stopped.command}\`.\n` }));
     } else {
       ws.send(JSON.stringify({ type: 'answer', data: `No running server for **${project.name}**.\n` }));
     }
