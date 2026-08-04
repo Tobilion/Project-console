@@ -22,6 +22,7 @@ import { registerProjectRoutes } from './routes/projectRoutes.js';
 import { registerSessionRoutes } from './routes/sessionRoutes.js';
 import { registerSearchRoutes } from './routes/searchRoutes.js';
 import { registerMonitoringRoutes } from './routes/monitoringRoutes.js';
+import { registerProfileRoutes } from './routes/profileRoutes.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -40,6 +41,7 @@ registerProjectRoutes(app, __dirname);
 registerSessionRoutes(app);
   registerSearchRoutes(app);
   registerMonitoringRoutes(app);
+  registerProfileRoutes(app);
 
 initWebSocketServer();
 
