@@ -7,8 +7,10 @@ import { WelcomeScreen } from './components/WelcomeScreen';
 import { Dashboard } from './components/Dashboard';
 import { CommandDeck } from './components/CommandDeck';
 import { useConsole } from './hooks/useConsole';
-import { Home, LayoutDashboard, Search } from 'lucide-react';
+import { useUserProfile } from './hooks/useUserProfile';
+import { Home, LayoutDashboard, Search, Settings } from 'lucide-react';
 import { ThemeToggle } from './components/ui/ThemeToggle';
+import { UserProfileModal } from './components/UserProfileModal';
 
 function App() {
   const folderInputRef = useRef<HTMLInputElement>(null);
@@ -19,6 +21,8 @@ function App() {
   const [showDashboard, setShowDashboard] = React.useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = React.useState(false);
   const [deckOpen, setDeckOpen] = React.useState(false);
+  const [profileOpen, setProfileOpen] = React.useState(false);
+  const { profile, updateProfile, getFormattedName } = useUserProfile();
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -131,6 +135,9 @@ function App() {
           <button onClick={() => setShowDashboard(v => !v)} className={`p-2 transition-colors ${showDashboard ? 'text-accent' : 'text-fg-dim hover:text-fg-strong'}`} title="Dashboard">
             <LayoutDashboard size={18} />
           </button>
+          <button onClick={() => setProfileOpen(true)} className="p-2 text-fg-dim hover:text-fg-strong transition-colors" title="User profile">
+            <Settings size={18} />
+          </button>
           <ThemeToggle />
         </div>
         <input
@@ -184,6 +191,7 @@ function App() {
               activeProject={activeProject}
               ollamaStatus={ollamaStatus}
               aiEnabled={aiEnabled}
+              greeting={`Welcome ${getFormattedName()}`}
               onAIToggle={handleAIToggle}
               onSelectProject={handleSelectProject}
               onNewChat={handleNewChat}
@@ -258,6 +266,13 @@ function App() {
         onNewChat={handleNewChat}
         sidebarCollapsed={sidebarCollapsed}
         onSetSidebarCollapsed={setSidebarCollapsed}
+      />
+
+      <UserProfileModal
+        open={profileOpen}
+        profile={profile}
+        onClose={() => setProfileOpen(false)}
+        onSave={updateProfile}
       />
     </div>
   );

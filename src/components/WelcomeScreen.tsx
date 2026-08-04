@@ -9,6 +9,7 @@ interface WelcomeScreenProps {
   activeProject: Project | null;
   ollamaStatus: AIStatus | null;
   aiEnabled: boolean;
+  greeting: string;
   onAIToggle: () => void;
   onSelectProject: (p: Project) => void;
   onNewChat: () => void;
@@ -41,7 +42,7 @@ const TOUR_STEPS = [
   },
 ];
 
-export function WelcomeScreen({ projects, activeProject, ollamaStatus, aiEnabled, onAIToggle, onSelectProject, onNewChat, onQuickStart, workspaceProjects, addToWorkspace, removeFromWorkspace }: WelcomeScreenProps) {
+export function WelcomeScreen({ projects, activeProject, ollamaStatus, aiEnabled, greeting, onAIToggle, onSelectProject, onNewChat, onQuickStart, workspaceProjects, addToWorkspace, removeFromWorkspace }: WelcomeScreenProps) {
   const [tourStep, setTourStep] = React.useState(0);
 
   // Per-project stats when a project is selected, else global totals across all discovered
@@ -61,7 +62,7 @@ export function WelcomeScreen({ projects, activeProject, ollamaStatus, aiEnabled
       <div className="max-w-4xl mx-auto w-full px-6 py-8">
         <div className="text-center mb-6">
           <h1 className="text-4xl md:text-5xl font-semibold italic text-fg-strong mb-3">
-            <TextScramble text="Welcome Master Tobi" />
+            <TextScramble text={greeting} />
           </h1>
           <p className="text-xs tracking-[0.2em] uppercase text-fg-dim font-bold">
             V4 Knowledge Engine — {projects.length} Projects Loaded
