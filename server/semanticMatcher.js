@@ -5,6 +5,8 @@ import { getEffectiveThreshold } from './intentTelemetry.js';
 import { broadcast } from './wsServer.js';
 import { findPreSemanticOverride } from './preSemanticOverrides.js';
 import { matchKeywordRule } from './keywordRules.js';
+import { runSemanticStage, runFuzzyStage } from './matcherStages.js';
+import { scanAllVectors, bestProjectActionVector, averageIntentVectors, cosineSimilarity } from './intentVectorScan.js';
 
 env.cacheDir = './.cache/xenova';
 
@@ -252,122 +254,30 @@ class SemanticMatcher {
       return { intent: override.intent, confidence: 0.9, source: 'keyword' };
     }
 
-    // 1. Semantic matching via embedding cosine similarity
+    // 1. Semantic matching via embedding cosine similarity (stage runner in matcherStages.js,
+    // Phase 5 split — floor/margin/collision/closeSecond logic and telemetry shape unchanged)
     try {
-      const inputVec = await this.extractor(inputStr, {
-        pooling: 'mean',
-        normalize: true,
+      const sem = await runSemanticStage(inputStr, {
+        extractor: this.extractor,
+        projectIntentVectors: this.projectIntentVectors,
+        intentVectors: this.intentVectors,
+        getFloor: getEffectiveThreshold,
       });
-      const inputData = inputVec.data;
-
-      let bestIntent = null;
-      let bestScore = -1;
-      let bestMeta = null;
-      let secondBestScore = -1;
-
-      const consider = (sim, intent, meta) => {
-        if (sim > bestScore) {
-          secondBestScore = bestScore;
-          bestScore = sim;
-          bestIntent = intent;
-          bestMeta = meta;
-        } else if (sim > secondBestScore) {
-          secondBestScore = sim;
-        }
-      };
-
-      for (const [intent, data] of Object.entries(this.projectIntentVectors)) {
-        for (const vec of data.vectors) {
-          consider(this._cosineSimilarity(inputData, vec), intent, { projectIndex: data.projectIndex, entryIndex: data.entryIndex });
-        }
-      }
-
-      for (const [intent, vectors] of Object.entries(this.intentVectors)) {
-        for (const vec of vectors) {
-          consider(this._cosineSimilarity(inputData, vec), intent, null);
-        }
-      }
-
-      const effectiveFloor = bestIntent ? getEffectiveThreshold(bestIntent) : 0.6;
-      const MIN_MARGIN = 0.03;
-      // Non-blocking "did you mean" band (2026-08-04): a different intent within this margin
-      // of the winner is NOT ambiguous enough to block on (that's `collision` below), but is
-      // close enough that surfacing it as a chip on the answer is worth it. Only applies to
-      // accepted semantic matches — the no-match case uses nearestIntent() instead.
-      const CLOSE_MARGIN = 0.10;
-      const margin = bestScore - secondBestScore;
-      _stages.push({ stage: 'semantic', intent: bestIntent, confidence: bestScore, margin, floor: effectiveFloor, matched: bestScore >= effectiveFloor && margin >= MIN_MARGIN });
-
-      if (bestScore >= effectiveFloor && margin >= MIN_MARGIN) {
-        // Requested directly (2026-07-30) after "Stop it" silently matched system.chit_chat.yes_no
-        // instead of the stop-server intent it was meant for — a true collision (two DIFFERENT
-        // intents scoring almost identically) was previously indistinguishable from an ordinary
-        // confident match, and got silently resolved to whichever won by a hair. `secondBestScore`
-        // above can belong to the SAME intent as the winner (a different example phrase scoring
-        // almost as well), which isn't a real ambiguity — so this does a second, cheap pass to find
-        // the best-scoring vector belonging to a genuinely DIFFERENT intent, and only flags a
-        // collision when that different intent is nearly tied with the winner. matcher.js turns
-        // this into a "did you mean X or Y?" prompt instead of guessing — scoped deliberately
-        // narrow (only fires when we were about to confidently return an answer anyway) per the
-        // user's explicit choice to limit this to true collisions, not every low-confidence match.
-        let bestOtherIntent = null;
-        let bestOtherScore = -1;
-        let bestOtherMeta = null;
-        const considerOther = (sim, intent, meta) => {
-          if (intent === bestIntent) return;
-          if (sim > bestOtherScore) {
-            bestOtherScore = sim;
-            bestOtherIntent = intent;
-            bestOtherMeta = meta;
-          }
-        };
-        for (const [intent, data] of Object.entries(this.projectIntentVectors)) {
-          for (const vec of data.vectors) considerOther(this._cosineSimilarity(inputData, vec), intent, { projectIndex: data.projectIndex, entryIndex: data.entryIndex });
-        }
-        for (const [intent, vectors] of Object.entries(this.intentVectors)) {
-          for (const vec of vectors) considerOther(this._cosineSimilarity(inputData, vec), intent, null);
-        }
-
-        const trueMargin = bestOtherIntent ? bestScore - bestOtherScore : 1;
-        const collision = (bestOtherIntent && trueMargin < MIN_MARGIN)
-          ? { intent: bestOtherIntent, confidence: bestOtherScore, meta: bestOtherMeta }
-          : null;
-        const closeSecond = (bestOtherIntent && !collision && trueMargin <= CLOSE_MARGIN)
-          ? { intent: bestOtherIntent, confidence: bestOtherScore, meta: bestOtherMeta }
-          : null;
-
-        this._lastTelemetry = { stages: _stages, winner: 'semantic', finalIntent: bestIntent, finalConfidence: bestScore };
-        return { intent: bestIntent, confidence: bestScore, source: 'semantic', meta: bestMeta, collision, closeSecond };
+      _stages.push(sem.stage);
+      if (sem.result) {
+        this._lastTelemetry = { stages: _stages, winner: 'semantic', finalIntent: sem.result.intent, finalConfidence: sem.result.confidence };
+        return sem.result;
       }
     } catch (err) {
       _stages.push({ stage: 'semantic', matched: false, error: err.message });
     }
 
-    // 2. Fuse.js fuzzy fallback
-    try {
-      const fuseResults = this.fuseIndex.search(inputStr);
-      if (fuseResults.length > 0) {
-        const top = fuseResults[0];
-        const confidence = 1 - top.score;
-        const item = top.item;
-        const fuzzyFloor = inputStr.length <= 3 ? 0.35 : inputStr.length <= 4 ? 0.4 : 0.55;
-        _stages.push({ stage: 'fuzzy', intent: item.intent, confidence, floor: fuzzyFloor, matched: confidence >= fuzzyFloor });
-        if (confidence >= fuzzyFloor) {
-          const result = { intent: item.intent, confidence, source: 'fuzzy' };
-          if (item.isProject) {
-            const parts = item.intent.split('.');
-            const pIdx = parseInt(parts[2], 10);
-            const eIdx = parseInt(parts[3], 10);
-            result.meta = { projectIndex: pIdx, entryIndex: eIdx };
-          }
-          this._lastTelemetry = { stages: _stages, winner: 'fuzzy', finalIntent: result.intent, finalConfidence: confidence };
-          return result;
-        }
-      } else {
-        _stages.push({ stage: 'fuzzy', matched: false, reason: 'no results' });
-      }
-    } catch {
-      _stages.push({ stage: 'fuzzy', matched: false, error: 'exception' });
+    // 2. Fuse.js fuzzy fallback (stage runner in matcherStages.js, Phase 5 split)
+    const fz = runFuzzyStage(inputStr, this.fuseIndex);
+    _stages.push(fz.stage);
+    if (fz.result) {
+      this._lastTelemetry = { stages: _stages, winner: 'fuzzy', finalIntent: fz.result.intent, finalConfidence: fz.result.confidence };
+      return fz.result;
     }
 
     // 3. Keyword fallback for common patterns (rules + first-match-wins semantics in
@@ -401,25 +311,12 @@ class SemanticMatcher {
     }
     const inputStr = (input || '').trim().toLowerCase();
     if (!inputStr) return null;
-    let inputData;
     try {
       const v = await this.extractor(inputStr, { pooling: 'mean', normalize: true });
-      inputData = v.data;
+      return bestProjectActionVector(v.data, this.projectIntentVectors, projectIndex);
     } catch {
       return null;
     }
-    let best = null;
-    for (const [intentName, data] of Object.entries(this.projectIntentVectors)) {
-      if (!intentName.startsWith('project.action.')) continue;
-      if (data.projectIndex !== projectIndex) continue;
-      for (let i = 0; i < data.vectors.length; i++) {
-        const sim = this._cosineSimilarity(inputData, data.vectors[i]);
-        if (!best || sim > best.score) {
-          best = { entryIndex: data.entryIndex, vectorIndex: i, score: sim };
-        }
-      }
-    }
-    return best;
   }
 
   getAndClearLastTelemetry() {
@@ -484,7 +381,6 @@ class SemanticMatcher {
         pooling: 'mean',
         normalize: true,
       });
-      const inputData = inputVec.data;
       let bestIntent = null;
       let bestScore = -1;
       let bestMeta = null;
@@ -495,16 +391,7 @@ class SemanticMatcher {
           bestMeta = meta;
         }
       };
-      for (const [intent, data] of Object.entries(this.projectIntentVectors)) {
-        for (const vec of data.vectors) {
-          consider(this._cosineSimilarity(inputData, vec), intent, { projectIndex: data.projectIndex, entryIndex: data.entryIndex });
-        }
-      }
-      for (const [intent, vectors] of Object.entries(this.intentVectors)) {
-        for (const vec of vectors) {
-          consider(this._cosineSimilarity(inputData, vec), intent, null);
-        }
-      }
+      scanAllVectors(inputVec.data, this.projectIntentVectors, this.intentVectors, consider);
       if (bestIntent) return { intent: bestIntent, confidence: bestScore, meta: bestMeta };
       return null;
     } catch (err) {
@@ -539,46 +426,22 @@ class SemanticMatcher {
    */
   findIntentCollisions(threshold = 0.9) {
     if (!this.intentVectors) return [];
-
-    // Compute average vector per intent
-    const avgVectors = {};
-    for (const [intent, vectors] of Object.entries(this.intentVectors)) {
-      if (vectors.length === 0) continue;
-      const n = vectors[0].length;
-      const avg = new Float64Array(n);
-      for (const vec of vectors) {
-        for (let i = 0; i < n; i++) avg[i] += vec[i];
-      }
-      for (let i = 0; i < n; i++) avg[i] /= vectors.length;
-      avgVectors[intent] = avg;
-    }
-
+    const avgVectors = averageIntentVectors(this.intentVectors);
     const collisions = [];
     const seen = new Set();
-
     for (const [a, va] of Object.entries(avgVectors)) {
       for (const [b, vb] of Object.entries(avgVectors)) {
         const key = a < b ? `${a}|${b}` : `${b}|${a}`;
         if (a === b || seen.has(key)) continue;
         seen.add(key);
-
-        const sim = this._cosineSimilarity(va, vb);
+        const sim = cosineSimilarity(va, vb);
         if (sim >= threshold) {
           collisions.push({ intentA: a, intentB: b, similarity: sim });
         }
       }
     }
-
     collisions.sort((a, b) => b.similarity - a.similarity);
     return collisions;
-  }
-
-  _cosineSimilarity(a, b) {
-    let dot = 0;
-    for (let i = 0; i < a.length; i++) {
-      dot += a[i] * b[i];
-    }
-    return dot;
   }
 }
 
