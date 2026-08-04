@@ -1,17 +1,21 @@
 import React from 'react';
 import { TextScramble } from './TextScramble';
-import { GlowOrbs } from './GlowOrbs';
+import { BentoGrid } from './BentoGrid';
 import { Project, AIStatus } from '../types';
-import { FolderSearch, MessageSquare, Brain, Cpu, HardDrive, Code, Zap, BookOpen, ArrowRight, Check, ChevronLeft, ChevronRight, X, Sparkles, Search, Terminal } from 'lucide-react';
+import { Brain, Cpu, HardDrive, FolderSearch, Code, Zap, MessageSquare, BookOpen, Check, ChevronLeft, ChevronRight, X, Sparkles } from 'lucide-react';
 
 interface WelcomeScreenProps {
   projects: Project[];
+  activeProject: Project | null;
   ollamaStatus: AIStatus | null;
   aiEnabled: boolean;
   onAIToggle: () => void;
   onSelectProject: (p: Project) => void;
   onNewChat: () => void;
   onQuickStart: () => void;
+  workspaceProjects: Project[];
+  addToWorkspace: (p: Project) => void;
+  removeFromWorkspace: (projectId: string) => void;
 }
 
 const TOUR_STEPS = [
@@ -23,7 +27,7 @@ const TOUR_STEPS = [
   {
     icon: <FolderSearch size={28} />,
     title: 'Projects & Navigation',
-    body: 'Every discovered project appears in the grid below. Click any card to open a chat scoped to that project — sessions, commands, and file access all stay inside its folder. Use the scan bar up top to point at any directory on your machine.',
+    body: 'Every discovered project appears in the grid below. Click any card to open a chat scoped to that project — sessions, commands, and file access all stay inside its folder. Use the scan bar in the sidebar to point at any directory on your machine.',
   },
   {
     icon: <Brain size={28} />,
@@ -37,80 +41,91 @@ const TOUR_STEPS = [
   },
 ];
 
-export function WelcomeScreen({ projects, ollamaStatus, aiEnabled, onAIToggle, onSelectProject, onNewChat, onQuickStart }: WelcomeScreenProps) {
+export function WelcomeScreen({ projects, activeProject, ollamaStatus, aiEnabled, onAIToggle, onSelectProject, onNewChat, onQuickStart, workspaceProjects, addToWorkspace, removeFromWorkspace }: WelcomeScreenProps) {
   const [tourStep, setTourStep] = React.useState(0);
 
-  const totalFiles = projects.reduce((sum, p) => sum + (p.codebaseIndex?.totalFiles || 0), 0);
-  const totalDirs = projects.reduce((sum, p) => sum + (p.codebaseIndex?.totalDirs || 0), 0);
-  const activeLangs = new Set<string>();
-  projects.forEach(p => p.codebaseIndex?.languages?.forEach(l => activeLangs.add(l.split(' ')[0])));
-  const latestProjects = projects.slice(0, 4);
+  // Per-project stats when a project is selected, else global totals across all discovered
+  // projects — so the strip is never empty and swaps context as the active project changes.
+  const idx = activeProject?.codebaseIndex;
+  const totalFiles = idx ? idx.totalFiles : projects.reduce((sum, p) => sum + (p.codebaseIndex?.totalFiles || 0), 0);
+  const totalDirs = idx ? idx.totalDirs : projects.reduce((sum, p) => sum + (p.codebaseIndex?.totalDirs || 0), 0);
+  const langs = idx ? idx.languages : (() => {
+    const s = new Set<string>();
+    projects.forEach(p => p.codebaseIndex?.languages?.forEach(l => s.add(l.split(' ')[0])));
+    return [...s];
+  })();
+  const entryPoints = idx?.entryPoints ?? [];
 
   return (
-    <div className="h-full flex flex-col items-center justify-center relative overflow-y-auto">
-      <GlowOrbs />
-      <div className="relative z-10 max-w-4xl w-full px-6">
-        <div className="text-center mb-8">
-          <h1 className="text-5xl md:text-7xl font-semibold italic text-fg-strong mb-4">
+    <div className="h-full overflow-y-auto">
+      <div className="max-w-4xl mx-auto w-full px-6 py-8">
+        <div className="text-center mb-6">
+          <h1 className="text-4xl md:text-5xl font-semibold italic text-fg-strong mb-3">
             <TextScramble text="Welcome Master Tobi" />
           </h1>
-          <p className="text-sm tracking-[0.2em] uppercase text-fg-dim font-bold">
+          <p className="text-xs tracking-[0.2em] uppercase text-fg-dim font-bold">
             V4 Knowledge Engine — {projects.length} Projects Loaded
           </p>
         </div>
 
-        {ollamaStatus && (
-          <div className="flex justify-center gap-4 mb-10">
-            <button onClick={onAIToggle} className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm transition-all border ${aiEnabled ? 'bg-teal-500/20 border-teal-500/40 text-teal-300 shadow-lg shadow-teal-500/10' : 'bg-panel border-border-soft text-fg-subtle hover:text-fg-strong'}`}>
-              <Brain size={16} />
-              AI Assistant — {aiEnabled ? 'ON' : 'OFF'}
-            </button>
-            {ollamaStatus.models?.length > 0 && (
-              <span className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-panel border border-border-soft text-xs text-fg-dim font-mono">
-                <Cpu size={14} /> {ollamaStatus.models[0].name}
-              </span>
-            )}
+        <div className="flex flex-wrap items-center justify-center gap-2 mb-8">
+          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-panel border border-border-soft text-xs" title="Source files">
+            <span className="text-[#3d6bff]"><HardDrive size={14} /></span>
+            <span className="text-fg-strong font-bold">{totalFiles.toLocaleString()}</span>
+            <span className="text-fg-dim">Files</span>
           </div>
-        )}
-
-        <div className="grid grid-cols-4 gap-3 mb-10">
-          {[
-            { icon: <HardDrive size={18} />, label: 'Files', value: totalFiles },
-            { icon: <FolderSearch size={18} />, label: 'Directories', value: totalDirs },
-            { icon: <Code size={18} />, label: 'Languages', value: activeLangs.size },
-            { icon: <Zap size={18} />, label: 'Online', value: ollamaStatus?.running ? 'AI Ready' : 'Ollama Off' }
-          ].map((stat, i) => (
-            <div key={i} className="bg-panel border border-border-soft rounded-xl px-4 py-3 text-center hover:bg-panel-strong transition-colors">
-              <div className="text-[#3d6bff] mb-1 flex justify-center">{stat.icon}</div>
-              <div className="text-fg-strong text-lg font-bold">{stat.value}</div>
-              <div className="text-fg-dim text-xs">{stat.label}</div>
-            </div>
-          ))}
+          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-panel border border-border-soft text-xs" title="Directories">
+            <span className="text-[#3d6bff]"><FolderSearch size={14} /></span>
+            <span className="text-fg-strong font-bold">{totalDirs.toLocaleString()}</span>
+            <span className="text-fg-dim">Dirs</span>
+          </div>
+          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-panel border border-border-soft text-xs" title="Languages">
+            <span className="text-[#3d6bff]"><Code size={14} /></span>
+            <span className="text-fg-strong font-bold">{langs.slice(0, 3).join(', ') || '—'}</span>
+            <span className="text-fg-dim">Lang</span>
+          </div>
+          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-panel border border-border-soft text-xs max-w-[220px]" title="Entry points">
+            <span className="text-[#3d6bff] flex-shrink-0"><Zap size={14} /></span>
+            <span className="text-fg-strong font-bold font-mono truncate">{entryPoints.slice(0, 2).join(', ') || '—'}</span>
+            <span className="text-fg-dim flex-shrink-0">Entry</span>
+          </div>
+          {ollamaStatus && (
+            <button onClick={onAIToggle} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs transition-all border ${aiEnabled ? 'bg-teal-500/20 border-teal-500/40 text-teal-300' : 'bg-panel border-border-soft text-fg-subtle hover:text-fg-strong'}`}>
+              <Brain size={14} />
+              AI {aiEnabled ? 'ON' : 'OFF'}
+            </button>
+          )}
+          {ollamaStatus?.models?.length > 0 && (
+            <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-panel border border-border-soft text-[11px] text-fg-dim font-mono">
+              <Cpu size={13} /> {ollamaStatus.models[0].name}
+            </span>
+          )}
         </div>
 
-        <div className="flex justify-center gap-4 mb-10">
-          <button onClick={onNewChat} className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-[#3d6bff] to-[#6366f1] text-white rounded-xl font-bold text-sm hover:opacity-90 transition-opacity shadow-lg">
+        <div className="flex flex-wrap justify-center gap-3 mb-8">
+          <button onClick={onNewChat} className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-[#3d6bff] to-[#6366f1] text-white rounded-xl font-bold text-sm hover:opacity-90 transition-opacity shadow-lg">
             <MessageSquare size={16} /> New Chat
           </button>
-          <button onClick={onQuickStart} className="flex items-center gap-2 px-6 py-3 bg-panel border border-border-soft text-fg-muted rounded-xl font-bold text-sm hover:bg-panel-strong transition-colors">
+          <button onClick={onQuickStart} className="flex items-center gap-2 px-5 py-2.5 bg-panel border border-border-soft text-fg-muted rounded-xl font-bold text-sm hover:bg-panel-strong transition-colors">
             <BookOpen size={16} /> Quick Start Guide
           </button>
-          <button onClick={() => setTourStep(1)} className="flex items-center gap-2 px-6 py-3 bg-panel border border-border-soft text-[#00d4a3] rounded-xl font-bold text-sm hover:bg-panel-strong transition-colors group">
+          <button onClick={() => setTourStep(1)} className="flex items-center gap-2 px-5 py-2.5 bg-panel border border-border-soft text-[#00d4a3] rounded-xl font-bold text-sm hover:bg-panel-strong transition-colors group">
             <Sparkles size={16} className="group-hover:rotate-12 transition-transform" /> Take the Tour
           </button>
         </div>
 
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          {latestProjects.map(p => (
-            <button key={p.id} onClick={() => onSelectProject(p)} className="bg-panel border border-border-soft rounded-xl p-4 text-left hover:bg-panel-strong hover:border-[#3d6bff]/30 transition-all group">
-              <div className="text-xs font-bold text-fg-subtle tracking-wider uppercase mb-1">Project</div>
-              <div className="text-sm text-fg-strong font-medium truncate group-hover:text-[#3d6bff] transition-colors">{p.name}</div>
-              {p.codebaseIndex && (
-                <div className="text-xs text-fg-dim mt-1">{p.codebaseIndex.totalFiles} files · {(p.codebaseIndex.languages || []).slice(0, 2).join(', ')}</div>
-              )}
-            </button>
-          ))}
-        </div>
+        {projects.length === 0 ? (
+          <div className="text-sm text-fg-dim italic text-center py-8">No projects found. Try scanning a different path.</div>
+        ) : (
+          <BentoGrid
+            projects={projects}
+            activeProject={activeProject}
+            onSelect={onSelectProject}
+            workspaceProjects={workspaceProjects}
+            addToWorkspace={addToWorkspace}
+            removeFromWorkspace={removeFromWorkspace}
+          />
+        )}
       </div>
 
       {tourStep > 0 && (

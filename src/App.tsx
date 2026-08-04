@@ -6,7 +6,7 @@ import { Terminal } from './components/Terminal';
 import { WelcomeScreen } from './components/WelcomeScreen';
 import { Dashboard } from './components/Dashboard';
 import { useConsole } from './hooks/useConsole';
-import { FolderSearch, Home, LayoutDashboard } from 'lucide-react';
+import { Home, LayoutDashboard } from 'lucide-react';
 import { ThemeToggle } from './components/ui/ThemeToggle';
 
 function App() {
@@ -76,26 +76,6 @@ function App() {
     // Reset so re-selecting the same folder triggers onChange again
     e.target.value = '';
   };
-
-  if (showWelcome) {
-    return (
-      <div className="h-screen relative flex flex-col p-6">
-        <header className="relative z-10 flex-shrink-0 flex items-center justify-end gap-4 mb-4">
-          {indexingProjectId && (
-            <span className="text-xs text-yellow-400 animate-pulse">⏳ Indexing project...</span>
-          )}
-          <form onSubmit={handleScan} className="flex items-center gap-2 bg-panel p-1.5 rounded-xl border border-border-soft">
-            <button type="button" onClick={handleBrowseFolder} className="p-1 text-fg-subtle hover:text-fg-strong transition-colors" title="Browse for a folder near your current scan directory (for any other location, paste the full path instead)">
-              <FolderSearch size={16} />
-            </button>
-            <input type="text" value={scanPath} onChange={(e) => setScanPath(e.target.value)} placeholder="C:\Users\...\Projects" className="bg-transparent border-none outline-none text-xs font-mono w-48 text-fg px-2" />
-            <button type="submit" className="px-3 py-1.5 bg-[#00d4a3]/20 text-[#00d4a3] rounded-lg text-[10px] font-bold tracking-wider uppercase hover:bg-[#00d4a3]/30 transition-colors">Scan</button>
-          </form>
-        </header>
-        <WelcomeScreen projects={projects} ollamaStatus={ollamaStatus} aiEnabled={aiEnabled} onAIToggle={handleAIToggle} onSelectProject={handleSelectProject} onNewChat={handleNewChat} onQuickStart={handleQuickStart} />
-      </div>
-    );
-  }
 
   return (
     <div className={`h-screen relative flex flex-col ${chatFullscreen ? '' : 'p-6'}`}>
@@ -179,6 +159,21 @@ function App() {
 
         <div className={chatFullscreen ? 'h-full w-full' : 'flex-1 min-h-0 min-w-0'}>
           <div className={`h-full w-full ${chatFullscreen ? '' : 'max-w-4xl mx-auto'}`}>
+            {showWelcome && !chatFullscreen ? (
+            <WelcomeScreen
+              projects={projects}
+              activeProject={activeProject}
+              ollamaStatus={ollamaStatus}
+              aiEnabled={aiEnabled}
+              onAIToggle={handleAIToggle}
+              onSelectProject={handleSelectProject}
+              onNewChat={handleNewChat}
+              onQuickStart={handleQuickStart}
+              workspaceProjects={workspaceProjects}
+              addToWorkspace={addToWorkspace}
+              removeFromWorkspace={removeFromWorkspace}
+            />
+            ) : (
             <Terminal
               isFullscreen={chatFullscreen}
               onToggleFullscreen={() => setChatFullscreen(v => !v)}
@@ -225,6 +220,7 @@ function App() {
               dockExpanded={dockExpanded}
               onToggleDock={() => setDockExpanded(v => !v)}
             />
+            )}
           </div>
         </div>
         </>)}
