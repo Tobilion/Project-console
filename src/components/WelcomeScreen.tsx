@@ -51,22 +51,22 @@ export function WelcomeScreen({ projects, ollamaStatus, aiEnabled, onAIToggle, o
       <GlowOrbs />
       <div className="relative z-10 max-w-4xl w-full px-6">
         <div className="text-center mb-8">
-          <h1 className="text-5xl md:text-7xl font-serif italic text-white mb-4">
+          <h1 className="text-5xl md:text-7xl font-serif italic text-fg-strong mb-4">
             <TextScramble text="Welcome Master Tobi" />
           </h1>
-          <p className="text-sm tracking-[0.2em] uppercase text-gray-500 font-bold">
+          <p className="text-sm tracking-[0.2em] uppercase text-fg-dim font-bold">
             V4 Knowledge Engine — {projects.length} Projects Loaded
           </p>
         </div>
 
         {ollamaStatus && (
           <div className="flex justify-center gap-4 mb-10">
-            <button onClick={onAIToggle} className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-mono transition-all border ${aiEnabled ? 'bg-teal-500/20 border-teal-500/40 text-teal-300 shadow-lg shadow-teal-500/10' : 'bg-white/5 border-white/10 text-gray-400 hover:text-gray-200'}`}>
+            <button onClick={onAIToggle} className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-mono transition-all border ${aiEnabled ? 'bg-teal-500/20 border-teal-500/40 text-teal-300 shadow-lg shadow-teal-500/10' : 'bg-panel border-border-soft text-fg-subtle hover:text-fg-strong'}`}>
               <Brain size={16} />
               AI Assistant — {aiEnabled ? 'ON' : 'OFF'}
             </button>
             {ollamaStatus.models?.length > 0 && (
-              <span className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 text-xs text-gray-500 font-mono">
+              <span className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-panel border border-border-soft text-xs text-fg-dim font-mono">
                 <Cpu size={14} /> {ollamaStatus.models[0].name}
               </span>
             )}
@@ -80,10 +80,10 @@ export function WelcomeScreen({ projects, ollamaStatus, aiEnabled, onAIToggle, o
             { icon: <Code size={18} />, label: 'Languages', value: activeLangs.size },
             { icon: <Zap size={18} />, label: 'Online', value: ollamaStatus?.running ? 'AI Ready' : 'Ollama Off' }
           ].map((stat, i) => (
-            <div key={i} className="bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-center hover:bg-white/10 transition-colors">
+            <div key={i} className="bg-panel border border-border-soft rounded-xl px-4 py-3 text-center hover:bg-panel-strong transition-colors">
               <div className="text-[#3d6bff] mb-1 flex justify-center">{stat.icon}</div>
-              <div className="text-white text-lg font-bold font-mono">{stat.value}</div>
-              <div className="text-gray-500 text-xs">{stat.label}</div>
+              <div className="text-fg-strong text-lg font-bold font-mono">{stat.value}</div>
+              <div className="text-fg-dim text-xs">{stat.label}</div>
             </div>
           ))}
         </div>
@@ -92,21 +92,21 @@ export function WelcomeScreen({ projects, ollamaStatus, aiEnabled, onAIToggle, o
           <button onClick={onNewChat} className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-[#3d6bff] to-[#6366f1] text-white rounded-xl font-bold text-sm hover:opacity-90 transition-opacity shadow-lg">
             <MessageSquare size={16} /> New Chat
           </button>
-          <button onClick={onQuickStart} className="flex items-center gap-2 px-6 py-3 bg-white/5 border border-white/10 text-gray-300 rounded-xl font-bold text-sm hover:bg-white/10 transition-colors">
+          <button onClick={onQuickStart} className="flex items-center gap-2 px-6 py-3 bg-panel border border-border-soft text-fg-muted rounded-xl font-bold text-sm hover:bg-panel-strong transition-colors">
             <BookOpen size={16} /> Quick Start Guide
           </button>
-          <button onClick={() => setTourStep(1)} className="flex items-center gap-2 px-6 py-3 bg-white/5 border border-white/10 text-[#00d4a3] rounded-xl font-bold text-sm hover:bg-white/10 transition-colors group">
+          <button onClick={() => setTourStep(1)} className="flex items-center gap-2 px-6 py-3 bg-panel border border-border-soft text-[#00d4a3] rounded-xl font-bold text-sm hover:bg-panel-strong transition-colors group">
             <Sparkles size={16} className="group-hover:rotate-12 transition-transform" /> Take the Tour
           </button>
         </div>
 
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           {latestProjects.map(p => (
-            <button key={p.id} onClick={() => onSelectProject(p)} className="bg-white/5 border border-white/10 rounded-xl p-4 text-left hover:bg-white/10 hover:border-[#3d6bff]/30 transition-all group">
-              <div className="text-xs font-bold text-gray-400 tracking-wider uppercase mb-1">Project</div>
-              <div className="text-sm text-white font-medium truncate group-hover:text-[#3d6bff] transition-colors">{p.name}</div>
+            <button key={p.id} onClick={() => onSelectProject(p)} className="bg-panel border border-border-soft rounded-xl p-4 text-left hover:bg-panel-strong hover:border-[#3d6bff]/30 transition-all group">
+              <div className="text-xs font-bold text-fg-subtle tracking-wider uppercase mb-1">Project</div>
+              <div className="text-sm text-fg-strong font-medium truncate group-hover:text-[#3d6bff] transition-colors">{p.name}</div>
               {p.codebaseIndex && (
-                <div className="text-xs text-gray-500 mt-1">{p.codebaseIndex.totalFiles} files · {(p.codebaseIndex.languages || []).slice(0, 2).join(', ')}</div>
+                <div className="text-xs text-fg-dim mt-1">{p.codebaseIndex.totalFiles} files · {(p.codebaseIndex.languages || []).slice(0, 2).join(', ')}</div>
               )}
             </button>
           ))}
@@ -115,36 +115,36 @@ export function WelcomeScreen({ projects, ollamaStatus, aiEnabled, onAIToggle, o
 
       {tourStep > 0 && (
         <div className="fixed inset-0 z-50 flex items-center justify-center">
-          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setTourStep(0)} />
-          <div className="relative z-10 w-full max-w-lg mx-4 bg-[#0a0a0f] border border-white/10 rounded-2xl shadow-2xl overflow-hidden">
+          <div className="absolute inset-0 bg-scrim-strong backdrop-blur-sm" onClick={() => setTourStep(0)} />
+          <div className="relative z-10 w-full max-w-lg mx-4 bg-overlay border border-border-soft rounded-2xl shadow-2xl overflow-hidden">
             <div className="flex items-center justify-between px-6 pt-6 pb-2">
               <div className="flex items-center gap-3">
                 <div className="p-2 bg-[#00d4a3]/10 rounded-lg text-[#00d4a3]">
                   {TOUR_STEPS[tourStep - 1].icon}
                 </div>
-                <div className="text-xs font-mono text-gray-500">
+                <div className="text-xs font-mono text-fg-dim">
                   Step {tourStep} of 4
                 </div>
               </div>
-              <button onClick={() => setTourStep(0)} className="p-1 text-gray-500 hover:text-gray-300 transition-colors">
+              <button onClick={() => setTourStep(0)} className="p-1 text-fg-dim hover:text-fg-muted transition-colors">
                 <X size={18} />
               </button>
             </div>
 
             <div className="px-6 py-4">
-              <h2 className="text-xl font-bold text-white mb-3">{TOUR_STEPS[tourStep - 1].title}</h2>
-              <p className="text-sm text-gray-400 leading-relaxed">{TOUR_STEPS[tourStep - 1].body}</p>
+              <h2 className="text-xl font-bold text-fg-strong mb-3">{TOUR_STEPS[tourStep - 1].title}</h2>
+              <p className="text-sm text-fg-subtle leading-relaxed">{TOUR_STEPS[tourStep - 1].body}</p>
             </div>
 
             <div className="flex items-center justify-between px-6 pb-6 pt-2">
               <div className="flex gap-1.5">
                 {[1, 2, 3, 4].map(i => (
-                  <div key={i} className={`w-2 h-2 rounded-full transition-colors ${i === tourStep ? 'bg-[#00d4a3]' : 'bg-white/10'}`} />
+                  <div key={i} className={`w-2 h-2 rounded-full transition-colors ${i === tourStep ? 'bg-[#00d4a3]' : 'bg-panel-strong'}`} />
                 ))}
               </div>
               <div className="flex items-center gap-2">
                 {tourStep > 1 && (
-                  <button onClick={() => setTourStep(s => s - 1)} className="flex items-center gap-1 px-3 py-2 text-xs text-gray-400 hover:text-gray-200 transition-colors font-mono">
+                  <button onClick={() => setTourStep(s => s - 1)} className="flex items-center gap-1 px-3 py-2 text-xs text-fg-subtle hover:text-fg-strong transition-colors font-mono">
                     <ChevronLeft size={14} /> Back
                   </button>
                 )}

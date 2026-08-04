@@ -51,8 +51,8 @@ export const Dashboard = ({ onClose, refreshSignal = 0 }: DashboardProps) => {
     <div className="flex flex-col gap-4 h-full overflow-hidden">
       <div className="flex items-center justify-between flex-shrink-0">
         <div className="flex items-center gap-3">
-          <h2 className="text-lg font-bold text-white">Dashboard</h2>
-          <span className="text-xs text-gray-500 font-mono">
+          <h2 className="text-lg font-bold text-fg-strong">Dashboard</h2>
+          <span className="text-xs text-fg-dim font-mono">
             {entries.length} projects
           </span>
           {totalUncommitted > 0 && (
@@ -66,7 +66,7 @@ export const Dashboard = ({ onClose, refreshSignal = 0 }: DashboardProps) => {
             </span>
           )}
         </div>
-        <button onClick={onClose} className="p-1 text-gray-500 hover:text-gray-300 transition-colors">
+        <button onClick={onClose} className="p-1 text-fg-dim hover:text-fg-muted transition-colors">
           <X size={18} />
         </button>
       </div>
@@ -78,13 +78,13 @@ export const Dashboard = ({ onClose, refreshSignal = 0 }: DashboardProps) => {
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: i * 0.03 }}
-            className="bg-white/5 rounded-xl border border-white/10 p-4"
+            className="bg-panel rounded-xl border border-border-soft p-4"
           >
             <div className="flex items-start justify-between gap-4 mb-3">
               <div className="flex items-center gap-2 min-w-0">
                 <FolderGit2 size={16} className="text-[#00d4a3] flex-shrink-0" />
-                <h3 className="text-sm font-bold text-white truncate">{entry.name}</h3>
-                <span className="text-[10px] text-gray-500 font-mono truncate hidden lg:inline" title={entry.path}>
+                <h3 className="text-sm font-bold text-fg-strong truncate">{entry.name}</h3>
+                <span className="text-[10px] text-fg-dim font-mono truncate hidden lg:inline" title={entry.path}>
                   {compactPath(entry.path)}
                 </span>
               </div>
@@ -112,39 +112,39 @@ export const Dashboard = ({ onClose, refreshSignal = 0 }: DashboardProps) => {
 
             <div className="grid grid-cols-12 gap-3 text-xs">
               <div className="col-span-3">
-                <span className="text-[10px] tracking-wider uppercase text-gray-500 font-bold">Uncommitted</span>
+                <span className="text-[10px] tracking-wider uppercase text-fg-dim font-bold">Uncommitted</span>
                 {entry.uncommitted.length > 0 ? (
                   <div className="mt-1 max-h-20 overflow-y-auto space-y-0.5 font-mono text-yellow-300/70">
                     {entry.uncommitted.slice(0, 10).map((line, j) => (
                       <div key={j} className="truncate">{line}</div>
                     ))}
                     {entry.uncommitted.length > 10 && (
-                      <div className="text-gray-500 italic">+{entry.uncommitted.length - 10} more</div>
+                      <div className="text-fg-dim italic">+{entry.uncommitted.length - 10} more</div>
                     )}
                   </div>
                 ) : (
-                  <div className="mt-1 text-gray-500 italic">Clean</div>
+                  <div className="mt-1 text-fg-dim italic">Clean</div>
                 )}
               </div>
 
               <div className="col-span-7">
-                <span className="text-[10px] tracking-wider uppercase text-gray-500 font-bold flex items-center gap-1">
+                <span className="text-[10px] tracking-wider uppercase text-fg-dim font-bold flex items-center gap-1">
                   <GitCommit size={12} />
                   Recent commits
                 </span>
                 {entry.recentCommits.length > 0 ? (
-                  <div className="mt-1 space-y-0.5 font-mono text-gray-400">
+                  <div className="mt-1 space-y-0.5 font-mono text-fg-subtle">
                     {entry.recentCommits.map((line, j) => (
                       <div key={j} className="truncate">{line}</div>
                     ))}
                   </div>
                 ) : (
-                  <div className="mt-1 text-gray-500 italic">No commits</div>
+                  <div className="mt-1 text-fg-dim italic">No commits</div>
                 )}
               </div>
 
               <div className="col-span-2">
-                <span className="text-[10px] tracking-wider uppercase text-gray-500 font-bold">Status</span>
+                <span className="text-[10px] tracking-wider uppercase text-fg-dim font-bold">Status</span>
                 <div className="mt-1 space-y-1 font-mono">
                   {entry.runningCommand ? (
                     <div className="text-blue-400 truncate" title={entry.runningCommand}>
@@ -164,7 +164,7 @@ export const Dashboard = ({ onClose, refreshSignal = 0 }: DashboardProps) => {
                     </a>
                   ) : null}
                   {!entry.runningCommand && !entry.devUrl ? (
-                    <div className="text-gray-500 italic">Idle</div>
+                    <div className="text-fg-dim italic">Idle</div>
                   ) : null}
                 </div>
               </div>
@@ -173,7 +173,7 @@ export const Dashboard = ({ onClose, refreshSignal = 0 }: DashboardProps) => {
         ))}
 
         {entries.length === 0 && (
-          <div className="text-sm text-gray-500 font-mono italic text-center py-12">
+          <div className="text-sm text-fg-dim font-mono italic text-center py-12">
             No projects loaded — scan a directory to get started.
           </div>
         )}

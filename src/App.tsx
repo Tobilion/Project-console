@@ -7,6 +7,7 @@ import { WelcomeScreen } from './components/WelcomeScreen';
 import { Dashboard } from './components/Dashboard';
 import { useConsole } from './hooks/useConsole';
 import { FolderSearch, Plus, MessageSquare, Trash2, Home, LayoutDashboard } from 'lucide-react';
+import { ThemeToggle } from './components/ui/ThemeToggle';
 
 function App() {
   const folderInputRef = useRef<HTMLInputElement>(null);
@@ -89,11 +90,11 @@ function App() {
           {indexingProjectId && (
             <span className="text-xs text-yellow-400 font-mono animate-pulse">⏳ Indexing project...</span>
           )}
-          <form onSubmit={handleScan} className="flex items-center gap-2 bg-white/5 p-1.5 rounded-xl border border-white/10">
-            <button type="button" onClick={handleBrowseFolder} className="p-1 text-gray-400 hover:text-gray-200 transition-colors" title="Browse for a folder near your current scan directory (for any other location, paste the full path instead)">
+          <form onSubmit={handleScan} className="flex items-center gap-2 bg-panel p-1.5 rounded-xl border border-border-soft">
+            <button type="button" onClick={handleBrowseFolder} className="p-1 text-fg-subtle hover:text-fg-strong transition-colors" title="Browse for a folder near your current scan directory (for any other location, paste the full path instead)">
               <FolderSearch size={16} />
             </button>
-            <input type="text" value={scanPath} onChange={(e) => setScanPath(e.target.value)} placeholder="C:\Users\...\Projects" className="bg-transparent border-none outline-none text-xs font-mono w-48 text-gray-400 px-2" />
+            <input type="text" value={scanPath} onChange={(e) => setScanPath(e.target.value)} placeholder="C:\Users\...\Projects" className="bg-transparent border-none outline-none text-xs font-mono w-48 text-fg px-2" />
             <button type="submit" className="px-3 py-1.5 bg-[#00d4a3]/20 text-[#00d4a3] rounded-lg text-[10px] font-bold tracking-wider uppercase hover:bg-[#00d4a3]/30 transition-colors">Scan</button>
           </form>
         </header>
@@ -109,18 +110,18 @@ function App() {
       {!chatFullscreen && (
       <header className="relative z-10 flex-shrink-0 flex flex-wrap items-center gap-3 mb-4">
         <div className="flex items-center gap-3 min-w-0">
-          <h1 className="text-lg font-serif italic text-white whitespace-nowrap">
+          <h1 className="text-lg font-serif italic text-fg-strong whitespace-nowrap">
             <TextScramble text="V4 Knowledge Engine" />
           </h1>
-          <p className="text-[10px] tracking-[0.2em] uppercase text-gray-500 font-bold hidden sm:inline">
+          <p className="text-[10px] tracking-[0.2em] uppercase text-fg-dim font-bold hidden sm:inline">
             Project Console &amp; Analytics
           </p>
           {indexingProjectId && (
             <span className="text-xs text-yellow-400 font-mono animate-pulse">⏳ Indexing...</span>
           )}
         </div>
-        <form onSubmit={handleScan} className="flex items-center gap-2 bg-surface/50 p-1.5 rounded-lg border border-white/10 backdrop-blur-sm">
-          <button type="button" onClick={handleBrowseFolder} className="flex items-center gap-1 px-2 text-gray-400 hover:text-gray-200 transition-colors" title="Browse for a folder near your current scan directory (for any other location, paste the full path instead)">
+        <form onSubmit={handleScan} className="flex items-center gap-2 bg-surface/50 p-1.5 rounded-lg border border-border-soft backdrop-blur-sm">
+          <button type="button" onClick={handleBrowseFolder} className="flex items-center gap-1 px-2 text-fg-subtle hover:text-fg-strong transition-colors" title="Browse for a folder near your current scan directory (for any other location, paste the full path instead)">
             <FolderSearch size={14} />
           </button>
           <input
@@ -128,7 +129,7 @@ function App() {
             value={scanPath}
             onChange={(e) => setScanPath(e.target.value)}
             placeholder="C:\Users\...\Projects"
-            className="bg-transparent border-none outline-none text-sm font-mono w-56 text-gray-200"
+            className="bg-transparent border-none outline-none text-sm font-mono w-56 text-fg"
           />
           <button
             type="submit"
@@ -145,18 +146,19 @@ function App() {
             </span>
           )}
           {window.location.port && (
-            <span className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-gray-300 font-mono bg-black/20 rounded-lg border border-white/10 whitespace-nowrap flex-shrink-0"
+            <span className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-fg-strong font-mono bg-scrim-faint rounded-lg border border-border-soft whitespace-nowrap flex-shrink-0"
               title={`Console running at http://${window.location.hostname}:${window.location.port}`}>
-              <span className="w-1.5 h-1.5 rounded-full bg-[#00d4a3] inline-block animate-pulse" />
+              <span className="w-1.5 h-1.5 rounded-full bg-accent inline-block animate-pulse" />
               :{window.location.port}
             </span>
           )}
-          <button onClick={() => setShowWelcome(true)} className="p-2 text-gray-500 hover:text-gray-300 transition-colors" title="Home">
+          <button onClick={() => setShowWelcome(true)} className="p-2 text-fg-dim hover:text-fg-strong transition-colors" title="Home">
             <Home size={18} />
           </button>
-          <button onClick={() => setShowDashboard(v => !v)} className={`p-2 transition-colors ${showDashboard ? 'text-[#00d4a3]' : 'text-gray-500 hover:text-gray-300'}`} title="Dashboard">
+          <button onClick={() => setShowDashboard(v => !v)} className={`p-2 transition-colors ${showDashboard ? 'text-accent' : 'text-fg-dim hover:text-fg-strong'}`} title="Dashboard">
             <LayoutDashboard size={18} />
           </button>
+          <ThemeToggle />
         </div>
         <input
           ref={folderInputRef}
@@ -181,23 +183,23 @@ function App() {
             ? sessions
             : sessions.filter(s => s.projectId === activeProject.id);
           return (
-          <div className="lg:col-span-2 flex flex-col gap-2 overflow-y-auto min-h-0 bg-white/5 rounded-2xl border border-white/10 p-3">
+          <div className="lg:col-span-2 flex flex-col gap-2 overflow-y-auto min-h-0 bg-panel rounded-2xl border border-border-soft p-3">
             <div className="flex items-center justify-between mb-1">
-              <span className="text-xs tracking-[0.2em] uppercase text-gray-500 font-bold">Chats</span>
-              <button onClick={() => createSession(activeProject?.id, activeProject?.name)} className="p-1 text-gray-400 hover:text-teal-400 transition-colors">
+              <span className="text-xs tracking-[0.2em] uppercase text-fg-dim font-bold">Chats</span>
+              <button onClick={() => createSession(activeProject?.id, activeProject?.name)} className="p-1 text-fg-subtle hover:text-teal-400 transition-colors">
                 <Plus size={16} />
               </button>
             </div>
             {activeProject && (
               <button
                 onClick={() => setShowAllChats(v => !v)}
-                className="text-[10px] text-gray-500 hover:text-gray-300 font-mono text-left mb-1 transition-colors"
+                className="text-[10px] text-fg-dim hover:text-fg-muted font-mono text-left mb-1 transition-colors"
               >
                 {showAllChats ? `Showing all projects — show only "${activeProject.name}"` : 'Show chats from all projects'}
               </button>
             )}
             {visibleSessions.length === 0 && (
-              <button onClick={() => createSession(activeProject?.id, activeProject?.name)} className="text-xs text-gray-500 font-mono italic text-left py-2 px-2 rounded-lg hover:bg-white/5 transition-colors">
+              <button onClick={() => createSession(activeProject?.id, activeProject?.name)} className="text-xs text-fg-dim font-mono italic text-left py-2 px-2 rounded-lg hover:bg-panel transition-colors">
                 {activeProject && !showAllChats ? `No chats yet for "${activeProject.name}" — create one` : 'No chats yet — create one'}
               </button>
             )}
@@ -206,17 +208,17 @@ function App() {
                 key={s.id}
                 onClick={() => switchSession(s.id)}
                 className={`flex items-center gap-2 px-2 py-2 rounded-lg cursor-pointer text-xs transition-colors group ${
-                  activeSessionId === s.id ? 'bg-teal-500/15 text-teal-300' : 'text-gray-400 hover:bg-white/5'
+                  activeSessionId === s.id ? 'bg-teal-500/15 text-teal-300' : 'text-fg-subtle hover:bg-panel'
                 }`}
               >
                 <MessageSquare size={14} className="flex-shrink-0" />
                 <span className="truncate flex-1 flex flex-col">
                   <span className="truncate">{s.title}</span>
                   {s.projectName && (
-                    <span className="truncate text-[10px] text-gray-500 normal-case tracking-normal">{s.projectName}</span>
+                    <span className="truncate text-[10px] text-fg-dim normal-case tracking-normal">{s.projectName}</span>
                   )}
                 </span>
-                <button onClick={(e) => { e.stopPropagation(); deleteSession(s.id); }} className="opacity-0 group-hover:opacity-100 text-gray-500 hover:text-red-400 transition-all">
+                <button onClick={(e) => { e.stopPropagation(); deleteSession(s.id); }} className="opacity-0 group-hover:opacity-100 text-fg-dim hover:text-red-400 transition-all">
                   <Trash2 size={12} />
                 </button>
               </div>
@@ -227,15 +229,15 @@ function App() {
         {!chatFullscreen && (
           <div className={`flex flex-col gap-6 overflow-y-auto pr-2 pb-6 min-h-0 ${showSessions ? 'lg:col-span-4' : 'lg:col-span-5'}`}>
             <div className="flex items-center gap-2 flex-shrink-0">
-              <button onClick={() => setShowSessions(!showSessions)} className="p-1 text-gray-500 hover:text-gray-300 transition-colors">
+              <button onClick={() => setShowSessions(!showSessions)} className="p-1 text-fg-dim hover:text-fg-muted transition-colors">
                 <MessageSquare size={16} />
               </button>
-              <h2 className="text-xs tracking-[0.2em] uppercase text-gray-500 font-bold">
+              <h2 className="text-xs tracking-[0.2em] uppercase text-fg-dim font-bold">
                 Discovered Projects
               </h2>
             </div>
             {projects.length === 0 ? (
-               <div className="text-sm text-gray-500 font-mono italic">No projects found. Try scanning a different path.</div>
+               <div className="text-sm text-fg-dim font-mono italic">No projects found. Try scanning a different path.</div>
             ) : (
                 <BentoGrid
                   projects={projects}

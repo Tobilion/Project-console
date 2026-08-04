@@ -1957,6 +1957,51 @@ edits are `Terminal.tsx`/`App.tsx` class-only restyles + one new header element:
   (if the theme has one), the fullscreen-chat toggle, the welcome/tour overlay, and 1280/1920px
   cropping of the new slim header — per the end-of-upgrade consolidated visual pass.
 
+## Theme system (2026-08-04, `console-theme-redesign-prompt.md` — gitignored spec)
+
+Frontend-only; no intent/matcher/example-phrase or server changes (check-intents unchanged).
+
+- **Dark-first identity + additive light override.** The `:root` block in `src/index.css` is the
+  dark palette (byte-identical to the pre-theme literals — the token values were taken from the
+  exact classes they replace, so dark mode looks pixel-for-pixel the same as before). Light theme
+  is a `:root[data-theme="light"]` override block, not a separate stylesheet — no `dark:`
+  utilities anywhere, no rebuild needed (utilities compile via `@theme inline` to
+  `var(--color-*)` refs, so the attribute swap re-themes at runtime).
+- **Toggle:** `src/components/ui/ThemeToggle.tsx` (sliding sun/moon pill, borrowed from
+  tobi-portfolio) mounted as the last element of the header right cluster in `App.tsx` — the ONLY
+  place the theme can be switched (deliberate: no per-panel toggles). `src/hooks/useTheme.ts`
+  owns state: initial value = `localStorage.theme` else `matchMedia('(prefers-color-scheme:
+  dark)')`, sets `document.documentElement.dataset.theme`, persists on change. `index.html` has
+  a pre-paint script mirroring the same initializer so light-mode users never see a dark flash.
+- **Token ladder** (dark → light): `fg-strong #FFFFFF→#0F172A`, `fg #E5E7EB→#1E293B`,
+  `fg-muted #D1D5DB→#334155`, `fg-subtle #9CA3AF→#475569`, `fg-dim #6B7280→#64748B`,
+  `fg-faint #4B5563→#94A3B8`; `border-faint #ffffff0d→#E2E8F0`,
+  `border-soft #ffffff1a→#CBD5E1`, `border-strong #ffffff33→#94A3B8`;
+  `scrim #00000080→rgba(15,23,42,.06)`, `scrim-soft .4d→.04`, `scrim-faint .33→.03`,
+  `scrim-strong .99→.08`; `panel #ffffff0a→#fff`, `panel-strong #ffffff1a→#F1F5F9`;
+  `surface #12151c→#FFF`; `overlay #0a0c10→#FFF` (modal/terminal panel surfaces);
+  `background #0F172A→#F8FAFC`, `foreground #F8FAFC→#0F172A`. Accent/status colors (teal
+  `#00d4a3`, blue `#3d6bff`, indigo `#6366f1`, plus Tailwind teal/red/green/yellow/orange
+  status classes) are CONSTANT across themes — do not tokenize them.
+- **Mapping conventions** (all 12 rendered components now use tokens): `text-white/100→fg-strong`,
+  `text-gray-100/200→fg`, `text-gray-300→fg-muted`, `text-gray-400→fg-subtle`,
+  `text-gray-500→fg-dim`, `text-gray-600→fg-faint`; `bg-white/5→bg-panel`,
+  `bg-white/10→bg-panel-strong`, `border-white/10→border-border-soft`,
+  `border-white/5→border-border-faint`, `hover:border-white/20→hover:border-border-strong`;
+  `bg-black/50→bg-scrim`, `bg-black/30→bg-scrim-faint`, `bg-black/60→bg-scrim-strong`;
+  `bg-[#12151c]→bg-surface`, `bg-[#0a0c10]→bg-overlay`; `bg-white/x` text-on-blue/teal
+  buttons stays `text-white` (constant accent backgrounds). Gray families only — never collapse
+  onto `text-foreground`/`text-muted-foreground` (that's what the Phase-7 tokens are for);
+  the new ladder exists because collapsing would have shifted dark shades.
+- `GlowOrbs.tsx` orbs got a `glow-orb` class + `:root[data-theme="light"] .glow-orb { opacity:
+  0.5 }` rule (dark keeps full intensity). `DisplayCards.tsx`/`v0-ai-chat-demo.tsx` remain
+  unused/unimported and were deliberately NOT tokenized (out of scope).
+- **Verified:** `tsc --noEmit` clean; Vite transforms 200 for App/Terminal/ThemeToggle; compiled
+  CSS contains the light block, `--color-overlay`, the glow-orb rule, and var-ref utilities.
+  **NOT yet visually verified** in a real browser at both themes — manual checklist: dark looks
+  identical to pre-theme, light reads well across welcome/tour/dashboard/terminal/dock, toggle
+  persists across reloads, no scroll/flex changes anywhere (all edits were class-string swaps).
+
 ## Conventions
 
 - No file over ~400 lines; split by concern (see `server/wsHandlers/` for the pattern).

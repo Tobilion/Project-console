@@ -29,7 +29,7 @@ export const SpotlightCard = ({ children, className = '', active, onClick }: Spo
       className={`relative rounded-2xl border overflow-hidden transition-all duration-200 cursor-pointer ${
         active
           ? 'border-teal-500/60 bg-teal-500/10'
-          : 'border-white/10 bg-white/5 hover:border-teal-500/50'
+          : 'border-border-soft bg-panel hover:border-teal-500/50'
       } ${className}`}
     >
       <div

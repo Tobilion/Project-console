@@ -67,7 +67,7 @@ export function ProcessDock({
           initial={{ height: 0, opacity: 0 }}
           animate={{ height: 'auto', opacity: 1 }}
           exit={{ height: 0, opacity: 0 }}
-          className="flex-shrink-0 border-t border-white/10 bg-[#12151c]/60 overflow-hidden"
+          className="flex-shrink-0 border-t border-border-soft bg-surface/60 overflow-hidden"
         >
           <AnimatePresence initial={false}>
             {expanded && (
@@ -78,16 +78,16 @@ export function ProcessDock({
                 className="overflow-hidden"
               >
                 <div className="flex items-center justify-between px-4 pt-2">
-                  <span className="text-[10px] text-gray-600 font-mono uppercase">Live output</span>
+                  <span className="text-[10px] text-fg-faint font-mono uppercase">Live output</span>
                   <button
                     onClick={() => navigator.clipboard.writeText(logText)}
-                    className="flex items-center gap-1 px-2 py-0.5 rounded bg-white/5 hover:bg-white/10 text-gray-500 hover:text-gray-200 transition-colors text-[10px] font-mono"
+                    className="flex items-center gap-1 px-2 py-0.5 rounded bg-panel hover:bg-panel-strong text-fg-dim hover:text-fg-strong transition-colors text-[10px] font-mono"
                     title="Copy log"
                   >
                     <Copy size={10} /> Copy
                   </button>
                 </div>
-                <div className="max-h-64 overflow-y-auto p-3 font-mono text-xs text-gray-300 leading-relaxed whitespace-pre-wrap">
+                <div className="max-h-64 overflow-y-auto p-3 font-mono text-xs text-fg-muted leading-relaxed whitespace-pre-wrap">
                   {logText || 'No output yet.'}
                   <div ref={logEndRef} />
                 </div>
@@ -98,12 +98,12 @@ export function ProcessDock({
           <div className="flex items-center gap-1.5 px-2 py-1.5 overflow-x-auto">
             <button
               onClick={onToggleExpanded}
-              className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-mono text-gray-400 hover:text-gray-200 hover:bg-white/5 transition-colors flex-shrink-0"
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-mono text-fg-subtle hover:text-fg-strong hover:bg-panel transition-colors flex-shrink-0"
               title={expanded ? 'Collapse dock' : 'Expand dock'}
             >
               <TerminalIcon size={12} className="text-[#3d6bff]" />
               <span>{processes.length} running</span>
-              {expanded ? <ChevronDown size={12} className="text-gray-500" /> : <ChevronUp size={12} className="text-gray-500" />}
+              {expanded ? <ChevronDown size={12} className="text-fg-dim" /> : <ChevronUp size={12} className="text-fg-dim" />}
             </button>
 
             {processes.map((p) => {
@@ -115,7 +115,7 @@ export function ProcessDock({
                   className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-mono transition-colors flex-shrink-0 ${
                     selected
                       ? 'bg-[#3d6bff]/20 border border-[#3d6bff]/40 text-[#3d6bff]'
-                      : 'bg-white/5 border border-white/10 text-gray-400 hover:text-gray-200'
+                      : 'bg-panel border border-border-soft text-fg-subtle hover:text-fg-strong'
                   }`}
                 >
                   <button
@@ -126,7 +126,7 @@ export function ProcessDock({
                     <span className="w-1.5 h-1.5 rounded-full bg-[#22C55E] animate-pulse flex-shrink-0" />
                     <span>{shortCommand(p.command)}</span>
                     {p.url && (
-                      <span className={`text-[10px] ${selected ? 'text-[#3d6bff]/70' : 'text-gray-600'}`}>
+                      <span className={`text-[10px] ${selected ? 'text-[#3d6bff]/70' : 'text-fg-faint'}`}>
                         :{port}
                       </span>
                     )}
@@ -136,7 +136,7 @@ export function ProcessDock({
                       e.stopPropagation();
                       onStopProcess(p.projectId);
                     }}
-                    className="text-gray-600 hover:text-red-400 transition-colors flex-shrink-0"
+                    className="text-fg-faint hover:text-red-400 transition-colors flex-shrink-0"
                     title={`Stop ${p.command}`}
                   >
                     <Square size={10} />

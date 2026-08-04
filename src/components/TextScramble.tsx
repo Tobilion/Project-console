@@ -33,7 +33,7 @@ export const TextScramble = ({ text, className = '' }: { text: string, className
             char = CHARS[Math.floor(Math.random() * CHARS.length)];
             queueRef.current[i].char = char;
           }
-          output += `<span class="text-white/30">${char}</span>`;
+          output += `<span class="text-fg-strong/30">${char}</span>`;
         } else {
           output += from;
         }

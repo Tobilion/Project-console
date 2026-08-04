@@ -32,7 +32,7 @@ export const BentoGrid = ({ projects, activeProject, onSelect, workspaceProjects
               <div className="p-2 bg-[#00d4a3]/10 rounded-lg">
                 <FolderGit2 className="text-[#00d4a3]" size={24} />
               </div>
-              <h3 className="text-lg font-bold text-white flex-1">{project.name}</h3>
+              <h3 className="text-lg font-bold text-fg-strong flex-1">{project.name}</h3>
               {workspaceProjects.some(p => p.id === project.id) ? (
                 <button
                   onClick={() => removeFromWorkspace(project.id)}
@@ -44,7 +44,7 @@ export const BentoGrid = ({ projects, activeProject, onSelect, workspaceProjects
               ) : (
                 <button
                   onClick={() => addToWorkspace(project)}
-                  className="p-1 text-gray-600 hover:text-[#3d6bff] transition-colors"
+                  className="p-1 text-fg-faint hover:text-[#3d6bff] transition-colors"
                   title="Add to workspace"
                 >
                   <Plus size={14} />
@@ -52,11 +52,11 @@ export const BentoGrid = ({ projects, activeProject, onSelect, workspaceProjects
               )}
             </div>
             
-            <p className="text-xs text-gray-500 font-mono truncate mb-4" title={project.path}>
+            <p className="text-xs text-fg-dim font-mono truncate mb-4" title={project.path}>
               {project.path}
             </p>
             
-            <div className="mt-auto pt-4 flex items-center gap-4 text-xs text-gray-500 font-mono">
+            <div className="mt-auto pt-4 flex items-center gap-4 text-xs text-fg-dim font-mono">
               <span className="flex items-center gap-1">
                 <BookOpen size={14} />
                 {project.contextFiles?.length || 0} Docs

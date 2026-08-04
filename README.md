@@ -163,6 +163,13 @@ npx local-project-console init C:\path\to\project
 
 ### Web UI
 
+The UI is **dark-first**: the dark palette is the app's identity, and a light theme is an additive
+override toggled by the sliding sun/moon pill in the header (right edge). The default follows your
+OS preference (`prefers-color-scheme`) on first load; your choice is remembered in
+`localStorage` and applied before first paint to avoid a dark/light flash. Accent colors
+(teal/blue/indigo) and status colors (green/red/yellow) stay constant across both themes — see
+the theme section of `CLAUDE.md` for the token system.
+
 Double-click `start.bat` in the root folder. It will:
 1. Install dependencies if needed.
 2. Offer Web UI or CLI Chat mode.

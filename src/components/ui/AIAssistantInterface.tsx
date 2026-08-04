@@ -109,7 +109,7 @@ export function AIAssistantInterface({ onSend, onSearch, onDeepResearch, disable
 
   return (
     <div className="w-full">
-      <div className="bg-[#12151c]/80 border border-white/10 rounded-2xl overflow-hidden backdrop-blur-sm">
+      <div className="bg-surface/80 border border-border-soft rounded-2xl overflow-hidden backdrop-blur-sm">
         <div className="px-4 py-3">
           <input
             type="text"
@@ -118,18 +118,18 @@ export function AIAssistantInterface({ onSend, onSearch, onDeepResearch, disable
             onKeyDown={handleKeyDown}
             disabled={disabled}
             placeholder={placeholder || 'Ask me anything...'}
-            className="w-full bg-transparent text-gray-100 text-base outline-none placeholder:text-gray-600 font-mono"
+            className="w-full bg-transparent text-fg text-base outline-none placeholder:text-fg-faint font-mono"
           />
         </div>
 
         {uploadedFiles.length > 0 && (
           <div className="px-4 pb-2 flex flex-wrap gap-2">
             {uploadedFiles.map((f, i) => (
-              <div key={i} className="flex items-center gap-1.5 bg-white/5 border border-white/10 rounded-lg px-2 py-1">
+              <div key={i} className="flex items-center gap-1.5 bg-panel border border-border-soft rounded-lg px-2 py-1">
                 <FileText size={12} className="text-[#3d6bff]" />
-                <span className="text-xs text-gray-400">{f.name}</span>
-                <span className="text-[10px] text-gray-600">{f.content.length.toLocaleString()} chars</span>
-                <button onClick={() => setUploadedFiles(prev => prev.filter((_, j) => j !== i))} className="text-gray-600 hover:text-red-400 transition-colors">
+                <span className="text-xs text-fg-subtle">{f.name}</span>
+                <span className="text-[10px] text-fg-faint">{f.content.length.toLocaleString()} chars</span>
+                <button onClick={() => setUploadedFiles(prev => prev.filter((_, j) => j !== i))} className="text-fg-faint hover:text-red-400 transition-colors">
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
                 </button>
               </div>
@@ -148,7 +148,7 @@ export function AIAssistantInterface({ onSend, onSearch, onDeepResearch, disable
           </div>
         )}
 
-        <div className="px-4 py-2.5 flex items-center justify-between border-t border-white/5">
+        <div className="px-4 py-2.5 flex items-center justify-between border-t border-border-faint">
           <div className="flex items-center gap-2">
             <ToggleButton icon={<Search size={14} />} label="Search" active={activeFeature === 'search'} onClick={() => setActiveFeature(activeFeature === 'search' ? null : 'search')} />
             <ToggleButton icon={<BrainCircuit size={14} />} label="Reason" active={activeFeature === 'reason'} onClick={() => setActiveFeature(activeFeature === 'reason' ? null : 'reason')} />
@@ -158,14 +158,14 @@ export function AIAssistantInterface({ onSend, onSearch, onDeepResearch, disable
             <button
               onClick={handleSend}
               disabled={(!inputValue.trim() && uploadedFiles.length === 0) || !!disabled}
-              className={cn('w-8 h-8 flex items-center justify-center rounded-full transition-all', (inputValue.trim() || uploadedFiles.length > 0) && !disabled ? 'bg-[#3d6bff] text-white hover:bg-[#3d6bff]/80' : 'bg-white/5 text-gray-600 cursor-not-allowed')}
+              className={cn('w-8 h-8 flex items-center justify-center rounded-full transition-all', (inputValue.trim() || uploadedFiles.length > 0) && !disabled ? 'bg-[#3d6bff] text-white hover:bg-[#3d6bff]/80' : 'bg-panel text-fg-faint cursor-not-allowed')}
             >
               <ArrowUp size={16} />
             </button>
           </div>
         </div>
 
-        <div className="px-4 py-2 border-t border-white/5 flex items-center justify-between">
+        <div className="px-4 py-2 border-t border-border-faint flex items-center justify-between">
           <input
             ref={fileInputRef}
             type="file"
@@ -177,7 +177,7 @@ export function AIAssistantInterface({ onSend, onSearch, onDeepResearch, disable
           <button
             onClick={() => fileInputRef.current?.click()}
             disabled={isReadingFile}
-            className="flex items-center gap-2 text-gray-500 text-sm hover:text-gray-300 transition-colors disabled:opacity-50"
+            className="flex items-center gap-2 text-fg-dim text-sm hover:text-fg-muted transition-colors disabled:opacity-50"
           >
             {isReadingFile ? <Loader2 size={16} className="animate-spin" /> : <Plus size={16} />}
             <span className="text-xs">{isReadingFile ? 'Reading files...' : 'Upload Files (read into message)'}</span>
@@ -194,7 +194,7 @@ export function AIAssistantInterface({ onSend, onSearch, onDeepResearch, disable
           <button
             key={cat.key}
             onClick={() => setActiveCategory(activeCategory === cat.key ? null : cat.key)}
-            className={cn('flex items-center justify-center gap-2 py-2.5 rounded-xl border text-sm transition-all', activeCategory === cat.key ? 'bg-[#3d6bff]/10 border-[#3d6bff]/30 text-[#3d6bff]' : 'bg-white/5 border-white/10 text-gray-400 hover:text-gray-200 hover:border-white/20')}
+            className={cn('flex items-center justify-center gap-2 py-2.5 rounded-xl border text-sm transition-all', activeCategory === cat.key ? 'bg-[#3d6bff]/10 border-[#3d6bff]/30 text-[#3d6bff]' : 'bg-panel border-border-soft text-fg-subtle hover:text-fg-strong hover:border-border-strong')}
           >
             {cat.icon}
             <span className="text-xs font-medium">{cat.label}</span>
@@ -205,18 +205,18 @@ export function AIAssistantInterface({ onSend, onSearch, onDeepResearch, disable
       <AnimatePresence>
         {activeCategory && (
           <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="overflow-hidden mt-2">
-            <div className="bg-[#12151c]/80 border border-white/10 rounded-xl overflow-hidden">
-              <div className="px-3 py-2 border-b border-white/5">
-                <span className="text-xs font-mono text-gray-500 uppercase tracking-wider">{activeCategory} Suggestions</span>
+            <div className="bg-surface/80 border border-border-soft rounded-xl overflow-hidden">
+              <div className="px-3 py-2 border-b border-border-faint">
+                <span className="text-xs font-mono text-fg-dim uppercase tracking-wider">{activeCategory} Suggestions</span>
               </div>
-              <ul className="divide-y divide-white/5">
+              <ul className="divide-y divide-border-faint">
                 {(suggestions[activeCategory] || []).map((s, i) => (
                   <motion.li key={i} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: i * 0.03 }}
                     onClick={() => { setInputValue(s); setActiveCategory(null); }}
-                    className="px-3 py-2.5 hover:bg-white/5 cursor-pointer transition-colors flex items-center gap-3"
+                    className="px-3 py-2.5 hover:bg-panel cursor-pointer transition-colors flex items-center gap-3"
                   >
                     <BookOpen size={14} className="text-[#3d6bff]/60 flex-shrink-0" />
-                    <span className="text-sm text-gray-300">{s}</span>
+                    <span className="text-sm text-fg-muted">{s}</span>
                   </motion.li>
                 ))}
               </ul>
@@ -232,7 +232,7 @@ function ToggleButton({ icon, label, active, onClick }: { icon: React.ReactNode;
   return (
     <button
       onClick={onClick}
-      className={cn('flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-mono border transition-all', active ? 'bg-[#3d6bff]/20 border-[#3d6bff]/40 text-[#3d6bff]' : 'bg-white/5 border-white/10 text-gray-400 hover:text-gray-200 hover:border-white/20')}
+      className={cn('flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-mono border transition-all', active ? 'bg-[#3d6bff]/20 border-[#3d6bff]/40 text-[#3d6bff]' : 'bg-panel border-border-soft text-fg-subtle hover:text-fg-strong hover:border-border-strong')}
     >
       {icon}
       <span>{label}</span>

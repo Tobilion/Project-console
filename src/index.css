@@ -4,10 +4,10 @@
 @import "tailwindcss";
 @plugin "@tailwindcss/typography";
 
-@theme {
-  --font-sans: 'JetBrains Mono', monospace;
-  --font-mono: 'JetBrains Mono', monospace;
-
+/* Dark-first identity: these tokens are the app's default (dark) palette.
+   The [data-theme="light"] block further down overrides them. Accent colors
+   (teal/blue/indigo) stay constant across themes — see CLAUDE.md theme entry. */
+:root {
   --color-background: #0F172A;
   --color-foreground: #F8FAFC;
   --color-primary: #1E293B;
@@ -25,12 +25,96 @@
   --color-destructive: #EF4444;
   --color-success: #22C55E;
   --color-ring: #00d4a3;
+  --color-panel: #ffffff0a;
+  --color-panel-strong: #ffffff1a;
+  --color-fg-strong: #FFFFFF;
+  --color-fg: #E5E7EB;
+  --color-fg-muted: #D1D5DB;
+  --color-fg-subtle: #9CA3AF;
+  --color-fg-dim: #6B7280;
+  --color-fg-faint: #4B5563;
+  --color-border-faint: #ffffff0d;
+  --color-border-soft: #ffffff1a;
+  --color-border-strong: #ffffff33;
+  --color-scrim: #00000080;
+  --color-scrim-soft: #0000004d;
+  --color-scrim-faint: #00000033;
+  --color-scrim-strong: #00000099;
+  --color-overlay: #0a0c10;
 }
 
-:root {
-  --bg-navy: #0F172A;
-  --surface-teal: #00d4a3;
-  --text-primary: #F8FAFC;
+/* Light theme — attribute override, mirrors the portfolio's inverted .dark block.
+   Set by useTheme.ts + the index.html pre-paint script; default follows OS prefs. */
+:root[data-theme="light"] {
+  --color-background: #F8FAFC;
+  --color-foreground: #0F172A;
+  --color-primary: #E2E8F0;
+  --color-primary-on: #0F172A;
+  --color-secondary: #CBD5E1;
+  --color-surface: #FFFFFF;
+  --color-muted: #E2E8F0;
+  --color-muted-foreground: #64748B;
+  --color-border: #CBD5E1;
+  --color-input: #CBD5E1;
+  --color-panel: #ffffff;
+  --color-panel-strong: #F1F5F9;
+  --color-fg-strong: #0F172A;
+  --color-fg: #1E293B;
+  --color-fg-muted: #334155;
+  --color-fg-subtle: #475569;
+  --color-fg-dim: #64748B;
+  --color-fg-faint: #94A3B8;
+  --color-border-faint: #E2E8F0;
+  --color-border-soft: #CBD5E1;
+  --color-border-strong: #94A3B8;
+  --color-scrim: rgba(15, 23, 42, 0.06);
+  --color-scrim-soft: rgba(15, 23, 42, 0.04);
+  --color-scrim-faint: rgba(15, 23, 42, 0.03);
+  --color-scrim-strong: rgba(15, 23, 42, 0.08);
+  --color-overlay: #FFFFFF;
+  color-scheme: light;
+}
+
+/* @theme inline: generates utilities (bg-surface, text-foreground, ...) that
+   reference these vars at runtime, so the [data-theme] override takes effect
+   without rebuilding — the Tailwind v4 way to support multiple themes. */
+@theme inline {
+  --font-sans: 'JetBrains Mono', monospace;
+  --font-mono: 'JetBrains Mono', monospace;
+
+  --color-background: var(--color-background);
+  --color-foreground: var(--color-foreground);
+  --color-primary: var(--color-primary);
+  --color-primary-on: var(--color-primary-on);
+  --color-secondary: var(--color-secondary);
+  --color-accent: var(--color-accent);
+  --color-accent-dim: var(--color-accent-dim);
+  --color-blue: var(--color-blue);
+  --color-indigo: var(--color-indigo);
+  --color-surface: var(--color-surface);
+  --color-muted: var(--color-muted);
+  --color-muted-foreground: var(--color-muted-foreground);
+  --color-border: var(--color-border);
+  --color-input: var(--color-input);
+  --color-destructive: var(--color-destructive);
+  --color-success: var(--color-success);
+  --color-ring: var(--color-ring);
+  --color-panel: var(--color-panel);
+  --color-panel-strong: var(--color-panel-strong);
+  --color-fg-strong: var(--color-fg-strong);
+  --color-fg: var(--color-fg);
+  --color-fg-muted: var(--color-fg-muted);
+  --color-fg-subtle: var(--color-fg-subtle);
+  --color-fg-dim: var(--color-fg-dim);
+  --color-fg-faint: var(--color-fg-faint);
+  --color-border-faint: var(--color-border-faint);
+  --color-border-soft: var(--color-border-soft);
+  --color-border-strong: var(--color-border-strong);
+  --color-scrim: var(--color-scrim);
+  --color-scrim-soft: var(--color-scrim-soft);
+  --color-scrim-faint: var(--color-scrim-faint);
+  --color-scrim-strong: var(--color-scrim-strong);
+  --color-overlay: var(--color-overlay);
 }
 
 html, body {
@@ -38,20 +122,26 @@ html, body {
   height: 100%;
   overflow: hidden;
   font-family: 'JetBrains Mono', monospace;
-  background-color: var(--bg-navy);
-  color: var(--text-primary);
+  background-color: var(--color-background);
+  color: var(--color-foreground);
 }
 
 ::-webkit-scrollbar {
   width: 8px;
 }
 ::-webkit-scrollbar-track {
-  background: #0F172A;
+  background: var(--color-background);
 }
 ::-webkit-scrollbar-thumb {
-  background: #1f2937;
+  background: var(--color-muted);
   border-radius: 4px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #334155;
+  background: var(--color-border);
+}
+
+/* Light theme: soften the background glow orbs so they don't wash out the bright surface.
+   Dark keeps full intensity — pixel-identical. */
+:root[data-theme="light"] .glow-orb {
+  opacity: 0.5;
 }

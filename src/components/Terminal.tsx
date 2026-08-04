@@ -94,10 +94,10 @@ function OutputBlock({ content }: { content: string }) {
           <TerminalIcon size={12} className="text-accent flex-shrink-0" />
           <span className="text-xs font-mono text-muted-foreground truncate">▶ {displayCommand || 'command output'}</span>
         </button>
-        <button onClick={handleCopy} className="text-gray-500 hover:text-gray-200 transition-colors flex-shrink-0" title="Copy output">
+        <button onClick={handleCopy} className="text-fg-dim hover:text-fg-strong transition-colors flex-shrink-0" title="Copy output">
           {copied ? <span className="text-[10px] text-teal-400">Copied</span> : <Copy size={11} />}
         </button>
-        <button onClick={() => setExpanded(!expanded)} className="text-gray-500 hover:text-gray-200 transition-colors flex-shrink-0" title={expanded ? 'Collapse output' : 'Expand output'}>
+        <button onClick={() => setExpanded(!expanded)} className="text-fg-dim hover:text-fg-strong transition-colors flex-shrink-0" title={expanded ? 'Collapse output' : 'Expand output'}>
           {expanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
         </button>
       </div>
@@ -149,23 +149,23 @@ function StructuredJsonBlock({ content, onSendMessage }: { content: string; onSe
 
   return (
     <div className="relative group">
-      <div className="flex items-center justify-between px-3 py-1.5 bg-black/30 border-b border-white/10 rounded-t-lg">
-        <span className="text-[10px] font-mono text-gray-500 uppercase tracking-wider">
+      <div className="flex items-center justify-between px-3 py-1.5 bg-scrim-faint border-b border-border-soft rounded-t-lg">
+        <span className="text-[10px] font-mono text-fg-dim uppercase tracking-wider">
           JSON {dataType !== 'generic' ? `— ${dataType.replace('_', ' ')}` : ''}
         </span>
         <div className="flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
-          <button onClick={handleCopy} className="p-1 text-gray-500 hover:text-gray-200 transition-colors" title="Copy JSON">
+          <button onClick={handleCopy} className="p-1 text-fg-dim hover:text-fg-strong transition-colors" title="Copy JSON">
             {copied ? <span className="text-[10px] text-teal-400">Copied</span> : <Copy size={12} />}
           </button>
           {parsed && (
-            <button onClick={handleApply} className="p-1 text-gray-500 hover:text-teal-400 transition-colors" title={parsed?.data && typeof parsed.data === 'object' && (parsed.data as any).path ? `Apply to ${(parsed.data as any).path}` : 'Apply to project'}>
+            <button onClick={handleApply} className="p-1 text-fg-dim hover:text-teal-400 transition-colors" title={parsed?.data && typeof parsed.data === 'object' && (parsed.data as any).path ? `Apply to ${(parsed.data as any).path}` : 'Apply to project'}>
               <FileDown size={12} />
             </button>
           )}
         </div>
       </div>
-      <pre className="bg-black/50 border border-white/10 rounded-b-lg p-3 overflow-x-auto">
-        <code className="text-xs text-gray-200">{content}</code>
+      <pre className="bg-scrim border border-border-soft rounded-b-lg p-3 overflow-x-auto">
+        <code className="text-xs text-fg">{content}</code>
       </pre>
     </div>
   );
@@ -357,40 +357,40 @@ export const Terminal = ({ messages, onSendMessage, onSearch, onDeepResearch, ac
   };
 
   return (
-    <div className="flex flex-col h-full bg-[#0a0c10]/80 backdrop-blur-md rounded-2xl border border-white/10 relative">
-      <div className="flex items-center gap-3 px-6 py-4 border-b border-white/10 bg-white/5">
+    <div className="flex flex-col h-full bg-overlay/80 backdrop-blur-md rounded-2xl border border-border-soft relative">
+      <div className="flex items-center gap-3 px-6 py-4 border-b border-border-soft bg-panel">
         <TerminalIcon size={18} className="text-[#3d6bff]" />
-        <span className="font-mono text-sm text-gray-300 flex-1">
+        <span className="font-mono text-sm text-fg-muted flex-1">
           {activeProject ? `Connected: ${activeProject.name}` : 'No Project Selected'}
         </span>
         {onToggleFullscreen && (
-          <button onClick={onToggleFullscreen} className="p-1.5 text-gray-500 hover:text-gray-200 transition-colors flex-shrink-0" title={isFullscreen ? 'Exit fullscreen' : 'Fullscreen chat'}>
+          <button onClick={onToggleFullscreen} className="p-1.5 text-fg-dim hover:text-fg-strong transition-colors flex-shrink-0" title={isFullscreen ? 'Exit fullscreen' : 'Fullscreen chat'}>
             {isFullscreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
           </button>
         )}
         {ollamaStatus && (
           <div className="flex items-center gap-2 flex-wrap justify-end">
             {workspaceProjects.length > 0 && (
-              <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-white/5 border border-white/10">
-                <span className="text-[10px] text-gray-500 font-mono">Workspace:</span>
+              <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-panel border border-border-soft">
+                <span className="text-[10px] text-fg-dim font-mono">Workspace:</span>
                 {workspaceProjects.map((p) => (
                   <span key={p.id} className="flex items-center gap-1 px-2 py-0.5 rounded bg-[#3d6bff]/10 border border-[#3d6bff]/30 text-xs text-[#3d6bff] font-mono">
                     {p.name}
                     <button onClick={() => removeFromWorkspace(p.id)} className="text-[#3d6bff]/60 hover:text-[#3d6bff] transition-colors">×</button>
                   </span>
                 ))}
-                <button onClick={clearWorkspace} className="text-gray-600 hover:text-red-400 transition-colors text-xs" title="Clear workspace">×</button>
+                <button onClick={clearWorkspace} className="text-fg-faint hover:text-red-400 transition-colors text-xs" title="Clear workspace">×</button>
               </div>
             )}
             <div className="flex items-center gap-1">
-              <button onClick={onExportMarkdown} className="p-1.5 text-gray-500 hover:text-gray-200 transition-colors" title="Export session as Markdown">
+              <button onClick={onExportMarkdown} className="p-1.5 text-fg-dim hover:text-fg-strong transition-colors" title="Export session as Markdown">
                 <Download size={14} />
               </button>
-              <button onClick={onExportJson} className="p-1.5 flex items-center gap-0.5 text-gray-500 hover:text-teal-400 transition-colors" title="Export session as JSON">
+              <button onClick={onExportJson} className="p-1.5 flex items-center gap-0.5 text-fg-dim hover:text-teal-400 transition-colors" title="Export session as JSON">
                 <Download size={11} /><span className="text-[9px] font-mono">JSON</span>
               </button>
             </div>
-            <button onClick={onToggleToolHistory} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-mono transition-colors border ${showToolHistory ? 'bg-[#3d6bff]/20 border-[#3d6bff]/40 text-[#3d6bff]' : 'bg-white/5 border-white/10 text-gray-500 hover:text-gray-300'}`} title="Tool Call History">
+            <button onClick={onToggleToolHistory} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-mono transition-colors border ${showToolHistory ? 'bg-[#3d6bff]/20 border-[#3d6bff]/40 text-[#3d6bff]' : 'bg-panel border-border-soft text-fg-dim hover:text-fg-muted'}`} title="Tool Call History">
               <ListChecks size={14} />
               {toolHistory.length > 0 && <span className="text-[10px]">{toolHistory.length}</span>}
             </button>
@@ -426,20 +426,20 @@ export const Terminal = ({ messages, onSendMessage, onSearch, onDeepResearch, ac
                     ? 'bg-[#3d6bff] text-white rounded-br-none' 
                     : msg.type === 'error'
                     ? 'bg-red-500/10 border border-red-500/20 text-red-400 rounded-bl-none font-mono text-sm'
-                    : 'bg-white/5 border border-white/10 text-gray-200 rounded-bl-none'
+                    : 'bg-panel border border-border-soft text-fg rounded-bl-none'
                 }`}
               >
                 {msg.type === 'user' || !msg.isMarkdown ? (
                    <div className="whitespace-pre-wrap font-mono text-sm leading-relaxed">{msg.content}</div>
                 ) : (
-                   <div className="prose prose-invert prose-sm max-w-none prose-pre:bg-black/50 prose-pre:border prose-pre:border-white/10 prose-pre:p-0 prose-p:leading-relaxed">
+                   <div className="prose prose-invert prose-sm max-w-none prose-pre:bg-scrim prose-pre:border prose-pre:border-border-soft prose-pre:p-0 prose-p:leading-relaxed">
                       <ReactMarkdown components={markdownComponents}>{msg.content}</ReactMarkdown>
                     </div>
                 )}
                 
                 {msg.suggestions && msg.suggestions.length > 0 && (
-                  <div className="mt-4 pt-4 border-t border-white/10">
-                    <p className="text-xs text-gray-500 font-mono mb-2">SUGGESTIONS:</p>
+                  <div className="mt-4 pt-4 border-t border-border-soft">
+                    <p className="text-xs text-fg-dim font-mono mb-2">SUGGESTIONS:</p>
                     <div className="flex flex-wrap gap-2">
                       {msg.suggestions.map((sug, idx) => (
                         <button
@@ -453,7 +453,7 @@ export const Terminal = ({ messages, onSendMessage, onSearch, onDeepResearch, ac
                               }
                             }
                           }}
-                          className="px-3 py-1 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 text-xs text-[#00d4a3] transition-colors"
+                          className="px-3 py-1 rounded-full bg-panel hover:bg-panel-strong border border-border-soft text-xs text-[#00d4a3] transition-colors"
                         >
                           {sug}
                         </button>
@@ -490,7 +490,7 @@ export const Terminal = ({ messages, onSendMessage, onSearch, onDeepResearch, ac
                 <span className="font-bold text-[10px] tracking-wider uppercase">Safety Confirmation</span>
               </div>
               <p className="font-mono text-xs mt-2">
-                Execute: <span className="text-white bg-black/50 px-1.5 py-0.5 rounded border border-white/10 break-all">{pendingConfirm.command}</span>
+                Execute: <span className="text-fg-strong bg-scrim px-1.5 py-0.5 rounded border border-border-soft break-all">{pendingConfirm.command}</span>
               </p>
               <div className="flex flex-wrap gap-2 mt-3">
                 <button
@@ -501,7 +501,7 @@ export const Terminal = ({ messages, onSendMessage, onSearch, onDeepResearch, ac
                 </button>
                 <button
                   onClick={() => onConfirm(false)}
-                  className="flex items-center gap-1.5 px-3 py-1 bg-white/5 hover:bg-white/10 text-gray-300 rounded-md border border-white/10 transition-colors text-xs"
+                  className="flex items-center gap-1.5 px-3 py-1 bg-panel hover:bg-panel-strong text-fg-muted rounded-md border border-border-soft transition-colors text-xs"
                 >
                   <XCircle size={13} /> Cancel
                 </button>
@@ -521,7 +521,7 @@ export const Terminal = ({ messages, onSendMessage, onSearch, onDeepResearch, ac
                 <Brain size={13} />
                 <span className="font-bold text-[10px] tracking-wider uppercase">AI wants to run: {pendingToolConfirm.tool}</span>
               </div>
-              <pre className="font-mono text-xs mt-2 mb-3 whitespace-pre-wrap break-all bg-black/50 px-2 py-1.5 rounded border border-white/10 text-gray-300 max-h-32 overflow-y-auto">
+              <pre className="font-mono text-xs mt-2 mb-3 whitespace-pre-wrap break-all bg-scrim px-2 py-1.5 rounded border border-border-soft text-fg-muted max-h-32 overflow-y-auto">
                 {JSON.stringify(pendingToolConfirm.args, null, 2)}
               </pre>
               <div className="flex flex-wrap gap-2">
@@ -533,7 +533,7 @@ export const Terminal = ({ messages, onSendMessage, onSearch, onDeepResearch, ac
                 </button>
                 <button
                   onClick={() => onToolConfirm(false)}
-                  className="flex items-center gap-1.5 px-3 py-1 bg-white/5 hover:bg-white/10 text-gray-300 rounded-md border border-white/10 transition-colors text-xs"
+                  className="flex items-center gap-1.5 px-3 py-1 bg-panel hover:bg-panel-strong text-fg-muted rounded-md border border-border-soft transition-colors text-xs"
                 >
                   <XCircle size={13} /> Reject
                 </button>
@@ -572,7 +572,7 @@ export const Terminal = ({ messages, onSendMessage, onSearch, onDeepResearch, ac
                 </button>
                 <button
                   onClick={() => onMemorySuggestionRespond?.(false)}
-                  className="flex items-center gap-1.5 px-3 py-1 bg-white/5 hover:bg-white/10 text-gray-300 rounded-md border border-white/10 transition-colors text-xs"
+                  className="flex items-center gap-1.5 px-3 py-1 bg-panel hover:bg-panel-strong text-fg-muted rounded-md border border-border-soft transition-colors text-xs"
                 >
                   <XCircle size={13} /> Not now
                 </button>
@@ -647,8 +647,8 @@ export const Terminal = ({ messages, onSendMessage, onSearch, onDeepResearch, ac
       />
 
       {ollamaStatus && (
-        <div className="flex items-center gap-2 px-4 py-1.5 bg-white/5 border-t border-white/10 flex-wrap">
-          <button onClick={onAIToggle} className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-mono transition-colors border flex-shrink-0 ${aiEnabled ? 'bg-teal-500/20 border-teal-500/40 text-teal-300' : 'bg-white/5 border-white/10 text-gray-500 hover:text-gray-300'}`}>
+        <div className="flex items-center gap-2 px-4 py-1.5 bg-panel border-t border-border-soft flex-wrap">
+          <button onClick={onAIToggle} className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-mono transition-colors border flex-shrink-0 ${aiEnabled ? 'bg-teal-500/20 border-teal-500/40 text-teal-300' : 'bg-panel border-border-soft text-fg-dim hover:text-fg-muted'}`}>
             <Brain size={13} />
             <span>AI {aiEnabled ? 'ON' : 'OFF'}</span>
           </button>
@@ -658,7 +658,7 @@ export const Terminal = ({ messages, onSendMessage, onSearch, onDeepResearch, ac
                 value={aiModel}
                 onChange={(e) => onSetModel(e.target.value)}
                 title={ollamaStatus.cloudModels?.some(m => m.name === aiModel) ? 'Running on Ollama Cloud — needs internet + `ollama signin`' : 'Running locally'}
-                className="bg-[#12151c] border border-white/10 rounded-md px-1.5 py-1 text-[11px] font-mono text-gray-300 focus:outline-none focus:border-teal-500/40 flex-shrink-0 max-w-[220px]"
+                className="bg-surface border border-border-soft rounded-md px-1.5 py-1 text-[11px] font-mono text-fg-muted focus:outline-none focus:border-teal-500/40 flex-shrink-0 max-w-[220px]"
               >
                 {(ollamaStatus.models?.length ?? 0) > 0 && (
                   <optgroup label="Local (offline)">
@@ -678,7 +678,7 @@ export const Terminal = ({ messages, onSendMessage, onSearch, onDeepResearch, ac
               <select
                 value={aiMode}
                 onChange={(e) => onSetMode(e.target.value)}
-                className="bg-[#12151c] border border-white/10 rounded-md px-1.5 py-1 text-[11px] font-mono text-gray-300 focus:outline-none focus:border-teal-500/40 flex-shrink-0"
+                className="bg-surface border border-border-soft rounded-md px-1.5 py-1 text-[11px] font-mono text-fg-muted focus:outline-none focus:border-teal-500/40 flex-shrink-0"
               >
                 {AI_MODES.map(m => (
                   <option key={m.value} value={m.value}>{m.label}</option>
@@ -690,11 +690,11 @@ export const Terminal = ({ messages, onSendMessage, onSearch, onDeepResearch, ac
       )}
 
       {aiEnabled ? (
-        <div className="p-3 bg-white/5 border-t border-white/10">
+        <div className="p-3 bg-panel border-t border-border-soft">
           <AIAssistantInterface onSend={(text) => { onSendMessage(text); setInput(''); }} onSearch={(q) => { onSearch?.(q); }} onDeepResearch={(q) => { onDeepResearch?.(q); }} disabled={!activeProject || aiThinking || isBlocked} placeholder={isBlocked ? 'Resolve the pending confirmation first (Esc to cancel)...' : aiThinking ? 'AI is thinking...' : 'Ask me anything...'} />
         </div>
       ) : (
-        <form onSubmit={handleSubmit} className="p-4 bg-white/5 border-t border-white/10">
+        <form onSubmit={handleSubmit} className="p-4 bg-panel border-t border-border-soft">
           <div className="relative flex items-center">
             <input
               ref={inputRef}
@@ -704,13 +704,13 @@ export const Terminal = ({ messages, onSendMessage, onSearch, onDeepResearch, ac
               onKeyDown={handleInputKeyDown}
               disabled={!activeProject || aiThinking || commandPending}
               placeholder={!activeProject ? "Select a project to start..." : aiThinking ? "AI is thinking..." : commandPending ? "Running..." : "Ask a question or enter a command... (Ctrl+R for history)"}
-              className="w-full bg-[#12151c] border border-white/10 rounded-xl py-3 pl-4 pr-12 text-gray-100 font-mono text-sm focus:outline-none focus:border-[#3d6bff] transition-colors disabled:opacity-50"
+              className="w-full bg-surface border border-border-soft rounded-xl py-3 pl-4 pr-12 text-fg font-mono text-sm focus:outline-none focus:border-[#3d6bff] transition-colors disabled:opacity-50"
             />
             <button
               type="submit"
               disabled={!input.trim() || !activeProject || aiThinking || commandPending || isBlocked}
               title={isBlocked ? 'Resolve the pending confirmation first (Esc to cancel)' : undefined}
-              className="absolute right-2 p-2 text-gray-400 hover:text-[#00d4a3] disabled:opacity-50 transition-colors"
+              className="absolute right-2 p-2 text-fg-subtle hover:text-[#00d4a3] disabled:opacity-50 transition-colors"
             >
               <Send size={18} />
             </button>
@@ -725,10 +725,10 @@ export const Terminal = ({ messages, onSendMessage, onSearch, onDeepResearch, ac
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 10 }}
-            className="absolute bottom-20 left-4 right-4 bg-[#12151c] border border-white/10 rounded-xl shadow-2xl overflow-hidden z-50"
+            className="absolute bottom-20 left-4 right-4 bg-surface border border-border-soft rounded-xl shadow-2xl overflow-hidden z-50"
           >
-            <div className="flex items-center gap-2 px-4 py-3 border-b border-white/10 bg-white/5">
-              <History size={14} className="text-gray-500" />
+            <div className="flex items-center gap-2 px-4 py-3 border-b border-border-soft bg-panel">
+              <History size={14} className="text-fg-dim" />
               <input
                 ref={searchInputRef}
                 type="text"
@@ -744,19 +744,19 @@ export const Terminal = ({ messages, onSendMessage, onSearch, onDeepResearch, ac
                   }
                 }}
                 placeholder="Search command history..."
-                className="flex-1 bg-transparent text-gray-100 font-mono text-sm outline-none placeholder:text-gray-600"
+                className="flex-1 bg-transparent text-fg font-mono text-sm outline-none placeholder:text-fg-faint"
                 autoFocus
               />
               <button
                 onClick={() => { setShowSearchOverlay(false); setSearchQuery(''); inputRef.current?.focus(); }}
-                className="text-gray-600 hover:text-gray-300 transition-colors"
+                className="text-fg-faint hover:text-fg-muted transition-colors"
               >
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
               </button>
             </div>
             <div className="max-h-48 overflow-y-auto">
               {filteredHistory.length === 0 ? (
-                <div className="px-4 py-6 text-center text-gray-600 text-sm font-mono">
+                <div className="px-4 py-6 text-center text-fg-faint text-sm font-mono">
                   {searchQuery.trim() ? 'No matching commands found' : 'No command history yet'}
                 </div>
               ) : (
@@ -764,7 +764,7 @@ export const Terminal = ({ messages, onSendMessage, onSearch, onDeepResearch, ac
                   <button
                     key={i}
                     onClick={() => handleSearchOverlaySelect(cmd)}
-                    className="w-full text-left px-4 py-2 hover:bg-white/5 transition-colors font-mono text-sm text-gray-300 border-b border-white/5 last:border-b-0"
+                    className="w-full text-left px-4 py-2 hover:bg-panel transition-colors font-mono text-sm text-fg-muted border-b border-border-faint last:border-b-0"
                   >
                     {cmd}
                   </button>

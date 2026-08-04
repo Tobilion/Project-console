@@ -33,9 +33,9 @@ export class ErrorBoundary extends React.Component<{ children: React.ReactNode }
   render() {
     if (this.state.error) {
       return (
-        <div className="h-screen flex flex-col items-center justify-center gap-4 bg-[#0a0c10] text-gray-200 p-6 text-center">
+        <div className="h-screen flex flex-col items-center justify-center gap-4 bg-overlay text-fg p-6 text-center">
           <div className="text-lg font-bold">Something went wrong.</div>
-          <div className="text-xs font-mono text-gray-500 max-w-lg break-words">{this.state.error.message}</div>
+          <div className="text-xs font-mono text-fg-dim max-w-lg break-words">{this.state.error.message}</div>
           <button
             onClick={this.handleReset}
             className="px-4 py-2 bg-[#3d6bff]/20 border border-[#3d6bff]/40 text-[#3d6bff] rounded-lg text-sm font-bold hover:bg-[#3d6bff]/30 transition-colors"
@@ -44,7 +44,7 @@ export class ErrorBoundary extends React.Component<{ children: React.ReactNode }
           </button>
           <button
             onClick={() => window.location.reload()}
-            className="text-xs text-gray-500 hover:text-gray-300 underline"
+            className="text-xs text-fg-dim hover:text-fg-muted underline"
           >
             Or reload the page
           </button>
