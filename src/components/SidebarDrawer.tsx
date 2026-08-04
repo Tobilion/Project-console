@@ -21,6 +21,8 @@ interface SidebarDrawerProps {
   aiEnabled: boolean;
   aiModel: string | null;
   activeServersCount: number;
+  collapsed: boolean;
+  onSetCollapsed: (v: boolean) => void;
 }
 
 // Claude/ChatGPT-style scoping: when a project is active, the sidebar shows only that
@@ -33,24 +35,23 @@ export const SidebarDrawer = ({
   scanPath, setScanPath, handleScan, handleBrowseFolder,
   createSession, switchSession, deleteSession, handleSelectProject,
   workspaceProjects, addToWorkspace, removeFromWorkspace,
-  aiEnabled, aiModel, activeServersCount,
+  aiEnabled, aiModel, activeServersCount, collapsed, onSetCollapsed,
 }: SidebarDrawerProps) => {
-  const [collapsed, setCollapsed] = React.useState(false);
   const [showAllChats, setShowAllChats] = React.useState(false);
 
   if (collapsed) {
     return (
       <aside className="hidden lg:flex flex-col items-center gap-2 w-14 flex-shrink-0 h-full bg-panel rounded-2xl border border-border-soft p-2">
-        <button onClick={() => setCollapsed(false)} className="p-2 text-fg-dim hover:text-fg-strong transition-colors" title="Expand sidebar">
+        <button onClick={() => onSetCollapsed(false)} className="p-2 text-fg-dim hover:text-fg-strong transition-colors" title="Expand sidebar">
           <ChevronRight size={16} />
         </button>
-        <button onClick={() => setCollapsed(false)} className="p-2 text-fg-subtle hover:text-fg-strong transition-colors" title="Scan a folder">
+        <button onClick={() => onSetCollapsed(false)} className="p-2 text-fg-subtle hover:text-fg-strong transition-colors" title="Scan a folder">
           <FolderSearch size={16} />
         </button>
-        <button onClick={() => { setCollapsed(false); createSession(activeProject?.id, activeProject?.name); }} className="p-2 text-fg-subtle hover:text-teal-400 transition-colors" title="New chat">
+        <button onClick={() => { onSetCollapsed(false); createSession(activeProject?.id, activeProject?.name); }} className="p-2 text-fg-subtle hover:text-teal-400 transition-colors" title="New chat">
           <Plus size={16} />
         </button>
-        <button onClick={() => setCollapsed(false)} className="p-2 text-fg-subtle hover:text-fg-strong transition-colors" title="Discovered projects">
+        <button onClick={() => onSetCollapsed(false)} className="p-2 text-fg-subtle hover:text-fg-strong transition-colors" title="Discovered projects">
           <FolderGit2 size={16} />
         </button>
         <div className="mt-auto flex flex-col items-center gap-2" title={aiEnabled ? `AI: ${aiModel ?? 'enabled'}` : 'AI off'}>
@@ -67,7 +68,7 @@ export const SidebarDrawer = ({
   return (
     <aside className="hidden lg:flex flex-col w-64 flex-shrink-0 h-full bg-panel rounded-2xl border border-border-soft overflow-hidden">
       <div className="flex items-center gap-1.5 p-2.5 border-b border-border-faint flex-shrink-0">
-        <button onClick={() => setCollapsed(true)} className="p-1 text-fg-dim hover:text-fg-strong transition-colors flex-shrink-0" title="Collapse sidebar">
+        <button onClick={() => onSetCollapsed(true)} className="p-1 text-fg-dim hover:text-fg-strong transition-colors flex-shrink-0" title="Collapse sidebar">
           <ChevronLeft size={16} />
         </button>
         <form onSubmit={handleScan} className="flex items-center gap-1 bg-surface/50 p-1 rounded-lg border border-border-soft flex-1 min-w-0">

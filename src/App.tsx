@@ -1,12 +1,13 @@
-import React, { useRef } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { GlowOrbs } from './components/GlowOrbs';
 import { TextScramble } from './components/TextScramble';
 import { SidebarDrawer } from './components/SidebarDrawer';
 import { Terminal } from './components/Terminal';
 import { WelcomeScreen } from './components/WelcomeScreen';
 import { Dashboard } from './components/Dashboard';
+import { CommandDeck } from './components/CommandDeck';
 import { useConsole } from './hooks/useConsole';
-import { Home, LayoutDashboard } from 'lucide-react';
+import { Home, LayoutDashboard, Search } from 'lucide-react';
 import { ThemeToggle } from './components/ui/ThemeToggle';
 
 function App() {
@@ -16,6 +17,19 @@ function App() {
   // doesn't touch any chat state, so switching in and out of it never loses anything.
   const [chatFullscreen, setChatFullscreen] = React.useState(false);
   const [showDashboard, setShowDashboard] = React.useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = React.useState(false);
+  const [deckOpen, setDeckOpen] = React.useState(false);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setDeckOpen(v => !v);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
 
   const {
     projects, activeProject, scanPath, setScanPath, messages,
@@ -111,6 +125,9 @@ function App() {
           <button onClick={() => { setShowDashboard(false); setChatFullscreen(false); setShowWelcome(true); }} className="p-2 text-fg-dim hover:text-fg-strong transition-colors" title="Home">
             <Home size={18} />
           </button>
+          <button onClick={() => setDeckOpen(v => !v)} className="p-2 text-fg-dim hover:text-fg-strong transition-colors" title="Command deck (Ctrl+K)">
+            <Search size={18} />
+          </button>
           <button onClick={() => setShowDashboard(v => !v)} className={`p-2 transition-colors ${showDashboard ? 'text-accent' : 'text-fg-dim hover:text-fg-strong'}`} title="Dashboard">
             <LayoutDashboard size={18} />
           </button>
@@ -154,6 +171,8 @@ function App() {
             aiEnabled={aiEnabled}
             aiModel={aiModel}
             activeServersCount={activeServers.length}
+            collapsed={sidebarCollapsed}
+            onSetCollapsed={setSidebarCollapsed}
           />
         )}
 
@@ -225,6 +244,21 @@ function App() {
         </div>
         </>)}
       </main>
+
+      <CommandDeck
+        open={deckOpen}
+        onClose={() => setDeckOpen(false)}
+        projects={projects}
+        activeProject={activeProject}
+        onSelectProject={handleSelectProject}
+        onDirectCommand={handleDirectCommand}
+        onSendMessage={handleSendMessage}
+        onHome={() => { setShowDashboard(false); setChatFullscreen(false); setShowWelcome(true); }}
+        onToggleDashboard={() => setShowDashboard(v => !v)}
+        onNewChat={handleNewChat}
+        sidebarCollapsed={sidebarCollapsed}
+        onSetSidebarCollapsed={setSidebarCollapsed}
+      />
     </div>
   );
 }
