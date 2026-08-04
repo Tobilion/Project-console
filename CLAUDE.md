@@ -2278,6 +2278,36 @@ zero behavior change; one commit per phase; lint + check-intents must stay green
   pipeline gotchas" for the new module map and the `check-matcher` harness). Remaining large
   files for later phases: nearMissLogger.js,
   learningEngine.js (151), projectMemory.js (210), conversationStore.js.
+- **Phase 3 follow-up (24343c2) + Phases 4a/4b — remaining large files (each under 150
+  lines, all later verified):** confidenceModel.js split into `server/logisticRegression.js`
+  (gradient descent) + `server/modelStore.js` (persistence) → 144 lines; projectMemory.js
+  split into `server/memoryStore.js` (storage) + `server/memoryThresholdChecks.js`
+  (threshold logic) → 98 lines; learningEngine.js split via `server/nearMissIntentMap.js`
+  (near-miss → intent mapping) → 149 lines. These three commits happened after the
+  Phases 1–3 docs above were written and were never recorded here until this entry.
+- **Phase 5 (2026-08-04, 5 commits `497e9df` → `9a88785`) — semanticMatcher.js
+  modularization.** Detailed in "Matching pipeline gotchas" above (module map:
+  preSemanticOverrides/keywordRules/matcherStages/intentVectorScan + the `check-matcher`
+  harness). semanticMatcher.js 762 → 448 lines of pure orchestration.
+- **Phase 6 (2026-08-04, conversationStore split).** `server/conversationStore.js` 358 →
+  ~150 lines of pure orchestration; new leaf modules (all logic unchanged, no cycles):
+  `server/sessionPaths.js` (path helpers + LEGACY_STORE_DIR/INDEX_PATH consts),
+  `server/sessionIndex.js` (index CRUD over data/conversations/index.json, exports
+  ensureLegacyDir too), `server/messageLog.js` (readMessageLog, NDJSON last-N),
+  `server/chatLog.js` (appendChatLogEntry — the live chat-log writer from appendMessage;
+  the old unused `appendToChatLog` was dead code, deleted as part of the extraction), and
+  `server/sessionMigration.js` (ensureGitignored/ensureProjectConsoleDir/getSession/
+  migrateLegacySession/linkSessionToProject — getSession lives here so linkSessionToProject
+  can use it without a module cycle). `conversationStore.js` re-exports getSession/
+  linkSessionToProject/ensureGitignored from sessionMigration so every external importer
+  (sessionRoutes/aiQuery/connection/builtinIntents/memoryStore) is untouched. Verified:
+  lint clean, 20/20 round-trip probe (create → append ×2 with isMarkdown → read-back →
+  chat-log.md + .gitignore side effects → delete → index entry removed), check-matcher
+  68/68, check-intents baseline (1/5/80). After this phase, every file on the original
+  "remaining large files" list is under 150 lines — only the big orchestrators/giants
+  remain (matcher.js 437, tools.js 770, builtinIntents.js 1732, connection.js 1274,
+  executor.js 507, codebaseIndexer.js 749, useConsole.ts 747), all out of scope for the
+  split-by-concern series so far.
 - Verification: Phases 1–3 lint-clean; check-intents identical to baseline (1/5/80);
   import smoke + guessCommand battery pass. Phase 1 commit excludes the
   data/user-profile.json write (live dev server on :3000).
