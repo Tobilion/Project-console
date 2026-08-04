@@ -1,5 +1,7 @@
 import { useState, useCallback } from 'react';
 import { ChatSession, StoredSession, TerminalMessage, Project } from '../types';
+import { storedToTerminalMessages } from '../utils/storedToTerminalMessages';
+import { makeMessage } from '../utils/makeMessage';
 
 export function useSessions() {
   const [sessions, setSessions] = useState<ChatSession[]>([]);
@@ -44,22 +46,14 @@ export function useSessions() {
         // `s.messages` should always be an array (server-side bug previously let it come back
         // undefined for some sessions — see conversationStore.js's migrateLegacySession — which
         // threw here and got silently swallowed below, making a chat's history look wiped on
-        // reload). Guard defensively either way instead of trusting the server unconditionally.
-        setMessages((s.messages || []).map(m => ({
-          id: m.id,
-          type: m.role as TerminalMessage['type'],
-          content: m.content
-        })));
+        // reload). Guard is handled inside storedToTerminalMessages.
+        setMessages(storedToTerminalMessages(s.messages));
         return s;
       }
     } catch (err) {
       // eslint-disable-next-line no-console
       console.error('switchSession failed:', err);
-      setMessages(prev => [...prev, {
-        id: Date.now().toString(),
-        type: 'error',
-        content: 'Could not load that chat\'s history — please try again.'
-      }]);
+      setMessages(prev => [...prev, makeMessage('error', 'Could not load that chat\'s history — please try again.')]);
     }
     return null;
   }, []);

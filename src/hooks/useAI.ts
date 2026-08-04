@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react';
 import { AIStatus, TerminalMessage } from '../types';
+import { makeMessage } from '../utils/makeMessage';
 
 export function useAI(sendWS: (data: object) => void, setMessages: React.Dispatch<React.SetStateAction<TerminalMessage[]>>) {
   const [aiEnabled, setAiEnabled] = useState(false);
@@ -41,11 +42,7 @@ export function useAI(sendWS: (data: object) => void, setMessages: React.Dispatc
       if (!newState) {
         sendWS({ type: 'ai_toggle', payload: { enabled: false } });
         setAiEnabled(false);
-        setMessages(prev => [...prev, {
-          id: Date.now().toString(),
-          type: 'system',
-          content: 'AI Assistant deactivated — returning to trigger mode.'
-        }]);
+        setMessages(prev => [...prev, makeMessage('system', 'AI Assistant deactivated — returning to trigger mode.')]);
         return;
       }
 
@@ -81,11 +78,10 @@ export function useAI(sendWS: (data: object) => void, setMessages: React.Dispatc
         const reason = status.internetReachable
           ? 'no internet connection was detected'
           : 'no local models are installed and no internet connection was detected';
-        setMessages(prev => [...prev, {
-          id: Date.now().toString(),
-          type: 'error',
-          content: `AI mode can't start: ${reason}. Pull a local model (e.g. "ollama pull qwen2.5-coder:7b"), or connect to the internet and run "ollama signin" to use Ollama Cloud, then toggle AI ON again.`
-        }]);
+        setMessages(prev => [...prev, makeMessage(
+          'error',
+          `AI mode can't start: ${reason}. Pull a local model (e.g. "ollama pull qwen2.5-coder:7b"), or connect to the internet and run "ollama signin" to use Ollama Cloud, then toggle AI ON again.`
+        )]);
         return;
       }
 
@@ -114,11 +110,10 @@ export function useAI(sendWS: (data: object) => void, setMessages: React.Dispatc
 
       sendWS({ type: 'ai_toggle', payload: { enabled: true } });
       setAiEnabled(true);
-      setMessages(prev => [...prev, {
-        id: Date.now().toString(),
-        type: 'system',
-        content: `AI Assistant activated — using ${source === 'cloud' ? '🌐 Ollama Cloud' : 'local'} model: ${activeModel}. Switch between local and cloud anytime via the model picker.`
-      }]);
+      setMessages(prev => [...prev, makeMessage(
+        'system',
+        `AI Assistant activated — using ${source === 'cloud' ? '🌐 Ollama Cloud' : 'local'} model: ${activeModel}. Switch between local and cloud anytime via the model picker.`
+      )]);
     } finally {
       toggleBusyRef.current = false;
     }
@@ -126,7 +121,7 @@ export function useAI(sendWS: (data: object) => void, setMessages: React.Dispatc
 
   const handlePullModel = async (modelName: string) => {
     const msgId = Date.now().toString();
-    setMessages(prev => [...prev, { id: msgId, type: 'system', content: `Downloading ${modelName}...\n` }]);
+    setMessages(prev => [...prev, makeMessage('system', `Downloading ${modelName}...\n`, { id: msgId })]);
     try {
       const pullRes = await fetch('/api/ollama/pull', {
         method: 'POST',
@@ -145,20 +140,20 @@ export function useAI(sendWS: (data: object) => void, setMessages: React.Dispatc
               const data = JSON.parse(line.slice(6));
               if (data.type === 'done') {
                 if (data.success) {
-                  setMessages(prev => [...prev, { id: Date.now().toString(), type: 'system', content: `✅ ${data.message}` }]);
-                  fetchOllamaStatus();
-                  setAiModel(modelName);
-                  sendWS({ type: 'ai_set_model', payload: { model: modelName } });
-                } else {
-                  setMessages(prev => [...prev, { id: Date.now().toString(), type: 'error', content: `Failed: ${data.error}` }]);
+                 setMessages(prev => [...prev, makeMessage('system', `✅ ${data.message}`)]);
+                   fetchOllamaStatus();
+                   setAiModel(modelName);
+                   sendWS({ type: 'ai_set_model', payload: { model: modelName } });
+                 } else {
+                   setMessages(prev => [...prev, makeMessage('error', `Failed: ${data.error}`)]);
                 }
               }
             } catch {}
           }
         }
       }
-    } catch (err: any) {
-      setMessages(prev => [...prev, { id: Date.now().toString(), type: 'error', content: `Pull failed: ${err.message}` }]);
+     } catch (err: any) {
+       setMessages(prev => [...prev, makeMessage('error', `Pull failed: ${err.message}`)]);
     }
   };
 

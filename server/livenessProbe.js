@@ -1,4 +1,4 @@
-import { isProbeableUrl } from './webSearch.js';
+import { isProbeableUrl } from './urlSafety.js';
 import { state } from './state.js';
 
 // On-demand liveness probing for dev-server URLs. Runs ONLY when the user asks — nothing

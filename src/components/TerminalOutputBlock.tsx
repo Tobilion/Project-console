@@ -1,20 +1,15 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Terminal as TerminalIcon, Copy, ChevronDown, ChevronUp } from 'lucide-react';
+import { Terminal as TerminalIcon, ChevronDown, ChevronUp } from 'lucide-react';
+import { CopyButton } from './ui/CopyButton';
 
 /** Phase 6 (PASS 6.3): a command's output rendered as a collapsible terminal-style block —
  *  dark mono, capped height + scroll, copy button, auto-collapsed. The header keeps the ▶
  *  start line visible at all times; the body expands on click. */
 export function OutputBlock({ content }: { content: string }) {
   const [expanded, setExpanded] = useState(false);
-  const [copied, setCopied] = useState(false);
   const firstLine = content.split('\n').find(l => l.trim()) || content;
   const displayCommand = firstLine.replace(/^Executing:\s*/, '').trim();
-  const handleCopy = () => {
-    navigator.clipboard.writeText(content);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1500);
-  };
   return (
     <div className="w-full rounded-lg border border-border bg-surface overflow-hidden">
       <div className="flex items-center gap-2 px-3 py-1.5">
@@ -22,9 +17,7 @@ export function OutputBlock({ content }: { content: string }) {
           <TerminalIcon size={12} className="text-accent flex-shrink-0" />
           <span className="text-xs font-mono text-muted-foreground truncate">▶ {displayCommand || 'command output'}</span>
         </button>
-        <button onClick={handleCopy} className="text-fg-dim hover:text-fg-strong transition-colors flex-shrink-0" title="Copy output">
-          {copied ? <span className="text-[10px] text-teal-400">Copied</span> : <Copy size={11} />}
-        </button>
+          <CopyButton text={content} title="Copy output" size={11} className="text-fg-dim hover:text-fg-strong transition-colors flex-shrink-0" />
         <button onClick={() => setExpanded(!expanded)} className="text-fg-dim hover:text-fg-strong transition-colors flex-shrink-0" title={expanded ? 'Collapse output' : 'Expand output'}>
           {expanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
         </button>

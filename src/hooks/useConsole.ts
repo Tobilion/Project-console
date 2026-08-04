@@ -6,6 +6,9 @@ import { useWebSocket } from './useWebSocket';
 import { useAI } from './useAI';
 import { useTerminal } from './useTerminal';
 import { useSearch } from './useSearch';
+import { waitForSocketOpen } from '../utils/waitForSocketOpen';
+import { apiFetchJson } from '../utils/apiFetch';
+import { makeMessage } from '../utils/makeMessage';
 
 export function useConsole() {
   const projects = useProjects();
@@ -48,44 +51,36 @@ export function useConsole() {
   const [dockExpanded, setDockExpanded] = useState(false);
 
   const fetchActiveServers = useCallback(async () => {
-    try {
-      const res = await fetch('/api/active-servers');
-      if (res.ok) setActiveServers(await res.json());
-    } catch {}
+    const data = await apiFetchJson<Array<{ projectId: string; command: string; pid: number | null; url: string | null }>>('/api/active-servers');
+    if (data) setActiveServers(data);
   }, []);
 
   // Phase 6 (PASS 6.1): live view of runningProcesses for the dock. Prunes logs of dead
   // projects and keeps the selected tab valid (prefer the session's active project, fall back
   // to the first running one).
   const fetchProcesses = useCallback(async () => {
-    try {
-      const res = await fetch('/api/processes');
-      if (!res.ok) return;
-      const list = await res.json();
-      setProcesses(list);
-      const runningIds = new Set(list.map((p: any) => p.projectId));
-      setProcessLogs(prev => {
-        const next: Record<string, string[]> = {};
-        for (const [k, v] of Object.entries(prev)) if (runningIds.has(k)) next[k] = v;
-        return next;
-      });
-      setSelectedProcessId(cur => {
-        if (cur && runningIds.has(cur)) return cur;
-        const activeId = activeProjectRef.current?.id;
-        if (activeId && runningIds.has(activeId)) return activeId;
-        return list[0]?.projectId || null;
-      });
-    } catch {}
+    const list = await apiFetchJson<Array<{ projectId: string; command: string; pid: number | null; url: string | null; startedAt: string | null }>>('/api/processes');
+    if (!list) return;
+    setProcesses(list);
+    const runningIds = new Set(list.map((p: any) => p.projectId));
+    setProcessLogs(prev => {
+      const next: Record<string, string[]> = {};
+      for (const [k, v] of Object.entries(prev)) if (runningIds.has(k)) next[k] = v;
+      return next;
+    });
+    setSelectedProcessId(cur => {
+      if (cur && runningIds.has(cur)) return cur;
+      const activeId = activeProjectRef.current?.id;
+      if (activeId && runningIds.has(activeId)) return activeId;
+      return list[0]?.projectId || null;
+    });
   }, []);
 
   // Phase 6 (PASS 6.2): replay the server ring buffer for a process log into the dock.
   const fetchProcessLog = useCallback(async (projectId: string) => {
-    try {
-      const res = await fetch(`/api/processes/${encodeURIComponent(projectId)}/log`);
-      if (!res.ok) return;
-      const data = await res.json();
-      if (Array.isArray(data.lines)) setProcessLogs(prev => ({ ...prev, [projectId]: data.lines }));
-    } catch {}
+    const data = await apiFetchJson<{ lines: string[] }>(`/api/processes/${encodeURIComponent(projectId)}/log`);
+    if (!data) return;
+    if (Array.isArray(data.lines)) setProcessLogs(prev => ({ ...prev, [projectId]: data.lines }));
   }, []);
 
   // Phase 6 (PASS 6.2): tail accumulation for the dock log. Commands always run for the
@@ -114,11 +109,10 @@ export function useConsole() {
   const rerunToolCall = useCallback((entry: ToolCallEntry) => {
     if (!wsHandler.wsRef.current || wsHandler.wsRef.current.readyState !== WebSocket.OPEN) return;
     if (entry.gated) {
-      sessions.setMessages(prev => [...prev, {
-        id: Date.now().toString(),
-        type: 'system',
-        content: `To re-run a gated tool (${entry.tool}), switch to AI mode and describe what you want. This tool (${entry.tool}) requires approval before running.`
-      }]);
+      sessions.setMessages(prev => [...prev, makeMessage(
+        'system',
+        `To re-run a gated tool (${entry.tool}), switch to AI mode and describe what you want. This tool (${entry.tool}) requires approval before running.`
+      )]);
       return;
     }
     wsHandler.wsRef.current.send(JSON.stringify({
@@ -248,14 +242,9 @@ export function useConsole() {
   const origHandleSendMessage = terminal.handleSendMessage;
   terminal.handleSendMessage = async (content: string) => {
     if (!projects.activeProject || !wsHandler.wsRef.current) return;
-    if (wsHandler.wsRef.current.readyState !== WebSocket.OPEN) {
-      for (let i = 0; i < 30; i++) {
-        await new Promise(r => setTimeout(r, 100));
-        if (wsHandler.wsRef.current?.readyState === WebSocket.OPEN) break;
-      }
-    }
-    if (wsHandler.wsRef.current?.readyState !== WebSocket.OPEN) return;
-    sessions.setMessages(prev => [...prev, { id: Date.now().toString(), type: 'user', content }]);
+    const open = await waitForSocketOpen(() => wsHandler.wsRef.current);
+    if (!open) return;
+    sessions.setMessages(prev => [...prev, makeMessage('user', content)]);
     // Only trigger mode needs this — AI mode already gets its own busy indicator from the
     // server's 'ai_start' event (see ai.setAiThinking below), and showing both at once would be
     // redundant/confusing.
@@ -582,12 +571,11 @@ export function useConsole() {
       // project yet — don't let any unexpected error here escape uncaught (the top-level
       // ErrorBoundary in main.tsx is the other half of this safety net).
       // eslint-disable-next-line no-console
-      console.error('New Chat failed:', err);
-      sessions.setMessages(prev => [...prev, {
-        id: Date.now().toString(),
-        type: 'error',
-        content: 'Could not start a new chat — please try again.'
-      }]);
+       console.error('New Chat failed:', err);
+       sessions.setMessages(prev => [...prev, makeMessage(
+         'error',
+         'Could not start a new chat — please try again.'
+       )]);
     }
   };
 
@@ -609,15 +597,11 @@ export function useConsole() {
     // local system message instead so it works with zero project/session/WS state required.
     terminal.setPendingConfirm(null);
     terminal.setPendingToolConfirm(null);
-    sessions.setShowWelcome(false);
-    if (!sessions.activeSessionId) {
-      sessions.createSession();
-    }
-    sessions.setMessages(prev => [...prev, {
-      id: Date.now().toString(),
-      type: 'system',
-      content: QUICK_START_TEXT,
-    }]);
+      sessions.setShowWelcome(false);
+      if (!sessions.activeSessionId) {
+        sessions.createSession();
+      }
+      sessions.setMessages(prev => [...prev, makeMessage('system', QUICK_START_TEXT)]);
   }, [sessions, terminal]);
 
   const handleScan = async (e: React.FormEvent) => {
@@ -633,11 +617,7 @@ export function useConsole() {
       if (!sessions.activeSessionId) {
         sessions.createSession();
       }
-      sessions.setMessages(prev => [...prev, {
-        id: Date.now().toString(),
-        type: 'error',
-        content: result.error || 'Scan failed.',
-      }]);
+      sessions.setMessages(prev => [...prev, makeMessage('error', result.error || 'Scan failed.')]);
     }
   };
 
@@ -661,7 +641,7 @@ export function useConsole() {
 
   const handleDirectCommand = useCallback((command: string) => {
     if (!wsHandler.wsRef.current || wsHandler.wsRef.current.readyState !== WebSocket.OPEN) return;
-    sessions.setMessages(prev => [...prev, { id: Date.now().toString(), type: 'user', content: command }]);
+    sessions.setMessages(prev => [...prev, makeMessage('user', command)]);
     wsHandler.wsRef.current.send(JSON.stringify({
       type: 'execute_tool',
       payload: { tool: 'executeCommand', args: { command, risky: false } }
@@ -694,11 +674,7 @@ export function useConsole() {
         projects.handleSelectProject(project);
       }
     } else {
-      sessions.setMessages(prev => [...prev, {
-        id: Date.now().toString(),
-        type: 'error',
-        content: `Couldn't find that project in the current list — try rescanning.`,
-      }]);
+      sessions.setMessages(prev => [...prev, makeMessage('error', 'Couldn\'t find that project in the current list — try rescanning.')]);
     }
   }, [projects, sessions]);
 

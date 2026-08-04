@@ -1,3 +1,5 @@
+import { keywordRegex } from './regexUtils.js';
+
 const PRONOUN_PATTERN = /\b(it|this|that|they|those|these|them)\b/i;
 
 // Word-boundary matching, not `.includes()` — this is a last-resort fallback (only reached after
@@ -7,26 +9,9 @@ const PRONOUN_PATTERN = /\b(it|this|that|they|those|these|them)\b/i;
 // like "main"/"run"/"test" fire inside unrelated words — "maintaining good habits" contains
 // "main", "the crunch is real" contains "run" — which would silently misroute an unrelated message
 // into a specific project-context answer instead of falling through to suggestion chips. Escaping
-// each keyword and requiring a real word boundary on both sides closes that off while still
-// matching the intended phrasing ("what's the main file", "let's run this").
-function escapeRegExp(s) {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
-// Plain `\b` only fires at a transition between a word char (\w) and a non-word char — it never
-// matches between two non-word chars. That breaks a keyword like ".env": the boundary right
-// before the leading "." would need one side to be \w, but a space (or string start) before it is
-// also non-word, so `\b\.env\b` would silently never match ".env" at all. Build the boundary only
-// on whichever edge is actually a word character, so a non-word-leading/trailing keyword like
-// ".env" is still bounded by real separators without requiring an impossible \w/\W transition.
-function keywordRegex(keyword) {
-  const escaped = escapeRegExp(keyword);
-  const startsWithWord = /\w/.test(keyword[0]);
-  const endsWithWord = /\w/.test(keyword[keyword.length - 1]);
-  const startBoundary = startsWithWord ? '(?<![A-Za-z0-9_])' : '';
-  const endBoundary = endsWithWord ? '(?![A-Za-z0-9_])' : '';
-  return new RegExp(`${startBoundary}${escaped}${endBoundary}`, 'i');
-}
+// each keyword and requiring a real word boundary on both sides (via regexUtils.keywordRegex)
+// closes that off while still matching the intended phrasing ("what's the main file", "let's run
+// this").
 
 const CONTEXTUAL_MAP = {
   'main file':      'project.context.entry_point',

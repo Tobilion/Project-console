@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
-import { Copy, FileDown } from 'lucide-react';
+import React from 'react';
+import { FileDown } from 'lucide-react';
+import { CopyButton } from './ui/CopyButton';
 
 /** Parses a JSON code-block child string and returns the parsed object, or null. */
 function tryParseJsonBlock(children: React.ReactNode): Record<string, unknown> | null {
@@ -14,14 +15,8 @@ function tryParseJsonBlock(children: React.ReactNode): Record<string, unknown> |
 
 /** Renders a ```json block with copy button and type-specific actions when in structured mode. */
 export function StructuredJsonBlock({ content, onSendMessage }: { content: string; onSendMessage: (msg: string) => void }) {
-  const [copied, setCopied] = useState(false);
   const parsed = tryParseJsonBlock(content);
   const dataType = parsed?.type as string || 'generic';
-  const handleCopy = () => {
-    navigator.clipboard.writeText(content);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1500);
-  };
   const handleApply = () => {
     const path = parsed?.data && typeof parsed.data === 'object' ? (parsed.data as any).path || null : null;
     if (path) {
@@ -38,9 +33,7 @@ export function StructuredJsonBlock({ content, onSendMessage }: { content: strin
           JSON {dataType !== 'generic' ? `— ${dataType.replace('_', ' ')}` : ''}
         </span>
         <div className="flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
-          <button onClick={handleCopy} className="p-1 text-fg-dim hover:text-fg-strong transition-colors" title="Copy JSON">
-            {copied ? <span className="text-[10px] text-teal-400">Copied</span> : <Copy size={12} />}
-          </button>
+           <CopyButton text={content} title="Copy JSON" size={12} className="p-1 text-fg-dim hover:text-fg-strong transition-colors" />
           {parsed && (
             <button onClick={handleApply} className="p-1 text-fg-dim hover:text-teal-400 transition-colors" title={parsed?.data && typeof parsed.data === 'object' && (parsed.data as any).path ? `Apply to ${(parsed.data as any).path}` : 'Apply to project'}>
               <FileDown size={12} />

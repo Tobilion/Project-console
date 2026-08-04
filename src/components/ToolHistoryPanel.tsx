@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { ToolCallEntry } from '../types';
-import { Terminal as TerminalIcon, Copy, RotateCcw, X, ChevronDown, ChevronUp } from 'lucide-react';
+import { Terminal as TerminalIcon, RotateCcw, X, ChevronDown, ChevronUp } from 'lucide-react';
+import { CopyButton } from './ui/CopyButton';
 
 interface ToolHistoryPanelProps {
   toolHistory: ToolCallEntry[];
@@ -58,15 +59,14 @@ className="border-t border-border-soft bg-surface/60 overflow-hidden"
                           </pre>
                         </div>
                         <div className="flex gap-2">
-                          <button
-                            onClick={() => {
-                              const text = JSON.stringify({ tool: entry.tool, args: entry.args }, null, 2);
-                              navigator.clipboard.writeText(text);
-                            }}
+                          <CopyButton
+                            text={JSON.stringify({ tool: entry.tool, args: entry.args }, null, 2)}
+                            title="Copy"
+                            size={10}
+                            label="Copy"
+                            feedback={false}
                             className="flex items-center gap-1 px-2 py-1 rounded bg-panel hover:bg-panel-strong text-fg-dim hover:text-fg-strong transition-colors text-[10px]"
-                          >
-                            <Copy size={10} /> Copy
-                          </button>
+                          />
                           <button
                             onClick={() => onRerun(entry)}
                             className="flex items-center gap-1 px-2 py-1 rounded bg-panel hover:bg-panel-strong text-fg-dim hover:text-teal-400 transition-colors text-[10px]"

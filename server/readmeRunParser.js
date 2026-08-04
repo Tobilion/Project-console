@@ -7,6 +7,7 @@
  * spirit as codebaseIndexer.js and outputSummarizer.js: no parser dependency, no network call,
  * tuned for coverage over precision.
  */
+import { extractFencedBlocks, splitIntoSections } from './markdownUtils.js';
 
 // Markdown headings (any level) that conventionally contain "how to run/use/install this" —
 // wider than projectScanner.js's own parsedKnowledge bucketing (which only recognizes "## Commands"
@@ -35,31 +36,6 @@ const RUN_COMMAND_PATTERNS = [
   /\bnode\s+\S+\.m?js\b/i,
   /\b[\w.:\\\/-]*python(?:3)?(?:\.exe)?\s+\S+\.py\b/i,
 ];
-
-function extractFencedBlocks(markdown) {
-  const blocks = [];
-  const re = /```[a-zA-Z]*\n([\s\S]*?)```/g;
-  let m;
-  while ((m = re.exec(markdown))) blocks.push(m[1]);
-  return blocks;
-}
-
-/** Splits a markdown doc into { header, body } sections at each heading line. */
-function splitIntoSections(markdown) {
-  const lines = markdown.split('\n');
-  const sections = [];
-  let current = { header: '', body: [] };
-  for (const line of lines) {
-    if (/^#{1,6}\s/.test(line)) {
-      if (current.body.length || current.header) sections.push(current);
-      current = { header: line, body: [] };
-    } else {
-      current.body.push(line);
-    }
-  }
-  if (current.body.length || current.header) sections.push(current);
-  return sections;
-}
 
 // Cap on how many distinct documented run commands a single project can report. Beyond this the
 // doc is likely a tutorial with dozens of one-off invocations, not a "how to run this" reference.

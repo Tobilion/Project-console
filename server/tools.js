@@ -9,7 +9,8 @@ import { loadPluginManifest, createPluginToolFn } from './pluginTools.js';
 import { appendMemoryEntry } from './memoryStore.js';
 import { runningProcesses, stopTrackedProcess } from './executor.js';
 import { state } from './state.js';
-import { webSearch, deepResearch, isProbeableUrl } from './webSearch.js';
+import { webSearch, deepResearch } from './webSearch.js';
+import { isProbeableUrl } from './urlSafety.js';
 
 const require = createRequire(import.meta.url);
 const RE2 = require('re2');

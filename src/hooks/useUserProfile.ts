@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { formatUserName } from '../utils/formatUserName';
 
 export interface UserProfile {
   name: string;
@@ -46,12 +47,7 @@ export function useUserProfile() {
     }
   }, [profile]);
 
-  const getFormattedName = useCallback((): string => {
-    if (!profile.title || profile.title.toLowerCase() === 'none') {
-      return profile.name;
-    }
-    return `${profile.title} ${profile.name}`;
-  }, [profile]);
+  const getFormattedName = useCallback((): string => formatUserName(profile), [profile]);
 
   return { profile, updateProfile, getFormattedName, loaded };
 }

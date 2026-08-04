@@ -1,6 +1,8 @@
 import React, { useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Terminal as TerminalIcon, ChevronDown, ChevronUp, Square, Copy } from 'lucide-react';
+import { Terminal as TerminalIcon, ChevronDown, ChevronUp, Square } from 'lucide-react';
+import { shortCommand, portFromUrl } from '../utils/process';
+import { CopyButton } from './ui/CopyButton';
 
 export interface ProcessInfo {
   projectId: string;
@@ -18,19 +20,6 @@ interface ProcessDockProps {
   onStopProcess: (projectId: string) => void;
   expanded: boolean;
   onToggleExpanded: () => void;
-}
-
-/** Shortens a command for the tab label without hiding the interesting part (the executable +
- *  first arg or two). Full command is always available via the title tooltip. */
-function shortCommand(command: string): string {
-  const trimmed = command.replace(/^set\s+\w+=\S+\s*&&\s*/i, '').trim();
-  return trimmed.length > 36 ? trimmed.slice(0, 36) + '…' : trimmed;
-}
-
-/** Pulls the port out of a detected dev URL ("http://localhost:5173/" → "5173"). */
-function portFromUrl(url: string): string | null {
-  const m = url.match(/:(\d{2,5})/);
-  return m ? m[1] : null;
 }
 
 /**
@@ -79,13 +68,14 @@ export function ProcessDock({
               >
                 <div className="flex items-center justify-between px-4 pt-2">
                   <span className="text-[10px] text-fg-faint uppercase">Live output</span>
-                  <button
-                    onClick={() => navigator.clipboard.writeText(logText)}
-                    className="flex items-center gap-1 px-2 py-0.5 rounded bg-panel hover:bg-panel-strong text-fg-dim hover:text-fg-strong transition-colors text-[10px]"
+                  <CopyButton
+                    text={logText}
                     title="Copy log"
-                  >
-                    <Copy size={10} /> Copy
-                  </button>
+                    size={10}
+                    label="Copy"
+                    feedback={false}
+                    className="flex items-center gap-1 px-2 py-0.5 rounded bg-panel hover:bg-panel-strong text-fg-dim hover:text-fg-strong transition-colors text-[10px]"
+                  />
                 </div>
                 <div className="max-h-64 overflow-y-auto p-3 font-mono text-xs text-fg-muted leading-relaxed whitespace-pre-wrap">
                   {logText || 'No output yet.'}

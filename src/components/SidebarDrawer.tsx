@@ -1,6 +1,7 @@
 import React from 'react';
 import { Project, ChatSession } from '../types';
-import { FolderSearch, Plus, MessageSquare, Trash2, ChevronLeft, ChevronRight, Brain, FolderGit2, X } from 'lucide-react';
+import { FolderSearch, Plus, MessageSquare, Trash2, ChevronLeft, ChevronRight, Brain, FolderGit2 } from 'lucide-react';
+import { WorkspaceToggleButton } from './ui/WorkspaceToggleButton';
 
 interface SidebarDrawerProps {
   projects: Project[];
@@ -155,16 +156,14 @@ export const SidebarDrawer = ({
               }`}
             >
               <FolderGit2 size={13} className="flex-shrink-0" />
-              <span className="truncate flex-1 min-w-0">{p.name}</span>
-              {workspaceProjects.some(w => w.id === p.id) ? (
-                <button onClick={(e) => { e.stopPropagation(); removeFromWorkspace(p.id); }} className="opacity-0 group-hover:opacity-100 p-0.5 text-[#3d6bff] hover:text-red-400 transition-colors flex-shrink-0" title="Remove from workspace">
-                  <X size={11} />
-                </button>
-              ) : (
-                <button onClick={(e) => { e.stopPropagation(); addToWorkspace(p); }} className="opacity-0 group-hover:opacity-100 p-0.5 text-fg-faint hover:text-[#3d6bff] transition-colors flex-shrink-0" title="Add to workspace">
-                  <Plus size={11} />
-                </button>
-              )}
+                 <span className="truncate flex-1 min-w-0">{p.name}</span>
+                 <WorkspaceToggleButton
+                   inWorkspace={workspaceProjects.some(w => w.id === p.id)}
+                   onAdd={() => addToWorkspace(p)}
+                   onRemove={() => removeFromWorkspace(p.id)}
+                   size={11}
+                   className="opacity-0 group-hover:opacity-100 p-0.5 flex-shrink-0"
+                 />
             </div>
           ))
         )}

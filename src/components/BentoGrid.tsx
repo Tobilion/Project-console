@@ -2,7 +2,8 @@ import React from 'react';
 import { Project } from '../types';
 import { SpotlightCard } from './SpotlightCard';
 import { motion } from 'motion/react';
-import { FolderGit2, BookOpen, Plus, X } from 'lucide-react';
+import { FolderGit2, BookOpen } from 'lucide-react';
+import { WorkspaceToggleButton } from './ui/WorkspaceToggleButton';
 
 interface BentoGridProps {
   projects: Project[];
@@ -32,24 +33,14 @@ export const BentoGrid = ({ projects, activeProject, onSelect, workspaceProjects
               <div className="p-2 bg-[#00d4a3]/10 rounded-lg">
                 <FolderGit2 className="text-[#00d4a3]" size={24} />
               </div>
-              <h3 className="text-lg font-bold text-fg-strong flex-1">{project.name}</h3>
-              {workspaceProjects.some(p => p.id === project.id) ? (
-                <button
-                  onClick={() => removeFromWorkspace(project.id)}
-                  className="p-1 text-[#3d6bff] hover:text-red-400 transition-colors"
-                  title="Remove from workspace"
-                >
-                  <X size={14} />
-                </button>
-              ) : (
-                <button
-                  onClick={() => addToWorkspace(project)}
-                  className="p-1 text-fg-faint hover:text-[#3d6bff] transition-colors"
-                  title="Add to workspace"
-                >
-                  <Plus size={14} />
-                </button>
-              )}
+               <h3 className="text-lg font-bold text-fg-strong flex-1">{project.name}</h3>
+               <WorkspaceToggleButton
+                 inWorkspace={workspaceProjects.some(p => p.id === project.id)}
+                 onAdd={() => addToWorkspace(project)}
+                 onRemove={() => removeFromWorkspace(project.id)}
+                 size={14}
+                 className="p-1"
+               />
             </div>
             
             <p className="text-xs text-fg-dim font-mono truncate mb-4" title={project.path}>

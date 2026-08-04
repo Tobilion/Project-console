@@ -1,4 +1,5 @@
 import { useRef, useCallback } from 'react';
+import { getWebSocketUrl } from '../utils/getWebSocketUrl';
 
 export function useWebSocket(onMessage: (payload: any) => void) {
   const wsRef = useRef<WebSocket | null>(null);
@@ -22,9 +23,7 @@ export function useWebSocket(onMessage: (payload: any) => void) {
       intentionalCloseRef.current = true;
       wsRef.current.close();
     }
-    const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsHost = window.location.host || 'localhost:3000';
-    const wsUrl = `${wsProtocol}//${wsHost}/stream`;
+    const wsUrl = getWebSocketUrl();
     const ws = new WebSocket(wsUrl);
 
     ws.onmessage = (event) => {
