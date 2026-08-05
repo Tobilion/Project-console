@@ -1,147 +1,42 @@
-import crypto from 'crypto';
 import { injectContext } from '../contextInjector.js';
 import { executeCommand, runningProcesses } from '../executor.js';
-import { performUndo, isGitRepo, createCheckpoint } from '../gitSafety.js';
+import { createCheckpoint } from '../gitSafety.js';
 import { pendingConfirmations, state, withPortCollisionWarning } from '../state.js';
 import { createProjectTools, findTestCommand } from '../tools.js';
 import { findDocumentedRunCommands } from '../readmeRunParser.js';
 import { formatApiRoutes, findTodos, findBiggestFiles, findRecentActivity } from '../codebaseIndexer.js';
 import { probeUrl, scanProjectServers, candidateDevUrls } from '../livenessProbe.js';
 import { recordDevUrl } from '../devUrlStore.js';
-import { parseFileNameAndContent, parseFileNameOnly, extractCommentMessage, queueFileOpConfirmation, pickRandom, chatReplyPool, smartChitchatReply, enrichWithIndex } from './builtinHelpers.js';
-import { buildLiveStateLine, buildMemoryBlock } from './builtinLiveState.js';
-import { buildHelpMessage } from './builtinHelp.js';
-import { projectTypeSuggestions, findMentionedScript } from './builtinRunSuggestions.js';
+import { parseFileNameAndContent, parseFileNameOnly, queueFileOpConfirmation, enrichWithIndex } from './builtinHelpers.js';
 import { gitHandlers } from './builtinGit.js';
+import { chitChatHandlers } from './builtinChitChat.js';
 
 /**
  * Confirmed live 2026-07-30 (Matchday Exchange transcript): "run its server" and "run .bat" both
 /** Handles all built-in (non-project-config, non-AI) conversational intents. Returns false if the action wasn't recognized. */
 export async function handleBuiltinIntent(ws, action, input, project, sessionContext) {
   if (action === 'system.chit_chat.undo' || action === 'undo') {
-    const undoResult = await performUndo(project.path);
-    if (undoResult.success) {
-      ws.send(JSON.stringify({ type: 'answer', data: undoResult.message }));
-    } else {
-      ws.send(JSON.stringify({ type: 'error_output', data: undoResult.message + '\n' }));
-    }
+    return await chitChatHandlers['system.chit_chat.undo'](ws, action, input, project, sessionContext);
   } else if (action === 'system.chit_chat.greeting') {
-    const ctx = injectContext(input, action, project.codebaseIndex);
-    const hour = new Date().getHours();
-    const timeOfDay = hour < 5 ? 'night' : hour < 12 ? 'morning' : hour < 17 ? 'afternoon' : 'evening';
-    const opener = pickRandom(chatReplyPool('greeting', project, [
-      `Good ${timeOfDay}! Local Console is active for [${project.name}].`,
-      `Hey there — [${project.name}] is loaded and ready.`,
-      `Hi! Ready to help with [${project.name}].`,
-      `Hey! [${project.name}] is up. What are we working on?`,
-      `Good to see you — [${project.name}] is live.`,
-      `Welcome back to [${project.name}] — ${timeOfDay} edition.`,
-      `${timeOfDay.charAt(0).toUpperCase() + timeOfDay.slice(1)}! [${project.name}] is standing by.`,
-      `Hi again — [${project.name}] is still here.`,
-    ]));
-    let responseText = `${opener}\n\n` +
-      `• Location: ${project.path}\n` +
-      `• Type "help" to list all commands & topics.\n` +
-      `• Type "overview" for architecture overview.\n` +
-      `• Type "explain more" for deep details.`;
-    responseText += await buildMemoryBlock(project);
-    responseText += await buildLiveStateLine(project);
-    if (ctx) responseText += `\n\n${ctx}`;
-    const smartGreeting = await smartChitchatReply(project, sessionContext, input);
-    ws.send(JSON.stringify({ type: 'answer', data: smartGreeting || responseText }));
+    return await chitChatHandlers['system.chit_chat.greeting'](ws, action, input, project, sessionContext);
   } else if (action === 'system.chit_chat.status') {
-    const ctx = injectContext(input, action, project.codebaseIndex);
-    const opener = pickRandom(chatReplyPool('status', project, [
-      `I'm running and ready on **[${project.name}]**. What do you need?`,
-      `All good here — standing by on **[${project.name}]**.`,
-      `Still here, still watching **[${project.name}]**. What's next?`,
-      `Running smoothly on **[${project.name}]** — what can I do?`,
-      `Yep, I'm listening — **[${project.name}]** is active.`,
-    ]));
-    let statusMsg = enrichWithIndex(opener, project.codebaseIndex);
-    statusMsg += await buildLiveStateLine(project);
-    if (ctx) statusMsg += `\n\n${ctx}`;
-    const smartStatus = await smartChitchatReply(project, sessionContext, input);
-    ws.send(JSON.stringify({ type: 'answer', data: smartStatus || statusMsg }));
+    return await chitChatHandlers['system.chit_chat.status'](ws, action, input, project, sessionContext);
   } else if (action === 'system.chit_chat.gratitude') {
-    ws.send(JSON.stringify({
-      type: 'answer',
-      data: pickRandom(chatReplyPool('gratitude', project, [
-        `You're welcome! Ready for your next command on [${project.name}].`,
-        `Anytime! What's next for [${project.name}]?`,
-        `Happy to help — let me know what's next on [${project.name}].`,
-        `No problem at all. What else can I do on [${project.name}]?`,
-        `Glad that helped. Ready when you are.`,
-      ])),
-    }));
+    return await chitChatHandlers['system.chit_chat.gratitude'](ws, action, input, project, sessionContext);
   } else if (action === 'system.chit_chat.farewell') {
-    // New intent (2026-07-30, requested directly — "richer canned chit-chat"): the chit-chat set
-    // had no goodbye at all before, so "bye"/"see you later" either fell through to a no-match
-    // fallback or got misclassified onto something else entirely.
-    ws.send(JSON.stringify({
-      type: 'answer',
-      data: pickRandom(chatReplyPool('farewell', project, [
-        `See you later! [${project.name}] will be here when you're back.`,
-        `Bye for now — come back anytime.`,
-        `Catch you later. [${project.name}] stays as you left it.`,
-        `Goodbye! Nothing lost — just say hi when you're back.`,
-        `Take care! I'll be right here on [${project.name}].`,
-      ])),
-    }));
+    return await chitChatHandlers['system.chit_chat.farewell'](ws, action, input, project, sessionContext);
   } else if (action === 'system.chit_chat.identity') {
-    // New intent (2026-07-30, requested directly): "who are you"/"what are you" previously had no
-    // real answer — either misclassified onto system.chit_chat.help or fell to a generic fallback.
-    // Distinct from "help" (which lists commands) — this answers what this thing *is*.
-    ws.send(JSON.stringify({
-      type: 'answer',
-      data: `I'm the local command console for **[${project.name}]** — a project-aware dispatcher that runs entirely on your machine. With AI mode off, I match what you type against a fixed set of known project actions (git, npm/build commands, file reads, project Q&A) using a local embedding model — no data leaves this machine, no cloud model involved. With AI mode on, I hand things off to your local Ollama model with read/write tools scoped to this project's folder. Type "help" for the full list of what I can do here.`,
-    }));
+    return await chitChatHandlers['system.chit_chat.identity'](ws, action, input, project, sessionContext);
   } else if (action === 'system.chit_chat.needs_ai_mode') {
-    // New intent (2026-08-03, Phase 3 of the intent-expansion spec): open-ended requests typed
-    // while AI mode is off previously scattered onto identity/structure/commands or the generic
-    // fallback. The AI toggle is a frontend-only control, so this can only answer with guidance —
-    // it must NOT try to flip the toggle itself (no such server-side path exists by design).
-    ws.send(JSON.stringify({
-      type: 'answer',
-      data: pickRandom([
-        `That one needs AI mode — flip the AI toggle at the top of this chat (next to the model picker) and ask again. AI mode gives me read/write tools scoped to [${project.name}], so I can handle open-ended requests.`,
-        `This is trigger mode, which only handles the fixed built-in actions. Use the AI toggle in the header of this chat to switch AI mode on for requests like that, then re-ask.`,
-        `AI mode isn't on right now. Flip the AI switch in the chat header, then ask me again — with AI on I can work with files in [${project.name}] and answer open-ended questions.`,
-      ]),
-    }));
+    return await chitChatHandlers['system.chit_chat.needs_ai_mode'](ws, action, input, project, sessionContext);
   } else if (action === 'system.chit_chat.ack') {
-    // New intent (2026-08-03, Phase 2.1): brief acknowledgment replies — "nice", "cool", etc.
-    // Confirm-prompt responses go through handleConfirmResponse, NOT the matcher — so these
-    // can never approve a pending command.
-    ws.send(JSON.stringify({
-      type: 'answer',
-      data: pickRandom(chatReplyPool('ack', project, [
-        `Glad it worked! What's next on [${project.name}]?`,
-        `Nice — anything else on [${project.name}]?`,
-        `Good stuff. Ready for the next one.`,
-        `Awesome. What are we doing next?`,
-        `Cool. Let me know what you need.`,
-      ])),
-    }));
+    return await chitChatHandlers['system.chit_chat.ack'](ws, action, input, project, sessionContext);
   } else if (action === 'system.chit_chat.joke') {
-    // New intent (2026-08-03, Phase 2.3): programmer jokes — deterministic, no network, no AI.
-    ws.send(JSON.stringify({
-      type: 'answer',
-      data: pickRandom([
-        `Why do programmers prefer dark mode? Because light attracts bugs.`,
-        `There are 10 types of people in the world: those who understand binary and those who don't.`,
-        `A SQL query walks into a bar, walks up to two tables and asks: "Can I join you?"`,
-        `Why did the developer go broke? Because he used up all his cache.`,
-        `Hardware: the part of a computer that you can kick. Software: the part you can only curse at.`,
-        `Debugging: removing the needles from the haystack.`,
-        `It works on my machine — the classic production deployment strategy.`,
-        `Why do Java developers wear glasses? Because they don't C#.`,
-      ]),
-    }));
+    return await chitChatHandlers['system.chit_chat.joke'](ws, action, input, project, sessionContext);
   } else if (action === 'system.chit_chat.clear') {
-    ws.send(JSON.stringify({ type: 'clear_console' }));
+    return await chitChatHandlers['system.chit_chat.clear'](ws, action, input, project, sessionContext);
   } else if (action === 'system.chit_chat.help') {
-    ws.send(JSON.stringify({ type: 'answer', data: buildHelpMessage(project, sessionContext) }));
+    return await chitChatHandlers['system.chit_chat.help'](ws, action, input, project, sessionContext);
   } else if (action === 'project.knowledge.overview') {
     const descEntry = project.config.entries?.find((e) => e.type === 'answer' && e.triggers?.some((t) => t.includes('describe') || t.includes('overview') || t.includes('what')));
     let responseText = `### ${project.name}\n\n**Path:** \`${project.path}\`\n**Config Entries:** ${project.config.entries?.length || 0} actions/answers.`;
@@ -208,40 +103,9 @@ export async function handleBuiltinIntent(ws, action, input, project, sessionCon
     }
     ws.send(JSON.stringify({ type: 'answer', data: msg }));
   } else if (action === 'system.chit_chat.explain_followup') {
-    if (sessionContext.lastTriggeredEntry) {
-      const last = sessionContext.lastTriggeredEntry;
-      const detailText = last.response || last.details || `Last triggered action was "${last.triggers?.[0] || 'command'}" (\`${last.action || 'answer'}\`).`;
-      const ctx = injectContext(input, action, project.codebaseIndex);
-      let msg = `### Detailed Follow-up regarding "${last.triggers?.[0]}":\n\n${detailText}`;
-      if (ctx) msg += `\n\n${ctx}`;
-      ws.send(JSON.stringify({ type: 'answer', data: msg }));
-    } else {
-      const detailEntry = project.config.entries?.find((e) => e.type === 'answer' && e.triggers?.some((t) => t.includes('explain') || t.includes('detail') || t.includes('architecture')));
-      let detailText = `### Deep Dive [${project.name}]\n\n**Location:** \`${project.path}\``;
-      if (detailEntry) {
-        detailText = detailEntry.response;
-      } else if (project.contextFiles && project.contextFiles.length > 0) {
-        const mainDoc = project.contextFiles[0];
-        detailText = `### Deep Dive from ${mainDoc.filename}\n\n${mainDoc.content.substring(0, 1500)}...`;
-      }
-      const idx = project.codebaseIndex;
-      if (idx?.directoryTree?.length) {
-        const treeLines = idx.directoryTree.slice(0, 20).map((d) => `  📁 ${d}`).join('\n');
-        detailText += `\n\n**Directory Structure:**\n${treeLines}`;
-        if (idx.directoryTree.length > 20) detailText += `\n  ... and ${idx.directoryTree.length - 20} more`;
-      }
-      if (idx?.fileSample?.length) {
-        const sample = idx.fileSample.slice(0, 10).map((f) => `  📄 ${f}`).join('\n');
-        detailText += `\n\n**Key Files:**\n${sample}`;
-      }
-      const ctx = injectContext(input, action, project.codebaseIndex);
-      if (ctx) detailText += `\n\n${ctx}`;
-      ws.send(JSON.stringify({ type: 'answer', data: detailText }));
-    }
+    return await chitChatHandlers['system.chit_chat.explain_followup'](ws, action, input, project, sessionContext);
   } else if (action === 'system.chit_chat.yes_no') {
-    // Inline yes/no handled at the confirmation prompt level — this is a fallback
-    // in case someone types "yes" or "no" when no confirmation is pending.
-    ws.send(JSON.stringify({ type: 'answer', data: 'No pending confirmation to respond to. Type "help" for available commands.' }));
+    return await chitChatHandlers['system.chit_chat.yes_no'](ws, action, input, project, sessionContext);
   } else if (action === 'git_push') {
     return await gitHandlers.git_push(ws, action, input, project, sessionContext);
   } else if (action === 'git_remote_add') {
@@ -459,14 +323,7 @@ export async function handleBuiltinIntent(ws, action, input, project, sessionCon
       data: `**Available projects:**\n${list}\n\nIn the web UI, click a different project card in the sidebar to switch — no restart needed. In CLI chat, type "projects" to rescan and pick a different one.`,
     }));
   } else if (action === 'system.chit_chat.port') {
-    // See intentsData.js's 'system.chit_chat.port' comment — this used to have no real intent
-    // and fell through to a generic status reply that never actually named a port.
-    ws.send(JSON.stringify({
-      type: 'answer',
-      data: state.serverPort
-        ? `This console itself is running on port **${state.serverPort}** (http://127.0.0.1:${state.serverPort}). If you meant this project's own dev server, ask "what is the link" instead.`
-        : `I don't have a confirmed server port yet — try refreshing the page, or check the terminal that launched "npm run dev".`,
-    }));
+    return await chitChatHandlers['system.chit_chat.port'](ws, action, input, project, sessionContext);
   } else if (action === 'git_log') {
     return await gitHandlers.git_log(ws, action, input, project, sessionContext);
   } else if (action === 'git_branch') {
@@ -553,40 +410,9 @@ export async function handleBuiltinIntent(ws, action, input, project, sessionCon
     }
     return true;
   } else if (action === 'system.chit_chat.git_status') {
-    executeCommand('git status --short', project.path, ws, project.id);
-    return true;
+    return await chitChatHandlers['system.chit_chat.git_status'](ws, action, input, project, sessionContext);
   } else if (action === 'system.chit_chat.deploy') {
-    // "Deploy" for Tobi's Vercel-connected projects is just "get my changes to GitHub" —
-    // Vercel auto-deploys on push. If the user gave a custom comment ("push the site with
-    // the comment 'bug fixes'"), commit with that message explicitly instead of relying on
-    // the generic "console-checkpoint: before ..." auto-checkpoint — otherwise the comment
-    // the user typed is silently discarded and never ends up in git history at all.
-    if (!(await isGitRepo(project.path))) {
-      ws.send(JSON.stringify({
-        type: 'answer',
-        data: `**[${project.name}]** isn't a git repository yet, so there's nothing to push. Run \`git init\`, add a remote, and push once manually — after that "deploy" will work here.`
-      }));
-    } else {
-      const commitMsg = extractCommentMessage(input);
-      const token = crypto.randomUUID();
-      const command = commitMsg
-        ? `git add -A && git commit -m "${commitMsg.replace(/"/g, '\\"')}" && git push`
-        : 'git push';
-      pendingConfirmations.set(token, {
-        projectId: project.id,
-        command,
-        trigger: input,
-        createdAt: Date.now()
-      });
-      ws.send(JSON.stringify({
-        type: 'confirm_prompt',
-        token,
-        command: commitMsg
-          ? `git add -A && git commit -m "${commitMsg}" && git push  (commits with your comment, then pushes — Vercel deploys on push)`
-          : 'git push  (commits all changes first, then pushes — Vercel deploys on push)',
-        trigger: 'deploy'
-      }));
-    }
+    return await chitChatHandlers['system.chit_chat.deploy'](ws, action, input, project, sessionContext);
   } else if (action === 'project.context.structure') {
     const idx = project.codebaseIndex;
     if (!idx) {
