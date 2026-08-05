@@ -272,6 +272,10 @@ export function useConsole() {
   const handleSwitchSession = useCallback(async (sessionId: string) => {
     terminal.setPendingConfirm(null);
     terminal.setPendingToolConfirm(null);
+    // Phase 15: clicking a chat from history while on Home must leave the Welcome screen —
+    // every other path (New Chat / Quick Start / project select / scan) hides it, this one
+    // didn't, so the loaded chat rendered behind the canvas forever.
+    sessions.setShowWelcome(false);
     const s = await sessions.switchSession(sessionId);
     if (s?.projectId) {
       const project = projects.projects.find(p => p.id === s.projectId);

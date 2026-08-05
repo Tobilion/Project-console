@@ -2,7 +2,7 @@ import React, { useMemo } from 'react';
 import { TerminalMessage, PendingToolConfirm, PendingMemorySuggestion } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
 import ReactMarkdown from 'react-markdown';
-import { Loader2, Square, AlertTriangle } from 'lucide-react';
+import { Loader2, Square, AlertTriangle, ExternalLink } from 'lucide-react';
 import { OutputBlock } from './TerminalOutputBlock';
 import { StructuredJsonBlock } from './StructuredJsonBlock';
 import { TerminalConfirmCards } from './TerminalConfirmCards';
@@ -16,6 +16,15 @@ function splitTelemetry(content: string): { body: string; meta: string | null } 
   const m = content.match(TELEMETRY_RE);
   if (!m) return { body: content, meta: null };
   return { body: content.slice(0, content.length - m[0].length), meta: m[1] };
+}
+
+/** First http(s) URL in a message, trailing punctuation trimmed (Phase 15: "what is the
+ *  link"-style answers embed bare URLs that react-markdown never autolinks — they get a
+ *  dedicated "click here" anchor below the bubble instead). */
+function extractUrl(text: string): string | null {
+  const m = text.match(/https?:\/\/[^\s<>()[\]"'`]+/);
+  if (!m) return null;
+  return m[0].replace(/[.,;:!?]+$/, '');
 }
 
 interface TerminalMessagesProps {
@@ -104,6 +113,7 @@ export function TerminalMessages({
             );
           }
           const tel = splitTelemetry(msg.content);
+          const linkUrl = msg.type !== 'user' ? extractUrl(tel.body) : null;
           return (
           <motion.div
             key={msg.id || i}
@@ -131,14 +141,27 @@ export function TerminalMessages({
                  <div className="whitespace-pre-wrap text-sm leading-relaxed">{tel.body}</div>
               ) : (
                  <>
-                   <div className="prose prose-sm max-w-none prose-pre:bg-scrim prose-pre:border prose-pre:border-border-soft prose-pre:p-0 prose-p:leading-relaxed">
+                   <div className="prose prose-sm max-w-none prose-pre:bg-scrim prose-pre:border prose-pre:border-border-soft prose-pre:p-0 prose-p:leading-relaxed prose-a:text-accent prose-a:underline">
                      <ReactMarkdown components={markdownComponents}>{tel.body}</ReactMarkdown>
                    </div>
                    {tel.meta && (
                      <div className="mt-2 text-xs font-mono text-fg-dim">{tel.meta}</div>
                    )}
-                 </>
-              )}
+                </>
+               )}
+               
+               {linkUrl && (
+                 <a
+                   href={linkUrl}
+                   target="_blank"
+                   rel="noreferrer"
+                   title={linkUrl}
+                   className="mt-3 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[#00d4a3]/10 border border-[#00d4a3]/30 text-xs text-[#00d4a3] hover:bg-[#00d4a3]/20 transition-colors"
+                 >
+                   Click here to open the site
+                   <ExternalLink size={11} />
+                 </a>
+               )}
               
               {msg.suggestions && msg.suggestions.length > 0 && (
                 <div className="mt-4 pt-4 border-t border-border-soft">
