@@ -16,6 +16,7 @@ export const runningProcesses = new Map(); // projectId -> { child, command }
 // recent output to a (re)connecting client — the live chat stream itself is connection-scoped
 // (sendEvent → originating ws only) and is deliberately NOT re-broadcast.
 const MAX_LOG_LINES = 2000;
+export { MAX_LOG_LINES };
 
 /** Tail-capped line buffer. Handles chunks that split a line across two `data` events by
  *  holding the unterminated tail in `pending` until the next chunk completes it. */

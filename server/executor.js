@@ -1,219 +1,43 @@
+// Phase 12: orchestrator for command execution. Pure logic lives in the Phase 12 leaves:
+//   - executorOutput.js      ANSI/URL/LF-CRLF transforms + createBufferedSender
+//   - executorPorts.js       port-conflict detection, prompt ask, retry offer
+//   - executorProcesses.js   runningProcesses map + ring buffer + stopTrackedProcess
+//   - executorDevServer.js   dev-server pattern detection + detach message builder
 import { spawn } from 'child_process';
 import path from 'path';
 import fs from 'fs';
-import crypto from 'crypto';
-import { state, withPortCollisionWarning, pendingConfirmations } from './state.js';
-import { summarizeCommandOutput } from './outputSummarizer.js';
-import { recordDevUrl, forgetDevUrl } from './devUrlStore.js';
 import { broadcast } from './wsServer.js';
+import { recordDevUrl } from './devUrlStore.js';
+import { summarizeCommandOutput } from './outputSummarizer.js';
+import {
+  runningProcesses,
+  processLogs,
+  LineRingBuffer,
+  MAX_LOG_LINES,
+  getProcessLog,
+  stopTrackedProcess,
+} from './executorProcesses.js';
+import { ANSI_RE, URL_PATTERN, collapseLfCrlfWarnings, createBufferedSender } from './executorOutput.js';
+import { buildPortPromptConfirmation, offerPortRetry } from './executorPorts.js';
+import { isDevServerCommand, buildDetachMessage } from './executorDevServer.js';
 
-// Strips ANSI escape sequences so URL detection isn't fooled by color/bold codes
-const ANSI_RE = /\x1b\[[0-9;]*[a-zA-Z]/g;
+// Re-exports so every external importer keeps using `../executor.js` unchanged:
+// monitoringRoutes (runningProcesses, getProcessLog), toolProcess (runningProcesses,
+// stopTrackedProcess), builtinFileNpm/builtinProjectContext/builtinLiveState/connectionConfirm/
+// connectionDevServer/connectionRoutes (runningProcesses), connectionDevServer/connectionRoutes
+// (stopTrackedProcess), processLogs (no external importer today — kept for the Phase 6 harness).
+export { runningProcesses, processLogs, getProcessLog, stopTrackedProcess };
 
-// Matches URLs like http://localhost:3000, http://127.0.0.1:5173/, etc.
-const URL_PATTERN = /https?:\/\/(?:localhost|127\.0\.0\.1|\[::1?\]):\d{2,5}\/?/gi;
-
-// Patterns that indicate a long-running dev server — we auto-detach after URL / timeout
-const DEV_SERVER_PATTERNS = [
-  /npx serve/i,
-  /python -m http\.server/i,
-  /npm run (dev|start|serve)/i,
-  /vite/i,
-  /tsx (dev|serve)/i,
-  /next dev/i,
-  /astro dev/i,
-  /node (server|app|index|main)\./i,
-];
-
-function isDevServerCommand(command) {
-  return DEV_SERVER_PATTERNS.some(p => p.test(command));
-}
-
-// --- Port-in-use handling (requested directly, 2026-07-29) ---
-// Dev servers hit an already-occupied port in two different shapes, and neither used to be
-// handled: (1) tools like Create React App's `react-scripts start` print an interactive
-// "Would you like to run the app on another port instead? (Y/n)" prompt and then just wait —
-// since stdin was previously `'ignore'`, the process would hang forever with no way to answer
-// it; (2) tools with no auto-retry (custom Node/Express servers, some configs) just crash with
-// EADDRINUSE and exit. Vite's own default behavior (auto-increment + report the real port) needs
-// no special handling — the existing URL detection above already captures whatever port it
-// actually lands on.
-
-// CRA/react-scripts' prompt text, matched loosely (port number can appear a little before the
-// "(Y/n)" marker, with framing text in between).
-const PORT_PROMPT_RE = /port\s+(\d{2,5})[\s\S]{0,300}\(Y\/n\)/i;
-
-const PORT_IN_USE_HARD_RE = /EADDRINUSE|address already in use/i;
-
-/** Best-effort port extraction from whichever line actually mentions the conflict. */
-function extractBusyPort(text) {
-  const line = text.split('\n').find((l) => PORT_IN_USE_HARD_RE.test(l));
-  if (!line) return null;
-  const m = line.match(/:(\d{2,5})\b/) || line.match(/port\s+(\d{2,5})/i);
-  return m ? parseInt(m[1], 10) : null;
-}
-
-/**
- * Builds a best-effort retry command on the next port up. If the original command already has
- * an explicit `--port` flag (Vite's style — matches this project's own confirmed-live case),
- * increment that. Otherwise fall back to setting the PORT env var, which covers CRA and any
- * Node http server that reads `process.env.PORT` (including this console's own server — see
- * index.js) — cross-platform, matching the same process.platform branching convention already
- * used in commandGuesser.js.
- */
-function buildPortRetryCommand(command, busyPort) {
-  const nextPort = busyPort + 1;
-  if (/--port[= ]\d+/i.test(command)) {
-    return command.replace(/--port[= ]\d+/i, `--port=${nextPort}`);
-  }
+/** Rewrites `python ...` to the project's venv interpreter when a venv exists (verbatim rule). */
+function rewriteVenvPython(command, cwd) {
   const isWindows = process.platform === 'win32';
-  return isWindows ? `set PORT=${nextPort}&& ${command}` : `PORT=${nextPort} ${command}`;
+  const venvPath = path.join(cwd, 'venv');
+  if (!fs.existsSync(venvPath) || !command.startsWith('python ')) return command;
+  const pythonExe = isWindows
+    ? path.join('venv', 'Scripts', 'python.exe')
+    : path.join('venv', 'bin', 'python');
+  return command.replace('python ', `${pythonExe} `);
 }
-
-// Git prints one of these per file, the first time each file is committed under whatever
-// core.autocrlf setting is active — purely informational, not an error, and not something the
-// user can or needs to act on. Confirmed live 2026-07-29: committing ~160 new files in one go
-// (see git_add_A style bulk commits from trigger mode) produced 159 of these on stderr, each
-// forwarded as a separate chat bubble (see the buffering fix below) — collapsed here into one
-// summary line instead of spamming the chat with a warning per file.
-const LF_CRLF_WARNING_RE = /^warning: in the working copy of '([^']+)', LF will be replaced by CRLF the next time Git touches it\.?$/;
-
-/** Collapse repeated per-file LF/CRLF warnings in a stderr chunk into a single summary line,
- * leaving any other stderr content (real errors, other warnings) untouched. */
-function collapseLfCrlfWarnings(text) {
-  const lines = text.split('\n');
-  const affectedFiles = [];
-  const kept = [];
-  for (const line of lines) {
-    const m = line.match(LF_CRLF_WARNING_RE);
-    if (m) affectedFiles.push(m[1]);
-    else kept.push(line);
-  }
-  if (affectedFiles.length === 0) return text;
-  const summary = affectedFiles.length <= 3
-    ? `warning: line endings will be normalized (LF -> CRLF) for: ${affectedFiles.join(', ')} (cosmetic, no action needed)`
-    : `warning: line endings will be normalized (LF -> CRLF) for ${affectedFiles.length} files (cosmetic, no action needed)`;
-  const rest = kept.join('\n').trim();
-  return rest ? `${rest}\n${summary}` : summary;
-}
-
-// How long to coalesce rapid bursts of stdout/stderr `data` events before forwarding them to the
-// client as one message. Without this, a command that writes many small chunks in quick
-// succession (git printing one warning line per file is the confirmed-live case) turns into one
-// chat bubble per chunk — this batches them into far fewer, larger messages instead. Kept short
-// enough that normal command output still feels live.
-const OUTPUT_FLUSH_MS = 150;
-
-/**
- * Wraps a `sendEvent(type, text)` call with a small buffering window so rapid bursts of output
- * become one flushed message instead of one message per OS-level `data` event. `transform` (if
- * given) runs once on the buffered text right before it's sent — used here to collapse repeated
- * LF/CRLF warnings — so it only has to look at a handful of flushed batches, not every raw chunk.
- */
-function createBufferedSender(sendEvent, type, transform) {
-  let buffer = '';
-  let timer = null;
-  function flush() {
-    if (timer) {
-      clearTimeout(timer);
-      timer = null;
-    }
-    if (!buffer) return;
-    const out = transform ? transform(buffer) : buffer;
-    if (out) {
-      // A transform may reroute the batch to a different channel entirely (e.g. the LF/CRLF
-      // collapse summary → `warning` instead of `error_output`) by returning { type, text }.
-      if (typeof out === 'object' && out.type && out.text) sendEvent(out.type, out.text);
-      else sendEvent(type, out);
-    }
-    buffer = '';
-  }
-  return {
-    push(chunk) {
-      buffer += chunk;
-      if (!timer) timer = setTimeout(flush, OUTPUT_FLUSH_MS);
-    },
-    flush,
-  };
-}
-
-// Track running processes so they can be killed by the user
-// (Cleared on module load to handle HMR — stale children from previous module scope
-//  are orphaned; we start fresh each time the module re-executes.)
-export const runningProcesses = new Map(); // projectId -> { child, command }
-
-// --- Phase 6: per-process output ring buffer (memory only) ---
-// Keeps the tail of each tracked process's stdout/stderr so the Processes dock can replay
-// recent output to a (re)connecting client — the live chat stream itself is connection-scoped
-// (sendEvent → originating ws only) and is deliberately NOT re-broadcast.
-const MAX_LOG_LINES = 2000;
-
-/** Tail-capped line buffer. Handles chunks that split a line across two `data` events by
- *  holding the unterminated tail in `pending` until the next chunk completes it. */
-class LineRingBuffer {
-  constructor(cap) {
-    this.cap = cap;
-    this.lines = [];
-    this.pending = '';
-  }
-  push(text) {
-    this.pending += text;
-    const parts = this.pending.split('\n');
-    this.pending = parts.pop();
-    this.lines.push(...parts);
-    if (this.lines.length > this.cap) {
-      this.lines.splice(0, this.lines.length - this.cap);
-    }
-  }
-  snapshot() {
-    return this.pending ? [...this.lines, this.pending] : [...this.lines];
-  }
-}
-
-export const processLogs = new Map(); // projectId -> LineRingBuffer
-
-/** Returns { command, lines } for a tracked process's log (or null when untracked). */
-export function getProcessLog(projectId) {
-  const proc = runningProcesses.get(projectId);
-  if (!proc) return null;
-  const buf = processLogs.get(projectId);
-  return { command: proc.command, lines: buf ? buf.snapshot() : [] };
-}
-
-/**
- * Single kill path for every caller that stops a tracked process — the "stop server" trigger
- * phrase (connection.js), the `stop_process` WS message (dock stop button), and the AI-mode
- * `stopProcess` tool. Was previously copy-pasted three times; all three now route here so the
- * cleanup (kill + map delete + log delete + lastDevUrls delete + both broadcasts) can never
- * drift. Returns { ok: false } when nothing is tracked for that project.
- */
-export function stopTrackedProcess(projectId) {
-  const proc = runningProcesses.get(projectId);
-  if (!proc) return { ok: false };
-  try {
-    proc.child.kill('SIGTERM');
-  } catch {}
-  runningProcesses.delete(projectId);
-  processLogs.delete(projectId);
-  forgetDevUrl(projectId);
-  broadcast({ type: 'dashboard_update' });
-  broadcast({ type: 'processes_update' });
-  return { ok: true, command: proc.command };
-}
-
-// Clean up on exit — kills tracked children before Node shuts down
-process.on('exit', () => {
-  for (const [, proc] of runningProcesses) {
-    try { proc.child.kill('SIGTERM'); } catch {}
-  }
-  runningProcesses.clear();
-});
-process.on('SIGTERM', () => {
-  for (const [, proc] of runningProcesses) {
-    try { proc.child.kill('SIGTERM'); } catch {}
-  }
-  runningProcesses.clear();
-});
 
 /**
  * Spawns a shell command.
@@ -229,20 +53,7 @@ process.on('SIGTERM', () => {
  * the process exits naturally.
  */
 export function executeCommand(command, cwd, ws, projectId) {
-  let finalCommand = command;
-
-  const isWindows = process.platform === 'win32';
-  const venvPath = path.join(cwd, 'venv');
-
-  if (fs.existsSync(venvPath)) {
-    const pythonExe = isWindows
-      ? path.join('venv', 'Scripts', 'python.exe')
-      : path.join('venv', 'bin', 'python');
-    if (command.startsWith('python ')) {
-      finalCommand = command.replace('python ', `${pythonExe} `);
-    }
-  }
-
+  const finalCommand = rewriteVenvPython(command, cwd);
   const isDev = isDevServerCommand(finalCommand);
   let detached = false;
 
@@ -320,20 +131,11 @@ export function executeCommand(command, cwd, ws, projectId) {
       stdoutSender.flush();
       stderrSender.flush();
       // Send end so the UI knows the "task is done" (the process keeps running in the background)
-      const detachedUrl = state.lastDevUrls.get(projectId);
-      // Now also fires for unrecognized-but-still-running commands (see the force-detach comment
-      // above), not just confirmed dev servers — "Dev server" phrasing would be misleading for
-      // something like a watch loop with no URL at all, so only use it when there's actually a
-      // detected URL or the command matched a known dev-server pattern.
-      const label = (isDev || detachedUrl) ? 'Dev server' : 'This command';
-      const detachMsg = withPortCollisionWarning(
-        `\n${label} is still running${detachedUrl ? ` at ${detachedUrl}` : ' in the background'} — you can keep chatting. Use "stop server" to shut it down.\n`,
-        detachedUrl
-      );
-      sendEvent('end', detachMsg);
+      const msg = buildDetachMessage(projectId, isDev);
+      sendEvent('end', msg.text);
       resolve({
         success: true,
-        data: { code: null, detached: true, devServer: isDev || !!detachedUrl, url: state.lastDevUrls.get(projectId) || null }
+        data: { code: null, detached: true, devServer: msg.devServer, url: msg.url || null }
       });
     }
 
@@ -370,27 +172,12 @@ export function executeCommand(command, cwd, ws, projectId) {
       // stdinWrite branch). Cancel the force-detach timer while this is pending so the console
       // doesn't claim "Dev server is running" while it's actually just sitting at this prompt.
       if (isDev && !portPromptAsked && projectId) {
-        const promptMatch = clean.match(PORT_PROMPT_RE);
-        if (promptMatch) {
+        const asked = buildPortPromptConfirmation({
+          ws, projectId, cleanInput: clean, triggerCommand: finalCommand,
+        });
+        if (asked) {
           portPromptAsked = true;
           if (forceDetachTimer) clearTimeout(forceDetachTimer);
-          const busyPort = parseInt(promptMatch[1], 10);
-          const token = crypto.randomUUID();
-          pendingConfirmations.set(token, {
-            projectId,
-            stdinWrite: { yes: 'Y\n', no: 'n\n' },
-            command: `Respond to dev server port prompt (port ${busyPort} busy)`,
-            trigger: finalCommand,
-            createdAt: Date.now(),
-          });
-          if (ws.readyState === 1) {
-            ws.send(JSON.stringify({
-              type: 'confirm_prompt',
-              token,
-              command: `Port ${busyPort} is already in use. Run this dev server on the next available port instead?`,
-              trigger: 'port_conflict',
-            }));
-          }
         }
       }
     });
@@ -432,12 +219,8 @@ export function executeCommand(command, cwd, ws, projectId) {
       // dev`) can fire its own 'close' well before the actual dev server process it spawned
       // stops serving, orphaning the real server from the handle we were tracking it under —
       // wiping the map entry at that point permanently breaks "stop server" for a process that's
-      // still very much alive, even though `state.lastDevUrls` (a separate cache) correctly still
-      // shows it running. Once detached, "stop server" (connection.js) is the only code that
-      // should ever remove this entry — it kills the child and deletes the entry itself
-      // synchronously, so skipping the delete here for an already-detached entry doesn't leak: at
-      // worst, a genuinely-dead detached process leaves a stale entry until the next explicit
-      // "stop server" call, which is a harmless no-op kill instead of a false "nothing running".
+      // still very much alive. Once detached, "stop server" (connection.js) is the only code
+      // that should ever remove this entry.
       if (!detached) {
         runningProcesses.delete(projectId);
         processLogs.delete(projectId);
@@ -447,12 +230,11 @@ export function executeCommand(command, cwd, ws, projectId) {
       if (detached) return;
       stdoutSender.flush();
       stderrSender.flush();
-      // Requested explicitly (2026-07-29, in response to the LF/CRLF flood above): don't just
-      // stream the raw log and stop — always look at what the command actually produced and call
-      // out the parts that matter (errors, package counts, commit/push results) so the user isn't
-      // stuck reading a long dump themselves. Heuristic/regex-based (see outputSummarizer.js),
-      // not an LLM call, so this works the same whether Ollama is running or not. Returns null
-      // for short/uninteresting output — nothing extra is sent in that case.
+      // Requested explicitly (2026-07-29, in response to the LF/CRLF flood): don't just stream
+      // the raw log and stop — always look at what the command actually produced and call out
+      // the parts that matter (errors, package counts, commit/push results). Heuristic/regex-
+      // based (see outputSummarizer.js), not an LLM call. Returns null for short/uninteresting
+      // output — nothing extra is sent in that case.
       const summary = summarizeCommandOutput({ command: finalCommand, stdout, stderr, exitCode: code });
       if (summary) sendEvent('answer', summary);
 
@@ -460,27 +242,7 @@ export function executeCommand(command, cwd, ws, projectId) {
       // auto-retrying (e.g. a plain Node/Express server with no built-in port fallback). Offer a
       // one-click retry on the next port through the normal confirm-before-run flow, same as any
       // other command — this never runs anything without the user approving it.
-      if (code !== 0 && isDev && projectId) {
-        const busyPort = extractBusyPort(`${stdout}\n${stderr}`);
-        if (busyPort) {
-          const retryCommand = buildPortRetryCommand(finalCommand, busyPort);
-          const token = crypto.randomUUID();
-          pendingConfirmations.set(token, {
-            projectId,
-            command: retryCommand,
-            trigger: finalCommand,
-            createdAt: Date.now(),
-          });
-          if (ws.readyState === 1) {
-            ws.send(JSON.stringify({
-              type: 'confirm_prompt',
-              token,
-              command: `${retryCommand}  (port ${busyPort} was already in use — retry on the next port)`,
-              trigger: 'port_conflict_retry',
-            }));
-          }
-        }
-      }
+      offerPortRetry({ ws, projectId, command: finalCommand, stdout, stderr, isDev, exitCode: code });
 
       sendEvent('end', `\nProcess exited with code ${code}`);
       resolve({
