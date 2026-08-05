@@ -35,7 +35,22 @@ export const projectActionHandlers = {
     const child = spawn('code', [project.path], { detached: true, stdio: 'ignore' });
     child.on('error', (err) => {
       if (err.code === 'ENOENT' || err.message.includes('not recognized')) {
-        ws.send(JSON.stringify({ type: 'answer', data: `VS Code \`code\` CLI not found on PATH. Open VS Code manually and use File → Open Folder → \`${project.path}\`.` }));
+        // Phase 15: the `code` CLI isn't on PATH on this machine — fall back to the
+        // vscode://file/<path> protocol URI, which Windows (`start`), macOS (`open`) and Linux
+        // (`xdg-open`) all hand to the installed VS Code without needing the CLI. Best-effort:
+        // if VS Code itself isn't installed the URI silently no-ops, so the manual guidance
+        // stays in the reply — never claim it opened.
+        const uri = 'vscode://file/' + encodeURI(project.path.replace(/\\/g, '/'));
+        const isWindows = process.platform === 'win32';
+        const isMac = process.platform === 'darwin';
+        const cmd = isWindows ? 'start' : isMac ? 'open' : 'xdg-open';
+        const args = isWindows ? ['', uri] : [uri];
+        const fallback = spawn(cmd, args, { detached: true, stdio: 'ignore', shell: isWindows });
+        fallback.on('error', () => {
+          ws.send(JSON.stringify({ type: 'answer', data: `VS Code \`code\` CLI not found on PATH. Open VS Code manually and use File → Open Folder → \`${project.path}\`.` }));
+        });
+        fallback.unref();
+        ws.send(JSON.stringify({ type: 'answer', data: `VS Code \`code\` CLI not found on PATH — tried opening via the \`vscode://\` protocol instead. If nothing opened, use File → Open Folder → \`${project.path}\`.` }));
       } else {
         ws.send(JSON.stringify({ type: 'error_output', data: `Failed to open VS Code: ${err.message}\n` }));
       }
