@@ -3,7 +3,7 @@ import { TerminalMessage } from '../types';
 export function useSearch(setMessages: React.Dispatch<React.SetStateAction<TerminalMessage[]>>) {
   const handleSearch = async (query: string) => {
     const id = Date.now().toString();
-    setMessages(prev => [...prev, { id, type: 'user', content: `🔍 Search: ${query}` }]);
+    setMessages(prev => [...prev, { id, type: 'user', content: `Search: ${query}` }]);
     setMessages(prev => [...prev, { id: id + '-thinking', type: 'bot', content: 'Searching the web...' }]);
     try {
       const res = await fetch(`/api/search?q=${encodeURIComponent(query)}`);
@@ -25,7 +25,7 @@ export function useSearch(setMessages: React.Dispatch<React.SetStateAction<Termi
 
   const handleDeepResearch = async (query: string) => {
     const id = Date.now().toString();
-    setMessages(prev => [...prev, { id, type: 'user', content: `🔬 Deep Research: ${query}` }]);
+    setMessages(prev => [...prev, { id, type: 'user', content: `Deep Research: ${query}` }]);
     setMessages(prev => [...prev, { id: id + '-thinking', type: 'bot', content: 'Researching... this may take a moment.' }]);
     try {
       const res = await fetch(`/api/deep-research?q=${encodeURIComponent(query)}`);

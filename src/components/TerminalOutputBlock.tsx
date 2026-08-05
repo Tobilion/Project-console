@@ -1,13 +1,15 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Terminal as TerminalIcon, ChevronDown, ChevronUp } from 'lucide-react';
+import { Terminal as TerminalIcon, ChevronRight, ChevronDown, ChevronUp } from 'lucide-react';
 import { CopyButton } from './ui/CopyButton';
 
 /** Phase 6 (PASS 6.3): a command's output rendered as a collapsible terminal-style block —
  *  dark mono, capped height + scroll, copy button, auto-collapsed. The header keeps the ▶
- *  start line visible at all times; the body expands on click. */
-export function OutputBlock({ content }: { content: string }) {
-  const [expanded, setExpanded] = useState(false);
+ *  start line visible at all times; the body expands on click. `autoExpand` (set when an
+ *  AI-mode command created the block) starts it expanded — the user asked to see the actual
+ *  terminal output of commands the AI runs, not just a collapsed header. */
+export function OutputBlock({ content, autoExpand }: { content: string; autoExpand?: boolean }) {
+  const [expanded, setExpanded] = useState(!!autoExpand);
   const firstLine = content.split('\n').find(l => l.trim()) || content;
   const displayCommand = firstLine.replace(/^Executing:\s*/, '').trim();
   return (
@@ -15,7 +17,7 @@ export function OutputBlock({ content }: { content: string }) {
       <div className="flex items-center gap-2 px-3 py-1.5">
         <button onClick={() => setExpanded(!expanded)} className="flex items-center gap-2 flex-1 text-left min-w-0" title={expanded ? 'Collapse output' : 'Expand output'}>
           <TerminalIcon size={12} className="text-accent flex-shrink-0" />
-          <span className="text-xs font-mono text-muted-foreground truncate">▶ {displayCommand || 'command output'}</span>
+          <span className="text-xs font-mono text-muted-foreground truncate"><ChevronRight size={12} className="inline-block mr-0.5 align-[-2px]" />{displayCommand || 'command output'}</span>
         </button>
           <CopyButton text={content} title="Copy output" size={11} className="text-fg-dim hover:text-fg-strong transition-colors flex-shrink-0" />
         <button onClick={() => setExpanded(!expanded)} className="text-fg-dim hover:text-fg-strong transition-colors flex-shrink-0" title={expanded ? 'Collapse output' : 'Expand output'}>

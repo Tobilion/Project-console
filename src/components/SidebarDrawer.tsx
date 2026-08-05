@@ -1,6 +1,6 @@
 import React from 'react';
 import { Project, ChatSession } from '../types';
-import { FolderSearch, Plus, MessageSquare, Trash2, ChevronLeft, ChevronRight, Brain, FolderGit2 } from 'lucide-react';
+import { FolderSearch, Plus, MessageSquare, Trash2, Pencil, ChevronLeft, ChevronRight, Brain, FolderGit2 } from 'lucide-react';
 import { WorkspaceToggleButton } from './ui/WorkspaceToggleButton';
 
 interface SidebarDrawerProps {
@@ -15,6 +15,7 @@ interface SidebarDrawerProps {
   createSession: (projectId?: string, projectName?: string) => void;
   switchSession: (id: string) => void;
   deleteSession: (id: string) => void;
+  renameSession: (id: string, title: string) => void;
   handleSelectProject: (p: Project) => void;
   workspaceProjects: Project[];
   addToWorkspace: (p: Project) => void;
@@ -34,11 +35,22 @@ interface SidebarDrawerProps {
 export const SidebarDrawer = ({
   projects, activeProject, sessions, activeSessionId,
   scanPath, setScanPath, handleScan, handleBrowseFolder,
-  createSession, switchSession, deleteSession, handleSelectProject,
+  createSession, switchSession, deleteSession, renameSession, handleSelectProject,
   workspaceProjects, addToWorkspace, removeFromWorkspace,
   aiEnabled, aiModel, activeServersCount, collapsed, onSetCollapsed,
 }: SidebarDrawerProps) => {
   const [showAllChats, setShowAllChats] = React.useState(false);
+  const [editingId, setEditingId] = React.useState<string | null>(null);
+  const [draftTitle, setDraftTitle] = React.useState('');
+
+  // Commits the inline rename for the row currently being edited (only one at a time, so the
+  // shared draftTitle always belongs to editingId's row).
+  const commitRename = () => {
+    if (draftTitle.trim()) {
+      renameSession(editingId as string, draftTitle);
+    }
+    setEditingId(null);
+  };
 
   if (collapsed) {
     return (
@@ -128,11 +140,33 @@ export const SidebarDrawer = ({
           >
             <MessageSquare size={14} className="flex-shrink-0" />
             <span className="truncate flex-1 flex flex-col min-w-0">
-              <span className="truncate">{s.title}</span>
+              {editingId === s.id ? (
+                <input
+                  autoFocus
+                  value={draftTitle}
+                  onChange={(e) => setDraftTitle(e.target.value)}
+                  onClick={(e) => e.stopPropagation()}
+                  onKeyDown={(e) => {
+                    e.stopPropagation();
+                    if (e.key === 'Enter') commitRename();
+                    if (e.key === 'Escape') setEditingId(null);
+                  }}
+                  onBlur={commitRename}
+                  maxLength={80}
+                  className="bg-scrim-faint rounded px-1 py-0.5 text-xs font-mono w-full min-w-0 outline-none border border-border-strong text-fg"
+                />
+              ) : (
+                <span className="truncate">{s.title}</span>
+              )}
               {s.projectName && (
                 <span className="truncate text-[10px] text-fg-dim normal-case tracking-normal">{s.projectName}</span>
               )}
             </span>
+            {editingId !== s.id && (
+              <button onClick={(e) => { e.stopPropagation(); setEditingId(s.id); setDraftTitle(s.title); }} className="opacity-0 group-hover:opacity-100 text-fg-dim hover:text-teal-400 transition-all flex-shrink-0" title="Rename chat">
+                <Pencil size={12} />
+              </button>
+            )}
             <button onClick={(e) => { e.stopPropagation(); deleteSession(s.id); }} className="opacity-0 group-hover:opacity-100 text-fg-dim hover:text-red-400 transition-all flex-shrink-0">
               <Trash2 size={12} />
             </button>

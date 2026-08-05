@@ -1,7 +1,7 @@
 import fs from 'fs/promises';
 import path from 'path';
 
-// Phase 14 PASS 3a (2026-08-05, spec console-chitchat-ai-upgrade-prompt.md §6 PASS 5.5 —
+// Phase 14 PASS 3a (2026-08-05, §6 PASS 5.5 —
 // "diff preview on the file-edit confirmation card", never implemented in that phase): a
 // best-effort, line-based before/after preview attached to tool_confirm_prompt for the file
 // tools (writeFile/editFile/insertAtLine/appendToFile), so the user can see what an AI-

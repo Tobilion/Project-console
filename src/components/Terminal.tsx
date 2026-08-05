@@ -79,6 +79,7 @@ interface TerminalProps {
   dockTab?: 'logs' | 'projects';
   onSetDockTab?: (tab: 'logs' | 'projects') => void;
   projects?: Project[];
+  knownDevUrls: string[];
 }
 
 const AI_MODES = [
@@ -92,7 +93,7 @@ const AI_MODES = [
 
 export const Terminal = ({ messages, onSendMessage, onSearch, onDeepResearch, activeProject, userName, pendingConfirm, onConfirm, pendingToolConfirm, onToolConfirm, onApproveTask, pendingMemorySuggestion, onMemorySuggestionRespond, aiEnabled, aiThinking, aiThinkingText, commandPending, onCancel, ollamaStatus, aiModel, aiMode, onAIToggle, onSetModel, onSetMode, toolHistory, showToolHistory, onToggleToolHistory, onRerunToolCall, onExportMarkdown, onExportJson, onDirectCommand, onDidYouMeanPick, workspaceProjects, addToWorkspace, 
 removeFromWorkspace, clearWorkspace, onSwitchToProject, isFullscreen, onToggleFullscreen, processes, processLogs, 
-selectedProcessId, onSelectProcess, onStopProcess, dockExpanded, onToggleDock, dockTab, onSetDockTab, projects }: TerminalProps) => {
+selectedProcessId, onSelectProcess, onStopProcess, dockExpanded, onToggleDock, dockTab, onSetDockTab, projects, knownDevUrls }: TerminalProps) => {
   const [input, setInput] = useState('');
   const [showSearchOverlay, setShowSearchOverlay] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -298,6 +299,7 @@ selectedProcessId, onSelectProcess, onStopProcess, dockExpanded, onToggleDock, d
         emptyStatePrompt={emptyStatePrompt}
         emptyStateActions={emptyStateActions}
         onDidYouMeanPick={onDidYouMeanPick}
+        knownDevUrls={knownDevUrls}
       />
 
       <ToolHistoryPanel toolHistory={toolHistory} show={showToolHistory} onToggle={onToggleToolHistory} onRerun={onRerunToolCall} />
@@ -337,7 +339,7 @@ selectedProcessId, onSelectProcess, onStopProcess, dockExpanded, onToggleDock, d
                   </optgroup>
                 )}
                 {(ollamaStatus.cloudModels?.length ?? 0) > 0 && (
-                  <optgroup label="🌐 Ollama Cloud (needs sign-in + internet)">
+                  <optgroup label="Ollama Cloud (needs sign-in + internet)">
                     {ollamaStatus.cloudModels!.map((m) => (
                       <option key={m.name} value={m.name}>{m.label}</option>
                     ))}
@@ -360,7 +362,7 @@ selectedProcessId, onSelectProcess, onStopProcess, dockExpanded, onToggleDock, d
 
       {aiEnabled ? (
         <div className={`${centerCol} p-3 bg-panel border-t border-border-soft`}>
-          <AIAssistantInterface onSend={(text) => { onSendMessage(text); setInput(''); }} onSearch={(q) => { onSearch?.(q); }} onDeepResearch={(q) => { onDeepResearch?.(q); }} disabled={!activeProject || aiThinking || isBlocked} placeholder={isBlocked ? 'Resolve the pending confirmation first (Esc to cancel)...' : aiThinking ? 'AI is thinking...' : chatPrompt} />
+          <AIAssistantInterface onSend={(text) => { pushHistory(text); onSendMessage(text); setInput(''); }} onSearch={(q) => { onSearch?.(q); }} onDeepResearch={(q) => { onDeepResearch?.(q); }} disabled={!activeProject || aiThinking || isBlocked} placeholder={isBlocked ? 'Resolve the pending confirmation first (Esc to cancel)...' : aiThinking ? 'AI is thinking...' : chatPrompt} getHistory={() => commandHistory.current} />
         </div>
       ) : (
         <form onSubmit={handleSubmit} className={`${centerCol} p-4 bg-panel border-t border-border-soft`}>

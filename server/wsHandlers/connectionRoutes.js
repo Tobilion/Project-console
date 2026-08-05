@@ -164,7 +164,7 @@ async function routeMessage(ws, parsed, sessionContext) {
       if (added.length > 0) {
         ws.send(JSON.stringify({
           type: 'answer',
-          data: `✅ Added ${added.length} new phrase(s) to ${[...new Set(added.map(a => a.intent))].join(', ')} intents. They're active now.`
+          data: `✓ Added ${added.length} new phrase(s) to ${[...new Set(added.map(a => a.intent))].join(', ')} intents. They're active now.`
         }));
       } else {
         ws.send(JSON.stringify({ type: 'answer', data: 'No new phrases to add (all were already known).' }));
@@ -192,7 +192,7 @@ async function routeMessage(ws, parsed, sessionContext) {
       if (accept) {
         const { topic, content } = suggestion;
         addToClaudeMd(project.path, topic, content || '');
-        ws.send(JSON.stringify({ type: 'answer', data: `✅ Added "${topic}" section to CLAUDE.md.\n` }));
+        ws.send(JSON.stringify({ type: 'answer', data: `✓ Added "${topic}" section to CLAUDE.md.\n` }));
       } else {
         ws.send(JSON.stringify({ type: 'answer', data: `Skipped adding "${suggestion.topic}" to CLAUDE.md.\n` }));
       }

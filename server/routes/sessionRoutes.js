@@ -1,4 +1,4 @@
-import { listSessions, getSession, createSession, deleteSession, linkSessionToProject } from '../conversationStore.js';
+import { listSessions, getSession, createSession, deleteSession, renameSession, linkSessionToProject } from '../conversationStore.js';
 import { state } from '../state.js';
 
 export function registerSessionRoutes(app) {
@@ -20,6 +20,14 @@ export function registerSessionRoutes(app) {
     res.json({ session });
   });
 
+  // Rename a chat (manual title; the auto-title from the first message never clobbers it)
+  app.patch('/api/sessions/:id', async (req, res) => {
+    const { title } = req.body || {};
+    const session = await renameSession(req.params.id, title);
+    if (!session) return res.status(400).json({ error: 'Invalid title or session not found' });
+    res.json({ session });
+  });
+
   // Link an orphan session to a project (e.g. after New Chat then selecting a project)
   app.patch('/api/sessions/:id/link', async (req, res) => {
     const { projectId } = req.body || {};
@@ -31,6 +39,7 @@ export function registerSessionRoutes(app) {
 
   app.delete('/api/sessions/:id', async (req, res) => {
     const ok = await deleteSession(req.params.id);
-    res.json({ success: ok });
+    if (!ok) return res.status(404).json({ error: 'Session not found' });
+    res.json({ success: true });
   });
 }

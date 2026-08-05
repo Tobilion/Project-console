@@ -24,7 +24,9 @@ function splitTelemetry(content: string): { body: string; meta: string | null } 
 function extractUrl(text: string): string | null {
   const m = text.match(/https?:\/\/[^\s<>()[\]"'`]+/);
   if (!m) return null;
-  return m[0].replace(/[.,;:!?]+$/, '');
+  // Strip trailing punctuation AND markdown emphasis (`**bold**` URLs end with `**` — an
+  // href containing those is an invalid URL and browsers land on about:blank#blocked).
+  return m[0].replace(/[*_.,;:!?]+$/, '');
 }
 
 interface TerminalMessagesProps {
@@ -50,6 +52,10 @@ interface TerminalMessagesProps {
   emptyStatePrompt: string;
   emptyStateActions: string[];
   onDidYouMeanPick?: (intent: string) => void;
+  /** Dev-server site URLs the console has actually seen (server_url events + processes
+   *  polls) — the "Click here to open the site" chip is gated on these so arbitrary links
+   *  in messages (e.g. an Ollama endpoint inside an error text) never get one. */
+  knownDevUrls: string[];
 }
 
 /** The scrollable message thread: chat bubbles (markdown/JSON/output), inline confirm
@@ -77,6 +83,7 @@ export function TerminalMessages({
   emptyStatePrompt,
   emptyStateActions,
   onDidYouMeanPick,
+  knownDevUrls,
 }: TerminalMessagesProps) {
   // Custom markdown components for structured JSON blocks
   const markdownComponents = useMemo(() => ({
@@ -108,12 +115,18 @@ export function TerminalMessages({
                 animate={{ opacity: 1, y: 0 }}
                 className="flex flex-col items-start max-w-[85%]"
               >
-                <OutputBlock content={msg.content} />
+                <OutputBlock content={msg.content} autoExpand={msg.autoExpand} />
               </motion.div>
             );
           }
           const tel = splitTelemetry(msg.content);
           const linkUrl = msg.type !== 'user' ? extractUrl(tel.body) : null;
+          // Only real dev-server sites get the chip — the server_url/processes sources in
+          // knownDevUrls are the console's ground truth for "this is the site link" (an
+          // Ollama error message used to qualify just because it contained an http URL).
+          const isKnownDevUrl = !!linkUrl && knownDevUrls.some(u =>
+            u.replace(/\/$/, '').toLowerCase() === linkUrl.replace(/\/$/, '').toLowerCase()
+          );
           return (
           <motion.div
             key={msg.id || i}
@@ -150,7 +163,7 @@ export function TerminalMessages({
                 </>
                )}
                
-               {linkUrl && (
+               {isKnownDevUrl && (
                  <a
                    href={linkUrl}
                    target="_blank"

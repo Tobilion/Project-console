@@ -35,7 +35,7 @@ export function injectContext(input, intent, codebaseIndex) {
     case 'project.context.structure': {
       if (codebaseIndex.directoryTree?.length) {
         const lines = codebaseIndex.directoryTree.slice(0, 12);
-        snippets.push(`Top directories:\n${lines.map(d => `  📁 ${d}`).join('\n')}`);
+        snippets.push(`Top directories:\n${lines.map(d => `  ▸ ${d}`).join('\n')}`);
         if (codebaseIndex.directoryTree.length > 12) {
           snippets.push(`  ... and ${codebaseIndex.directoryTree.length - 12} more`);
         }
@@ -132,7 +132,7 @@ export function injectContext(input, intent, codebaseIndex) {
         const fileLower = file.toLowerCase();
         if (patterns.some(p => fileLower.includes(p))) {
           const fileName = file.split('/').pop() || file;
-          snippets.push(`📄 ${fileName}`);
+          snippets.push(`▸ ${fileName}`);
           break;
         }
       }

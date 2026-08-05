@@ -60,13 +60,40 @@ export function useSessions() {
 
   const deleteSession = async (sessionId: string) => {
     try {
-      await fetch(`/api/sessions/${sessionId}`, { method: 'DELETE' });
-      setSessions(prev => prev.filter(s => s.id !== sessionId));
-      if (activeSessionId === sessionId) {
-        setActiveSessionId(null);
-        setMessages([]);
+      const res = await fetch(`/api/sessions/${sessionId}`, { method: 'DELETE' });
+      // 404 = the session is already gone server-side — the row is stale either way, drop it.
+      if (res.ok || res.status === 404) {
+        setSessions(prev => prev.filter(s => s.id !== sessionId));
+        if (activeSessionId === sessionId) {
+          setActiveSessionId(null);
+          setMessages([]);
+        }
+      } else {
+        setMessages(prev => [...prev, makeMessage('error', 'Could not delete that chat — please try again.')]);
       }
-    } catch {}
+    } catch {
+      setMessages(prev => [...prev, makeMessage('error', 'Could not delete that chat — please try again.')]);
+    }
+  };
+
+  const renameSession = async (sessionId: string, title: string) => {
+    const t = title.trim();
+    if (!t) return;
+    try {
+      const res = await fetch(`/api/sessions/${sessionId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: t })
+      });
+      const data = await res.json();
+      if (res.ok && data.session) {
+        setSessions(prev => prev.map(s => s.id === sessionId ? { ...s, title: data.session.title } : s));
+      } else {
+        setMessages(prev => [...prev, makeMessage('error', 'Could not rename that chat — please try again.')]);
+      }
+    } catch {
+      setMessages(prev => [...prev, makeMessage('error', 'Could not rename that chat — please try again.')]);
+    }
   };
 
   const linkSessionToProject = async (sessionId: string, projectId: string) => {
@@ -83,6 +110,6 @@ export function useSessions() {
     sessions, setSessions, activeSessionId, setActiveSessionId,
     messages, setMessages, showSessions, setShowSessions,
     showWelcome, setShowWelcome, draftMessages, draftSetMessages,
-    fetchSessions, createSession, switchSession, deleteSession, linkSessionToProject,
+    fetchSessions, createSession, switchSession, deleteSession, renameSession, linkSessionToProject,
   };
 }

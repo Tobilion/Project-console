@@ -15,7 +15,7 @@ export function describeIntent(intent) {
 }
 
 // Much smaller than ollamaContext.js's system-prompt cap (6000 chars) — the router is a single
-// bounded classification call on CPU-only hardware (LOCAL_ROUTER_UPGRADE_PROMPT.md's hard
+// bounded classification call on CPU-only hardware (hard
 // constraints), not a full conversation, so it only gets enough of the repo map to disambiguate
 // a loose file reference, not the whole project.
 export const ROUTER_REPO_MAP_CHARS = 1200;

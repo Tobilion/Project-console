@@ -60,6 +60,9 @@ export interface TerminalMessage {
   isMarkdown?: boolean;
   /** True while an AI response is still streaming into this message's content. */
   streaming?: boolean;
+  /** Output blocks created while an AI query was running commands start expanded — the user
+   *  asked to actually see the terminal for AI-run commands, not just the collapsed header. */
+  autoExpand?: boolean;
   /** Set on the "session is locked to a different project" error — lets the UI offer a direct
    *  one-click switch instead of just telling the user what went wrong. */
   switchProjectAction?: { projectId: string; projectName: string };

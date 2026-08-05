@@ -179,12 +179,12 @@ export const chitChatHandlers = {
       }
       const idx = project.codebaseIndex;
       if (idx?.directoryTree?.length) {
-        const treeLines = idx.directoryTree.slice(0, 20).map((d) => `  📁 ${d}`).join('\n');
+        const treeLines = idx.directoryTree.slice(0, 20).map((d) => `  ▸ ${d}`).join('\n');
         detailText += `\n\n**Directory Structure:**\n${treeLines}`;
         if (idx.directoryTree.length > 20) detailText += `\n  ... and ${idx.directoryTree.length - 20} more`;
       }
       if (idx?.fileSample?.length) {
-        const sample = idx.fileSample.slice(0, 10).map((f) => `  📄 ${f}`).join('\n');
+        const sample = idx.fileSample.slice(0, 10).map((f) => `  ▸ ${f}`).join('\n');
         detailText += `\n\n**Key Files:**\n${sample}`;
       }
       const ctx = injectContext(input, action, project.codebaseIndex);

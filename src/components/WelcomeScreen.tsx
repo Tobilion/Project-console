@@ -22,7 +22,7 @@ interface WelcomeScreenProps {
 const TOUR_STEPS = [
   {
     icon: <Sparkles size={28} />,
-    title: 'Welcome to V4 Knowledge Engine',
+    title: 'Welcome to Project Console',
     body: 'This is your local, offline command center for every project on your machine. Browse any folder, run commands, check git status, and ask questions — all without leaving this window. AI mode is off by default; you control when it activates.',
   },
   {
@@ -65,7 +65,7 @@ export function WelcomeScreen({ projects, activeProject, ollamaStatus, aiEnabled
             <TextScramble text={greeting} />
           </h1>
           <p className="text-xs tracking-[0.2em] uppercase text-fg-dim font-bold">
-            V4 Knowledge Engine — {projects.length} Projects Loaded
+            Project Console · Local Project Engine — {projects.length} Projects Loaded
           </p>
         </div>
 

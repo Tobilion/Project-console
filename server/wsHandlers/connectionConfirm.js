@@ -108,7 +108,7 @@ export async function handleConfirmResponse(ws, parsed) {
     } else {
       const result = await fn(pending.fileOp.args);
       if (result.success) {
-        ws.send(JSON.stringify({ type: 'answer', data: `✅ ${result.data || 'Done.'}` }));
+        ws.send(JSON.stringify({ type: 'answer', data: `✓ ${result.data || 'Done.'}` }));
         const suggestion = trackFileEdit(project.path, pending.fileOp.args?.path || 'unknown');
         if (suggestion) {
           pendingMemorySuggestions.set(project.id, suggestion);

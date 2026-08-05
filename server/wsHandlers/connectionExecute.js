@@ -13,6 +13,11 @@ import { handleDistillationCommand, handleMemoryReview, handleLearningCommand } 
 import { handleStopServer, handleDevUrl } from './connectionDevServer.js';
 import { handleMatchingPipeline } from './connectionMatching.js';
 
+// Pure positive acknowledgments that never carry a request — short-circuited out of the AI
+// path so a bare "ok" doesn't burn a local/cloud model call (see the aiEnabled branch below).
+// Deliberately excludes "yes"/"no"/"sure"/"done" — those can be answers to a pending question.
+const AI_ACK_RE = /^(ok|okay|k|kk|ok thanks|thanks|thank you|thx|ty|got it|gotcha|nice|cool|alright|sounds good|perfect|awesome)\b[.!]*$/i;
+
 /**
  * Trigger-mode message execution (routeMessage 'execute'). Orchestrator only — the blocks are
  * dispatched to sibling leaf modules in exactly the order they ran in the pre-split
@@ -95,6 +100,17 @@ export async function handleExecute(ws, parsed, sessionContext) {
   // AI mode: the AI ON/OFF toggle is the only opt-in gesture needed — once on, every
   // message in this session goes straight to Ollama, no per-query re-confirmation.
   if (sessionContext.aiEnabled) {
+    // Pure acknowledgments ("ok", "thanks", "got it") don't need a model round-trip — a real
+    // NetPulse chat burned ~14 model streams on a bare "ok". Narrow allowlist + length cap so
+    // nothing that could be an answer to a question ("yes", "no", "sure") ever short-circuits.
+    const trimmed = input.trim();
+    if (trimmed.length <= 20 && AI_ACK_RE.test(trimmed)) {
+      ws.send(JSON.stringify({ type: 'answer', data: 'Got it — anything else?' }));
+      if (sessionContext.currentSessionId) {
+        appendMessage(sessionContext.currentSessionId, { role: 'bot', content: 'Got it — anything else?', isMarkdown: true }).catch(() => {});
+      }
+      return;
+    }
     // Resolve workspace projects for AI context
     const workspaceProjects = sessionContext.workspaceProjectIds
       .map(id => state.activeProjectsCache.find(p => p.id === id))

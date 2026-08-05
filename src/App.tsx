@@ -9,7 +9,7 @@ import { CommandDeck } from './components/CommandDeck';
 import { useConsole } from './hooks/useConsole';
 import { useUserProfile } from './hooks/useUserProfile';
 import { getRandomGreeting } from './utils/greetings';
-import { Home, LayoutDashboard, Search, Settings } from 'lucide-react';
+import { Home, LayoutDashboard, Search, Settings, Loader2 } from 'lucide-react';
 import { ThemeToggle } from './components/ui/ThemeToggle';
 import { UserProfileModal } from './components/UserProfileModal';
 
@@ -48,10 +48,10 @@ function App() {
     handleSendMessage, handleCancel, handleConfirm, handleToolConfirm, handleApproveTask, handleAIToggle,
     handleSetModel, handleSetMode, handleSelectProject,
     handleSearch, handleDeepResearch, handleNewChat, handleQuickStart, handleScan,
-    createSession, switchSession, deleteSession, handleSwitchToProject,
+    createSession, switchSession, deleteSession, renameSession, handleSwitchToProject,
     toolHistory, showToolHistory, setShowToolHistory, rerunToolCall,
     exportAsMarkdown, exportAsJson,
-    handleDirectCommand, activeServers, dashboardUpdateSignal,
+    handleDirectCommand, activeServers, knownDevUrls, dashboardUpdateSignal,
     workspaceProjects, addToWorkspace, removeFromWorkspace, clearWorkspace,
     processes, processLogs, selectedProcessId, setSelectedProcessId,
     dockExpanded, setDockExpanded, dockTab, setDockTab, handleStopProcess,
@@ -108,13 +108,13 @@ function App() {
       <header className="relative z-10 flex-shrink-0 flex flex-wrap items-center gap-3 mb-4">
         <div className="flex items-center gap-3 min-w-0">
           <h1 className="text-lg font-semibold italic text-fg-strong whitespace-nowrap">
-            <TextScramble text="V4 Knowledge Engine" />
+            <TextScramble text="Project Console" />
           </h1>
           <p className="text-[10px] tracking-[0.2em] uppercase text-fg-dim font-bold hidden sm:inline">
-            Project Console &amp; Analytics
+            Local Project Engine
           </p>
           {indexingProjectId && (
-            <span className="text-xs text-yellow-400 animate-pulse">⏳ Indexing...</span>
+            <span className="text-xs text-yellow-400 animate-pulse"><Loader2 size={12} className="inline-block mr-1 animate-spin" />Indexing...</span>
           )}
         </div>
         <div className="flex items-center gap-2 ml-auto flex-shrink-0">
@@ -176,6 +176,7 @@ function App() {
             createSession={createSession}
             switchSession={switchSession}
             deleteSession={deleteSession}
+            renameSession={renameSession}
             handleSelectProject={handleSelectProject}
             workspaceProjects={workspaceProjects}
             addToWorkspace={addToWorkspace}
@@ -255,6 +256,7 @@ function App() {
               dockTab={dockTab}
               onSetDockTab={setDockTab}
               projects={projects}
+              knownDevUrls={knownDevUrls}
               userName={profile.name}
             />
             )}

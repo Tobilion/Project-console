@@ -112,7 +112,7 @@ export function useAI(sendWS: (data: object) => void, setMessages: React.Dispatc
       setAiEnabled(true);
       setMessages(prev => [...prev, makeMessage(
         'system',
-        `AI Assistant activated — using ${source === 'cloud' ? '🌐 Ollama Cloud' : 'local'} model: ${activeModel}. Switch between local and cloud anytime via the model picker.`
+        `AI Assistant activated — using ${source === 'cloud' ? 'Ollama Cloud' : 'local'} model: ${activeModel}. Switch between local and cloud anytime via the model picker.`
       )]);
     } finally {
       toggleBusyRef.current = false;
@@ -140,7 +140,7 @@ export function useAI(sendWS: (data: object) => void, setMessages: React.Dispatc
               const data = JSON.parse(line.slice(6));
               if (data.type === 'done') {
                 if (data.success) {
-                 setMessages(prev => [...prev, makeMessage('system', `✅ ${data.message}`)]);
+                 setMessages(prev => [...prev, makeMessage('system', `✓ ${data.message}`)]);
                    fetchOllamaStatus();
                    setAiModel(modelName);
                    sendWS({ type: 'ai_set_model', payload: { model: modelName } });

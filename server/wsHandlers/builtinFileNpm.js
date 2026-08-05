@@ -117,7 +117,7 @@ export const fileNpmHandlers = {
       const tools = await createProjectTools(project);
       const existing = await tools.readFile({ path: parsed.fileName });
       const summary = existing.success
-        ? `⚠️ Overwrite existing "${parsed.fileName}" (${existing.data.length} chars) with new content (${parsed.content.length} chars)`
+        ? `⚠ Overwrite existing "${parsed.fileName}" (${existing.data.length} chars) with new content (${parsed.content.length} chars)`
         : `Write "${parsed.fileName}" (${parsed.content.length} chars)`;
       queueFileOpConfirmation(ws, project, input, {
         tool: 'writeFile',

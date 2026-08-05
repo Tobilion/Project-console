@@ -18,7 +18,7 @@ import {
   projectSessionLogFile,
   projectSessionsDir,
 } from './sessionPaths.js';
-import { readIndex, setIndexEntry } from './sessionIndex.js';
+import { readIndex, writeIndex, setIndexEntry } from './sessionIndex.js';
 import { readMessageLog } from './messageLog.js';
 
 // Exported so memoryStore.js can reuse the same .gitignore-add logic for .console/memory.md —
@@ -82,6 +82,13 @@ export async function getSession(id) {
       session = JSON.parse(data);
       return await migrateLegacySession(session);
     } catch {
+      // Both the project-scoped meta and the legacy file are gone, yet the index still lists
+      // this session — drop the stale entry so it stops appearing in the sidebar (self-heal;
+      // listSessions' reconcileIndexFromDisk re-adds it if real files ever come back).
+      if (idx[id]) {
+        delete idx[id];
+        await writeIndex(idx).catch(() => {});
+      }
       return null;
     }
   }

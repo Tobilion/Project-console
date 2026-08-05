@@ -13,8 +13,9 @@
  */
 import fs from 'fs/promises';
 import crypto from 'crypto';
+import { state } from './state.js';
 import { LEGACY_STORE_DIR, legacyFilePath, projectSessionMetaFile, projectSessionLogFile, legacySessionLogFile, projectChatLog } from './sessionPaths.js';
-import { ensureLegacyDir, readIndex, writeIndex, setIndexEntry } from './sessionIndex.js';
+import { ensureLegacyDir, readIndex, writeIndex, setIndexEntry, reconcileIndexFromDisk } from './sessionIndex.js';
 import { appendChatLogEntry } from './chatLog.js';
 import { migrateLegacySession, ensureProjectConsoleDir } from './sessionMigration.js';
 
@@ -34,6 +35,13 @@ export async function listSessions() {
       await migrateLegacySession(session);
     } catch {}
   }
+
+  // Self-healing: merge any on-disk session metas missing from the index (an index wipe can
+  // drop every entry while all the session files survive — see writeIndex's comment).
+  await reconcileIndexFromDisk([
+    state.currentScanDirectory,
+    ...state.activeProjectsCache.map((p) => p.path),
+  ]);
 
   const fresh = await readIndex();
   const sessions = Object.entries(fresh).map(([id, meta]) => ({
@@ -91,6 +99,37 @@ export async function deleteSession(id) {
   }
 
   return deleted || legacyDeleted || !!meta;
+}
+
+/** Renames a session (manual, from the sidebar). Non-empty trimmed title, capped at 80 chars;
+ *  returns the updated session meta, or null when the session doesn't exist / title is invalid. */
+export async function renameSession(id, title) {
+  const t = (title || '').trim();
+  if (!t || t.length > 80) return null;
+  const idx = await readIndex();
+  const meta = idx[id];
+  if (!meta) return null;
+
+  meta.title = t;
+  meta.updatedAt = Date.now();
+  if (meta.projectPath) {
+    const sessionMeta = {
+      id,
+      title: t,
+      projectId: meta.projectId,
+      projectName: meta.projectName,
+      projectPath: meta.projectPath,
+      messageCount: meta.messageCount,
+      createdAt: meta.createdAt,
+      updatedAt: meta.updatedAt,
+    };
+    await fs.writeFile(projectSessionMetaFile(meta.projectPath, id), JSON.stringify(sessionMeta, null, 2)).catch(() => {});
+  } else {
+    const sessionMeta = { ...meta, id };
+    await fs.writeFile(legacyFilePath(id), JSON.stringify(sessionMeta, null, 2)).catch(() => {});
+  }
+  await setIndexEntry(meta);
+  return meta;
 }
 
 export async function appendMessage(sessionId, message) {

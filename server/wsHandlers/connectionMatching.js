@@ -157,8 +157,8 @@ export async function handleMatchingPipeline(ws, project, projectId, input, sess
   if (idx) {
     if (idx.entryPoints?.length) fallback += `**Entry point:** \`${idx.entryPoints[0]}\`\n`;
     if (idx.languages?.length) fallback += `**Languages:** ${idx.languages.slice(0, 3).join(', ')}\n`;
-    if (idx.hasTests) fallback += '✅ Tests detected — try asking about tests\n';
-    if (idx.hasConfig) fallback += '⚙️ Config files present — try "overview" or "stack"\n';
+    if (idx.hasTests) fallback += '✓ Tests detected — try asking about tests\n';
+    if (idx.hasConfig) fallback += '⚙ Config files present — try "overview" or "stack"\n';
   }
   const ctxFb = injectContext(input, null, project.codebaseIndex);
   if (ctxFb) fallback += `\n${ctxFb}\n`;

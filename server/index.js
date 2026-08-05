@@ -40,9 +40,9 @@ app.use(express.json());
 
 registerProjectRoutes(app, __dirname);
 registerSessionRoutes(app);
-  registerSearchRoutes(app);
-  registerMonitoringRoutes(app);
-  registerProfileRoutes(app);
+registerSearchRoutes(app);
+registerMonitoringRoutes(app);
+registerProfileRoutes(app);
 
 initWebSocketServer();
 
@@ -204,7 +204,21 @@ async function init() {
   }
 
   if (server) {
+    // Sockets that error while the upgrade/request handshake is still in flight (a client that
+    // connected then vanished mid-upgrade, an abrupt ECONNRESET) surface as 'error' on the
+    // httpServer itself, not on any ws client object — the listen-loop's temporary error listener
+    // was removed after binding, so without a permanent one this event crashes the whole server.
+    // Observed live: killing a WS test client mid-connection took the console down.
+    server.on('error', (err) => {
+      console.error('HTTP server error (non-fatal, connection dropped):', err.message);
+    });
     server.on('upgrade', (request, socket, head) => {
+      // Sockets that arrive via 'upgrade' leave the http server's normal per-connection error
+      // handling — if no listener accepts the upgrade (this listener's pathname check, Vite's
+      // HMR listener, or a client that died mid-handshake), the socket emits 'error' with no
+      // listener attached, which crashes the whole process (observed live twice: a WS client
+      // that connected to a non-/stream path and was then killed took the console down).
+      socket.on('error', () => {});
       // Origin check: only allow connections from the local server itself
       const origin = request.headers.origin;
       if (origin && !origin.startsWith('http://127.0.0.1') && !origin.startsWith('http://localhost')) {

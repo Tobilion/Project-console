@@ -28,6 +28,10 @@ export interface WsCtx {
     setAiMode: React.Dispatch<React.SetStateAction<string>>;
     setAiThinking: React.Dispatch<React.SetStateAction<boolean>>;
     setAiThinkingText: React.Dispatch<React.SetStateAction<string>>;
+    /** True between the server's 'ai_start' and the end of the AI turn's stream — used to
+     *  auto-expand output blocks that were created by commands the AI ran. */
+    aiQueryInFlight: boolean;
+    setAiQueryInFlight: React.Dispatch<React.SetStateAction<boolean>>;
   };
   projects: {
     projects: Project[];
@@ -46,6 +50,10 @@ export interface WsCtx {
     setCommandPending: React.Dispatch<React.SetStateAction<boolean>>;
   };
   setDashboardUpdateSignal: React.Dispatch<React.SetStateAction<number>>;
+  /** Grows with every server_url event and every processes poll that returns a URL — the
+   *  only URLs that qualify for the "Click here to open the site" chip (a real NetPulse
+   *  chat showed the chip on an Ollama error message because any http URL qualified). */
+  setKnownDevUrls: React.Dispatch<React.SetStateAction<string[]>>;
   appendProcessOutput: (text: string) => void;
   addToolCall: (tool: string, args: Record<string, any>, result: any) => void;
   fetchProcesses: () => void;

@@ -143,7 +143,7 @@ export async function handlePendingMemorySuggestionReply(ws, project, lowerInput
     pendingMemorySuggestions.delete(project.id);
     const { topic, content } = pendingMemSuggestion;
     addToClaudeMd(project.path, topic, content || '');
-    ws.send(JSON.stringify({ type: 'answer', data: `✅ Added "${topic}" section to CLAUDE.md. I'll remember this context in future conversations.\n` }));
+    ws.send(JSON.stringify({ type: 'answer', data: `✓ Added "${topic}" section to CLAUDE.md. I'll remember this context in future conversations.\n` }));
     ws.send(JSON.stringify({ type: 'end' }));
     return true;
   }

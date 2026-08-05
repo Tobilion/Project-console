@@ -31,6 +31,8 @@ function makeFakeCtx() {
     aiMode: '',
     aiThinking: true,
     aiThinkingText: '',
+    aiQueryInFlight: false,
+    knownDevUrls: [],
     projectsList: [],
     indexingProjectId: 'p1',
     workspace: [],
@@ -65,6 +67,8 @@ function makeFakeCtx() {
       setAiMode: (v: any) => { state.aiMode = typeof v === 'function' ? v(state.aiMode) : v; },
       setAiThinking: (v: any) => { state.aiThinking = typeof v === 'function' ? v(state.aiThinking) : v; },
       setAiThinkingText: (v: any) => { state.aiThinkingText = typeof v === 'function' ? v(state.aiThinkingText) : v; },
+      get aiQueryInFlight() { return state.aiQueryInFlight; },
+      setAiQueryInFlight: (v: any) => { state.aiQueryInFlight = typeof v === 'function' ? v(state.aiQueryInFlight) : v; },
     },
     projects: {
       get projects() { return state.projectsList; }, // live read — mirrors the orchestrator's fresh ctx per event
@@ -79,6 +83,7 @@ function makeFakeCtx() {
       setCommandPending: (v: any) => { state.commandPending = typeof v === 'function' ? v(state.commandPending) : v; },
     },
     setDashboardUpdateSignal: (u: any) => { state.dashboardSignals = u(state.dashboardSignals); },
+    setKnownDevUrls: (u: any) => { state.knownDevUrls = typeof u === 'function' ? u(state.knownDevUrls) : u; },
     appendProcessOutput: (text: string) => { state.appendedOutput.push(text); },
     addToolCall: (tool: string, args: any, result: any) => { state.toolCalls.push({ tool, args, result }); },
     fetchProcesses: () => { state.fetchProcessCount++; },
@@ -170,13 +175,32 @@ async function main() {
   c.state.aiThinkingText = 'x';
   dispatch(c.ctx, 'ai_start', {});
   check('ai_start thinks + clears text', c.state.aiThinking === true && c.state.aiThinkingText === '');
+  check('ai_start arms aiQueryInFlight', c.state.aiQueryInFlight === true);
   dispatch(c.ctx, 'thinking', { data: ' hmm' });
   check('thinking appends text', c.state.aiThinkingText === ' hmm');
+
+  // --- output blocks during an AI turn auto-expand; trigger-mode blocks stay collapsed ---
+  c = makeFakeCtx();
+  dispatch(c.ctx, 'ai_start', {});
+  dispatch(c.ctx, 'start', { data: 'venv\\Scripts\\python.exe main.py watch --interval 5' });
+  check('output block created during AI turn starts expanded', last(c.state).autoExpand === true);
+  dispatch(c.ctx, 'stream_end', {});
+  check('stream_end clears aiQueryInFlight', c.state.aiQueryInFlight === false);
+  dispatch(c.ctx, 'start', { data: 'npm run dev' });
+  check('output block after AI turn stays collapsed', last(c.state).autoExpand !== true && last(c.state).type === 'output');
+
+  // --- server_url feeds knownDevUrls (the chip gate) ---
+  c = makeFakeCtx();
+  dispatch(c.ctx, 'server_url', { data: 'http://localhost:5000' });
+  check('server_url -> bot bubble', last(c.state).type === 'bot' && last(c.state).content.includes('http://localhost:5000'));
+  check('server_url records known dev URL', c.state.knownDevUrls.includes('http://localhost:5000'));
+  dispatch(c.ctx, 'server_url', { data: 'http://localhost:5000' });
+  check('server_url dedupes known URLs', c.state.knownDevUrls.length === 1);
 
   // --- tool_start / tool_confirm_prompt / task_granted / memory_suggestion / tool_result ---
   c = makeFakeCtx();
   dispatch(c.ctx, 'tool_start', { data: 'git push' });
-  check('tool_start -> system line', last(c.state).type === 'system' && last(c.state).content === '⚙️ git push');
+  check('tool_start -> system line', last(c.state).type === 'system' && last(c.state).content === '⚙ git push');
   dispatch(c.ctx, 'tool_confirm_prompt', { token: 't2', tool: 'writeFile', args: { path: 'a' } });
   check('tool_confirm_prompt -> pendingToolConfirm', c.state.pendingToolConfirm?.tool === 'writeFile');
   dispatch(c.ctx, 'task_granted', {});
@@ -184,7 +208,7 @@ async function main() {
   dispatch(c.ctx, 'memory_suggestion', { data: { type: 'question_repeat', topic: 't' } });
   check('memory_suggestion -> pendingMemorySuggestion', c.state.pendingMemorySuggestion?.type === 'question_repeat');
   dispatch(c.ctx, 'tool_result', { data: { tool: 'readFile', args: { path: 'a' }, result: 'content' } });
-  check('tool_result records call + system line', c.state.toolCalls.length === 1 && c.state.toolCalls[0].tool === 'readFile' && last(c.state).content.startsWith('🔧 Tool: readFile'));
+  check('tool_result records call + system line', c.state.toolCalls.length === 1 && c.state.toolCalls[0].tool === 'readFile' && last(c.state).content.startsWith('⚙ Tool: readFile'));
 
   // --- workspace_updated ---
   c = makeFakeCtx();

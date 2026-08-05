@@ -6,7 +6,7 @@ import { INTENT_DESCRIPTIONS } from './routerData.js';
 const ROUTER_MODEL_FALLBACK = 'qwen2.5-coder:7b';
 
 // Keep this bounded and well under a full AI-mode turn — this is a classification call, not a
-// conversation. See LOCAL_ROUTER_UPGRADE_PROMPT.md's hard constraints: CPU-only, 16GB RAM, must
+// conversation. Hard constraints: CPU-only, 16GB RAM, must
 // stay "fast tier" fast.
 // Nudged from 7s to 8s (still inside the plan's stated 5-8s bound) now that the prompt can
 // optionally include a repo-map slice, which adds prompt-processing time on CPU-only hardware.
@@ -49,7 +49,7 @@ function extractJson(text) {
 function buildPrompt(input, allowedIntents, repoMapSlice) {
   const lines = allowedIntents.map((name) => `- ${name}: ${INTENT_DESCRIPTIONS[name] || '(no description)'}`);
   // Repo-map context is optional and only included when the caller has one (matcher.js passes a
-  // capped slice of project.codebaseIndex.repoMap — see LOCAL_ROUTER_UPGRADE_PROMPT.md piece 2).
+  // capped slice of project.codebaseIndex.repoMap).
   // It's here so a loose reference like "the config file" or "that component" can be resolved
   // against real project file names instead of guessed at blind — this router still only picks
   // an *intent*, it never returns a resolved file path as fact; handlers still call

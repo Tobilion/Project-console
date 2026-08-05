@@ -54,14 +54,14 @@ export function summarizeCommandOutput({ command, stdout = '', stderr = '', exit
   const highlights = [];
 
   if (exitCode !== 0 && exitCode !== null && exitCode !== undefined) {
-    highlights.push(`❌ Exited with code ${exitCode}`);
+    highlights.push(`✖ Exited with code ${exitCode}`);
   }
 
   if (GIT_CONFLICT_RE.test(combined)) {
-    highlights.push(`⚠️ Merge conflict detected — resolve before continuing.`);
+    highlights.push(`⚠ Merge conflict detected — resolve before continuing.`);
   }
   if (GIT_PUSH_REJECTED_RE.test(combined)) {
-    highlights.push(`❌ Push was rejected (remote has changes you don't have locally — pull first).`);
+    highlights.push(`✖ Push was rejected (remote has changes you don't have locally — pull first).`);
   }
 
   if (errorLines.length) {
@@ -75,16 +75,16 @@ export function summarizeCommandOutput({ command, stdout = '', stderr = '', exit
   }
 
   const npmSummary = combined.match(NPM_SUMMARY_RE);
-  if (npmSummary) highlights.push(`📦 ${npmSummary[0].trim()}`);
+  if (npmSummary) highlights.push(`${npmSummary[0].trim()}`);
   const npmVuln = combined.match(NPM_VULN_RE);
-  if (npmVuln) highlights.push(`⚠️ ${npmVuln[0].trim()}`);
+  if (npmVuln) highlights.push(`⚠ ${npmVuln[0].trim()}`);
 
   const gitCommit = combined.match(GIT_COMMIT_RE);
-  if (gitCommit) highlights.push(`✅ ${gitCommit[0].trim()}`);
+  if (gitCommit) highlights.push(`✓ ${gitCommit[0].trim()}`);
   const gitStat = combined.match(GIT_STAT_RE);
   if (gitStat) highlights.push(gitStat[0].trim());
   const gitPush = combined.match(GIT_PUSH_OK_RE);
-  if (gitPush) highlights.push(`✅ Pushed: ${gitPush[0].trim()}`);
+  if (gitPush) highlights.push(`✓ Pushed: ${gitPush[0].trim()}`);
   if (GIT_UP_TO_DATE_RE.test(combined)) highlights.push('Nothing to update — already up to date.');
 
   if (highlights.length === 0) {
@@ -92,7 +92,7 @@ export function summarizeCommandOutput({ command, stdout = '', stderr = '', exit
     // still say *something* so the user knows a big dump didn't hide anything alarming, without
     // making them re-read it themselves.
     if (exitCode === 0 || exitCode === null || exitCode === undefined) {
-      highlights.push(`✅ Completed with no errors detected (${lineCount} lines of output above).`);
+      highlights.push(`✓ Completed with no errors detected (${lineCount} lines of output above).`);
     } else {
       return null; // non-zero exit with nothing else recognized — let the raw output speak for itself
     }

@@ -42,7 +42,11 @@ const streamOutputCase: WsCaseHandler = (ctx, payload) => {
       newMsgs[newMsgs.length - 1] = { ...lastMsg, content: lastMsg.content + '\n' + payload.data };
       return newMsgs;
     }
-    return [...prev, { id, type: 'output', content: payload.data }];
+    // autoExpand: output blocks created while an AI query is in flight start expanded —
+    // the user asked to actually see the terminal for commands the AI ran (real NetPulse
+    // chat: the AI claimed it started a background watcher and the only trace was a
+    // collapsed block header). Trigger-mode blocks stay collapsed as before.
+    return [...prev, { id, type: 'output', content: payload.data, autoExpand: ctx.ai.aiQueryInFlight }];
   });
 };
 
@@ -130,6 +134,9 @@ const aiStatusCase: WsCaseHandler = (ctx, payload) => {
 const aiStartCase: WsCaseHandler = (ctx) => {
   ctx.ai.setAiThinking(true);
   ctx.ai.setAiThinkingText('');
+  // Marks the AI turn as in flight so output blocks the AI's commands create start
+  // expanded; cleared by the stream's end event (see wsStreamingCases.ts).
+  ctx.ai.setAiQueryInFlight(true);
   // Used to force the tool trace panel open on every single AI message ("so live activity
   // is visible without an extra click") — reported directly as an annoyance once AI mode
   // was actually being used for real (it popped the panel open on every message, including
@@ -155,7 +162,7 @@ const toolStartCase: WsCaseHandler = (ctx, payload) => {
   // no visible progress at all for long-running steps). Surface it immediately as its
   // own lightweight line instead of waiting for the eventual tool_result.
   if (payload.data) {
-    ctx.sessions.setMessages(prev => [...prev, { id, type: 'system', content: `⚙️ ${payload.data}` }]);
+    ctx.sessions.setMessages(prev => [...prev, { id, type: 'system', content: `⚙ ${payload.data}` }]);
   }
 };
 
@@ -166,7 +173,7 @@ const toolConfirmPromptCase: WsCaseHandler = (ctx, payload) => {
 const taskGrantedCase: WsCaseHandler = (ctx) => {
   const id = makeId();
   // Phase 5 (PASS 5.1): "Approve this task" acknowledged server-side.
-  ctx.sessions.setMessages(prev => [...prev, { id, type: 'system', content: '✅ Approved this task — file edits for this conversation will run without further prompts (commands and tests still confirm).' }]);
+  ctx.sessions.setMessages(prev => [...prev, { id, type: 'system', content: '✓ Approved this task — file edits for this conversation will run without further prompts (commands and tests still confirm).' }]);
 };
 
 const memorySuggestionCase: WsCaseHandler = (ctx, payload) => {
@@ -183,7 +190,7 @@ const toolResultCase: WsCaseHandler = (ctx, payload) => {
   if (toolData.tool && toolData.result && !toolData.error) {
     ctx.sessions.setMessages(prev => [...prev, {
       id, type: 'system',
-      content: `🔧 Tool: ${toolData.tool}\n${typeof toolData.result === 'string' ? toolData.result : JSON.stringify(toolData.result, null, 2).slice(0, 500)}${JSON.stringify(toolData.result, null, 2).length > 500 ? '…' : ''}`
+      content: `⚙ Tool: ${toolData.tool}\n${typeof toolData.result === 'string' ? toolData.result : JSON.stringify(toolData.result, null, 2).slice(0, 500)}${JSON.stringify(toolData.result, null, 2).length > 500 ? '…' : ''}`
     }]);
   }
 };
@@ -199,13 +206,16 @@ const workspaceUpdatedCase: WsCaseHandler = (ctx, payload) => {
 
 const serverUrlCase: WsCaseHandler = (ctx, payload) => {
   const id = makeId();
-  ctx.sessions.setMessages(prev => [...prev, { id, type: 'bot', content: `🔗 Dev server running at **${payload.data}**`, isMarkdown: true }]);
+  // The one event that authoritatively says "this is the project's dev-server site" — record
+  // it so the "Click here to open the site" chip only ever appears for real site links.
+  if (payload.data) ctx.setKnownDevUrls(prev => prev.includes(payload.data) ? prev : [...prev, payload.data]);
+  ctx.sessions.setMessages(prev => [...prev, { id, type: 'bot', content: `→ Dev server running at **${payload.data}**`, isMarkdown: true }]);
 };
 
 const copyToClipboardCase: WsCaseHandler = (ctx, payload) => {
   const id = makeId();
   navigator.clipboard.writeText(payload.data).then(() => {
-    ctx.sessions.setMessages(prev => [...prev, { id, type: 'system', content: `✅ Copied to clipboard: \`${payload.data}\`` }]);
+    ctx.sessions.setMessages(prev => [...prev, { id, type: 'system', content: `✓ Copied to clipboard: \`${payload.data}\`` }]);
   }).catch(() => {
     ctx.sessions.setMessages(prev => [...prev, { id, type: 'error', content: 'Failed to copy to clipboard' }]);
   });

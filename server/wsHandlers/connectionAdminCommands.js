@@ -16,7 +16,7 @@ export async function handleDistillationCommand(ws, project, lowerInput) {
       let reply = `**AI Distillations for ${project.name}**\n\n`;
       for (let i = 0; i < suggestions.length; i++) {
         const s = suggestions[i];
-        reply += `**${i + 1}.** ${s.type === 'command_entry' ? '⚡' : s.type === 'knowledge_entry' ? '📖' : '📁'} `;
+        reply += `**${i + 1}.** ${s.type === 'command_entry' ? 'Command' : s.type === 'knowledge_entry' ? 'Knowledge' : 'File'} `;
         reply += `[${s.confidence}] ${s.description}\n`;
         if (s.trigger) reply += `   Trigger: \`${s.trigger}\`\n`;
         if (s.action) reply += `   Action: \`${s.action}\`\n`;
@@ -46,7 +46,7 @@ export async function handleDistillationCommand(ws, project, lowerInput) {
         const types = [...new Set(added.map(a => a.type === 'command_entry' ? 'commands' : 'knowledge entries'))];
         ws.send(JSON.stringify({
           type: 'answer',
-          data: `✅ Applied ${added.length} distillation(s) to ${project.name}'s console.config.json as ${types.join(', ')}.\nThe file watcher will reload them automatically.\n`
+          data: `✓ Applied ${added.length} distillation(s) to ${project.name}'s console.config.json as ${types.join(', ')}.\nThe file watcher will reload them automatically.\n`
         }));
       } else {
         ws.send(JSON.stringify({ type: 'answer', data: 'No new distillations to apply (entries already exist or nothing to add).\n' }));
@@ -122,7 +122,7 @@ export async function handleLearningCommand(ws, project, lowerInput) {
     if (added.length > 0) {
       ws.send(JSON.stringify({
         type: 'answer',
-        data: `✅ Added ${added.length} new phrase(s) to ${[...new Set(added.map(a => a.intent))].join(', ')} intents. They're active now.`
+        data: `✓ Added ${added.length} new phrase(s) to ${[...new Set(added.map(a => a.intent))].join(', ')} intents. They're active now.`
       }));
     } else {
       ws.send(JSON.stringify({ type: 'answer', data: 'No new phrases to add (all were already known).' }));

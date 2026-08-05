@@ -28,7 +28,7 @@ export async function getPluginManifest(root) {
 export const GATED_TOOLS = new Set(['writeFile', 'editFile', 'insertAtLine', 'appendToFile']);
 
 /**
- * Phase 5 (2026-08-03, console-chitchat-ai-upgrade-prompt.md PASS 5.3): tools that ARE command
+ * Phase 5 (2026-08-03, PASS 5.3): tools that ARE command
  * executions themselves (not just file edits), so they're always confirm-gated regardless of any
  * permissions policy or session grant — the same invariant that keeps `risky: true` executeCommand
  * un-approvable by any auto-approval path. resolveToolGate checks this BEFORE the session-grant
@@ -64,7 +64,7 @@ export function isCustomToolRisky(toolName, projectRoot) {
 }
 
 /**
- * Phase 5 (2026-08-03, console-chitchat-ai-upgrade-prompt.md PASS 5.1): reads a project's
+ * Phase 5 (2026-08-03, PASS 5.1): reads a project's
  * permissions policy for a single tool from its console.tools.json manifest. Returns the value
  * ('ask' | 'allow-after-first-ask' | 'deny') or undefined when the manifest has no policy for it
  * (undefined === the default 'ask'). executeCommand can never be anything but 'ask' (enforced at

@@ -33,7 +33,7 @@ export function isSamePortAsConsole(devUrl) {
 /** Appends a heads-up to a dev-server URL answer when it collides with the console's own port. */
 export function withPortCollisionWarning(text, devUrl) {
   if (!isSamePortAsConsole(devUrl)) return text;
-  return `${text}\n\n⚠️ Heads up — that's the same port Project Console itself is running on right now. If the page you land on looks like this console instead of the project, the project's dev server may not actually be reachable there; check its terminal output or change its configured port.`;
+  return `${text}\n\n⚠ Heads up — that's the same port Project Console itself is running on right now. If the page you land on looks like this console instead of the project, the project's dev server may not actually be reachable there; check its terminal output or change its configured port.`;
 }
 
 // token -> { projectId, command, trigger, createdAt }  (manual risky-trigger confirmations)

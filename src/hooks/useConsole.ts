@@ -68,10 +68,23 @@ export function useConsole() {
   const [commandPending, setCommandPending] = useState(false);
   const [activeServers, setActiveServers] = useState<Array<{projectId: string; command: string; pid: number | null; url: string | null}>>([]);
   const [dashboardUpdateSignal, setDashboardUpdateSignal] = useState(0);
+  // URLs the console has authoritatively seen as dev-server sites (server_url events +
+  // /api/active-servers polls). The "Click here to open the site" chip only renders for
+  // these — see TerminalMessages.tsx. Only ever grows; a stopped server's old chips stay
+  // (the URL was real at the time), but error/answer bubbles with unrelated URLs (e.g. an
+  // Ollama endpoint in a model error) never qualify.
+  const [knownDevUrls, setKnownDevUrls] = useState<string[]>([]);
+  // True between the server's 'ai_start' and the AI turn's stream_end — gates autoExpand
+  // on output blocks created by commands the AI ran (see streamOutputCase).
+  const [aiQueryInFlight, setAiQueryInFlight] = useState(false);
 
   const fetchActiveServers = useCallback(async () => {
     const data = await apiFetchJson<Array<{ projectId: string; command: string; pid: number | null; url: string | null }>>('/api/active-servers');
-    if (data) setActiveServers(data);
+    if (data) {
+      setActiveServers(data);
+      const urls = data.map(s => s.url).filter((u): u is string => !!u);
+      if (urls.length) setKnownDevUrls(prev => Array.from(new Set([...prev, ...urls])));
+    }
   }, []);
 
   const tokenBuffer = useRef('');
@@ -118,6 +131,8 @@ export function useConsole() {
       setAiMode: ai.setAiMode,
       setAiThinking: ai.setAiThinking,
       setAiThinkingText: ai.setAiThinkingText,
+      aiQueryInFlight,
+      setAiQueryInFlight,
     },
     projects: {
       projects: projects.projects,
@@ -128,14 +143,13 @@ export function useConsole() {
     stream: { tokenBuffer, flushTimer, streamHadTokenRef },
     commandPending: { setCommandPending },
     setDashboardUpdateSignal,
+    setKnownDevUrls,
     appendProcessOutput: dock.appendProcessOutput,
     addToolCall: toolHistory.addToolCall,
     fetchProcesses: dock.fetchProcesses,
   };
 
-  // Override wsRef in terminal with the real one
-  terminal.handleSendMessage.bind = Function.prototype.bind;
-  const origHandleSendMessage = terminal.handleSendMessage;
+  // Replace useTerminal's handler so sends use the real wsRef (useTerminal holds a stale copy).
   terminal.handleSendMessage = async (content: string) => {
     if (!projects.activeProject || !wsHandler.wsRef.current) return;
     const open = await waitForSocketOpen(() => wsHandler.wsRef.current);
@@ -272,6 +286,12 @@ export function useConsole() {
   const handleSwitchSession = useCallback(async (sessionId: string) => {
     terminal.setPendingConfirm(null);
     terminal.setPendingToolConfirm(null);
+    // Leaving a brand-new chat that never got a single message should clean it up instead of
+    // leaving an empty orphan in the sidebar (same rule as New Chat / project select). Skip
+    // when re-clicking the already-active chat — that must never delete itself.
+    if (sessionId !== sessions.activeSessionId) {
+      await deleteCurrentSessionIfEmpty();
+    }
     // Phase 15: clicking a chat from history while on Home must leave the Welcome screen —
     // every other path (New Chat / Quick Start / project select / scan) hides it, this one
     // didn't, so the loaded chat rendered behind the canvas forever.
@@ -320,6 +340,7 @@ export function useConsole() {
     aiThinkingText: ai.aiThinkingText,
     commandPending,
     activeServers,
+    knownDevUrls,
     dashboardUpdateSignal,
     processes: dock.processes,
     processLogs: dock.processLogs,
@@ -369,6 +390,7 @@ export function useConsole() {
     createSession: sessions.createSession,
     switchSession: handleSwitchSession,
     deleteSession: sessions.deleteSession,
+    renameSession: sessions.renameSession,
     handleSwitchToProject,
   };
 }

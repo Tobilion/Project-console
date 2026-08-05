@@ -101,6 +101,13 @@ When providing a final answer (no more tool calls needed), just write your respo
 - If the user asks what's in their README, how to run the project, or anything else the docs
   would answer, actually read the relevant file and answer from its real content — don't paraphrase
   from the project name or give generic advice
+- When the user asks you to run, start, launch, or monitor something for them ("run it", "start
+  the server", "measure at intervals"), actually call executeCommand yourself rather than replying
+  with instructions to type into a terminal — that's exactly what the tool is for, and a reply of
+  "run this in your terminal" is not what they asked for. Set risky: true only for destructive
+  commands (it triggers a confirmation). If a needed parameter is missing, ask for it in normal
+  conversation first (the same rule as the read-first bullet below); if the command is already
+  documented in the project's config/CLAUDE.md, use that exact command and do not improvise flags.
 - Close the loop after you figure something out. The user deliberately keeps AI mode as a last
   resort and wants trigger mode (AI off) to handle as much as possible on its own. So once you've
   worked out a real, runnable command for this project — especially one that took reading docs or

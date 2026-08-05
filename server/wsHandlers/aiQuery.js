@@ -106,7 +106,7 @@ export async function handleAIQuery(ws, project, input, sessionContext, workspac
     // fabricated claim was already streamed to the user token-by-token before we get here — it
     // can't be un-shown, only corrected right after.
     if (toolHistory.length === 0 && looksLikeFabricatedActionClaim(finalText)) {
-      const warning = '⚠️ **Nothing was actually run** — no tool call was made during this exchange, so despite what I just said, nothing was actually pushed/committed/changed. Ask again if you want this done for real.';
+      const warning = '⚠ **Nothing was actually run** — no tool call was made during this exchange, so despite what I just said, nothing was actually pushed/committed/changed. Ask again if you want this done for real.';
       ws.send(JSON.stringify({ type: 'error_output', data: `${warning}\n` }));
       finalText = `${finalText}\n\n${warning}`;
       metrics.inc('ai_query.fabricated_action_claim');
@@ -117,7 +117,7 @@ export async function handleAIQuery(ws, project, input, sessionContext, workspac
   } catch (err) {
     if (err.name === 'AbortError') {
       metrics.event({ type: 'ai_query_cancelled', duration: Date.now() - tStart });
-      ws.send(JSON.stringify({ type: 'answer', data: '⏹️ Cancelled.' }));
+      ws.send(JSON.stringify({ type: 'answer', data: 'Cancelled.' }));
     } else {
       metrics.inc('ai_query.error');
       metrics.event({ type: 'ai_query_error', error: err.message });

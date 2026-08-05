@@ -74,7 +74,7 @@ export const contextIndexHandlers = {
     if (!idx || !idx.hasTests) {
       ws.send(JSON.stringify({ type: 'answer', data: `No tests detected for **[${project.name}]**.` }));
     } else {
-      let msg = `### Tests [${project.name}]\n\n✅ Test files detected.\n`;
+      let msg = `### Tests [${project.name}]\n\n✓ Test files detected.\n`;
       if (idx.fileSample) {
         const testFiles = idx.fileSample.filter((f) =>
           f.includes('test') || f.includes('spec') || f.includes('.test.')

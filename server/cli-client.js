@@ -1,5 +1,9 @@
 import WebSocket from 'ws';
 import readline from 'readline';
+import * as p from '@clack/prompts';
+import chalk from 'chalk';
+import boxen from 'boxen';
+import figlet from 'figlet';
 
 // Mirrors server/index.js's own PORT..PORT+9 fallback range — if something else already had
 // BASE_PORT (a stale console instance, another dev server, anything), the real server may have
@@ -24,6 +28,11 @@ const C = {
   bgBlue: '\x1b[44m',
 };
 
+// @clack/prompts requires an interactive TTY (raw-mode input) and throws on piped/redirected
+// stdin, so every clack call below is gated on this and falls back to the plain readline
+// implementations the CLI had before — those still work in non-interactive shells.
+const isTTY = Boolean(process.stdin.isTTY && process.stdout.isTTY);
+
 function stripMarkdown(text) {
   return text.replace(/\*\*(.+?)\*\*/g, '$1').replace(/`(.+?)`/g, '$1').replace(/### /g, '');
 }
@@ -46,8 +55,9 @@ async function tryFetchProjects(port) {
  * registration, Vite middleware setup, and the embedding model used by semanticMatcher.js all
  * take real time) or if it had fallen back off BASE_PORT.
  */
-async function discoverServer() {
+async function discoverServer(onCycle) {
   const deadline = Date.now() + CONNECT_TIMEOUT_MS;
+  const startedAt = Date.now();
   let printedDots = false;
   while (Date.now() < deadline) {
     for (let i = 0; i < MAX_PORT_ATTEMPTS; i++) {
@@ -57,12 +67,43 @@ async function discoverServer() {
         return result;
       }
     }
-    process.stdout.write('.');
-    printedDots = true;
+    // TTY path: main() drives a @clack/prompts spinner via this callback; the non-TTY path
+    // keeps the original dot-printing so piped/redirected output stays readable.
+    if (onCycle) {
+      onCycle(Math.floor((Date.now() - startedAt) / 1000));
+    } else {
+      process.stdout.write('.');
+      printedDots = true;
+    }
     await new Promise((r) => setTimeout(r, RETRY_INTERVAL_MS));
   }
   if (printedDots) process.stdout.write('\n');
   return null;
+}
+
+// TTY: interactive arrow-key select via @clack/prompts. Clack only accepts listed options, so
+// the confirmed-live 2026-07-30 bug class ("anything that wasn't an in-range number silently
+// resolved to projects[0] with zero feedback") can't happen here; Esc/Ctrl+C cancels cleanly.
+// Non-TTY (piped/CI stdin): clack throws without a TTY, so fall back to the numbered readline
+// picker, which keeps the exact re-ask behavior that fixed that 2026-07-30 report.
+function selectProject(projects) {
+  return isTTY ? selectProjectInteractive(projects) : selectProjectLegacy(projects);
+}
+
+async function selectProjectInteractive(projects) {
+  const selected = await p.select({
+    message: 'Select a project to open in CLI session:',
+    options: projects.map((proj) => ({
+      value: proj,
+      label: proj.name,
+      hint: chalk.dim(proj.path),
+    })),
+  });
+  if (p.isCancel(selected)) {
+    p.cancel('CLI Session cancelled.');
+    process.exit(0);
+  }
+  return selected;
 }
 
 // Confirmed live 2026-07-30 (real transcript): typing anything that wasn't a valid in-range
@@ -71,7 +112,7 @@ async function discoverServer() {
 // feedback. That's how a session ended up on the wrong project with no visible error at all: the
 // user thought they'd typed a chat message or picked project #11, but actually got whichever
 // project happened to be first in the list. Now it re-asks instead of ever guessing.
-function selectProject(projects) {
+function selectProjectLegacy(projects) {
   return new Promise((resolve) => {
     // crlfDelay: Infinity — without it, Node's readline docs warn that an interface can emit
     // TWO 'line' events for one Enter press if the \r and \n bytes of a Windows-style line ending
@@ -128,22 +169,51 @@ function findProjectFromArgs(projects) {
 
 async function main() {
   console.clear();
-  console.log(`\n${C.bgBlue}${C.bold}  Local Project Console — CLI Chat  ${C.reset}\n`);
+  if (isTTY) {
+    console.log(chalk.cyan(figlet.textSync('PROJECT CONSOLE', { horizontalLayout: 'full' })));
+    console.log(
+      boxen(chalk.dim('Local Project Engine — Offline Project & AI Assistant'), {
+        padding: { left: 2, right: 2 },
+        margin: { bottom: 1 },
+        borderStyle: 'round',
+        borderColor: 'cyan',
+      })
+    );
+  } else {
+    console.log(`\n${C.bgBlue}${C.bold}  Local Project Console — CLI Chat  ${C.reset}\n`);
+  }
   console.log(`${C.dim}Tip: skip the picker next time with --dir "<full project path>" or --project "<name>".${C.reset}`);
-  console.log(`${C.dim}Connecting (checking ports ${BASE_PORT}-${BASE_PORT + MAX_PORT_ATTEMPTS - 1}, retrying for up to ${CONNECT_TIMEOUT_MS / 1000}s)...${C.reset}`);
 
-  const discovered = await discoverServer();
+  const spinner = isTTY ? p.spinner() : null;
+  if (spinner) {
+    spinner.start(`Connecting to local server (ports ${BASE_PORT}-${BASE_PORT + MAX_PORT_ATTEMPTS - 1})...`);
+  } else {
+    console.log(`${C.dim}Connecting (checking ports ${BASE_PORT}-${BASE_PORT + MAX_PORT_ATTEMPTS - 1}, retrying for up to ${CONNECT_TIMEOUT_MS / 1000}s)...${C.reset}`);
+  }
+
+  const discovered = await discoverServer(
+    spinner
+      ? (elapsed) => spinner.message(`Still connecting (${elapsed}s elapsed, checking ports ${BASE_PORT}-${BASE_PORT + MAX_PORT_ATTEMPTS - 1})...`)
+      : null
+  );
   if (!discovered || discovered.projects.length === 0) {
-    console.log(`${C.red}✖ Could not connect to a server on ports ${BASE_PORT}-${BASE_PORT + MAX_PORT_ATTEMPTS - 1}${C.reset}`);
+    if (spinner) spinner.stop(chalk.red(`✖ Could not connect to a server on ports ${BASE_PORT}-${BASE_PORT + MAX_PORT_ATTEMPTS - 1}`));
+    else console.log(`${C.red}✖ Could not connect to a server on ports ${BASE_PORT}-${BASE_PORT + MAX_PORT_ATTEMPTS - 1}${C.reset}`);
     console.log(`${C.yellow}  Make sure "npm run dev" is running (or still finishing startup), then try again.${C.reset}`);
     process.exit(1);
   }
 
   let { projects, port: PORT } = discovered;
+  // Stop the spinner BEFORE the port-collision note so stdout writes don't interleave with the
+  // still-animating spinner line (clack owns that line until .stop()).
+  if (spinner) {
+    spinner.stop(chalk.green(`✔ Connected to Local Engine on port ${PORT}`));
+  } else {
+    console.log(`${C.green}✔ Connected.${C.reset}`);
+  }
   if (PORT !== BASE_PORT) {
     console.log(`${C.yellow}Note: server is on port ${PORT}, not ${BASE_PORT} (something else had ${BASE_PORT}).${C.reset}`);
   }
-  console.log(`${C.green}✔ Connected.${C.reset}`);
 
   let project = findProjectFromArgs(projects) || (projects.length === 1 ? projects[0] : await selectProject(projects));
 
@@ -306,7 +376,7 @@ async function main() {
         });
         break;
       case 'ai_start':
-        process.stdout.write(`${C.yellow}🧠 ${msg.data || 'AI thinking...'}${C.reset}\n`);
+        process.stdout.write(`${C.yellow}${msg.data || 'AI thinking...'}${C.reset}\n`);
         break;
       case 'tool_start':
         if (msg.data) process.stdout.write(`${C.dim}${msg.data}${C.reset}\n`);

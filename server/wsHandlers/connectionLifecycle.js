@@ -67,13 +67,13 @@ function onConnection(ws) {
         // AI-mode tool trace ("Running: ..." / "Requesting approval ...") — previously never
         // persisted, so a reloaded AI session lost every tool line. Mirrors the live system
         // message formatting from useConsole.ts's tool_start case.
-        appendMessage(sessionContext.currentSessionId, { role: 'system', content: `⚙️ ${parsed.data}` }).catch(() => {});
+        appendMessage(sessionContext.currentSessionId, { role: 'system', content: `⚙ ${parsed.data}` }).catch(() => {});
       } else if (sessionContext.currentSessionId && parsed.type === 'tool_result' && parsed.data && parsed.data.tool && !parsed.data.error) {
         const r = parsed.data.result;
         const resultStr = typeof r === 'string' ? r : JSON.stringify(r, null, 2);
         appendMessage(sessionContext.currentSessionId, {
           role: 'system',
-          content: `🔧 Tool: ${parsed.data.tool}\n${resultStr.slice(0, 500)}${resultStr.length > 500 ? '…' : ''}`,
+          content: `⚙ Tool: ${parsed.data.tool}\n${resultStr.slice(0, 500)}${resultStr.length > 500 ? '…' : ''}`,
         }).catch(() => {});
       }
     } catch {}

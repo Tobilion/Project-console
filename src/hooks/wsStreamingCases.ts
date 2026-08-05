@@ -47,6 +47,8 @@ export const streamEndCase: WsCaseHandler = (ctx, payload) => {
     ctx.sessions.setMessages(prev => prev.map(m => m.id === streamId ? { ...m, content: m.content + content } : m));
   }
   if (ctx.wsRef.current) (ctx.wsRef.current as any)._streamId = null;
+  // The AI turn is over — the next 'ai_start' re-arms the auto-expand flag.
+  ctx.ai.setAiQueryInFlight(false);
   // The placeholder bot message opened by stream_start carries `streaming: true` and was
   // never cleared on stream_end. If the stream produced zero tokens at all, that message
   // would otherwise stay as an empty bubble (real NetPulse transcript bug) — replace it

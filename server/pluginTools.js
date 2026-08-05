@@ -5,7 +5,7 @@ import { isCommandBlocked } from './dangerousPatterns.js';
 
 const MANIFEST_FILENAME = 'console.tools.json';
 
-// Phase 5 (2026-08-03, console-chitchat-ai-upgrade-prompt.md PASS 5.1): an optional top-level
+// Phase 5 (2026-08-03, PASS 5.1): an optional top-level
 // `permissions` object in console.tools.json lets a project relax (or tighten) the per-tool
 // AI-mode confirmation flow. Defaults are unchanged (everything 'ask'); this is strictly opt-in
 // per-project, and executeCommand can NEVER leave 'ask' — `risky: true` commands stay gated

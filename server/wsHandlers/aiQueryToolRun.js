@@ -1,6 +1,6 @@
 import crypto from 'crypto';
 import { createProjectTools, resolveToolGate, isCommandAllowed } from '../tools.js';
-import { executeCommand } from '../executor.js';
+import { executeCommand, runningProcesses } from '../executor.js';
 import { createCheckpoint } from '../gitSafety.js';
 import { isCommandBlocked } from '../dangerousPatterns.js';
 import { pendingToolConfirmations } from '../state.js';
@@ -43,8 +43,24 @@ export async function runGatedExecuteCommand(ws, project, args) {
     cmdPromise,
     new Promise(resolve => setTimeout(() => resolve({ timeout: true }), TIMEOUT_MS))
   ]);
+  // Real PID of the tracked process (if it's still running after the race) — the model was
+  // previously left to invent one ("Background process started (PID 9128)" was a guess in a
+  // real NetPulse chat, and the user rightly had no way to verify). Only the truth is sent.
+  const trackedPid = project?.id ? runningProcesses.get(project.id)?.child?.pid ?? null : null;
   if (result?.timeout) {
-    return { success: true, data: { code: null, timeout: true, message: 'Command started (long-running process detached after 6s timeout).' } };
+    return {
+      success: true,
+      data: {
+        code: null,
+        timeout: true,
+        pid: trackedPid,
+        running: true,
+        message: trackedPid ? `Command started in the background (PID ${trackedPid}).` : 'Command started (long-running process detached after 6s timeout).',
+      },
+    };
+  }
+  if (result?.success && trackedPid) {
+    if (result.data) result.data.pid = trackedPid;
   }
   // Confirmed live 2026-07-29 (requested directly): the system prompt already tells the model to
   // offer saving a newly-discovered command into console.config.json, but that was left entirely

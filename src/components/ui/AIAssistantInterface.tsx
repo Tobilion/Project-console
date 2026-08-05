@@ -9,6 +9,10 @@ interface AIAssistantProps {
   onDeepResearch?: (query: string) => void;
   disabled?: boolean;
   placeholder?: string;
+  /** Live snapshot of the same per-project command history the trigger-mode input uses —
+   *  read at keydown time so it never goes stale. The terminal owns the array (pushHistory
+   *  on send); this component only navigates it with ↑/↓. */
+  getHistory?: () => string[];
 }
 
 // Files larger than this aren't useful to paste into a local model's context window —
@@ -21,7 +25,7 @@ interface UploadedFile {
   content: string;
 }
 
-export function AIAssistantInterface({ onSend, onSearch, onDeepResearch, disabled, placeholder }: AIAssistantProps) {
+export function AIAssistantInterface({ onSend, onSearch, onDeepResearch, disabled, placeholder, getHistory }: AIAssistantProps) {
   const [inputValue, setInputValue] = useState('');
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
@@ -29,6 +33,10 @@ export function AIAssistantInterface({ onSend, onSearch, onDeepResearch, disable
   const [isReadingFile, setIsReadingFile] = useState(false);
   const [activeFeature, setActiveFeature] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  // ↑/↓ navigation over the shared per-project history (same pattern as Terminal.tsx's
+  // commandHistory refs, local copies so the AI input's own draft is never clobbered).
+  const historyIndex = useRef(-1);
+  const savedInput = useRef('');
 
   const suggestions: Record<string, string[]> = {
     projects: ['Give me an overview of this project', 'What is the tech stack?', 'What are the known gotchas?', 'Show me the project structure'],
@@ -59,6 +67,30 @@ export function AIAssistantInterface({ onSend, onSearch, onDeepResearch, disable
       setUploadedFiles([]);
       setActiveCategory(null);
       setActiveFeature(null);
+      historyIndex.current = -1;
+      savedInput.current = '';
+    }
+  };
+
+  const navigateHistory = (direction: 'up' | 'down') => {
+    const history = getHistory ? getHistory() : [];
+    if (history.length === 0) return;
+    if (direction === 'up') {
+      if (historyIndex.current === -1) {
+        savedInput.current = inputValue;
+      }
+      if (historyIndex.current < history.length - 1) {
+        historyIndex.current++;
+        setInputValue(history[history.length - 1 - historyIndex.current]);
+      }
+    } else {
+      if (historyIndex.current > 0) {
+        historyIndex.current--;
+        setInputValue(history[history.length - 1 - historyIndex.current]);
+      } else {
+        historyIndex.current = -1;
+        setInputValue(savedInput.current);
+      }
     }
   };
 
@@ -104,6 +136,11 @@ export function AIAssistantInterface({ onSend, onSearch, onDeepResearch, disable
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleSend();
+    } else if ((e.key === 'ArrowUp' || e.key === 'ArrowDown') && !e.shiftKey) {
+      // AI mode previously had no ↑/↓ past-message recall (only the trigger input did) —
+      // reported directly in a NetPulse session. Same history, same navigation.
+      e.preventDefault();
+      navigateHistory(e.key === 'ArrowUp' ? 'up' : 'down');
     }
   };
 

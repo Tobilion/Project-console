@@ -67,7 +67,7 @@ export const contextRuntimeHandlers = {
       ws.send(JSON.stringify({ type: 'answer', data: `No dev-server URLs are known for any project right now, and none of the ports its \`package.json\` scripts reference are responding either. Start something with "run the site" first, then scan again.` }));
     } else {
       const lines = found.map((f) =>
-        `- **[${f.projectName}]** ${f.url} — ${f.alive ? `✅ responding${f.status ? ` (HTTP ${f.status})` : ''}${f.viaCandidate ? ' *(found by probing its package.json ports — not previously recorded)*' : ''}` : `❌ not responding${f.viaCandidate ? ' *(candidate port from its package.json)*' : ''}`}`
+        `- **[${f.projectName}]** ${f.url} — ${f.alive ? `✓ responding${f.status ? ` (HTTP ${f.status})` : ''}${f.viaCandidate ? ' *(found by probing its package.json ports — not previously recorded)*' : ''}` : `✖ not responding${f.viaCandidate ? ' *(candidate port from its package.json)*' : ''}`}`
       ).join('\n');
       const liveCount = found.filter((f) => f.alive).length;
       ws.send(JSON.stringify({ type: 'answer', data: `### Server scan (${liveCount}/${found.length} alive)\n\n${lines}\n\nServers started outside the console (or before a restart) show as not console-tracked — I can only probe their URLs, not stop them.` }));

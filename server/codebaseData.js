@@ -30,7 +30,7 @@ const MAX_ENTRY_SNIPPETS = 2;
 const ENTRY_SNIPPET_CHARS = 1500;
 
 // --- Repo map (Aider-style whole-project signature summary) ---
-// LOCAL_ROUTER_UPGRADE_PROMPT.md piece 2: entrySnippets above only covers 1-2 entry-point files,
+// entrySnippets above only covers 1-2 entry-point files,
 // so even the router/full-AI-mode model has no idea "the config file" or "that component" exists
 // unless it happens to be an entry point. This is a cheap regex-based export/function/class name
 // extractor across the *whole* project (no new parser dependency), small enough to fit in a
