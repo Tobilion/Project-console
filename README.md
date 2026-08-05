@@ -274,6 +274,7 @@ harness (real modules, real embeddings), `npm run check-intents`, and `npm run l
 | 3 | `system.chit_chat.needs_ai_mode`, `git_stash_list` | Done (harness-verified, not yet live-chat-verified) |
 | 2 (chit-chat) | `system.chit_chat.ack`, `system.chit_chat.joke`, widened pools + time-of-day | Done (harness-verified) |
 | 3 (basics) | `open_in_vscode`, `open_in_explorer`, `open_site`, `copy_path`, `git_remote_info`, `running_processes`, `session_info` | Done (harness-verified, not yet live-chat-verified) |
+| 16 | `open_in_terminal`, `open_github_page`, `open_in_cursor`, `open_file` | Done (harness-verified, not yet live-chat-verified) |
 | 4 | Close-out: CLAUDE.md consolidation, live `check collisions`, final summary | Done |
 
 **Phase 1 (2026-08-03):**
@@ -500,6 +501,23 @@ channel. See CLAUDE.md for the per-phase module maps and verification numbers.
   the `vscode://file/<path>` protocol (works with a normal VS Code install, no PATH setup) and
   says honestly what it did.
 
+**Phase 16 — four more "open in..." actions (2026-08-05):** all server-side, no new WS message
+types. Registered in `BUILTIN_INTENTS` (79 → 83 intents, 2271 → 2312 phrases).
+- **`open_in_terminal`** — terminal at the project folder (`cmd /K cd /d` on Windows,
+  Terminal.app on macOS, `x-terminal-emulator` on Linux); on failure, manual `cd` guidance.
+- **`open_github_page`** — `git remote get-url origin` → `normalizeGithubPageUrl()` (handles
+  `git@`, `ssh://`, `git://`, `https` shapes) → browser. Non-git/no-origin/non-GitHub → honest
+  guidance.
+- **`open_in_cursor`** — `cursor <path>`; ENOENT → manual guidance (no `cursor://` scheme).
+- **`open_file`** — "open main.py" / "open the config file": loose name parse → sandboxed
+  `findFiles()` → VS Code CLI, then `vscode://` protocol, then guidance. A narrow
+  `PRE_SEMANTIC_OVERRIDE` routes open-verb + file-shaped nouns here (file_read/file_find owned
+  the read/locate clusters; exclusions keep explorer/site/github/vscode/cursor territory).
+- Verified: check-matcher 83/83 (+5 BASICS rows), check-handlers 26/26 (+2 dispatch, +9
+  normalizer cases), check-tools 92/92, check-indexer 71/71, check-intents baseline +1
+  documented near-dup, lint clean, 20-input open-family embedding probe. Not yet live-chat-
+  verified.
+
 ## Architecture
 
 ```
@@ -516,7 +534,7 @@ server/
 ├── semanticMatcher.js         — Embedding + Fuse.js matching engine + PRE_SEMANTIC_OVERRIDES.
 ├── localRouter.js             — Bounded, single-call local-model classification tier (last
 │                                resort before giving up, independent of the AI-mode toggle).
-├── intentsData.js             — Merges 79 intents (~2,271 phrases) from server/intents/*.js.
+├── intentsData.js             — Merges 83 intents (~2,312 phrases) from server/intents/*.js.
 ├── scripts/checkIntentDuplicates.js — `npm run check-intents`: static exact/near-duplicate
 │                                phrase scanner, no server needed.
 ├── nlpEngine.js                — NLP.js classifier; retrains from confirmed near-miss promotions.

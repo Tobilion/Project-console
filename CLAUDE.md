@@ -2833,6 +2833,57 @@ Verification: lint clean; `npx vite build` clean; check-matcher 78/78; check-han
 (after calibration); `node --check` on the edited server file. NOT yet live-verified — restart
 the server and click through the four behaviors (dock toggle, home→history, link chip, vs code).
 
+## Phase 16 (2026-08-05, "what else can my console open a project in?" — commit `a9d67e5`)
+
+Answer to the question: four new trigger-mode open-in actions, all server-side (pure `answer`
+replies, no new WS message types, no frontend changes). All in `server/wsHandlers/builtinProjectActions.js`
+(111 → ~250 lines) + `server/intents/miscIntents.js` (4 clusters) + registered in `BUILTIN_INTENTS`
+(79 → 83 intents, 2271 → 2312 phrases). Intent counts elsewhere now stale: README's file map line
+("Merges 79 intents"), CLAUDE.md's Phase 13/14 modularization baselines (historical records, left
+as-is).
+
+- **`project.action.open_in_terminal`** — Windows: `cmd /K cd /d <path>` (always present, window
+  stays open); macOS: `open -a Terminal <path>`; Linux: `x-terminal-emulator --working-directory=`.
+  Best-effort: on spawn error the reply gives the manual `cd "<path>"` command instead.
+- **`project.action.open_github_page`** — `isGitRepo` gate → `execFile('git', ['remote',
+  'get-url', 'origin'])` (same non-streaming pattern as `cachedUncommittedCount`, no chat-output
+  noise) → new exported `normalizeGithubPageUrl()` (`git@host:` / `ssh://` / `git://` / `https`
+  shapes → `https://github.com/...` page, `.git` + trailing slashes stripped) → browser via the
+  `start`/`open`/`xdg-open` pattern. No repo / no origin / non-GitHub origin → honest guidance
+  ("Say 'show git remotes'..."), never fakes success.
+- **`project.action.open_in_cursor`** — mirror of the vscode handler: spawn `cursor <path>`;
+  ENOENT → manual guidance. NO `cursor://` protocol fallback (Cursor has no reliable
+  file-opening URI scheme like VS Code's documented `vscode://` one) — the honest reply is the
+  fallback.
+- **`project.action.open_file`** — "open main.py" / "open the config file": `parseFileNameOnly`
+  → sandboxed `findFiles()` → absolute resolve via `path.join(project.path, rel)` → editor chain
+  (VS Code CLI → `vscode://file/` protocol → manual guidance). No name → "Which file…?" ask; no
+  match → the same "try a different name" guidance file_read uses.
+- **New `PRE_SEMANTIC_OVERRIDES` entry** (`preSemanticOverrides.js`, the narrow-confirmed-traps
+  list): `^(?:open|open up|open me)\b` + file-shaped noun, with negative exclusions
+  (explorer/folder/directory/site/url/link/github/editor/browser/vs code/cursor). Needed because
+  `file_read` owns the "open file"/"open this file" seeds and `file_find` owns every
+  name-bearing locate shape (the filename dominates the vector — same trap as the
+  `file_relations` override), so "open main.py" / "open the config file" / "open a file" all
+  landed on read/locate. Deliberate, probe-verified consequence: the bare "open file" /
+  "open this file" seeds now route to open_file too (opening beats reading for an "open X" ask;
+  both handlers just ask "which file" when no name is present). Known edge (probe-verified):
+  "open the github workflow file" routes to open_github_page (github token excluded by design) —
+  a local file would be phrased "open the workflow yml file" (extension token wins).
+- **Harnesses:** `checkMatcherCoverage.js` +5 BASICS rows (83/83); `checkHandlerCoverage.js` +2
+  dispatch rows (open_github_page non-git gate answer, open_file no-name ask — terminal/cursor
+  spawn real processes so they're covered by the BIDIRECTIONAL gate only, same convention as
+  open_in_vscode) + a 9-case NORMALIZER battery (26/26 total). `check-intents`: baseline 1/5/80
+  +1 documented near-dup (`file_read` "open file" ~ `open_file` "open a file" — the deliberate
+  ownership boundary).
+- Verification: `node --check` per file, `npm run lint` clean, check-handlers 26/26,
+  check-matcher 83/83, check-tools 92/92, check-indexer 71/71, check-intents baseline +1
+  documented near-dup, plus a 20-input real-embedding probe of the open-family boundaries (all
+  owners' territory intact: explorer/folder → open_in_explorer, editor → open_in_vscode, dev
+  site → open_site, vs code/cursor → their own, "open the site" still run_project). NOT yet
+  live-chat-verified — restart the server and try the four actions; the running server also
+  still predates Phase 15.
+
 ## Conventions
 
 - No file over ~400 lines; split by concern (see `server/wsHandlers/` for the pattern).
