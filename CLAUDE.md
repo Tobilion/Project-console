@@ -216,7 +216,11 @@ the AI-mode input bar (real file upload via `FileReader`, Search/Reason/Deep Res
   startup. No new confirmation flow was needed; it rides the exact same auto-apply path that
   already existed for the old heuristic. Below 12 labeled examples, `learnedFloor()` returns
   `null` and every call site falls through to exactly the original heuristic — zero behavior
-  change for a fresh install or a low-usage project.
+  change for a fresh install or a low-usage project. **One exception, added 2026-08-05 (commit
+  `4f1235d`): `PURE_CHITCHAT_INTENTS` members are clamped to ≥ 0.5 no matter what the model
+  recommends** — a trained model ratcheting canned chit-chat floors to 0.35 silently defeated the
+  garbled-input invariant (see "Learned-floor chit-chat clamp" below); non-chit-chat intents are
+  fully data-driven as described here.
 - Retrains automatically in two places: once on every server startup (`index.js`, right before the
   threshold auto-apply sweep so that sweep uses the freshest model) and fire-and-forget
   immediately after every new confirm/reject response (`connection.js`), so the model keeps
@@ -2536,6 +2540,66 @@ Import graph is one-directional: shim → lifecycle → routes → execute/confi
   token, tool_call missing/readFile/blocked. Not yet verified through a live chat session
   (WS-layer wiring is verbatim-moved; fake-ws precedent same as Phase 10).
   Remaining giants: executor.js 507, useConsole.ts 747 (future phases).
+
+## Phase 12 (2026-08-05, executor.js split — commits `b3a566c`/`be0028a`, all harness-verified)
+
+`server/executor.js` 507 → ~164 lines of pure orchestration (`executeCommand` + private
+`rewriteVenvPython`); re-exports `runningProcesses, processLogs, getProcessLog,
+stopTrackedProcess` so every external importer (monitoringRoutes, toolProcess, builtin*,
+connection*) is untouched. Four new leaf modules, all logic moved verbatim:
+
+- **`executorOutput.js`** — `ANSI_RE`/`URL_PATTERN` (private), `collapseLfCrlfWarnings()`,
+  `createBufferedSender()` (the 150ms coalescing sender from the 2026-07-29 LF/CRLF fix).
+- **`executorPorts.js`** — `PORT_PROMPT_RE`, `extractBusyPort()`, `buildPortRetryCommand()`,
+  `buildPortPromptConfirmation()` (returns true when an interactive port prompt was found +
+  confirmation queued), `offerPortRetry()` (returns true when a retry confirmation was queued);
+  imports `pendingConfirmations` from `state.js`.
+- **`executorProcesses.js`** — the `runningProcesses` + `processLogs` maps, `LineRingBuffer`
+  (2000-line cap), `MAX_LOG_LINES` (exported), `getProcessLog()`, `stopTrackedProcess()` (the
+  single kill+cleanup path from Phase 6), process.on('exit'/'SIGTERM') cleanup; imports
+  `forgetDevUrl` + `broadcast`.
+- **`executorDevServer.js`** — `isDevServerCommand()`, `buildDetachMessage()`.
+
+Preserved behaviors (each with its historical fix comment): detach clears both timers + flushes
+senders, URL detect → server_url + recordDevUrl + broadcasts + 500ms grace, port prompt cancels
+the force-detach timer, close skips map-delete when detached (Matchday fix), 10s/20s force-detach
+(NetPulse fix), summarizeCommandOutput answer, port-retry offer, truncated resolve.
+
+Verification: live-checked FIRST per the user's explicit choice (Phase 11 confirmed complete via
+a real-server + real-WS smoke, 13/13, before any executor change); `node --check` per leaf;
+import smoke 119/119 (up from 115); phase2 harness 2/2 + phase6 harness 18/18 against the split;
+new `smoke-executor.mjs` (temp, real split modules + fake ws + mkdtemp fixture dirs — the
+dev-server-shape commands must be `node server.js`-style paths, not absolute paths with the
+script name mid-path — 50/50: LF/CRLF collapse + pure-summary warning reroute, port extraction/
+retry shapes, ring-buffer chunk-split/cap/tail, dev-server detection + detach messages, venv
+rewrite via fake venv python.exe = node.exe, fast-exit single-end + no phantom, EADDRINUSE retry
+prompt, interactive port prompt → stdinWrite 'n\n' → exit 2, URL detect → detach →
+detached-close preserves map entry → stopTrackedProcess → double-stop, getProcessLog replay).
+Windows harness gotcha (pre-existing): the phase2 harness never exits on its own because the
+orphaned `python -m http.server` inherits node's stdio pipes — run via Start-Process + timeout +
+force-kill, then kill the orphan python.
+
+## Learned-floor chit-chat clamp (2026-08-05, confirmed live via the GARBAGE battery, commit `4f1235d`)
+
+- **The trained confidence model's `learnedFloor()` ratcheted every high-match intent to 0.35 —
+  including zero-argument canned chit-chat — silently defeating the garbled-input invariant.**
+  The model crossed `MIN_LABELED` (12) on 2026-08-04 21:55 (Phase 11's smoke-connection labels,
+  20 samples); the next server boot's `autoApplyThresholdsForAll()` wrote ~60 intents to floor
+  0.35 (persisted in `data/telemetry/thresholds.json`), and check-matcher's GARBAGE battery
+  dropped to 77/78: keyboard mash "asdfghjkl" (measured cosine 0.386 vs status's phrase cluster,
+  previously below the floor) dispatched to a confident canned "console status" reply instead of
+  FALLBACK. Not a matcher regression (semanticMatcher/intents untouched — the score was always
+  there) and not a Phase-12 regression (executor is orthogonal): a latent safety gap in the
+  Stage-1 learning layer's floor-lowering path, first boot with a trained model.
+- **Fixed (user-approved: clamp, don't reset/accept):** `suggestThresholds()` (`intentTelemetry.js`)
+  now clamps `recommendedFloor` to ≥ `CHITCHAT_FLOOR_MIN` (0.5) for `PURE_CHITCHAT_INTENTS`
+  members (canned zero-argument replies — never a plausible match for out-of-distribution input;
+  the same set that carries the 2026-07-29 garbled-input guard). Non-chit-chat intents keep the
+  fully data-driven floor — that part of the Stage-1 design is untouched. The 7 chit-chat 0.35
+  overrides were removed from `thresholds.json`; verified live that the next boot re-derives them
+  to exactly 0.5 (clamp equilibrium) while non-chit-chat stayed 0.35, and check-matcher is back
+  to 78/78. Note the clamp is scoped to `PURE_CHITCHAT_INTENTS` exactly as approved — `help` and
+  `git_status` are NOT members of that set and keep data-driven floors.
 
 
 ## Matchday Exchange transcript fixes (2026-08-04, reported directly — 4 bugs, 4 commits)
