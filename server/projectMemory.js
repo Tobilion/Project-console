@@ -1,6 +1,6 @@
 import fs from 'fs';
 import path from 'path';
-import { queueMemoryWrite, loadMemory } from './memoryStore.js';
+import { queueMemoryWrite, loadMemory } from './projectMemoryStore.js';
 import { checkThresholds } from './memoryThresholdChecks.js';
 import { QUESTION_THRESHOLD } from './memoryThresholds.js';
 

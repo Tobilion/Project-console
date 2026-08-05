@@ -1,5 +1,5 @@
 import { QUESTION_THRESHOLD, COMMAND_THRESHOLD, FILE_EDIT_THRESHOLD, adaptiveThreshold } from './memoryThresholds.js';
-import { loadMemory, saveMemory } from './memoryStore.js';
+import { loadMemory, saveMemory } from './projectMemoryStore.js';
 
 export function checkThresholds(projectPath, memory) {
   const mem = memory || loadMemory(projectPath);
