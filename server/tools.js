@@ -13,6 +13,9 @@ import { webSearch, deepResearch } from './webSearch.js';
 import { isProbeableUrl } from './urlSafety.js';
 import { walkDir, isTextFile, getProjectFiles } from './toolScan.js';
 import { applySingleEdit } from './toolEdit.js';
+import { isCommandAllowed, ALLOWED_COMMANDS } from './toolAllow.js';
+
+export { isCommandAllowed, ALLOWED_COMMANDS };
 
 const require = createRequire(import.meta.url);
 const RE2 = require('re2');
