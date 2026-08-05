@@ -2285,6 +2285,19 @@ zero behavior change; one commit per phase; lint + check-intents must stay green
   (threshold logic) → 98 lines; learningEngine.js split via `server/nearMissIntentMap.js`
   (near-miss → intent mapping) → 149 lines. These three commits happened after the
   Phases 1–3 docs above were written and were never recorded here until this entry.
+  **Correction, found 2026-08-04 by Phase 8's import smoke (commit `9740613` was
+  broken since it landed):** the 4a projectMemory split *overwrote* `memoryStore.js`
+  wholesale with the JSON storage (`project-memory.json`, loadMemory/saveMemory/
+  queueMemoryWrite), silently deleting the memory.md AI-memory exports
+  (`readMemory`/`formatMemoryForPrompt`/`appendMemoryEntry`) that `tools.js`'s
+  `saveMemory` tool and `ollamaContext.js`/`builtinIntents.js`'s system-prompt memory
+  injection import — the server could not start (`The requested module
+  './memoryStore.js' does not provide an export named 'appendMemoryEntry'`). Fixed in
+  `8e10090`: memory.md store restored verbatim to `memoryStore.js` (from `623a2f7`),
+  JSON storage moved to its own `server/projectMemoryStore.js`, imports updated in
+  `projectMemory.js`/`memoryThresholdChecks.js`. Lesson: any future split that replaces
+  a module's file content must be checked for *every* external importer of that module
+  (this one was verified only via lint, which doesn't check export names).
 - **Phase 5 (2026-08-04, 5 commits `497e9df` → `9a88785`) — semanticMatcher.js
   modularization.** Detailed in "Matching pipeline gotchas" above (module map:
   preSemanticOverrides/keywordRules/matcherStages/intentVectorScan + the `check-matcher`
@@ -2327,7 +2340,38 @@ zero behavior change; one commit per phase; lint + check-intents must stay green
   (byte-identical to the pre-split run), lint clean, check-intents baseline (1/5/80), import
   smoke. Only the giants remain out of scope for the split series: tools.js 770,
   builtinIntents.js 1732, connection.js 1274, executor.js 507, codebaseIndexer.js 749,
-  useConsole.ts 747.
+  useConsole.ts 747 (codebaseIndexer since done — see Phase 8).
+- **Phase 8 (2026-08-04, codebaseIndexer.js split — 5 commits `138853a` → `baa6ff0`).**
+  `server/codebaseIndexer.js` 749 → ~185 lines of pure orchestration (keyFileCache/
+  repoMapFileCache, readKeyFiles, readEntrySnippets, buildRepoMap, formatRepoMap,
+  formatApiRoutes, indexProject); four new leaf modules, all logic moved verbatim and
+  importing only codebaseData + node builtins (no cycles): `server/codebaseData.js`
+  (36 exports — IGNORE_DIRS/KEY_FILES/ENTRY_NAMES/CODE_EXTS/REAL_CODE_EXTS/
+  AST_CAPABLE_EXTS, 8 signature-pattern sets, import/route regexes, framework maps,
+  MONOREPO_MANIFESTS, MAX_* caps), `server/codebaseParsers.js` (getTsModule with
+  module-level tsModulePromise state, scriptKindFor, namesFromTsStatement,
+  extractSignaturesViaAst, extractSignatures, extractImports, extractRoutes,
+  resolveLocalImport, buildReverseImportIndex, pathParts), `server/codebaseDetection.js`
+  (detectLanguages, hasRealCodeFiles, detectFrameworks, findEntryPoints,
+  detectSubPackages), `server/codebaseScans.js` (readProjectTree, hasGitRepo,
+  findTodos, findBiggestFiles, findRecentActivity). codebaseIndexer.js re-exports
+  `findTodos, findBiggestFiles, findRecentActivity, hasGitRepo` from codebaseScans so
+  all external importers are untouched: configInitializer.js/projectScanner.js/
+  routes/projectRoutes.js → `indexProject`, matcher.js → `formatRepoMap`,
+  promptRenderers.js → `formatRepoMap, formatApiRoutes`, builtinIntents.js →
+  `formatApiRoutes, findTodos, findBiggestFiles, findRecentActivity` (hasGitRepo has no
+  external importer today). New harness `npm run check-indexer` →
+  `server/scripts/checkIndexerCoverage.js` (same self-asserting pattern as
+  checkMatcherCoverage.js; `--probe` calibrator; seconds-fast, no embeddings/network):
+  71/71 checks across DATA/SIGNATURES/IMPORTS/ROUTES/DETECTION/INDEX/SCANS batteries,
+  fixture tree at `os.tmpdir()/console-indexer-fixtures` (cleaned in `finally`, `norm()`
+  strips Windows backslashes so expectations are portable). Run it after ANY edit to
+  codebaseIndexer.js or the four leaves. Verified: 71/71, check-matcher 78/78 (unchanged),
+  check-intents baseline (1/5/80), lint clean, full-process import smoke 86/86 (all
+  server modules — the same smoke that caught the memoryStore regression above; entrypoint
+  scripts cli-client.js/index.js/scripts/* are excluded since they run at import time).
+  Remaining giants: tools.js 770, builtinIntents.js 1732, connection.js 1274,
+  executor.js 507, useConsole.ts 747.
 - Verification: Phases 1–3 lint-clean; check-intents identical to baseline (1/5/80);
   import smoke + guessCommand battery pass. Phase 1 commit excludes the
   data/user-profile.json write (live dev server on :3000).
