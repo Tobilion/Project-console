@@ -14,17 +14,18 @@ import { StoredSession, TerminalMessage } from '../types';
  * user/error/warning and the ⚙️/🔧 system tool-trace lines stay plain exactly as they
  * rendered live.
  *
- * Command output (persisted as one role-'bot' message with isMarkdown:false, merged from the
- * 'start'/'output'/'end' stream) is mapped BACK to type 'output' so a reloaded chat renders
- * the collapsible terminal block it had live instead of a plain bubble (Phase 5, 2026-08-04).
+ * Command output (persisted as a role-'output' record since 2026-08-05, or legacy
+ * role-'bot' messages with isMarkdown:false merged from the 'start'/'output'/'end' stream) is
+ * mapped to type 'output' so a reloaded chat renders the collapsible terminal block it had live
+ * instead of a plain bubble (Phase 5, 2026-08-04; hardened Phase 14, 2026-08-05).
  * The 'Executing: ' prefix is produced by exactly one place in the server (executor.js's
- * 'start' event — verified by grep), so the check is safe even for legacy records that
+ * 'start' event — verified by grep), so the legacy check is safe even for records that
  * predate the isMarkdown flag.
  */
 export function storedToTerminalMessages(messages: StoredSession['messages']): TerminalMessage[] {
   return (messages || []).map((m) => {
     const isMarkdown = m.isMarkdown !== undefined ? m.isMarkdown : m.role === 'bot';
-    const isCommandOutput = m.role === 'bot' && m.content.trimStart().startsWith('Executing: ');
+    const isCommandOutput = m.role === 'output' || (m.role === 'bot' && m.content.trimStart().startsWith('Executing: '));
     return {
       id: m.id,
       type: isCommandOutput ? 'output' : (m.role as TerminalMessage['type']),

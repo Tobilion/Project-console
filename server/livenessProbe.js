@@ -15,41 +15,61 @@ const PORT_HINT_RES = [
   /(?:^|[;&])\s*PORT=(\d+)/i,
 ];
 
+// Default dev-server ports for projects that give NO port hint at all (2026-08-05, reported
+// directly — NetPulse is a pure-Python project with no package.json, so candidateDevUrls()
+// returned zero candidates and a live server the console never spawned was never found).
+// Ordered by popularity so the first 3 (the per-project cap) are the most likely hits:
+// Node 3000, Vite 5173, Flask 5000, Django/Plane 8000, react-scripts 3001, 8080, 4400, 8888.
+const COMMON_DEV_PORTS = [3000, 5173, 5000, 8000, 8001, 8080, 4400, 8888];
+
 // A project's package.json scripts is the most-current source of run-command truth (see the
 // 2026-08-03 ordering decision in CLAUDE.md), so a server started OUTSIDE the console that the
 // console never observed can be discovered by probing the ports its own scripts reference.
 export function candidateDevUrls(project) {
   const pkg = project?.codebaseIndex?.keyFiles?.['package.json'];
-  if (!pkg) return [];
-  let parsed;
-  try {
-    // readKeyFiles truncates at 2000 chars with a "\n... (truncated)" tail — strip before
-    // parse, same as detectFrameworks/findTestCommand (a large package.json otherwise breaks).
-    parsed = JSON.parse(pkg.replace(/\n\.\.\. \(truncated\)$/, ''));
-  } catch {
-    return [];
-  }
-  const scripts = parsed?.scripts;
-  if (!scripts || typeof scripts !== 'object') return [];
   const seen = new Set();
   const ports = [];
-  for (const value of Object.values(scripts)) {
-    if (typeof value !== 'string') continue;
-    for (const re of PORT_HINT_RES) {
-      const m = value.match(re);
-      if (m) {
-        const port = Number(m[1]);
-        // The console itself listens on state.serverPort — probing it would always return 200
-        // and falsely claim a project's site is up (SportSim Pro's vite --port=3000 collides
-        // with the console's own default; see state.js's withPortCollisionWarning).
-        if (Number.isInteger(port) && port > 0 && port <= 65535 && port !== state.serverPort && !seen.has(port)) {
-          seen.add(port);
-          ports.push(port);
-        }
-        if (ports.length >= 3) break;
-      }
+  const tryPort = (port) => {
+    // The console itself listens on state.serverPort — probing it would always return 200
+    // and falsely claim a project's site is up (SportSim Pro's vite --port=3000 collides
+    // with the console's own default; see state.js's withPortCollisionWarning).
+    if (Number.isInteger(port) && port > 0 && port <= 65535 && port !== state.serverPort && !seen.has(port)) {
+      seen.add(port);
+      ports.push(port);
+      return true;
     }
-    if (ports.length >= 3) break;
+    return false;
+  };
+  let parsed = null;
+  if (pkg) {
+    try {
+      // readKeyFiles truncates at 2000 chars with a "\n... (truncated)" tail — strip before
+      // parse, same as detectFrameworks/findTestCommand (a large package.json otherwise breaks).
+      parsed = JSON.parse(pkg.replace(/\n\.\.\. \(truncated\)$/, ''));
+    } catch {}
+  }
+  const scripts = parsed?.scripts;
+  if (scripts && typeof scripts === 'object') {
+    for (const value of Object.values(scripts)) {
+      if (typeof value !== 'string') continue;
+      for (const re of PORT_HINT_RES) {
+        const m = value.match(re);
+        if (m) {
+          tryPort(Number(m[1]));
+          if (ports.length >= 3) break;
+        }
+      }
+      if (ports.length >= 3) break;
+    }
+  }
+  // No port hints anywhere (no package.json, or scripts without --port/PORT=): fall back to
+  // the common default dev-server ports so Python/other no-manifest projects can still be
+  // found when a server the console never observed is genuinely live.
+  if (ports.length === 0) {
+    for (const port of COMMON_DEV_PORTS) {
+      tryPort(port);
+      if (ports.length >= 3) break;
+    }
   }
   return ports.map((port) => `http://localhost:${port}`);
 }

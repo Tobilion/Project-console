@@ -52,8 +52,15 @@ function onConnection(ws) {
         if (parsed.data) commandOutputBuffer += parsed.data;
         if (commandOutputBuffer.trim()) {
           // Raw command output — explicitly NOT markdown, so the renderer keeps the mono/plain
-          // treatment it had live in the output block.
-          appendMessage(sessionContext.currentSessionId, { role: 'bot', content: commandOutputBuffer.trim(), isMarkdown: false }).catch(() => {});
+          // treatment it had live in the output block. Phase 14: persisted as its own
+          // role-'output' record instead of a role-'bot' message, so a reloaded chat maps back
+          // to the collapsible terminal block directly (storedToTerminalMessages keeps the old
+          // 'Executing: '-prefix heuristic for legacy role-'bot' records).
+          appendMessage(sessionContext.currentSessionId, {
+            role: 'output',
+            content: commandOutputBuffer.trim(),
+            isMarkdown: false,
+          }).catch(() => {});
         }
         commandOutputBuffer = '';
       } else if (sessionContext.currentSessionId && parsed.type === 'tool_start' && parsed.data) {

@@ -34,6 +34,24 @@ function normalize(text) {
   return text.trim().toLowerCase().replace(/\s+/g, ' ');
 }
 
+// Phase 14 (2026-08-05, reported directly — saved entries were losing styling and carrying
+// tool-call/markdown artifacts): strip markdown formatting and code artifacts from a saved
+// memory entry so .console/memory.md stays a clean plain-text list of durable facts. Applied
+// before the length check AND the dedupe comparison, so re-saving the same fact with different
+// formatting is still deduplicated.
+function sanitizeMemoryEntry(content) {
+  return (content || '')
+    .replace(/```[\s\S]*?```/g, ' ')
+    .replace(/`([^`]*)`/g, '$1')
+    .replace(/[*_~]{1,3}([^*_~]+)[*_~]{1,3}/g, '$1')
+    .replace(/^#{1,6}\s+/gm, '')
+    .replace(/!?\[([^\]]*)\]\([^)]*\)/g, '$1')
+    .replace(/^\s*[>\-*+]\s+/gm, '')
+    .replace(/^\s*(\d+)[.)]\s+/gm, '$1. ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 /** Raw file content, or '' if no memory has been saved for this project yet. */
 export async function readMemory(projectPath) {
   try {
@@ -63,7 +81,7 @@ export async function formatMemoryForPrompt(projectPath) {
  * log.md is already for.
  */
 export async function appendMemoryEntry(projectPath, content) {
-  const trimmed = (content || '').trim();
+  const trimmed = sanitizeMemoryEntry(content);
   if (!trimmed) return { success: false, error: 'content is required.' };
   if (trimmed.length > 500) {
     return { success: false, error: 'content is too long for a single memory entry (500 char max) — save one concise fact at a time.' };

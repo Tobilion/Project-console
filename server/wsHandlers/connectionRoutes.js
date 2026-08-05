@@ -1,5 +1,5 @@
 import { state, pendingToolConfirmations } from '../state.js';
-import { runningProcesses, stopTrackedProcess } from '../executor.js';
+import { stopTrackedProcess } from '../executor.js';
 import { GATED_TOOLS, toolGrantKey } from '../tools.js';
 import { generateSuggestions, applySuggestions } from '../learningEngine.js';
 import { addToClaudeMd } from '../projectMemory.js';
@@ -34,12 +34,17 @@ async function routeMessage(ws, parsed, sessionContext) {
       }
       const cancelProjectId = sessionContext.activeProjectId;
       if (cancelProjectId) {
-        const proc = runningProcesses.get(cancelProjectId);
-        if (proc) {
-          try { proc.child.kill('SIGTERM'); } catch {}
+        // Phase 14 fix (reported directly): this used to be a raw child.kill('SIGTERM') with no
+        // cleanup — the Processes dock and Dashboard stayed stale ("still running") until the
+        // next poll because no processes_update/dashboard_update was broadcast and the map entry
+        // was only cleared by the child's own 'close' (which on Windows can lag or never fire
+        // when the killed child is npm's shell wrapper). stopTrackedProcess is the same single
+        // kill+cleanup+broadcast path "stop server" and the dock Stop button use.
+        const stopped = stopTrackedProcess(cancelProjectId);
+        if (stopped.ok) {
           didSomething = true;
           // executeCommand's own 'close' handler sends the final answer/end once the process
-          // actually exits from the signal — same reasoning as above.
+          // actually exits from the signal — same reasoning as the AI-abort branch above.
         }
       }
       if (!didSomething) {
