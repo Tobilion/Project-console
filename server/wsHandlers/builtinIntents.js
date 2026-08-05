@@ -6,13 +6,13 @@ import { pendingConfirmations, state, withPortCollisionWarning } from '../state.
 import { createProjectTools, findTestCommand } from '../tools.js';
 import { findDocumentedRunCommands } from '../readmeRunParser.js';
 import { formatApiRoutes, findTodos, findBiggestFiles, findRecentActivity } from '../codebaseIndexer.js';
-import { isSafeParamValue } from '../paramCommand.js';
 import { probeUrl, scanProjectServers, candidateDevUrls } from '../livenessProbe.js';
 import { recordDevUrl } from '../devUrlStore.js';
 import { parseFileNameAndContent, parseFileNameOnly, extractCommentMessage, queueFileOpConfirmation, pickRandom, chatReplyPool, smartChitchatReply, enrichWithIndex } from './builtinHelpers.js';
 import { buildLiveStateLine, buildMemoryBlock } from './builtinLiveState.js';
 import { buildHelpMessage } from './builtinHelp.js';
 import { projectTypeSuggestions, findMentionedScript } from './builtinRunSuggestions.js';
+import { gitHandlers } from './builtinGit.js';
 
 /**
  * Confirmed live 2026-07-30 (Matchday Exchange transcript): "run its server" and "run .bat" both
@@ -243,151 +243,21 @@ export async function handleBuiltinIntent(ws, action, input, project, sessionCon
     // in case someone types "yes" or "no" when no confirmation is pending.
     ws.send(JSON.stringify({ type: 'answer', data: 'No pending confirmation to respond to. Type "help" for available commands.' }));
   } else if (action === 'git_push') {
-    if (!(await isGitRepo(project.path))) {
-      ws.send(JSON.stringify({ type: 'answer', data: `**[${project.name}]** isn't a git repository yet. Run \`git init\` first, then add a remote origin.` }));
-    } else {
-      // "push the site with the comment 'bug fixes'" can match this plain git_push intent
-      // instead of system.chit_chat.deploy (their example phrases overlap heavily — both are
-      // full of "push ..." variants), and this branch used to always push bare, silently
-      // dropping any comment the user typed. Parse it the same way deploy does so the comment
-      // isn't lost regardless of which of the two intents wins the match.
-      const commitMsg = extractCommentMessage(input);
-      const token = crypto.randomUUID();
-      const command = commitMsg
-        ? `git add -A && git commit -m "${commitMsg.replace(/"/g, '\\"')}" && git push`
-        : 'git push';
-      pendingConfirmations.set(token, {
-        projectId: project.id,
-        command,
-        trigger: input,
-        createdAt: Date.now()
-      });
-      ws.send(JSON.stringify({
-        type: 'confirm_prompt', token,
-        command: commitMsg
-          ? `git add -A && git commit -m "${commitMsg}" && git push  (commits with your comment, then pushes)`
-          : 'git push (pushes local commits to the remote repository)',
-        trigger: 'git_push'
-      }));
-    }
+    return await gitHandlers.git_push(ws, action, input, project, sessionContext);
   } else if (action === 'git_remote_add') {
-    // "Can I attach the github link" had nowhere to go before — no intent existed for setting
-    // up a remote at all, so it fell through to an unrelated generic help response. Parse a
-    // URL out of the input; if there isn't one, ask for it instead of guessing.
-    const urlMatch = input.match(/(https?:\/\/\S+|git@[\w.-]+:\S+)/i);
-    if (!urlMatch) {
-      ws.send(JSON.stringify({
-        type: 'answer',
-        data: `Paste the GitHub repository URL (e.g. \`https://github.com/you/repo.git\`) and I'll set it as the remote.`
-      }));
-    } else if (!(await isGitRepo(project.path))) {
-      ws.send(JSON.stringify({ type: 'answer', data: `**[${project.name}]** isn't a git repository yet. Run \`git init\` first, then I can add the remote.` }));
-    } else {
-      const url = urlMatch[1].replace(/["').,]+$/, '');
-      const token = crypto.randomUUID();
-      // Works whether "origin" already exists or not, without needing an extra round trip to check.
-      const command = `git remote add origin ${url} || git remote set-url origin ${url}`;
-      pendingConfirmations.set(token, {
-        projectId: project.id,
-        command,
-        trigger: input,
-        createdAt: Date.now()
-      });
-      ws.send(JSON.stringify({
-        type: 'confirm_prompt', token,
-        command: `${command}  (sets "origin" to ${url})`,
-        trigger: 'git_remote_add'
-      }));
-    }
+    return await gitHandlers.git_remote_add(ws, action, input, project, sessionContext);
   } else if (action === 'git_commit') {
-    if (!(await isGitRepo(project.path))) {
-      ws.send(JSON.stringify({ type: 'answer', data: `**[${project.name}]** isn't a git repository yet. Run \`git init\` first.` }));
-    } else {
-      // Extract a commit message from the user's input if possible
-      const commitMsg = extractCommentMessage(input) || 'update';
-      const token = crypto.randomUUID();
-      pendingConfirmations.set(token, {
-        projectId: project.id,
-        command: `git add -A && git commit -m "${commitMsg.replace(/"/g, '\\"')}"`,
-        trigger: input,
-        createdAt: Date.now()
-      });
-      ws.send(JSON.stringify({
-        type: 'confirm_prompt', token,
-        command: `git add -A && git commit -m "${commitMsg}" (stages all and commits)`,
-        trigger: 'git_commit'
-      }));
-    }
+    return await gitHandlers.git_commit(ws, action, input, project, sessionContext);
   } else if (action === 'git_commit_push') {
-    if (!(await isGitRepo(project.path))) {
-      ws.send(JSON.stringify({ type: 'answer', data: `**[${project.name}]** isn't a git repository yet. Run \`git init\` first, then add a remote origin.` }));
-    } else {
-      const commitMsg = extractCommentMessage(input) || 'update';
-      const token = crypto.randomUUID();
-      pendingConfirmations.set(token, {
-        projectId: project.id,
-        command: `git add -A && git commit -m "${commitMsg.replace(/"/g, '\\"')}" && git push`,
-        trigger: input,
-        createdAt: Date.now()
-      });
-      ws.send(JSON.stringify({
-        type: 'confirm_prompt', token,
-        command: `git add -A && git commit -m "${commitMsg}" && git push (stages all, commits, and pushes)`,
-        trigger: 'git_commit_push'
-      }));
-    }
+    return await gitHandlers.git_commit_push(ws, action, input, project, sessionContext);
   } else if (action === 'git_add') {
-    executeCommand('git add -A', project.path, ws, project.id);
-    return true;
+    return await gitHandlers.git_add(ws, action, input, project, sessionContext);
   } else if (action === 'git_init') {
-    // Confirmed live 2026-07-29: "set up git for this folder" was tried twice in one session —
-    // every other git-setup intent here already checks isGitRepo() before acting (git_push/
-    // git_commit/deploy all tell the user to run git init first if there's *no* repo yet), but
-    // this was the one path that didn't check the other direction. `git init` on an already-
-    // initialized repo is technically harmless (git just reinitializes in place, same .git
-    // folder, no data loss), but there's no reason to even offer a confirm prompt for a no-op —
-    // short-circuit with a clear "already set up" message instead.
-    if (await isGitRepo(project.path)) {
-      ws.send(JSON.stringify({
-        type: 'answer',
-        data: `**[${project.name}]** is already a git repository — nothing to set up. Try "git status" to see its current state.`
-      }));
-    } else {
-      const token = crypto.randomUUID();
-      pendingConfirmations.set(token, {
-        projectId: project.id,
-        command: 'git init',
-        trigger: input,
-        createdAt: Date.now()
-      });
-      ws.send(JSON.stringify({
-        type: 'confirm_prompt', token,
-        command: 'git init (creates a new git repository here)',
-        trigger: 'git_init'
-      }));
-    }
+    return await gitHandlers.git_init(ws, action, input, project, sessionContext);
   } else if (action === 'git_ignore_add') {
-    // Extract what to ignore from input, default to node_modules
-    const ignoreMatch = input.match(/(?:add|ignore)\s+(.+?)\s+(?:to\s+)?gi?ignore/i);
-    const toIgnore = ignoreMatch ? ignoreMatch[1].trim() : 'node_modules';
-    // Use windows-compatible echo to append
-    executeCommand(`echo "${toIgnore}" >> .gitignore`, project.path, ws, project.id);
-    return true;
+    return await gitHandlers.git_ignore_add(ws, action, input, project, sessionContext);
   } else if (action === 'git_rm_cached') {
-    const rmMatch = input.match(/(?:remove|untrack|rm)\s+(.+?)\s+(?:from\s+)?(?:git|tracking)/i);
-    const toRemove = rmMatch ? rmMatch[1].trim() : 'node_modules';
-    const token = crypto.randomUUID();
-    pendingConfirmations.set(token, {
-      projectId: project.id,
-      command: `git rm --cached -r "${toRemove}"`,
-      trigger: input,
-      createdAt: Date.now()
-    });
-    ws.send(JSON.stringify({
-      type: 'confirm_prompt', token,
-      command: `git rm --cached -r "${toRemove}" (removes from tracking, keeps on disk)`,
-      trigger: 'git_rm_cached'
-    }));
+    return await gitHandlers.git_rm_cached(ws, action, input, project, sessionContext);
   } else if (action === 'npm_install') {
     executeCommand('npm install', project.path, ws, project.id);
     return true;
@@ -598,112 +468,29 @@ export async function handleBuiltinIntent(ws, action, input, project, sessionCon
         : `I don't have a confirmed server port yet — try refreshing the page, or check the terminal that launched "npm run dev".`,
     }));
   } else if (action === 'git_log') {
-    executeCommand('git log --oneline -10', project.path, ws, project.id);
-    return true;
+    return await gitHandlers.git_log(ws, action, input, project, sessionContext);
   } else if (action === 'git_branch') {
-    executeCommand('git branch', project.path, ws, project.id);
-    return true;
+    return await gitHandlers.git_branch(ws, action, input, project, sessionContext);
   } else if (action === 'git_checkout') {
-    ws.send(JSON.stringify({ type: 'answer', data: `To switch branches, use AI mode or run \`git checkout <branch-name>\` directly. You can also tell me the branch name and I'll set up the command for confirmation.` }));
+    return await gitHandlers.git_checkout(ws, action, input, project, sessionContext);
   } else if (action === 'git_diff') {
-    // Safe/read-only, same treatment as git_log/git_branch — no confirmation needed.
-    if (!(await isGitRepo(project.path))) {
-      ws.send(JSON.stringify({ type: 'answer', data: `**[${project.name}]** isn't a git repository yet.` }));
-    } else {
-      executeCommand('git diff', project.path, ws, project.id);
-      return true;
-    }
+    return await gitHandlers.git_diff(ws, action, input, project, sessionContext);
   } else if (action === 'git_stash') {
-    // New (2026-07-30, requested directly). Confirm-gated even though `git stash` is technically
-    // reversible via `git stash pop` — it can look like uncommitted work "disappeared" from the
-    // working tree, which is exactly the kind of surprising-but-recoverable action this app's
-    // existing safety model (see CLAUDE.md) already requires a confirm step for.
-    if (!(await isGitRepo(project.path))) {
-      ws.send(JSON.stringify({ type: 'answer', data: `**[${project.name}]** isn't a git repository yet.` }));
-    } else {
-      const token = crypto.randomUUID();
-      pendingConfirmations.set(token, { projectId: project.id, command: 'git stash', trigger: input, createdAt: Date.now() });
-      ws.send(JSON.stringify({ type: 'confirm_prompt', token, command: 'git stash (shelves uncommitted changes — restore later with "git stash pop")', trigger: 'git_stash' }));
-    }
+    return await gitHandlers.git_stash(ws, action, input, project, sessionContext);
   } else if (action === 'git_stash_list') {
-    // New (2026-08-03, Phase 3 of the intent-expansion spec). Read-only listing, same immediate
-    // treatment as git_log/git_branch — never touches the stash itself.
-    if (!(await isGitRepo(project.path))) {
-      ws.send(JSON.stringify({ type: 'answer', data: `**[${project.name}]** isn't a git repository yet.` }));
-    } else {
-      executeCommand('git stash list', project.path, ws, project.id);
-      return true;
-    }
+    return await gitHandlers.git_stash_list(ws, action, input, project, sessionContext);
   } else if (action === 'git_stash_pop') {
-    if (!(await isGitRepo(project.path))) {
-      ws.send(JSON.stringify({ type: 'answer', data: `**[${project.name}]** isn't a git repository yet.` }));
-    } else {
-      const token = crypto.randomUUID();
-      pendingConfirmations.set(token, { projectId: project.id, command: 'git stash pop', trigger: input, createdAt: Date.now() });
-      ws.send(JSON.stringify({ type: 'confirm_prompt', token, command: 'git stash pop (restores the most recently stashed changes — can conflict with current changes)', trigger: 'git_stash_pop' }));
-    }
+    return await gitHandlers.git_stash_pop(ws, action, input, project, sessionContext);
   } else if (action === 'git_branch_create') {
-    // New (2026-07-30, requested directly). Same injection-safety check paramCommand.js's
-    // parameterized commands already use for user-supplied values substituted into a command
-    // string — a branch name is exactly that kind of value.
-    if (!(await isGitRepo(project.path))) {
-      ws.send(JSON.stringify({ type: 'answer', data: `**[${project.name}]** isn't a git repository yet.` }));
-    } else {
-      const branchMatch = input.match(/(?:branch|create a branch|new branch|make a branch)(?:\s+called|\s+named)?\s+["'`]?([\w./-]+)["'`]?/i);
-      const branchName = branchMatch?.[1];
-      if (!branchName || !isSafeParamValue(branchName)) {
-        ws.send(JSON.stringify({ type: 'answer', data: `What should the new branch be called? Try "create a branch called feature-x".` }));
-      } else {
-        const token = crypto.randomUUID();
-        const command = `git checkout -b ${branchName}`;
-        pendingConfirmations.set(token, { projectId: project.id, command, trigger: input, createdAt: Date.now() });
-        ws.send(JSON.stringify({ type: 'confirm_prompt', token, command: `${command} (creates and switches to a new branch)`, trigger: 'git_branch_create' }));
-      }
-    }
+    return await gitHandlers.git_branch_create(ws, action, input, project, sessionContext);
   } else if (action === 'git_pull') {
-    const token = crypto.randomUUID();
-    pendingConfirmations.set(token, {
-      projectId: project.id,
-      command: 'git pull',
-      trigger: input,
-      createdAt: Date.now()
-    });
-    ws.send(JSON.stringify({
-      type: 'confirm_prompt', token,
-      command: 'git pull (fetches and merges remote changes)',
-      trigger: 'git_pull'
-    }));
+    return await gitHandlers.git_pull(ws, action, input, project, sessionContext);
   } else if (action === 'git_fetch') {
-    // Intent expansion (Phase 2, 2026-08-03): read-only — updates remote-tracking refs, never
-    // touches the working tree. Same immediate treatment as git_log/git_branch.
-    executeCommand('git fetch', project.path, ws, project.id);
-    return true;
+    return await gitHandlers.git_fetch(ws, action, input, project, sessionContext);
   } else if (action === 'git_ahead_behind') {
-    // Intent expansion (Phase 2, 2026-08-03): "am I behind origin" — git status -sb prints the
-    // "[origin/main: ahead 2, behind 1]" line directly; no parsing needed. Read-only, immediate.
-    executeCommand('git status -sb', project.path, ws, project.id);
-    return true;
+    return await gitHandlers.git_ahead_behind(ws, action, input, project, sessionContext);
   } else if (action === 'git_tag') {
-    // Intent expansion (Phase 2, 2026-08-03): no tag name -> list (read-only, immediate, same
-    // as git_log); a tag name -> confirm-gated `git tag <name>`. The name is validated with
-    // isSafeParamValue BEFORE the confirm prompt, exactly like git_branch_create, since it
-    // substitutes straight into the command string.
-    if (!(await isGitRepo(project.path))) {
-      ws.send(JSON.stringify({ type: 'answer', data: `**[${project.name}]** isn't a git repository yet.` }));
-    } else {
-      const tagName = (input.match(/(?:called|named)\s+([A-Za-z0-9._/-]+)/i) ||
-                       input.match(/\btag(?: this)?(?: as)?\s+([A-Za-z0-9._/-]+)/i))?.[1] || null;
-      if (!tagName) {
-        executeCommand('git tag', project.path, ws, project.id);
-      } else if (!isSafeParamValue(tagName)) {
-        ws.send(JSON.stringify({ type: 'answer', data: `Tag name **${tagName}** contains characters that aren't allowed. Use letters, numbers, dots, underscores, slashes, and hyphens.` }));
-      } else {
-        const token = crypto.randomUUID();
-        const command = `git tag ${tagName}`;
-        pendingConfirmations.set(token, { projectId: project.id, command, trigger: input, createdAt: Date.now() });
-        ws.send(JSON.stringify({ type: 'confirm_prompt', token, command: `${command} (creates a tag on the current commit)`, trigger: 'git_tag' }));
-      }
-    }
+    return await gitHandlers.git_tag(ws, action, input, project, sessionContext);
   } else if (action === 'project.workflow.checkpoint') {
     // Intent expansion (Phase 2, 2026-08-03, requested directly): an explicit user-asked
     // checkpoint commit — same createCheckpoint the auto-checkpoint-before-risky-commands flow
@@ -1120,12 +907,7 @@ export async function handleBuiltinIntent(ws, action, input, project, sessionCon
     ws.send(JSON.stringify({ type: 'copy_to_clipboard', data: project.path }));
     ws.send(JSON.stringify({ type: 'answer', data: `Copied **[${project.name}]** path to clipboard:\n\`${project.path}\`` }));
   } else if (action === 'git_remote_info') {
-    // Phase 3 (2026-08-03): read-only `git remote -v` — same isGitRepo gate as git_diff.
-    if (!(await isGitRepo(project.path))) {
-      ws.send(JSON.stringify({ type: 'answer', data: `**[${project.name}]** isn't a git repository yet. No remotes to show.` }));
-    } else {
-      executeCommand('git remote -v', project.path, ws, project.id);
-    }
+    return await gitHandlers.git_remote_info(ws, action, input, project, sessionContext);
   } else if (action === 'project.context.running_processes') {
     // Phase 3 (2026-08-03): GLOBAL list across ALL projects from runningProcesses + lastDevUrls.
     const procs = [];
