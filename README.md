@@ -274,7 +274,7 @@ harness (real modules, real embeddings), `npm run check-intents`, and `npm run l
 | 3 | `system.chit_chat.needs_ai_mode`, `git_stash_list` | Done (harness-verified, not yet live-chat-verified) |
 | 2 (chit-chat) | `system.chit_chat.ack`, `system.chit_chat.joke`, widened pools + time-of-day | Done (harness-verified) |
 | 3 (basics) | `open_in_vscode`, `open_in_explorer`, `open_site`, `copy_path`, `git_remote_info`, `running_processes`, `session_info` | Done (harness-verified, not yet live-chat-verified) |
-| 4 | Close-out: CLAUDE.md consolidation, live `check collisions`, final summary | Planned |
+| 4 | Close-out: CLAUDE.md consolidation, live `check collisions`, final summary | Done |
 
 **Phase 1 (2026-08-03):**
 - **`run_tests`** — executes the project's real test command by marker detection (`package.json`
@@ -430,19 +430,54 @@ new frontend event. All registered in `BUILTIN_INTENTS`.
 - **Real command output in chat**: `start`/`output`/`end` now render as a single collapsible
   terminal-style block (dark mono, auto-collapsed with the `▶ Executing: ...` header visible, expand
   to scroll the full output, copy button) instead of being folded into a plain `bot` bubble. `answer`
-  messages stay their own markdown bubble. Trade-off: sessions reloaded from disk show the merged
-  output as plain text (the server persists the stream as one `bot` message).
+  messages stay their own markdown bubble. Since Phase 14 (2026-08-05) the stream is persisted as a
+  structured `role: 'output'` record, so reloaded sessions keep the block styling; legacy
+  `role: 'bot'` records still map via the `Executing: ` prefix heuristic.
 - **Processes dock**: a footer strip in the chat panel lists every tracked running process (one tab
   per project, pulsing live dot, shortened command, port when a dev URL was detected, red Stop
   button). Expanding a tab shows the tail of that process's output (server-side ring buffer,
   capped 2000 lines) with copy; clicking Stop uses the same single kill path as "stop server"
   (`stopTrackedProcess` in `executor.js` — also the one the AI-mode `stopProcess` tool and the
-  `stop_process` WS message use). The dock auto-hides when nothing is running.
+  `stop_process` WS message use, and since Phase 14 the `cancel` WS case too, so the dock and
+  Dashboard update immediately). Since Phase 14 the dock also has a **Projects overview tab**
+  (every discovered project + whether/where it's running, per-project stop) and stays visible
+  whenever projects exist — not only while something runs.
 - **New endpoints**: `GET /api/processes` (running commands with pid/url/startedAt) and
   `GET /api/processes/:projectId/log` (ring-buffer replay, 404 when untracked).
 - Verification: standalone harness 18/18 + live WS/HTTP harness against the running server 16/16
   (`tsc --noEmit` clean, zero new check-intents dupes). Visual layout still needs the manual
   checklist (dock rendering, output-block expand/collapse, chat scroll unaffected at 1280px/1920px).
+
+**Phases 7–13 — modularization + UI work (2026-08-04/05):** `semanticMatcher.js`, `matcher.js`,
+`codebaseIndexer.js`, `tools.js`, `builtinIntents.js`, `connection.js`, `executor.js`, and
+`useConsole.ts` were split into leaf modules with zero behavior change (every phase carries its own
+`check-*` regression harness: `check-matcher`, `check-indexer`, `check-tools`, `check-handlers`,
+`check-ws-cases`). Plus the dark/light theme system (`src/index.css` token ladder + `ThemeToggle`),
+the fullscreen-chat layout fix, the processes dock (Phase 6 above), output blocks, and the warning
+channel. See CLAUDE.md for the per-phase module maps and verification numbers.
+
+**Phase 14 — bug batch + close-out (2026-08-05):**
+- **Diff preview on file-edit confirm cards** (spec `console-chitchat-ai-upgrade-prompt.md` §6 PASS
+  5.5, previously skipped): `tool_confirm_prompt` for `writeFile`/`editFile`/`insertAtLine`/
+  `appendToFile` now carries a best-effort before/after line diff (`server/diffPreview.js` — pure
+  LCS, no dependency, capped at 400 source lines / 60 diff lines, never resolves outside the project
+  root, returns null on any failure so confirmation is never delayed). Rendered red/green under the
+  card's args dump. Wired into BOTH the AI path (`aiQuery.js`) and the direct frontend path
+  (`connectionToolCall.js`).
+- **Dock Projects overview tab**: see the Phase 6 bullet above.
+- **`cancel` now stops through `stopTrackedProcess`** — previously a raw `child.kill('SIGTERM')`
+  with no cleanup/broadcast, so the dock and Dashboard stayed stale until the next poll.
+- **Liveness common-ports fallback**: `candidateDevUrls()` now falls back to a common dev-port list
+  (3000/5173/5000/8000/3001/8080/4400/8888) when a project gives no port hints (no package.json —
+  e.g. pure-Python projects like NetPulse), so "scan for servers"/"is the server running" can still
+  find a live server the console never spawned.
+- **Structured command-output persistence** (`role: 'output'`) + **memory sanitization**
+  (`appendMemoryEntry` strips markdown/code-fence/tool-dump artifacts; `saveMemory` tool docs and
+  the AI system prompt now demand plain sentences).
+- Verification: `tsc --noEmit` clean; diffPreview smoke (17 checks incl. multi-hunk simulation,
+  path-escape rejection, size caps); memory smoke (sanitize + dedupe); check-ws-cases 72/72;
+  check-matcher 78/78; check-handlers 15/15. Visual/live verification (dock tab, diff card, cancel
+  broadcast, port scan) is on the end-of-upgrade checklist.
 
 ## Architecture
 
@@ -473,6 +508,7 @@ server/
 ├── tools.js                    — Sandboxed file/git/memory/process/test tools for AI mode + the
 │                                shared resolveToolGate decision point (permissions policy,
 │                                session grants, always-confirm set) + shared findTestCommand.
+├── diffPreview.js              — Best-effort before/after diff for file-edit confirm cards.
 ├── memoryStore.js              — Persistent cross-session AI memory (.console/memory.md).
 ├── confidenceModel.js          — Learned confidence model (Stage 1 ML — logistic regression).
 ├── ollama.js                   — REST client for localhost:11434, local + Cloud models.
@@ -503,8 +539,11 @@ server/
 ├── mockProjects.js              — Fake project seeder for non-Windows dev.
 ├── routes/                      — projectRoutes, sessionRoutes, searchRoutes, monitoringRoutes
 │                                  (`/api/metrics`, `/api/active-servers`, `/api/dashboard`).
-├── wsHandlers/                  — connection.js, builtinIntents.js, matchedEntry.js,
-│                                  aiQuery.js, aiStream.js.
+├── wsHandlers/                  — connection.js (shim) + per-domain leaf modules (connectionRoutes,
+│                                  connectionLifecycle, connectionExecute, connectionConfirm,
+│                                  connectionToolCall, connectionMatching, connectionDevServer, ...),
+│                                  builtinIntents.js (orchestrator) + per-domain builtin* handlers,
+│                                  matchedEntry.js, aiQuery.js, aiStream.js.
 ├── intents/                     — Split intent phrase files (chitChatIntents.js,
 │                                  gitIntents.js, projectKnowledgeIntents.js, etc.) merged by
 │                                  intentsData.js.
@@ -512,7 +551,9 @@ server/
                                    checkIntentDuplicates.js.
 
 src/                          — React 19 + Vite frontend.
-├── hooks/useConsole.ts       — All state + WS/fetch handlers.
+├── hooks/useConsole.ts       — Orchestrator: state composition + stable WS router; per-domain
+│                                hooks (useConsoleProcessDock, useConsoleToolHistory, ...) and
+│                                the WS case tables (wsMessageCases.ts / wsStreamingCases.ts).
 ├── App.tsx                   — Render root, folder picker, WebSocket init, fullscreen chat.
 ├── components/ErrorBoundary.tsx — Top-level safety net; catches render-time exceptions instead
 │                                of letting the whole app unmount to a blank white page.

@@ -2693,6 +2693,73 @@ codebaseIndexer.js ~185, useConsole.ts 368). `src/App.tsx` is untouched (still i
 - All four: `tsc --noEmit` clean, check-intents at baseline (1/5/80), harness-verified only —
   the live server at :3000 predates these commits and needs a restart to pick them up.
 
+## Phase 14 (2026-08-05, bug batch + close-out — commits `149fe7a`, `8bb437b`)
+
+Follow-up to Phase 13's close-out: the user's reported bug backlog was triaged in code first (several
+reports were already fixed on disk and only looked broken because the running server predated those
+commits — Home button, Matchday "run its server", reloaded output blocks, light-mode prose,
+fullscreen scroll — those are verify-on-restart items, NOT re-fixed), and the genuinely-unfixed
+items were fixed. All harness-verified; NOT yet live-chat-verified (see the end-of-upgrade checklist).
+
+- **`cancel` broadcast fix (`149fe7a`).** The `cancel` WS case in `connectionRoutes.js` used to do a
+  raw `child.kill('SIGTERM')` with no cleanup — the Processes dock and Dashboard stayed stale
+  ("still running") until the next poll because no `processes_update`/`dashboard_update` was
+  broadcast and the map entry was only cleared by the child's own `close` (which on Windows can lag
+  or never fire when the killed child is npm's shell wrapper). Now routes through the same shared
+  `stopTrackedProcess()` path "stop server" and the dock Stop button use (SIGTERM + map/URL/log
+  cleanup + both broadcasts). `runningProcesses` import dropped (unused after the change).
+- **Liveness common-ports fallback (`149fe7a`).** `candidateDevUrls()` in `livenessProbe.js` only
+  read package.json port hints, so a pure-Python project with no package.json (NetPulse — the
+  reported case: "shows idle while live") got ZERO candidates and a live server the console never
+  spawned was never found by "scan for servers"/"is the server running". Now falls back to
+  `COMMON_DEV_PORTS = [3000, 5173, 5000, 8000, 8001, 8080, 4400, 8888]` (ordered by popularity;
+  cap 3 candidates, console's own `state.serverPort` still always excluded, same `tryPort()`
+  dedupe helper as the hint path).
+- **Structured command-output persistence (`149fe7a`).** The `end`-buffer in `connectionLifecycle.js`
+  now persists the merged command stream as `role: 'output'` (was `role: 'bot'`, isMarkdown: false)
+  and `storedToTerminalMessages.ts` maps `role === 'output'` straight to terminal type `'output'` —
+  reloaded sessions keep the collapsible block styling instead of falling back to the
+  `Executing: `-prefix heuristic. The legacy heuristic is kept for pre-2026-08-05 records.
+- **Memory sanitization (`149fe7a`).** `appendMemoryEntry()` (`memoryStore.js`) now runs every
+  saved entry through `sanitizeMemoryEntry()` before the length check AND the dedupe comparison:
+  strips fenced code blocks, inline backticks, bold/italic/strike markers, headings, link syntax,
+  list bullets, and collapses whitespace — so `.console/memory.md` stays a clean plain-text list
+  and the system-prompt injection + greeting memory block render without tool-call dumps. The
+  `saveMemory` tool description (`toolDefs.js`) and the AI system prompt (`ollamaContext.js`) now
+  demand plain conversational sentences, no markdown/JSON. Verified by smoke: junk entry sanitized,
+  re-save with different formatting deduped.
+- **Diff preview on file-edit confirm cards (`8bb437b` — spec §6 PASS 5.5, previously skipped).**
+  New `server/diffPreview.js`: `diffLines()` (pure LCS line diff, capped 60 lines/side with a
+  "... N more" tail), `simulateEditContent()` (writeFile content / appendToFile / insertAtLine /
+  editFile single- or multi-hunk exact-match, mirroring tools.js's primary edit path),
+  `computeFileEditPreview(projectRoot, tool, args)` (sandboxed path check, reads current content,
+  skips >400-line files, `mode: 'create'` for new files, null on any failure — never delays or
+  blocks confirmation). Both `tool_confirm_prompt` send sites attach it: `aiQuery.js`'s
+  `requestToolConfirmation(ws, tool, args, preview)` and `connectionToolCall.js`'s ask branch.
+  Frontend: `PendingToolConfirm` (types.ts) gained `preview`; `useTerminal.ts`/`wsCtx.ts` now type
+  the state via `PendingToolConfirm` instead of inline shapes; `toolConfirmPromptCase` passes it
+  through; `TerminalConfirmCards.tsx` renders red `- ` removed / green `+ ` added lines under the
+  args dump with a "Will create" header for new files. Smoke: 17 checks (LCS pure cases + cap,
+  all four tool simulations incl. multi-hunk and miss, create/edit/escape/noop/huge/other-tool
+  integration cases).
+- **Dock Projects overview tab (`8bb437b` — the user's "small tab listing projects + where they're
+  running", placement chosen: dock tab).** `useConsoleProcessDock` gained `dockTab: 'logs' |
+  'projects'`; `ProcessDock.tsx` gained a Projects tab button (LayoutGrid icon) next to the running
+  toggle, an expanded overview (every discovered project with FolderOpen icon, name, live pulsing
+  dot + command + `:port` + per-row Stop when running, "idle" label otherwise; clicking a running
+  row jumps to its log tab), and the dock now renders whenever projects exist — not only while
+  something runs (previously it auto-hid entirely at 0 processes). The running toggle and process
+  tabs always switch back to the 'logs' view. `App.tsx`/`Terminal.tsx` thread `projects`, `dockTab`,
+  `onSetDockTab` through.
+- Verified: `tsc --noEmit` clean, check-ws-cases 72/72, check-matcher 78/78 (Pass 1e — the three
+  previously-stale probes were re-checked and need NO change: the OPEN_PROJECT_RE and DEV_URL_*
+  regex fixes already landed in earlier phases and the typed-`git remote add` bypass is intended
+  behavior), check-handlers 15/15, check-intents at baseline (1/5/80), diffPreview + memory smokes.
+  NOT yet live-verified: dock Projects tab layout, diff card rendering, cancel broadcast through a
+  real chat, common-ports scan against a real external server, and the already-fixed-in-code
+  reports (Home, Matchday, reload styling, light mode, fullscreen) after restarting the stale
+  server.
+
 ## Conventions
 
 - No file over ~400 lines; split by concern (see `server/wsHandlers/` for the pattern).
