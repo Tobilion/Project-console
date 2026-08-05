@@ -132,6 +132,13 @@ const BATTERIES = [
       ['open the project in explorer', 'BUILTIN=project.action.open_in_explorer'],
       ['open the site', 'BUILTIN=run_project'],
       ['copy the project path', 'BUILTIN=project.action.copy_path'],
+      // Phase 16 (2026-08-05): the four new open-in actions. open_file's name-bearing shapes
+      // route via the PRE_SEMANTIC_OVERRIDE (file_read/file_find own the read/locate clusters).
+      ['open the project in cursor', 'BUILTIN=project.action.open_in_cursor'],
+      ['open a terminal here', 'BUILTIN=project.action.open_in_terminal'],
+      ['open the github page', 'BUILTIN=project.action.open_github_page'],
+      ['open the config file', 'BUILTIN=project.action.open_file'],
+      ['open a file', 'BUILTIN=project.action.open_file'],
       ['show git remotes', 'BUILTIN=git_remote_info'],
       ['show running processes', 'BUILTIN=project.context.running_processes'],
       // Calibrated: 'what session is this' routes to overview on real embeddings

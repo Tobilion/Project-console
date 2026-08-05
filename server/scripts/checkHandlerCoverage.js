@@ -31,6 +31,7 @@ const { fileNpmHandlers } = await import(pathToFileURL(base + 'wsHandlers/builti
 const { projectKnowledgeHandlers } = await import(pathToFileURL(base + 'wsHandlers/builtinProjectKnowledge.js').href);
 const { projectContextHandlers } = await import(pathToFileURL(base + 'wsHandlers/builtinProjectContext.js').href);
 const { projectActionHandlers } = await import(pathToFileURL(base + 'wsHandlers/builtinProjectActions.js').href);
+const { normalizeGithubPageUrl } = await import(pathToFileURL(base + 'wsHandlers/builtinProjectActions.js').href);
 const { BUILTIN_INTENTS } = await import(pathToFileURL(base + 'intentRegistry.js').href);
 const { INTENTS } = await import(pathToFileURL(base + 'intentsData.js').href);
 const { state } = await import(pathToFileURL(base + 'state.js').href);
@@ -102,6 +103,29 @@ eq('context leaf: dev_server_status (nothing) answers running-or-not', ws.sent.l
 sent.length = 0;
 await handleBuiltinIntent(ws, 'project.action.copy_path', 'copy path', proj, {});
 eq('actions leaf: copy_path emits clipboard + answer', ws.sent.length === 2 && ws.sent[0].type === 'copy_to_clipboard', true);
+
+// Phase 16 (2026-08-05): two new deterministic dispatch shapes — open_github_page hits the
+// isGitRepo gate first (fixture path is not a repo -> no-repo answer, no git subprocess needed
+// for the assertion), and open_file with no parsed name asks. open_in_terminal / open_in_cursor
+// spawn real processes so they're covered by the BIDIRECTIONAL gate only, same as open_in_vscode.
+sent.length = 0;
+await handleBuiltinIntent(ws, 'project.action.open_github_page', 'open the github page', proj, {});
+eq('actions leaf: open_github_page on non-git project answers no-repo', ws.sent.length === 1 && ws.sent[0].type === 'answer' && ws.sent[0].data.includes('not a git repository'), true);
+
+sent.length = 0;
+await handleBuiltinIntent(ws, 'project.action.open_file', 'open a file', proj, {});
+eq('actions leaf: open_file without a name asks which file', ws.sent.length === 1 && ws.sent[0].type === 'answer' && ws.sent[0].data.includes('Which file'), true);
+
+// --- NORMALIZER (Phase 16: GitHub remote URL -> repo page) --------------------
+eq('normalizer: git@ ssh shape', normalizeGithubPageUrl('git@github.com:tobi/user-repo.git'), 'https://github.com/tobi/user-repo');
+eq('normalizer: https with .git', normalizeGithubPageUrl('https://github.com/tobi/user-repo.git'), 'https://github.com/tobi/user-repo');
+eq('normalizer: ssh:// scheme', normalizeGithubPageUrl('ssh://git@github.com/tobi/repo.git'), 'https://github.com/tobi/repo');
+eq('normalizer: git:// scheme', normalizeGithubPageUrl('git://github.com/tobi/repo.git'), 'https://github.com/tobi/repo');
+eq('normalizer: trailing slash stripped', normalizeGithubPageUrl('https://github.com/tobi/repo/'), 'https://github.com/tobi/repo');
+eq('normalizer: non-github host -> null', normalizeGithubPageUrl('https://gitlab.com/tobi/x'), null);
+eq('normalizer: ssh non-github host -> null', normalizeGithubPageUrl('git@gitlab.com:tobi/x.git'), null);
+eq('normalizer: empty -> null', normalizeGithubPageUrl(''), null);
+eq('normalizer: local path -> null', normalizeGithubPageUrl('C:/Users/tobil/foo'), null);
 
 sent.length = 0;
 const unknown = await handleBuiltinIntent(ws, 'no_such_intent', 'x', proj, {});

@@ -127,4 +127,46 @@ export const MISC_INTENTS = {
     'copy full project path', 'copy the working directory path',
   ],
 },
+// Phase 16 (2026-08-05): four more "open in..." actions. Phrasing deliberately avoids the
+// pre-existing owners' territory: "open file"/"open this file" are file_read seeds (exact
+// dupes would fail check-intents), "open the folder"/"open the project folder" are
+// open_in_explorer, "open the link"/"open the dev url" are open_site. Name-bearing open
+// inputs ("open main.py", "open the config file") are handled by the PRE_SEMANTIC_OVERRIDE
+// in preSemanticOverrides.js — see that file's Phase 16 entry.
+'project.action.open_in_terminal': {
+  examples: [
+    'open a terminal here', 'open a terminal in the project',
+    'open a terminal in the project folder', 'open the terminal here',
+    'start a terminal here', 'launch a terminal here',
+    'open the command prompt here', 'open a command prompt here',
+    'open cmd here', 'open a terminal for this project',
+    'open a terminal in the project directory',
+  ],
+},
+'project.action.open_github_page': {
+  examples: [
+    'open the github page', 'open the github repo', 'open the github repository',
+    'open the repo on github', 'open the repository on github',
+    'open the project on github', 'open the project github page',
+    'take me to the github page', 'show me the github page',
+    'open my github for this project',
+  ],
+},
+'project.action.open_in_cursor': {
+  examples: [
+    'open in cursor', 'open this in cursor', 'open the project in cursor',
+    'open the folder in cursor', 'open in cursor editor',
+    'open the project in cursor editor', 'open with cursor',
+    'launch cursor on this', 'start cursor here',
+    'open the project with cursor',
+  ],
+},
+'project.action.open_file': {
+  examples: [
+    'open a file', 'open a specific file', 'open some file',
+    'open a particular file', 'open up a file', 'open me a file',
+    'open the file called', 'open a file for me',
+    'open a file from the project', 'open the readme file',
+  ],
+},
 };

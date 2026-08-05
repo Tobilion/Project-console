@@ -52,6 +52,20 @@ export const PRE_SEMANTIC_OVERRIDES = [
   // AND the noun to the END with an optional trailing "please" — "run api tests" / "run
   // server tests" must stay with run_tests, not be stolen by the run_project redirect.
   { intent: 'run_project', pattern: /^(?:run|start|launch|boot|restart|spin\s+up)\s+(?:the\s+|its\s+|your\s+|my\s+)?(?:server|backend|api)\b(?:\s+please)?$/i },
+  // Phase 16 (2026-08-05, harness-verified with real embeddings): file-open requests collided
+  // with pre-existing owners — file_read owns the "open file"/"open this file" seeds, and
+  // file_find owns every name-bearing "find/where is the X file" shape (the filename dominates
+  // the vector, the same trap as the file_relations override above), so "open main.py" /
+  // "open the config file" / "open a file" all landed on read/locate instead of open-in-editor.
+  // An "open ..." + file-shaped noun is unambiguous in this app's domain — it always means open
+  // in the editor, never read or locate — so it wins outright before the embedding stage.
+  // Deliberate consequence, probe-verified: the bare "open file"/"open this file" seeds now
+  // route to open_file too (opening beats reading for an "open X" ask; both handlers just ask
+  // "which file" when no name is present, so the practical difference is nil). Exclusions keep
+  // the other open actions' territory: explorer/folder/directory (open_in_explorer),
+  // site/url/link (run_project/open_site), github (open_github_page), and vs code/cursor/
+  // editor/browser (open_in_vscode/open_in_cursor).
+  { intent: 'project.action.open_file', pattern: /^(?:open|open\s+up|open\s+me)\b(?!(?:.*\b(?:explorer|folder|directory|site|website|url|link|github|editor|browser|vs\s*c?ode|cursor)\b)).*\b(?:files?|readme|[\w./-]+\.[a-zA-Z0-9]{1,10})\b/i },
 ];
 
 /**

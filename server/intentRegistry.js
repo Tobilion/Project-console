@@ -82,6 +82,8 @@ export const BUILTIN_INTENTS = new Set([
   'git_diff', 'git_stash', 'git_stash_pop', 'git_stash_list', 'git_branch_create',
   'project.action.open_in_vscode', 'project.action.open_in_explorer',
   'project.action.open_site', 'project.action.copy_path',
+  'project.action.open_in_terminal', 'project.action.open_github_page',
+  'project.action.open_in_cursor', 'project.action.open_file',
   'system.monitoring.metrics', 'system.chit_chat.port',
 ]);
 
