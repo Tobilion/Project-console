@@ -19,7 +19,8 @@
     "lint": "tsc --noEmit",
     "check-intents": "node server/scripts/checkIntentDuplicates.js",
     "check-matcher": "node server/scripts/checkMatcherCoverage.js",
-    "check-indexer": "node server/scripts/checkIndexerCoverage.js"
+    "check-indexer": "node server/scripts/checkIndexerCoverage.js",
+    "check-tools": "node server/scripts/checkToolsCoverage.js"
   },
   "dependencies": {
     "@nlpjs/basic": "^5.0.0-alpha.5",

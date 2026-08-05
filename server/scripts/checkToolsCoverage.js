@@ -1,0 +1,284 @@
+/**
+ * checkToolsCoverage.js — committed regression harness for the tool layer (Phase 9,
+ * 2026-08-04). Asserts against the REAL modules — tools.js orchestrator + its leaf modules
+ * (toolAllow/toolGate/toolProcess/toolSandbox/toolFileTools) — no server, no network,
+ * seconds to run.
+ *
+ * Run:  npm run check-tools
+ * Probe: node server/scripts/checkToolsCoverage.js --probe   (prints actual values, no asserts)
+ *
+ * Same calibration flow as checkMatcherCoverage.js/checkIndexerCoverage.js: batteries are
+ * self-asserting pairs baked from the current verified behavior of the real modules; `--probe`
+ * prints actuals so a deliberate behavior change can be re-baked. Run after ANY edit to
+ * tools.js or its leaf modules.
+ *
+ * Batteries:
+ *  - SANDBOX: createResolveSafe path-escape rejection (../, absolute outside, symlink,
+ *    new-file ancestor walk, workspace projectId redirect).
+ *  - ALLOW: isCommandAllowed allowlist (incl. posix/win env-var prefixes) + the
+ *    dangerousPatterns blocklist still catching catastrophic commands.
+ *  - GATE: resolveToolGate matrix — policy deny wins over grants, always-confirm tools
+ *    (runTests/stopProcess/risky executeCommand) can never be auto-approved, session grants,
+ *    allow-after-first-ask grantKey, saveMemory low-vs-judgment, custom risky plugin tools.
+ *  - PRESENCE: createProjectTools() returns all 18 base tools + manifest-registered custom
+ *    tools, findTestCommand markers (incl. truncated package.json).
+ *  - FILEOPS: write/read/append/insert/list/find/search/probe/process round-trips on fixture
+ *    files, binary reject, getGitStatus + undoLastChange against a real git repo.
+ *  - EDIT: editFile exact match, whitespace-normalized fallback, multi-hunk all-or-nothing
+ *    (failing hunk writes nothing).
+ */
+import fs from 'node:fs/promises';
+import path from 'node:path';
+import os from 'node:os';
+import { exec } from 'node:child_process';
+import util from 'node:util';
+import { pathToFileURL } from 'url';
+
+const execAsync = util.promisify(exec);
+
+const PROBE = process.argv.includes('--probe');
+const base = 'C:/Users/tobil/Desktop/Projects/Project console/server/';
+const FIXTURE_ROOT = path.join(os.tmpdir(), 'console-tools-fixtures');
+
+const tools = await import(pathToFileURL(base + 'tools.js').href);
+const toolAllow = await import(pathToFileURL(base + 'toolAllow.js').href);
+const toolGate = await import(pathToFileURL(base + 'toolGate.js').href);
+const toolSandbox = await import(pathToFileURL(base + 'toolSandbox.js').href);
+const toolFileTools = await import(pathToFileURL(base + 'toolFileTools.js').href);
+const toolProcess = await import(pathToFileURL(base + 'toolProcess.js').href);
+const dangerous = await import(pathToFileURL(base + 'dangerousPatterns.js').href);
+
+let total = 0, failed = 0;
+function eq(label, got, expect) {
+  total++;
+  const g = JSON.stringify(got);
+  const e = JSON.stringify(expect);
+  const ok = g === e;
+  if (!ok) failed++;
+  if (PROBE) console.log(`  ${String(label).padEnd(48)} -> ${g}`);
+  else if (!ok) console.log(`  FAIL ${label}\n    expected: ${e}\n    got:      ${g}`);
+}
+function throws(label, fn) {
+  total++;
+  let ok = false;
+  try {
+    fn();
+  } catch {
+    ok = true;
+  }
+  if (!ok) failed++;
+  if (PROBE) console.log(`  ${String(label).padEnd(48)} -> threw=${ok}`);
+  else if (!ok) console.log(`  FAIL ${label}\n    expected: thrown error, got: no throw`);
+}
+
+const norm = (p) => String(p).split(path.sep).join('/');
+
+async function git(cwd, args) {
+  await execAsync(`git ${args.join(' ')}`, { cwd });
+}
+
+/** Builds the fixture tree under FIXTURE_ROOT; returns { proj, other }. */
+async function buildFixtures() {
+  await fs.rm(FIXTURE_ROOT, { recursive: true, force: true });
+  const proj = path.join(FIXTURE_ROOT, 'proj');
+  const other = path.join(FIXTURE_ROOT, 'other');
+  await fs.mkdir(path.join(proj, 'src'), { recursive: true });
+  await fs.mkdir(other, { recursive: true });
+  await fs.writeFile(path.join(proj, 'package.json'), JSON.stringify({ scripts: { test: 'echo ok' } }));
+  await fs.writeFile(path.join(proj, 'console.tools.json'), JSON.stringify({
+    tools: [
+      { name: 'greet', description: 'greet someone', command: 'echo hello {{name}}',
+        args: { name: { type: 'string', description: 'who to greet' } }, risky: true },
+    ],
+    permissions: { writeFile: 'deny', insertAtLine: 'allow-after-first-ask' },
+  }));
+  await fs.writeFile(path.join(proj, 'src', 'app.js'),
+    'function greet() { return "hi"; }\nconst answer = 42;\n');
+  await fs.writeFile(path.join(proj, 'src', 'blob.bin'), Buffer.from([0x00, 0x01, 0x02]));
+  await fs.writeFile(path.join(proj, 'src', 'edits.txt'), 'line one\nline two\nline three\n');
+  await fs.writeFile(path.join(other, 'keep.txt'), 'outside');
+  await git(proj, ['init', '-q']);
+  await git(proj, ['add', '-A']);
+  await git(proj, ['-c', 'user.name=C', '-c', 'user.email=C@C', 'commit', '-q', '-m', 'seed']);
+  let symlinkOk = false;
+  try {
+    await fs.symlink(other, path.join(proj, 'evil-link'), process.platform === 'win32' ? 'junction' : 'dir');
+    symlinkOk = true;
+  } catch {
+    symlinkOk = false;
+  }
+  return { proj, other, symlinkOk };
+}
+
+console.log('Building fixtures...');
+const { proj, other, symlinkOk } = await buildFixtures();
+const project = {
+  id: 'p1', name: 'proj', path: proj,
+  config: { entries: [{ action: 'npm test' }] },
+  contextFiles: ['CLAUDE.md'],
+  parsedKnowledge: { stack: 'Node.js', commands: 'npm run dev' },
+};
+
+try {
+  console.log('\n=== SANDBOX (createResolveSafe) ===');
+  const rs = toolSandbox.createResolveSafe(proj);
+  eq('resolves within root', norm(rs('src/app.js')), norm(path.join(proj, 'src', 'app.js')));
+  eq('empty resolves to root', norm(rs('')), norm(proj));
+  throws('parent-dir escape throws', () => rs('../outside.txt'));
+  throws('absolute path outside throws', () => rs(path.join(other, 'keep.txt')));
+  eq('new-file nested ancestor ok', norm(rs('newdir/deep/new.txt')), norm(path.join(proj, 'newdir', 'deep', 'new.txt')));
+  throws('new-file parent escape throws', () => rs('../new.txt'));
+  const rs2 = toolSandbox.createResolveSafe(proj, [{ id: 'other', path: other }]);
+  eq('workspace projectId redirects root', norm(rs2('keep.txt', 'other')), norm(path.join(other, 'keep.txt')));
+  eq('unknown projectId falls back to root', norm(rs2('src/app.js', 'missing-id')), norm(path.join(proj, 'src', 'app.js')));
+  if (symlinkOk) throws('symlink escape throws', () => rs('evil-link/keep.txt'));
+  else console.log('  (skipped symlink battery — fixture symlink could not be created on this platform)');
+
+  console.log('\n=== ALLOW (isCommandAllowed + blocklist) ===');
+  eq('npm allowed', toolAllow.isCommandAllowed('npm run dev'), true);
+  eq('node allowed', toolAllow.isCommandAllowed('node server/index.js'), true);
+  eq('posix env prefix tolerated', toolAllow.isCommandAllowed('PORT=3001 npm run dev'), true);
+  eq('win env prefix tolerated', toolAllow.isCommandAllowed('set PORT=3001&& npm run dev'), true);
+  eq('cmd.exe suffix normalized', toolAllow.isCommandAllowed('C:\\npm.cmd install'), true);
+  eq('non-allowlisted exe rejected', toolAllow.isCommandAllowed('rm -rf /'), false);
+  eq('empty string rejected', toolAllow.isCommandAllowed(''), false);
+  eq('non-string rejected', toolAllow.isCommandAllowed(null), false);
+  eq('blocklist catches rm -rf /', dangerous.isCommandBlocked('rm -rf /'), true);
+  eq('blocklist catches force-push main', dangerous.isCommandBlocked('git push --force origin main'), true);
+  eq('blocklist leaves npm run dev alone', dangerous.isCommandBlocked('npm run dev'), false);
+
+  console.log('\n=== GATE (resolveToolGate matrix) ===');
+  const grants = new Set([toolGate.toolGrantKey(proj, 'insertAtLine')]);
+  eq('ungated tool allows', await toolGate.resolveToolGate('readFile', {}, proj, null), { action: 'allow' });
+  eq('executeCommand non-risky allows', await toolGate.resolveToolGate('executeCommand', {}, proj, null), { action: 'allow' });
+  eq('policy deny wins', await toolGate.resolveToolGate('writeFile', {}, proj, null), { action: 'deny' });
+  eq('policy deny wins over grant', await toolGate.resolveToolGate('writeFile', {}, proj, grants), { action: 'deny' });
+  eq('allow-after-first-ask asks + grantKey', await toolGate.resolveToolGate('insertAtLine', {}, proj, null),
+    { action: 'ask', grantKey: toolGate.toolGrantKey(proj, 'insertAtLine') });
+  eq('grant auto-approves gated file tool', await toolGate.resolveToolGate('insertAtLine', {}, proj, grants),
+    { action: 'allow', autoApproved: true });
+  eq('always-confirm ignores grant', await toolGate.resolveToolGate('runTests', {}, proj, grants),
+    { action: 'ask', grantKey: null });
+  eq('stopProcess always asks', await toolGate.resolveToolGate('stopProcess', {}, proj, grants),
+    { action: 'ask', grantKey: null });
+  eq('risky executeCommand always asks', await toolGate.resolveToolGate('executeCommand', { risky: true }, proj, grants),
+    { action: 'ask', grantKey: null });
+  eq('saveMemory low ungated', await toolGate.resolveToolGate('saveMemory', { importance: 'low' }, proj, null), { action: 'allow' });
+  eq('saveMemory judgment asks', await toolGate.resolveToolGate('saveMemory', { importance: 'judgment' }, proj, null),
+    { action: 'ask', grantKey: null });
+  const dangerGrants = new Set([toolGate.toolGrantKey(proj, 'danger')]);
+  toolGate.CUSTOM_RISKY_TOOLS.set(proj, new Set(['danger']));
+  try {
+    eq('custom risky tool asks without grant', await toolGate.resolveToolGate('danger', {}, proj, null),
+      { action: 'ask', grantKey: null });
+    eq('custom risky tool grantable', await toolGate.resolveToolGate('danger', {}, proj, dangerGrants),
+      { action: 'allow', autoApproved: true });
+  } finally {
+    toolGate.CUSTOM_RISKY_TOOLS.delete(proj);
+  }
+  eq('isCustomToolRisky unregistered name', toolGate.isCustomToolRisky('nope', proj), false);
+  eq('isGatedToolCall file tool', toolGate.isGatedToolCall('writeFile', {}), true);
+  eq('isGatedToolCall readFile', toolGate.isGatedToolCall('readFile', {}), false);
+  eq('isGatedToolCall saveMemory low', toolGate.isGatedToolCall('saveMemory', { importance: 'low' }), false);
+
+  console.log('\n=== PRESENCE (createProjectTools + findTestCommand) ===');
+  const baseTools = await tools.createProjectTools(project);
+  const names = ['readFile', 'writeFile', 'editFile', 'findFiles', 'insertAtLine', 'appendToFile',
+    'searchCode', 'listFiles', 'getProjectInfo', 'getGitStatus', 'undoLastChange', 'saveMemory',
+    'listProcesses', 'stopProcess', 'probeUrl', 'runTests', 'webSearch', 'deepResearch'];
+  eq('all 18 base tools present', names.filter((n) => typeof baseTools[n] === 'function').length, 18);
+  eq('custom manifest tool present', typeof baseTools.greet, 'function');
+  eq('builtin not overridden by manifest', typeof baseTools.readFile, 'function');
+  eq('createProjectTools re-exports resolveToolGate', typeof tools.resolveToolGate, 'function');
+  eq('createProjectTools re-exports findTestCommand', typeof tools.findTestCommand, 'function');
+  const customRisky = toolGate.CUSTOM_RISKY_TOOLS.get(proj);
+  eq('manifest risky tool registered', customRisky && customRisky.has('greet'), true);
+  eq('findTestCommand npm', toolProcess.findTestCommand({ codebaseIndex: { keyFiles: { 'package.json': '{"scripts":{"test":"jest"}}' } } }), 'npm test');
+  eq('findTestCommand cargo', toolProcess.findTestCommand({ codebaseIndex: { keyFiles: { 'cargo.toml': 'x' } } }), 'cargo test');
+  eq('findTestCommand go', toolProcess.findTestCommand({ codebaseIndex: { keyFiles: { 'go.mod': 'x' } } }), 'go test ./...');
+  eq('findTestCommand python', toolProcess.findTestCommand({ codebaseIndex: { keyFiles: { 'pyproject.toml': 'x' } } }), 'python -m pytest');
+  eq('findTestCommand truncated package.json', toolProcess.findTestCommand(
+    { codebaseIndex: { keyFiles: { 'package.json': '{"scripts":{"test":"jest"}}\n... (truncated)' } } }), 'npm test');
+  eq('findTestCommand none', toolProcess.findTestCommand({ codebaseIndex: { keyFiles: {} } }), null);
+  eq('re-exports intact: ALLOWED_COMMANDS', tools.ALLOWED_COMMANDS.includes('npm'), true);
+  eq('re-exports intact: GATED_TOOLS', tools.GATED_TOOLS.has('editFile'), true);
+  eq('re-exports intact: ALWAYS_CONFIRM_TOOLS', tools.ALWAYS_CONFIRM_TOOLS.has('runTests'), true);
+
+  console.log('\n=== FILEOPS (round-trips through the real tools) ===');
+  const r1 = await baseTools.writeFile({ path: 'src/app.js', content: 'function greet() { return "hi"; }\nconst answer = 42;\n' });
+  eq('writeFile ok', r1.success, true);
+  eq('writeFile wrote to disk', norm(r1.data), 'Written src/app.js');
+  eq('writeFile missing content errors', (await baseTools.writeFile({ path: 'src/x.js' })).success, false);
+  eq('writeFile missing path errors', (await baseTools.writeFile({ content: 'x' })).success, false);
+  const r2 = await baseTools.readFile({ path: 'src/app.js' });
+  eq('readFile round-trip', r2, { success: true, data: 'function greet() { return "hi"; }\nconst answer = 42;\n' });
+  eq('readFile missing errors', (await baseTools.readFile({ path: 'src/nope.js' })).success, false);
+  eq('readFile binary rejected', (await baseTools.readFile({ path: 'src/blob.bin' })).success, false);
+  eq('appendToFile creates', norm((await baseTools.appendToFile({ path: 'src/log.txt', content: 'first' })).data),
+    'Appended to src/log.txt');
+  eq('appendToFile continues', norm((await baseTools.appendToFile({ path: 'src/log.txt', content: 'second' })).data),
+    'Appended to src/log.txt');
+  eq('appendToFile content', await fs.readFile(path.join(proj, 'src', 'log.txt'), 'utf-8'), 'first\nsecond\n');
+  const ins = await baseTools.insertAtLine({ path: 'src/log.txt', line: 1, content: 'zero' });
+  eq('insertAtLine ok', ins.success, true);
+  eq('insertAtLine content', await fs.readFile(path.join(proj, 'src', 'log.txt'), 'utf-8'), 'zero\nfirst\nsecond\n');
+  eq('insertAtLine bad line errors', (await baseTools.insertAtLine({ path: 'src/log.txt', line: 0, content: 'x' })).success, false);
+  const listed = await baseTools.listFiles({});
+  eq('listFiles includes fixtures', listed.success && listed.data.some((p) => norm(p) === 'src/app.js'), true);
+  const found = await baseTools.findFiles({ pattern: 'edits' });
+  eq('findFiles pattern', found.success && found.data.some((p) => norm(p) === 'src/edits.txt'), true);
+  eq('findFiles missing pattern errors', (await baseTools.findFiles({})).success, false);
+  const found2 = await baseTools.findFiles({ pattern: 'no-such-file-anywhere' });
+  eq('findFiles no match -> empty', found2, { success: true, data: [] });
+  const search = await baseTools.searchCode({ pattern: 'greet' });
+  eq('searchCode finds line', search.success && search.data.some((m) => norm(m.file) === 'src/app.js' && m.line === 1), true);
+  eq('searchCode ReDoS rejected', (await baseTools.searchCode({ pattern: '(a+b+)+' })).success, false);
+  eq('searchCode missing pattern errors', (await baseTools.searchCode({})).success, false);
+  const info = await baseTools.getProjectInfo({});
+  eq('getProjectInfo shape', info.success && info.data, {
+    id: 'p1', name: 'proj', path: proj, configEntries: 1, docFiles: 1, stack: 'Node.js', commandsFound: 'npm run dev',
+  });
+  const mem = await baseTools.saveMemory({ content: 'user prefers dark mode', importance: 'low' });
+  eq('saveMemory ok', mem.success, true);
+  const memFile = await fs.readFile(path.join(proj, '.console', 'memory.md'), 'utf-8');
+  eq('saveMemory wrote memory.md', memFile.includes('user prefers dark mode'), true);
+  eq('saveMemory dup skipped', (await baseTools.saveMemory({ content: 'user prefers dark mode', importance: 'low' })).data,
+    'Already remembered (duplicate skipped).');
+  eq('saveMemory bad importance errors', (await baseTools.saveMemory({ content: 'x', importance: 'high' })).success, false);
+  eq('listProcesses empty', await baseTools.listProcesses({}), { success: true, data: [] });
+  eq('stopProcess no-op', await baseTools.stopProcess({}), { success: true, data: 'No running process for this project.' });
+  eq('probeUrl missing url errors', (await baseTools.probeUrl({})).success, false);
+  eq('probeUrl refuses public URL', (await baseTools.probeUrl({ url: 'https://example.com' })).success, false);
+
+  console.log('\n=== EDIT (editFile exact / fallback / multi-hunk) ===');
+  eq('editFile exact', await baseTools.editFile({ path: 'src/edits.txt', oldString: 'line two', newString: 'LINE TWO' }),
+    { success: true, data: 'Edited src/edits.txt' });
+  eq('editFile whitespace fallback', (await baseTools.editFile({ path: 'src/edits.txt', oldString: 'line   three', newString: 'line THREE' })).data,
+    'Edited src/edits.txt (matched via whitespace-normalized fallback — verify the result looks right)');
+  eq('editFile identical replacement errors', (await baseTools.editFile({ path: 'src/edits.txt', oldString: 'LINE TWO', newString: 'LINE TWO' })).success, false);
+  const multiOk = await baseTools.editFile({ path: 'src/edits.txt', oldStrings: ['LINE TWO', 'line THREE'], newStrings: ['X', 'Y'] });
+  eq('editFile multi-hunk ok', multiOk, { success: true, data: 'Edited src/edits.txt (2 hunks)' });
+  const multiFail = await baseTools.editFile({ path: 'src/edits.txt', oldStrings: ['X', 'NOPE'], newStrings: ['Z', 'W'] });
+  eq('editFile multi-hunk failure names hunk', multiFail.success === false && multiFail.error.includes('Hunk 2 of 2'), true);
+  const afterFail = await fs.readFile(path.join(proj, 'src', 'edits.txt'), 'utf-8');
+  eq('multi-hunk failure writes nothing', afterFail.includes('X') && !afterFail.includes('Z'), true);
+  eq('editFile unmatched single errors', (await baseTools.editFile({ path: 'src/edits.txt', oldString: 'NOT THERE', newString: 'x' })).success, false);
+  eq('editFile missing file errors', (await baseTools.editFile({ path: 'src/nope.txt', oldString: 'a', newString: 'b' })).success, false);
+  eq('editFile uneven arrays error', (await baseTools.editFile({ path: 'src/edits.txt', oldStrings: ['a'], newStrings: ['b', 'c'] })).success, false);
+  eq('undoLastChange refuses non-checkpoint', (await baseTools.undoLastChange({})).success, false);
+
+  console.log('\n=== GIT (getGitStatus against the real fixture repo) ===');
+  await git(proj, ['add', '-A']);
+  await git(proj, ['-c', 'user.name=C', '-c', 'user.email=C@C', 'commit', '-q', '-m', 'seed2']);
+  eq('getGitStatus clean', await baseTools.getGitStatus({}), { success: true, data: '(clean)' });
+} finally {
+  await fs.rm(FIXTURE_ROOT, { recursive: true, force: true });
+  console.log('\nFixtures cleaned up.');
+}
+
+if (PROBE) {
+  console.log('\nProbe complete — bake the desired outputs into the expectations.');
+  process.exit(0);
+}
+console.log(`\n${total - failed}/${total} checks passed`);
+process.exit(failed ? 1 : 0);
