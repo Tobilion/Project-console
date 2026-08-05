@@ -474,10 +474,20 @@ channel. See CLAUDE.md for the per-phase module maps and verification numbers.
 - **Structured command-output persistence** (`role: 'output'`) + **memory sanitization**
   (`appendMemoryEntry` strips markdown/code-fence/tool-dump artifacts; `saveMemory` tool docs and
   the AI system prompt now demand plain sentences).
+- **Modularization round (Phase 14c–g)**: the last five >300-line server files were split into
+  per-domain leaves, all bodies moved verbatim, one commit each — `toolFileTools.js` →
+  `toolFileOps`/`toolFileEdit`/`toolFileSearch`/`toolProjectInfo`; `builtinGit.js` →
+  `builtinGitWorkflow`/`Remote`/`RepoSetup`/`Read`/`Worktree`; `builtinProjectContext.js` →
+  `builtinContextIndex`/`RepoMap`/`Scans`/`Runtime`; `projectScanner.js` →
+  `projectScanHelpers`/`Single`/`Container` (with the duplicated doc-parsing block extracted
+  into shared `readProjectContextDocs()`/`commandEntriesFromDocs()`); `aiQuery.js` →
+  `aiQueryDetectors`/`ToolRun`/`Context`. Export names unchanged (only importers:
+  fileWatcher/index/projectRoutes for the scanner; connectionExecute for `handleAIQuery`).
 - Verification: `tsc --noEmit` clean; diffPreview smoke (17 checks incl. multi-hunk simulation,
   path-escape rejection, size caps); memory smoke (sanitize + dedupe); check-ws-cases 72/72;
-  check-matcher 78/78; check-handlers 15/15. Visual/live verification (dock tab, diff card, cancel
-  broadcast, port scan) is on the end-of-upgrade checklist.
+  check-matcher 78/78; check-handlers 15/15; scanner behavioral smoke 8/8. Visual/live
+  verification (dock tab, diff card, cancel broadcast, port scan) is on the end-of-upgrade
+  checklist.
 
 ## Architecture
 
@@ -495,7 +505,7 @@ server/
 ├── semanticMatcher.js         — Embedding + Fuse.js matching engine + PRE_SEMANTIC_OVERRIDES.
 ├── localRouter.js             — Bounded, single-call local-model classification tier (last
 │                                resort before giving up, independent of the AI-mode toggle).
-├── intentsData.js             — Merges 69 intents (~2,100 phrases) from server/intents/*.js.
+├── intentsData.js             — Merges 79 intents (~2,271 phrases) from server/intents/*.js.
 ├── scripts/checkIntentDuplicates.js — `npm run check-intents`: static exact/near-duplicate
 │                                phrase scanner, no server needed.
 ├── nlpEngine.js                — NLP.js classifier; retrains from confirmed near-miss promotions.
@@ -508,13 +518,17 @@ server/
 ├── tools.js                    — Sandboxed file/git/memory/process/test tools for AI mode + the
 │                                shared resolveToolGate decision point (permissions policy,
 │                                session grants, always-confirm set) + shared findTestCommand.
+│                                Assembled from per-domain leaves: toolFileOps, toolFileEdit,
+│                                toolFileSearch, toolProjectInfo, toolProcess, toolGate, ...
 ├── diffPreview.js              — Best-effort before/after diff for file-edit confirm cards.
 ├── memoryStore.js              — Persistent cross-session AI memory (.console/memory.md).
 ├── confidenceModel.js          — Learned confidence model (Stage 1 ML — logistic regression).
 ├── ollama.js                   — REST client for localhost:11434, local + Cloud models.
 ├── ollamaContext.js            — System prompt builder: tool defs, 5 AI modes, repo map,
 │                                memory injection.
-├── projectScanner.js           — Discovers projects, reads CLAUDE.md/README.md/context files.
+├── projectScanner.js           — Project discovery orchestrator (container scan + single-folder
+│                                scan re-exported from projectScanContainer/projectScanSingle;
+│                                recognition/parsing helpers in projectScanHelpers).
 ├── scriptEntries.js            — Auto-derives config entries from package.json scripts.
 ├── codebaseIndexer.js          — Directory tree, language/entry-point detection, repo map.
 ├── configInitializer.js        — Codebase config initializer (`npx local-project-console init`).
@@ -542,8 +556,11 @@ server/
 ├── wsHandlers/                  — connection.js (shim) + per-domain leaf modules (connectionRoutes,
 │                                  connectionLifecycle, connectionExecute, connectionConfirm,
 │                                  connectionToolCall, connectionMatching, connectionDevServer, ...),
-│                                  builtinIntents.js (orchestrator) + per-domain builtin* handlers,
-│                                  matchedEntry.js, aiQuery.js, aiStream.js.
+│                                  builtinIntents.js (orchestrator) + per-domain builtin* handlers
+│                                  (builtinChitChat, builtinGit + 5 git leaves, builtinProjectContext
+│                                  + 4 context leaves, builtinFileNpm, ...), matchedEntry.js,
+│                                  aiQuery.js (AI-mode loop) + aiQueryToolRun/aiQueryContext/
+│                                  aiQueryDetectors leaves, aiStream.js.
 ├── intents/                     — Split intent phrase files (chitChatIntents.js,
 │                                  gitIntents.js, projectKnowledgeIntents.js, etc.) merged by
 │                                  intentsData.js.
