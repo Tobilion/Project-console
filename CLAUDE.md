@@ -2372,6 +2372,46 @@ zero behavior change; one commit per phase; lint + check-intents must stay green
   scripts cli-client.js/index.js/scripts/* are excluded since they run at import time).
   Remaining giants: tools.js 770, builtinIntents.js 1732, connection.js 1274,
   executor.js 507, useConsole.ts 747.
+- **Phase 9 (2026-08-04, tools.js split — 6 commits `11d81ef` → `1bef674`).**
+  `server/tools.js` 770 → 105 lines of pure orchestration (createProjectTools shell:
+  resolveSafe factory + assembly from the leaves + plugin-manifest merge + the same 18-tool
+  baseTools object; keeps the `workspaceProjects` export). Six new leaf modules, all logic
+  moved verbatim, all importing only other leaves/node builtins (no cycles):
+  - `server/toolConstants.js` (TEXT_EXTENSIONS, IGNORE_DIRS), `server/toolEdit.js`
+    (normalizeLine/findNormalizedLineMatch/applySingleEdit), `server/toolScan.js`
+    (walkDir/isTextFile/getProjectFiles + the file-index cache), `server/toolAllow.js`
+    (ALLOWED_COMMANDS + isCommandAllowed incl. posix/win env-var-prefix stripping),
+    `server/toolGate.js` (the single approval-gate decision point: getPluginManifest +
+    module-local cache, GATED_TOOLS, ALWAYS_CONFIRM_TOOLS, CUSTOM_RISKY_TOOLS,
+    isGatedToolCall incl. the saveMemory 'judgment' exemption, isCustomToolRisky,
+    getToolPermission, toolGrantKey, resolveToolGate), `server/toolProcess.js`
+    (createProcessTools → listProcesses/stopProcess/probeUrl/runTests + findTestCommand),
+    `server/toolSandbox.js` (createResolveSafe factory — the security-critical
+    realpathSync.symlink + ENOENT-ancestor-walk sandbox guard, parameterized with the
+    workspace list so tools.js still owns `workspaceProjects`), `server/toolFileTools.js`
+    (createFileTools → the 12 file/git/info/memory tools incl. the ReDoS check, binary
+    rejection, truncation check, multi-hunk editFile).
+  tools.js re-exports isCommandAllowed/ALLOWED_COMMANDS + the whole toolGate surface +
+  findTestCommand, so every external importer is untouched (connection.js →
+  createProjectTools/isCommandAllowed/GATED_TOOLS/toolGrantKey/resolveToolGate;
+  builtinIntents.js → createProjectTools/findTestCommand; aiQuery.js →
+  createProjectTools/resolveToolGate/isCommandAllowed).
+- **Phase 9 step 6 harness: `npm run check-tools` → `server/scripts/checkToolsCoverage.js`**
+  (same self-asserting pattern as checkIndexerCoverage; `--probe` calibrator; fixture tree at
+  `os.tmpdir()/console-tools-fixtures` incl. a real git repo + console.tools.json manifest
+  + symlink/junction; `norm()` strips Windows backslashes). **92/92 checks** across
+  SANDBOX (path escapes incl. symlink + new-file ancestor walk + workspace projectId
+  redirect) / ALLOW (allowlist + env prefixes + blocklist) / GATE (deny-wins-over-grant,
+  always-confirm-despite-grant, allow-after-first-ask grantKey, saveMemory low-vs-judgment,
+  custom risky tools) / PRESENCE (all 18 base tools + manifest tools + findTestCommand
+  markers incl. truncated package.json + re-export surface) / FILEOPS (write/read/append/
+  insert/list/find/search round-trips, binary reject, ReDoS `(a+b+)+`-shape rejection,
+  saveMemory dedupe + memory.md write, probeUrl public-URL refusal) / EDIT (exact +
+  whitespace-fallback + multi-hunk all-or-nothing) / GIT (getGitStatus clean + undoLastChange
+  non-checkpoint refusal). Run it after ANY edit to tools.js or the eight leaves.
+  Verified: 92/92, check-matcher 78/78, check-indexer 71/71, check-intents baseline (1/5/80),
+  lint clean, import smoke 94/94 (up from 86/86 — six new modules). Remaining giants:
+  builtinIntents.js 1732, connection.js 1274, executor.js 507, useConsole.ts 747.
 - Verification: Phases 1–3 lint-clean; check-intents identical to baseline (1/5/80);
   import smoke + guessCommand battery pass. Phase 1 commit excludes the
   data/user-profile.json write (live dev server on :3000).
