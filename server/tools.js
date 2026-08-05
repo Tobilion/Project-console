@@ -11,101 +11,13 @@ import { runningProcesses, stopTrackedProcess } from './executor.js';
 import { state } from './state.js';
 import { webSearch, deepResearch } from './webSearch.js';
 import { isProbeableUrl } from './urlSafety.js';
+import { walkDir, isTextFile, getProjectFiles } from './toolScan.js';
+import { applySingleEdit } from './toolEdit.js';
 
 const require = createRequire(import.meta.url);
 const RE2 = require('re2');
 
 const execAsync = util.promisify(exec);
-
-const TEXT_EXTENSIONS = new Set([
-  '.js', '.ts', '.tsx', '.jsx', '.json', '.md', '.css', '.html',
-  '.py', '.rs', '.go', '.java', '.c', '.cpp', '.h', '.hpp',
-  '.yaml', '.yml', '.toml', '.ini', '.cfg', '.conf',
-  '.sh', '.bat', '.ps1', '.env', '.txt', '.xml', '.svg',
-  '.mjs', '.cjs', '.vue', '.svelte', '.astro', '.sqlite', '.db'
-]);
-
-const IGNORE_DIRS = new Set([
-  'node_modules', '.git', 'venv', '.venv', 'dist', 'build',
-  '.next', '.cache', '__pycache__', 'env', '.vscode'
-]);
-
-/** Collapse a line's leading/trailing whitespace and internal whitespace runs to one space, so
- * two lines that differ only in indentation or spacing compare equal. Used by editFile's
- * whitespace-tolerant fallback below. */
-function normalizeLine(line) {
-  return line.trim().replace(/\s+/g, ' ');
-}
-
-/**
- * Finds a contiguous block of `contentLines` whose normalized form matches `oldLines`'
- * normalized form exactly, returning the starting index or -1. This is a fallback for
- * editFile's exact-substring match — small local models frequently fail to reproduce a file's
- * exact whitespace/quoting when they compose an `oldString`, and normalized-line matching
- * recovers the common case (same text, different indentation/spacing) without falling back to
- * something as loose as fuzzy/similarity matching that could silently edit the wrong block.
- */
-function findNormalizedLineMatch(contentLines, oldLines) {
-  if (oldLines.length === 0 || oldLines.length > contentLines.length) return -1;
-  const normOld = oldLines.map(normalizeLine);
-  for (let i = 0; i <= contentLines.length - normOld.length; i++) {
-    let matched = true;
-    for (let j = 0; j < normOld.length; j++) {
-      if (normalizeLine(contentLines[i + j]) !== normOld[j]) {
-        matched = false;
-        break;
-      }
-    }
-    if (matched) return i;
-  }
-  return -1;
-}
-
-/**
- * Phase 5 (PASS 5.5) — applies ONE hunk of an editFile request to a file's current content:
- * exact substring match first, then the whitespace-normalized line-range fallback (see
- * findNormalizedLineMatch). Returns { content, usedFallback } or null when neither match works.
- * Shared by the single-pair editFile path and the multi-hunk path so both behave identically.
- */
-function applySingleEdit(content, oldString, newString) {
-  if (content.includes(oldString)) {
-    const newContent = content.replace(oldString, newString);
-    return { content: newContent, usedFallback: false };
-  }
-  const contentLines = content.split('\n');
-  const oldLines = oldString.split('\n');
-  const startLine = findNormalizedLineMatch(contentLines, oldLines);
-  if (startLine === -1) return null;
-  const before = contentLines.slice(0, startLine);
-  const after = contentLines.slice(startLine + oldLines.length);
-  return { content: [...before, ...newString.split('\n'), ...after].join('\n'), usedFallback: true };
-}
-
-async function walkDir(dirPath, maxDepth = 6) {
-  const results = [];
-  let entries;
-  try {
-    entries = await fs.readdir(dirPath, { withFileTypes: true });
-  } catch {
-    return results;
-  }
-  for (const entry of entries) {
-    if (IGNORE_DIRS.has(entry.name) || entry.name.startsWith('.')) continue;
-    const fullPath = path.join(dirPath, entry.name);
-    if (entry.isDirectory() && maxDepth > 0) {
-      const sub = await walkDir(fullPath, maxDepth - 1);
-      results.push(...sub);
-    } else if (entry.isFile()) {
-      results.push(fullPath);
-    }
-  }
-  return results;
-}
-
-function isTextFile(filePath) {
-  const ext = path.extname(filePath).toLowerCase();
-  return TEXT_EXTENSIONS.has(ext);
-}
 
 // Allowlist for executeCommand — only these executables may be run through the console.
 // Prevents arbitrary command execution even if a path-escaped or unapproved command
@@ -148,26 +60,8 @@ export function isCommandAllowed(cmd) {
  * from here — the caller (server/wsHandlers/aiQuery.js) is responsible for gating
  * writeFile/editFile/risky executeCommand behind user confirmation before invoking them.
  */
-// Cache walkDir results per project root with mtime invalidation so repeated
-// findFiles/searchCode/listFiles calls don't re-scan the whole filesystem.
-const fileIndexCache = new Map();
-
 // Workspace projects state (populated by useConsole.ts via server websocket)
 export const workspaceProjects = [];
-
-async function getProjectFiles(root) {
-  const cached = fileIndexCache.get(root);
-  try {
-    const stat = await fs.stat(root);
-    if (cached && cached.mtime >= stat.mtimeMs) return cached;
-    const files = await walkDir(root);
-    const entry = { files, mtime: stat.mtimeMs };
-    fileIndexCache.set(root, entry);
-    return entry;
-  } catch {
-    return cached || { files: [], mtime: 0 };
-  }
-}
 
 /** Cache for plugin manifests to avoid reading the file on every tool creation. */
 const pluginManifestCache = new Map();
