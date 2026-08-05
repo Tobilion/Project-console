@@ -55,9 +55,9 @@ function fmt(r) {
   if (!r) return 'null';
   if (r.multi) return 'MULTI[' + r.multi.map(m => m.builtin ? `builtin=${m.builtin}` : `entry=${m.match?.action}`).join(' | ') + ']';
   if (r.match) return `ENTRY action=${r.match.action}`;
-  if (r.builtin) return `BUILTIN=${r.builtin}`;
+  if (r.builtin) return `BUILTIN=${r.builtin}` + (r.closeSecond ? `(closeSecond=${r.closeSecond.intent})` : '');
   if (r.disambiguate) return `DISAMBIGUATE=${JSON.stringify(r.disambiguate)}`;
-  return 'FALLBACK';
+  return 'FALLBACK' + (r.didYouMean ? `(didYouMean=${r.didYouMean.intent})` : '');
 }
 
 /** Current verified behavior of the real modules (calibrated 2026-08-04, Phase 5 commit 2). */
@@ -70,7 +70,7 @@ const BATTERIES = [
       ['run this project', 'BUILTIN=run_project'],
       ['run the numbers', 'BUILTIN=project.knowledge.commands'],
       ['run the calculation', 'BUILTIN=project.knowledge.commands'],
-      ['run your idea', 'BUILTIN=run_project'],
+      ['run your idea', 'BUILTIN=run_project(closeSecond=project.knowledge.how_to_run)'],
       ['how do I run this', 'BUILTIN=project.knowledge.how_to_run'],
       ['run the site and watch at interval of 5 minutes', 'MULTI[builtin=run_project | entry=python main.py watch --interval {interval}]'],
       ['watch at interval of 5 minutes', 'ENTRY action=python main.py watch --interval {interval}'],
@@ -79,7 +79,7 @@ const BATTERIES = [
       ['check git status', 'BUILTIN=system.chit_chat.git_status'],
       ['help', 'BUILTIN=system.chit_chat.help'],
       ['overview', 'BUILTIN=project.knowledge.overview'],
-      ['what is the link', 'BUILTIN=project.context.dev_server_status'],
+      ['what is the link', 'BUILTIN=project.context.dev_server_status(closeSecond=project.action.open_site)'],
     ],
   },
   {
@@ -112,7 +112,7 @@ const BATTERIES = [
       ['make a checkpoint', 'BUILTIN=project.workflow.checkpoint'],
       ['save my work as a checkpoint', 'BUILTIN=project.workflow.checkpoint'],
       ['what changed recently', 'BUILTIN=system.chit_chat.git_status'],
-      ['what files changed recently', 'BUILTIN=project.context.recent_activity'],
+      ['what files changed recently', 'BUILTIN=project.context.recent_activity(closeSecond=system.chit_chat.git_status)'],
       ['what files did i touch recently', 'BUILTIN=project.context.recent_activity'],
     ],
   },
@@ -164,7 +164,7 @@ const BATTERIES = [
       // todos (the 'bug fixes' tokens pull the embedding that way). Pre-existing, recorded
       // as-is — the deploy handler's comment parsing fix (2026-07-29) is about the handler,
       // not dispatch; a dispatch fix would be a deliberate PRE_SEMANTIC_OVERRIDES addition.
-      ['push the site with the comment "bug fixes"', 'BUILTIN=project.context.todos'],
+      ['push the site with the comment "bug fixes"', 'BUILTIN=project.context.todos(closeSecond=system.chit_chat.deploy)'],
     ],
   },
   {
@@ -183,10 +183,36 @@ const BATTERIES = [
   {
     name: 'GARBAGE (must not land on a confident intent)',
     items: [
-      ['please to running the site for me today', 'FALLBACK'],
+      ['please to running the site for me today', 'FALLBACK(didYouMean=run_project)'],
       ['Call it jimmyjagz.md with tex :- "', 'FALLBACK'],
       ['gibberish qxzqwplk zzz', 'FALLBACK'],
       ['asdfghjkl', 'FALLBACK'],
+    ],
+  },
+  {
+    // Stage-level dispatch coverage for matcher.js itself (Phase 7, 2026-08-04) — the
+    // batteries above already route through matchInput(), but several branches had no
+    // dedicated input: the stage-1b config-run-entry redirect positive path (winner
+    // run_project/npm_run + bestProjectCommandEntry >= 0.55), trust-guard-blocked
+    // chit-chat with a real-request-looking input landing on a non-chit-chat intent,
+    // and didYouMean presence on no-match fallbacks (needs a didYouMean display in fmt).
+    name: 'MATCHER-DISPATCH (matcher.js stage-level, Phase 7)',
+    items: [
+      // 1a — direct config-entry hits via semantic meta (project.action.*)
+      ['run one measurement', 'ENTRY action=python main.py once'],
+      ['export the data', 'ENTRY action=python main.py export'],
+      ['watch network at interval', 'ENTRY action=python main.py watch --interval {interval}'],
+      // 1a vs 1b config redirect — probe-calibrated pre-split (2026-08-04)
+      ['start the flask server', 'ENTRY action=python main.py serve'],
+      ['run the site please', 'BUILTIN=run_project'],
+      ['start netpulse', 'ENTRY action=python main.py serve'],
+      // Multi-intent with a config entry in the second half
+      ['run the tests and watch network', 'MULTI[builtin=run_tests | entry=python main.py watch --interval {interval}]'],
+      // Trust guards: filename/quote-bearing chit-chat must not land on the chit-chat intent
+      ['thanks for the file report.pdf', 'FALLBACK(didYouMean=file_read)'],
+      ['good job on fixing main.py', 'BUILTIN=file_find'],
+      // didYouMean on no-match (input below floor but nearest >= 0.45)
+      ['show me the status of everything', 'FALLBACK(didYouMean=system.chit_chat.status)'],
     ],
   },
 ];
