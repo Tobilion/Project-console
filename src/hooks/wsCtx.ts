@@ -1,4 +1,4 @@
-import type { TerminalMessage, ToolCallEntry, Project, PendingMemorySuggestion } from '../types';
+import type { TerminalMessage, ToolCallEntry, Project, PendingMemorySuggestion, PendingToolConfirm } from '../types';
 
 /**
  * The bag of everything the WS-message case handlers (wsMessageCases.ts / wsStreamingCases.ts)
@@ -19,7 +19,7 @@ export interface WsCtx {
   };
   terminal: {
     setPendingConfirm: (v: { token: string; command: string } | null) => void;
-    setPendingToolConfirm: (v: { token: string; tool: string; args: Record<string, any> } | null) => void;
+    setPendingToolConfirm: (v: PendingToolConfirm | null) => void;
     setPendingMemorySuggestion: (v: PendingMemorySuggestion | null) => void;
   };
   ai: {

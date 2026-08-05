@@ -32,6 +32,11 @@ export function useConsoleProcessDock(
   const [processLogs, setProcessLogs] = useState<Record<string, string[]>>({});
   const [selectedProcessId, setSelectedProcessId] = useState<string | null>(null);
   const [dockExpanded, setDockExpanded] = useState(false);
+  // Phase 14 (PASS 3d): which expanded view the dock shows — the live process logs (default,
+  // Phase 6 behavior) or the new Projects overview (every discovered project + whether/where
+  // it's running). Tabs in the collapsed bar switch between them; selecting a process tab or
+  // the running toggle switches back to 'logs'.
+  const [dockTab, setDockTab] = useState<'logs' | 'projects'>('logs');
 
   // Phase 6 (PASS 6.1): live view of runningProcesses for the dock. Prunes logs of dead
   // projects and keeps the selected tab valid (prefer the session's active project, fall back
@@ -104,6 +109,8 @@ export function useConsoleProcessDock(
     setSelectedProcessId,
     dockExpanded,
     setDockExpanded,
+    dockTab,
+    setDockTab,
     fetchProcesses,
     fetchProcessLog,
     appendProcessOutput,

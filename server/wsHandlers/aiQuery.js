@@ -13,6 +13,7 @@ import { streamWithToolDetection } from './aiStream.js';
 import { analyzeAIExchange } from '../distillation.js';
 import { trackFileEdit, trackQuestion, addCandidateAddition } from '../projectMemory.js';
 import { metrics } from '../metrics.js';
+import { computeFileEditPreview } from '../diffPreview.js';
 
 // Phase 5 (PASS 5.4): the tool-call cap is env-overridable so heavy multi-step workflows don't
 // hit an artificial wall — defaults to 6, the original constant.
@@ -60,11 +61,11 @@ function looksLikeFabricatedActionClaim(text) {
 }
 
 /** Waits for the user to approve/reject a gated tool call, driven by an incoming confirm_response. */
-function requestToolConfirmation(ws, tool, args) {
+function requestToolConfirmation(ws, tool, args, preview) {
   const token = crypto.randomUUID();
   return new Promise((resolve) => {
     pendingToolConfirmations.set(token, { resolve, createdAt: Date.now() });
-    ws.send(JSON.stringify({ type: 'tool_confirm_prompt', token, tool, args }));
+    ws.send(JSON.stringify({ type: 'tool_confirm_prompt', token, tool, args, preview }));
   });
 }
 
@@ -161,7 +162,11 @@ async function runToolCall(ws, project, tools, call, workspaceTools = {}, worksp
   }
   if (gate.action === 'ask') {
     ws.send(JSON.stringify({ type: 'tool_start', data: `Requesting approval for ${tool}${loc}: ${args?.path || args?.content || ''}` }));
-    const approved = await requestToolConfirmation(ws, tool, args);
+    // Phase 14 PASS 3a: attach a best-effort before/after diff to file-edit approvals so the
+    // user sees exactly what the AI-proposed change does (computeFileEditPreview returns null
+    // on any failure — the confirm prompt must never be delayed or blocked by preview work).
+    const preview = tool !== 'executeCommand' ? await computeFileEditPreview(resolvedProject?.path, tool, args) : null;
+    const approved = await requestToolConfirmation(ws, tool, args, preview);
     if (!approved) return { success: false, error: `${tool} rejected by user.` };
     // allow-after-first-ask policy: record the grant so the remaining calls this session skip the
     // prompt. executeCommand/runTests/stopProcess never reach here with a grantKey (see

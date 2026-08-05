@@ -160,7 +160,7 @@ const toolStartCase: WsCaseHandler = (ctx, payload) => {
 };
 
 const toolConfirmPromptCase: WsCaseHandler = (ctx, payload) => {
-  ctx.terminal.setPendingToolConfirm({ token: payload.token, tool: payload.tool, args: payload.args || {} });
+  ctx.terminal.setPendingToolConfirm({ token: payload.token, tool: payload.tool, args: payload.args || {}, preview: payload.preview || null });
 };
 
 const taskGrantedCase: WsCaseHandler = (ctx) => {

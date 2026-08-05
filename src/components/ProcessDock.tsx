@@ -1,6 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Terminal as TerminalIcon, ChevronDown, ChevronUp, Square } from 'lucide-react';
+import { Terminal as TerminalIcon, ChevronDown, ChevronUp, Square, LayoutGrid, FolderOpen } from 'lucide-react';
 import { shortCommand, portFromUrl } from '../utils/process';
 import { CopyButton } from './ui/CopyButton';
 
@@ -20,6 +20,9 @@ interface ProcessDockProps {
   onStopProcess: (projectId: string) => void;
   expanded: boolean;
   onToggleExpanded: () => void;
+  dockTab?: 'logs' | 'projects';
+  onSetDockTab?: (tab: 'logs' | 'projects') => void;
+  projects?: { id: string; name: string }[];
 }
 
 /**
@@ -29,6 +32,12 @@ interface ProcessDockProps {
  * first selection + client-side live accumulation). Mounted as a flex-shrink-0 child inside
  * Terminal's root column — it pushes the chat area rather than overlaying it, so the chat
  * scroll container (flex-1 overflow-y-auto) is untouched.
+ *
+ * Phase 14 (PASS 3d): added a second expanded view — the Projects overview (every discovered
+ * project + whether/where it's running, with per-project stop). The collapsed bar gains a
+ * "Projects" tab next to the running toggle; the dock now also renders when nothing is
+ * running (previously it auto-hid entirely), so the overview stays reachable as the project
+ * list is the point of the tab.
  */
 export function ProcessDock({
   processes,
@@ -38,20 +47,25 @@ export function ProcessDock({
   onStopProcess,
   expanded,
   onToggleExpanded,
+  dockTab = 'logs',
+  onSetDockTab,
+  projects = [],
 }: ProcessDockProps) {
   const lines = selectedProcessId ? (processLogs[selectedProcessId] || []) : [];
   const logText = lines.join('\n');
   const logEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (expanded && lines.length > 0) {
+    if (expanded && dockTab === 'logs' && lines.length > 0) {
       logEndRef.current?.scrollIntoView({ block: 'end' });
     }
-  }, [expanded, lines.length]);
+  }, [expanded, dockTab, lines.length]);
+
+  const runningByProject = new Map(processes.map(p => [p.projectId, p]));
 
   return (
     <AnimatePresence initial={false}>
-      {processes.length > 0 && (
+      {(processes.length > 0 || projects.length > 0) && (
         <motion.div
           initial={{ height: 0, opacity: 0 }}
           animate={{ height: 'auto', opacity: 1 }}
@@ -66,34 +80,112 @@ export function ProcessDock({
                 exit={{ height: 0, opacity: 0 }}
                 className="overflow-hidden"
               >
-                <div className="flex items-center justify-between px-4 pt-2">
-                  <span className="text-[10px] text-fg-faint uppercase">Live output</span>
-                  <CopyButton
-                    text={logText}
-                    title="Copy log"
-                    size={10}
-                    label="Copy"
-                    feedback={false}
-                    className="flex items-center gap-1 px-2 py-0.5 rounded bg-panel hover:bg-panel-strong text-fg-dim hover:text-fg-strong transition-colors text-[10px]"
-                  />
-                </div>
-                <div className="max-h-64 overflow-y-auto p-3 font-mono text-xs text-fg-muted leading-relaxed whitespace-pre-wrap">
-                  {logText || 'No output yet.'}
-                  <div ref={logEndRef} />
-                </div>
+                {dockTab === 'projects' ? (
+                  <div className="max-h-64 overflow-y-auto p-3">
+                    {projects.length === 0 ? (
+                      <div className="text-xs text-fg-faint px-1">No projects discovered yet — scan a folder first.</div>
+                    ) : (
+                      <div className="space-y-1">
+                        {projects.map((proj) => {
+                          const running = runningByProject.get(proj.id);
+                          const port = running?.url ? portFromUrl(running.url) : null;
+                          return (
+                            <div
+                              key={proj.id}
+                              className={`flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-lg border text-xs ${
+                                running
+                                  ? 'bg-panel border-border-soft'
+                                  : 'bg-transparent border-transparent'
+                              }`}
+                            >
+                              <button
+                                className="flex items-center gap-2 min-w-0 text-left"
+                                title={running ? `Open log for ${proj.name}` : 'Not running'}
+                                disabled={!running}
+                                onClick={() => {
+                                  if (!running) return;
+                                  onSelectProcess(proj.id);
+                                  onSetDockTab?.('logs');
+                                }}
+                              >
+                                <FolderOpen size={12} className="text-fg-dim flex-shrink-0" />
+                                <span className="truncate text-fg-muted hover:text-fg-strong">{proj.name}</span>
+                                {running ? (
+                                  <>
+                                    <span className="w-1.5 h-1.5 rounded-full bg-[#22C55E] animate-pulse flex-shrink-0" />
+                                    <span className="font-mono text-[10px] text-fg-subtle truncate">{shortCommand(running.command)}</span>
+                                    {port && <span className="font-mono text-[10px] text-fg-faint flex-shrink-0">:{port}</span>}
+                                  </>
+                                ) : (
+                                  <span className="text-[10px] text-fg-faint italic flex-shrink-0">idle</span>
+                                )}
+                              </button>
+                              {running && (
+                                <button
+                                  onClick={() => onStopProcess(proj.id)}
+                                  className="text-fg-faint hover:text-red-400 transition-colors flex-shrink-0"
+                                  title={`Stop ${running.command}`}
+                                >
+                                  <Square size={10} />
+                                </button>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <>
+                    <div className="flex items-center justify-between px-4 pt-2">
+                      <span className="text-[10px] text-fg-faint uppercase">Live output</span>
+                      <CopyButton
+                        text={logText}
+                        title="Copy log"
+                        size={10}
+                        label="Copy"
+                        feedback={false}
+                        className="flex items-center gap-1 px-2 py-0.5 rounded bg-panel hover:bg-panel-strong text-fg-dim hover:text-fg-strong transition-colors text-[10px]"
+                      />
+                    </div>
+                    <div className="max-h-64 overflow-y-auto p-3 font-mono text-xs text-fg-muted leading-relaxed whitespace-pre-wrap">
+                      {logText || 'No output yet.'}
+                      <div ref={logEndRef} />
+                    </div>
+                  </>
+                )}
               </motion.div>
             )}
           </AnimatePresence>
 
           <div className="flex items-center gap-1.5 px-2 py-1.5 overflow-x-auto">
             <button
-              onClick={onToggleExpanded}
+              onClick={() => {
+                onSetDockTab?.('logs');
+                onToggleExpanded();
+              }}
               className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] text-fg-subtle hover:text-fg-strong hover:bg-panel transition-colors flex-shrink-0"
               title={expanded ? 'Collapse dock' : 'Expand dock'}
             >
               <TerminalIcon size={12} className="text-[#3d6bff]" />
               <span>{processes.length} running</span>
               {expanded ? <ChevronDown size={12} className="text-fg-dim" /> : <ChevronUp size={12} className="text-fg-dim" />}
+            </button>
+
+            <button
+              onClick={() => {
+                onSetDockTab?.('projects');
+                if (!expanded || dockTab !== 'projects') onToggleExpanded();
+              }}
+              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] transition-colors flex-shrink-0 ${
+                expanded && dockTab === 'projects'
+                  ? 'bg-panel text-fg-strong border border-border-soft'
+                  : 'text-fg-subtle hover:text-fg-strong hover:bg-panel'
+              }`}
+              title="All projects + where they're running"
+            >
+              <LayoutGrid size={12} className="text-[#00d4a3]" />
+              <span>Projects</span>
             </button>
 
             {processes.map((p) => {
@@ -109,7 +201,11 @@ export function ProcessDock({
                   }`}
                 >
                   <button
-                    onClick={() => onSelectProcess(p.projectId)}
+                    onClick={() => {
+                      onSelectProcess(p.projectId);
+                      onSetDockTab?.('logs');
+                      if (!expanded) onToggleExpanded();
+                    }}
                     className="flex items-center gap-1.5"
                     title={`${p.command}${p.startedAt ? ` — started ${new Date(p.startedAt).toLocaleTimeString()}` : ''}`}
                   >

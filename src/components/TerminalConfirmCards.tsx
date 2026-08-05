@@ -72,6 +72,28 @@ export function TerminalConfirmCards({
             <pre className="font-mono text-xs mt-2 mb-3 whitespace-pre-wrap break-all bg-scrim px-2 py-1.5 rounded border border-border-soft text-fg-muted max-h-32 overflow-y-auto">
               {JSON.stringify(pendingToolConfirm.args, null, 2)}
             </pre>
+            {pendingToolConfirm.preview && (
+              <div className="mt-2 mb-3">
+                <div className="text-[10px] tracking-wider uppercase text-fg-dim font-mono mb-1">
+                  {pendingToolConfirm.preview.mode === 'create' ? 'Will create' : 'Preview'}{' '}
+                  <span className="break-all">{pendingToolConfirm.preview.path}</span>
+                </div>
+                <pre className="font-mono text-xs whitespace-pre-wrap break-all bg-scrim px-2 py-1.5 rounded border border-border-soft max-h-40 overflow-y-auto">
+                  {pendingToolConfirm.preview.removed.map((l) => (
+                    <span key={`r${l}`} className="block text-red-400">- {l}</span>
+                  ))}
+                  {pendingToolConfirm.preview.removedMore > 0 && (
+                    <span className="block text-fg-dim">… {pendingToolConfirm.preview.removedMore} more removed</span>
+                  )}
+                  {pendingToolConfirm.preview.added.map((l) => (
+                    <span key={`a${l}`} className="block text-emerald-400">+ {l}</span>
+                  ))}
+                  {pendingToolConfirm.preview.addedMore > 0 && (
+                    <span className="block text-fg-dim">… {pendingToolConfirm.preview.addedMore} more added</span>
+                  )}
+                </pre>
+              </div>
+            )}
             <div className="flex flex-wrap gap-2">
               <button
                 onClick={() => onToolConfirm(true)}

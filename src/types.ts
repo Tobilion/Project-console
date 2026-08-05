@@ -114,6 +114,14 @@ export interface PendingToolConfirm {
   token: string;
   tool: string;
   args: Record<string, any>;
+  preview?: {
+    path: string;
+    removed: string[];
+    added: string[];
+    removedMore: number;
+    addedMore: number;
+    mode?: 'create';
+  } | null;
 }
 
 /**

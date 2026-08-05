@@ -5,6 +5,7 @@ import { createCheckpoint } from '../gitSafety.js';
 import { createProjectTools, isCommandAllowed, resolveToolGate } from '../tools.js';
 import { isCommandBlocked } from '../dangerousPatterns.js';
 import { executeCommand } from '../executor.js';
+import { computeFileEditPreview } from '../diffPreview.js';
 
 /** Direct tool invocation from the frontend (not via AI chat). Scoped to the client's active project. */
 export async function handleToolCall(ws, parsed, sessionContext) {
@@ -62,9 +63,10 @@ export async function handleToolCall(ws, parsed, sessionContext) {
   }
   if (gate.action === 'ask') {
     const token = crypto.randomUUID();
+    const preview = tool !== 'executeCommand' ? await computeFileEditPreview(project.path, tool, args) : null;
     const confirmed = await new Promise((resolve) => {
       pendingToolConfirmations.set(token, { resolve, createdAt: Date.now() });
-      ws.send(JSON.stringify({ type: 'tool_confirm_prompt', token, tool, args }));
+      ws.send(JSON.stringify({ type: 'tool_confirm_prompt', token, tool, args, preview }));
     });
     if (!confirmed) {
       ws.send(JSON.stringify({ type: 'tool_result', data: { success: false, error: `${tool} rejected by user.` } }));

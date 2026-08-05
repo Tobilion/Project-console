@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Project, TerminalMessage, PendingMemorySuggestion } from '../types';
+import { Project, TerminalMessage, PendingMemorySuggestion, PendingToolConfirm } from '../types';
 
 export function useTerminal(
   wsRef: React.MutableRefObject<WebSocket | null>,
@@ -8,7 +8,7 @@ export function useTerminal(
   setMessages: React.Dispatch<React.SetStateAction<TerminalMessage[]>>,
 ) {
   const [pendingConfirm, setPendingConfirm] = useState<{ token: string; command: string } | null>(null);
-  const [pendingToolConfirm, setPendingToolConfirm] = useState<{ token: string; tool: string; args: any } | null>(null);
+  const [pendingToolConfirm, setPendingToolConfirm] = useState<PendingToolConfirm | null>(null);
   const [pendingMemorySuggestion, setPendingMemorySuggestion] = useState<PendingMemorySuggestion | null>(null);
 
   const handleSendMessage = async (content: string) => {

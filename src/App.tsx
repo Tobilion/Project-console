@@ -54,7 +54,7 @@ function App() {
     handleDirectCommand, activeServers, dashboardUpdateSignal,
     workspaceProjects, addToWorkspace, removeFromWorkspace, clearWorkspace,
     processes, processLogs, selectedProcessId, setSelectedProcessId,
-    dockExpanded, setDockExpanded, handleStopProcess,
+    dockExpanded, setDockExpanded, dockTab, setDockTab, handleStopProcess,
     handleDidYouMeanPick,
   } = useConsole();
 
@@ -252,6 +252,9 @@ function App() {
               onStopProcess={handleStopProcess}
               dockExpanded={dockExpanded}
               onToggleDock={() => setDockExpanded(v => !v)}
+              dockTab={dockTab}
+              onSetDockTab={setDockTab}
+              projects={projects}
               userName={profile.name}
             />
             )}

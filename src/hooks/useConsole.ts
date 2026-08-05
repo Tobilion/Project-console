@@ -323,6 +323,8 @@ export function useConsole() {
     setSelectedProcessId: dock.setSelectedProcessId,
     dockExpanded: dock.dockExpanded,
     setDockExpanded: dock.setDockExpanded,
+    dockTab: dock.dockTab,
+    setDockTab: dock.setDockTab,
     handleStopProcess: dock.handleStopProcess,
     handleDidYouMeanPick,
     indexingProjectId: projects.indexingProjectId,

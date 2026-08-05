@@ -76,6 +76,9 @@ interface TerminalProps {
   onStopProcess?: (projectId: string) => void;
   dockExpanded?: boolean;
   onToggleDock?: () => void;
+  dockTab?: 'logs' | 'projects';
+  onSetDockTab?: (tab: 'logs' | 'projects') => void;
+  projects?: Project[];
 }
 
 const AI_MODES = [
@@ -87,7 +90,9 @@ const AI_MODES = [
   { value: 'structured', label: 'Structured' }
 ];
 
-export const Terminal = ({ messages, onSendMessage, onSearch, onDeepResearch, activeProject, userName, pendingConfirm, onConfirm, pendingToolConfirm, onToolConfirm, onApproveTask, pendingMemorySuggestion, onMemorySuggestionRespond, aiEnabled, aiThinking, aiThinkingText, commandPending, onCancel, ollamaStatus, aiModel, aiMode, onAIToggle, onSetModel, onSetMode, toolHistory, showToolHistory, onToggleToolHistory, onRerunToolCall, onExportMarkdown, onExportJson, onDirectCommand, onDidYouMeanPick, workspaceProjects, addToWorkspace, removeFromWorkspace, clearWorkspace, onSwitchToProject, isFullscreen, onToggleFullscreen, processes, processLogs, selectedProcessId, onSelectProcess, onStopProcess, dockExpanded, onToggleDock }: TerminalProps) => {
+export const Terminal = ({ messages, onSendMessage, onSearch, onDeepResearch, activeProject, userName, pendingConfirm, onConfirm, pendingToolConfirm, onToolConfirm, onApproveTask, pendingMemorySuggestion, onMemorySuggestionRespond, aiEnabled, aiThinking, aiThinkingText, commandPending, onCancel, ollamaStatus, aiModel, aiMode, onAIToggle, onSetModel, onSetMode, toolHistory, showToolHistory, onToggleToolHistory, onRerunToolCall, onExportMarkdown, onExportJson, onDirectCommand, onDidYouMeanPick, workspaceProjects, addToWorkspace, 
+removeFromWorkspace, clearWorkspace, onSwitchToProject, isFullscreen, onToggleFullscreen, processes, processLogs, 
+selectedProcessId, onSelectProcess, onStopProcess, dockExpanded, onToggleDock, dockTab, onSetDockTab, projects }: TerminalProps) => {
   const [input, setInput] = useState('');
   const [showSearchOverlay, setShowSearchOverlay] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -305,6 +310,9 @@ export const Terminal = ({ messages, onSendMessage, onSearch, onDeepResearch, ac
         onStopProcess={(pid) => onStopProcess?.(pid)}
         expanded={!!dockExpanded}
         onToggleExpanded={() => onToggleDock?.()}
+        dockTab={dockTab || 'logs'}
+        onSetDockTab={onSetDockTab}
+        projects={projects || []}
       />
 
       {ollamaStatus && (
