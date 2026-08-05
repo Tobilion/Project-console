@@ -2759,6 +2759,41 @@ items were fixed. All harness-verified; NOT yet live-chat-verified (see the end-
   real chat, common-ports scan against a real external server, and the already-fixed-in-code
   reports (Home, Matchday, reload styling, light mode, fullscreen) after restarting the stale
   server.
+- **Modularization round (same day, commits `14a3f6c` → `2fd87ef` — every remaining >300-line
+  server file now split, all bodies moved verbatim, one module per commit):**
+  - `toolFileTools.js` (321) → `server/toolFileOps.js` (readFile/writeFile/appendToFile/insertAtLine),
+    `server/toolFileEdit.js` (editFile multi-hunk), `server/toolFileSearch.js` (findFiles/searchCode/
+    listFiles), `server/toolProjectInfo.js` (getProjectInfo/getGitStatus/undoLastChange/saveMemory);
+    `toolFileTools.js` is now a pure merge of the four factories (takes `{ project, root, resolveSafe }`).
+  - `builtinGit.js` (315) → `builtinGitWorkflow.js` (git_push/commit/commit_push — the shared
+    extractCommentMessage cluster), `builtinGitRemote.js` (remote_add/pull/fetch/remote_info),
+    `builtinGitRepoSetup.js` (add/init/ignore_add/rm_cached), `builtinGitRead.js` (log/branch/checkout/
+    diff/stash_list/ahead_behind — all immediate), `builtinGitWorktree.js` (stash/stash_pop/
+    branch_create/tag — all confirm-gated + isSafeParamValue'd); `gitHandlers` export unchanged.
+  - `builtinProjectContext.js` (320) → `builtinContextIndex.js` (8 cached-index readers),
+    `builtinContextRepoMap.js` (routes/file_relations/monorepo), `builtinContextScans.js`
+    (todos/biggest_files/recent_activity — on-demand), `builtinContextRuntime.js`
+    (dev_server_status/scan_servers/running_processes/session_info); `projectContextHandlers`
+    export unchanged.
+  - `projectScanner.js` (349) → `projectScanHelpers.js` (isRecognizableByCodeAlone,
+    sanitizeChatReplies, buildFallbackConfig, CONTEXT_FILENAMES/contextPriority, and NEW shared
+    `readProjectContextDocs()`/`commandEntriesFromDocs()` extracted from the duplicated doc-parsing
+    block that both scans carried), `projectScanSingle.js` (scanSingleProject),
+    `projectScanContainer.js` (discoverProjects); `projectScanner.js` re-exports the two public
+    functions (only importers: fileWatcher.js, index.js, routes/projectRoutes.js).
+  - `aiQuery.js` (392) → `aiQueryDetectors.js` (looksLikeUnexecutedToolIntent +
+    looksLikeFabricatedActionClaim), `aiQueryToolRun.js` (requestToolConfirmation incl. preview,
+    runGatedExecuteCommand, runToolCall, MAX_TOOL_ROUNDS), `aiQueryContext.js` (buildAIQueryContext
+    — system prompt + last-10-session history + reason-mode enrichment + per-workspace tool sets);
+    `aiQuery.js` keeps handleAIQuery (streaming loop + cancellation + post-query tracking).
+  - Verified per commit: `node --check` per file, lint clean; final battery green —
+    check-tools 92/92, check-matcher 78/78, check-indexer 71/71, check-handlers 15/15,
+    check-ws-cases 72/72, check-intents baseline (1/5/80), `npx vite build` clean. New
+    behavioral smoke for the scanner split (`smoke-scan.mjs`, 8/8: container discovery incl.
+    junk exclusion, single-root passthrough, code-only fallback config, valid chatReplies
+    preserved + malformed dropped) since no existing harness covers projectScanner.js.
+    Remaining server giants, all deliberate orchestrators: matcher.js 253, executor.js 164,
+    codebaseIndexer.js ~185, connectionLifecycle.js ~210; frontend useConsole.ts 368.
 
 ## Conventions
 
