@@ -44,9 +44,15 @@ when the cmd.exe wrapper exits before npm.
 - `server/wsServer.js` — the `wss` instance + `broadcast()`
 - `server/mockProjects.js` — seeds fake projects on non-Windows sandboxes
 - `server/routes/` — `projectRoutes.js`, `sessionRoutes.js`, `searchRoutes.js`, `monitoringRoutes.js` (`/api/metrics`, `/api/active-servers`, `/api/dashboard` with 30s in-memory cache)
-- `server/wsHandlers/` — `connection.js` (message router), `builtinIntents.js` (canned responses
-  + `buildHelpMessage()` prompt library), `matchedEntry.js`, `aiQuery.js` (Ollama tool-call loop),
-  `aiStream.js` (token streaming + `<tool_call>` extraction)
+- `server/wsHandlers/` — `connection.js` (message router), `builtinIntents.js` (a ~45-line
+  orchestrator only — Phase 10 split the old 1732-line file into six per-domain leaf modules:
+  `builtinGit.js` (21 git handlers), `builtinChitChat.js` (16 chit-chat handlers incl.
+  `buildHelpMessage()` prompt library), `builtinFileNpm.js` (10 npm/file/run handlers),
+  `builtinProjectKnowledge.js` (9 knowledge/scan/list/checkpoint handlers),
+  `builtinProjectContext.js` (18 read-only codebase-introspection handlers),
+  `builtinProjectActions.js` (5 side-effectful action handlers + metrics)), `matchedEntry.js`,
+  `aiQuery.js` (Ollama tool-call loop), `aiStream.js` (token streaming + `<tool_call>`
+  extraction)
 - `server/tools.js` — `createProjectTools(project)`: file/git tools **sandboxed to that project's
   directory only** (path-escape attempts are rejected). Named-args, not positional. Tools:
   `readFile`, `writeFile`, `editFile` (single-pair or multi-hunk `oldStrings`/`newStrings`
@@ -2318,8 +2324,9 @@ zero behavior change; one commit per phase; lint + check-intents must stay green
   chat-log.md + .gitignore side effects → delete → index entry removed), check-matcher
   68/68, check-intents baseline (1/5/80). After this phase, every file on the original
   "remaining large files" list is under 150 lines — only the big orchestrators/giants
-  remain (matcher.js 437, tools.js 770, builtinIntents.js 1732, connection.js 1274,
-  executor.js 507, codebaseIndexer.js 749, useConsole.ts 747), all out of scope for the
+  remain (matcher.js 437, tools.js 770, connection.js 1274,
+  executor.js 507, codebaseIndexer.js 749, useConsole.ts 747, builtinIntents.js 1732 — done
+  last, see Phase 10), all out of scope for the
   split-by-concern series so far (matcher.js was the next one, now done — see Phase 7).
 - **Phase 7 (2026-08-04, matcher.js split — `420c749` + this docs entry).** `server/matcher.js`
   437 → ~253 lines of pure orchestration (matchInput + the multi-intent block only); three new
@@ -2339,7 +2346,8 @@ zero behavior change; one commit per phase; lint + check-intents must stay green
   pre-existing expectations updated for display only, no behavior change. Verified: 78/78
   (byte-identical to the pre-split run), lint clean, check-intents baseline (1/5/80), import
   smoke. Only the giants remain out of scope for the split series: tools.js 770,
-  builtinIntents.js 1732, connection.js 1274, executor.js 507, codebaseIndexer.js 749,
+  connection.js 1274, executor.js 507, codebaseIndexer.js 749,
+  builtinIntents.js 1732 (all since done — see Phases 8/9/10).
   useConsole.ts 747 (codebaseIndexer since done — see Phase 8).
 - **Phase 8 (2026-08-04, codebaseIndexer.js split — 5 commits `138853a` → `baa6ff0`).**
   `server/codebaseIndexer.js` 749 → ~185 lines of pure orchestration (keyFileCache/
@@ -2370,8 +2378,8 @@ zero behavior change; one commit per phase; lint + check-intents must stay green
   check-intents baseline (1/5/80), lint clean, full-process import smoke 86/86 (all
   server modules — the same smoke that caught the memoryStore regression above; entrypoint
   scripts cli-client.js/index.js/scripts/* are excluded since they run at import time).
-  Remaining giants: tools.js 770, builtinIntents.js 1732, connection.js 1274,
-  executor.js 507, useConsole.ts 747.
+  Remaining giants: tools.js 770, connection.js 1274,
+  executor.js 507, useConsole.ts 747, builtinIntents.js 1732 (all since done — see Phases 9/10).
 - **Phase 9 (2026-08-04, tools.js split — 6 commits `11d81ef` → `1bef674`).**
   `server/tools.js` 770 → 105 lines of pure orchestration (createProjectTools shell:
   resolveSafe factory + assembly from the leaves + plugin-manifest merge + the same 18-tool
@@ -2411,10 +2419,57 @@ zero behavior change; one commit per phase; lint + check-intents must stay green
   non-checkpoint refusal). Run it after ANY edit to tools.js or the eight leaves.
   Verified: 92/92, check-matcher 78/78, check-indexer 71/71, check-intents baseline (1/5/80),
   lint clean, import smoke 94/94 (up from 86/86 — six new modules). Remaining giants:
-  builtinIntents.js 1732, connection.js 1274, executor.js 507, useConsole.ts 747.
+  connection.js 1274, executor.js 507, useConsole.ts 747, builtinIntents.js 1732 (since
+  done — see Phase 10).
 - Verification: Phases 1–3 lint-clean; check-intents identical to baseline (1/5/80);
   import smoke + guessCommand battery pass. Phase 1 commit excludes the
   data/user-profile.json write (live dev server on :3000).
+
+## Phase 10 (2026-08-04, builtinIntents.js split — 7 commits, all harness-verified)
+
+`server/wsHandlers/builtinIntents.js` 1732 → ~45 lines of pure orchestration. Every branch body
+was moved verbatim into six per-domain leaf modules (keys = full action names where the action
+has one; `undo` alias folded into the map lookup); the dispatcher is now a merged-handler-map
+lookup with `return false` for unknown actions. `connection.js` (the only external importer,
+`handleBuiltinIntent` at L12) is untouched — its 7 call sites all `await` and ignore the return.
+
+- **`builtinGit.js`** (commit `686d3cf`, +337/−240): `gitHandlers`, 21 handlers (git_push/git_commit/
+  git_commit_push/git_remote_add/git_init/git_stash/git_stash_pop/git_branch_create/git_pull/
+  git_tag/git_rm_cached confirm-gated; git_log/git_branch/git_diff/git_stash_list/git_fetch/
+  git_ahead_behind/git_remote_info immediate; git_checkout answer-only).
+- **`builtinChitChat.js`** (commit `d90ea60`, +270/−193): `chitChatHandlers`, 16 handlers incl.
+  greeting/status (live-state + memory enrichment), gratitude/farewell/identity/needs_ai_mode/
+  ack/joke/clear/help/explain_followup/yes_no/port/git_status/deploy + the `undo` alias entry
+  (`buildHelpMessage()` lives here).
+- **`builtinFileNpm.js`** (commit `7e2232f`, +277/−226): `fileNpmHandlers`, 10 handlers
+  (npm_install/npm_build/npm_run incl. the duplicate-dev-server guard, file_create incl. the
+  overwrite pre-check, file_append, run_tests via findTestCommand, file_read/file_find/file_delete,
+  run_project incl. findMentionedScript + the stage-1b-floor logic).
+- **`builtinProjectKnowledge.js` / `builtinProjectContext.js` / `builtinProjectActions.js`**
+  (commit `5ecff86`, +564/−550): `projectKnowledgeHandlers` (9: the six project.knowledge.* +
+  project_scan/project_list/checkpoint), `projectContextHandlers` (18: the project.context.*
+  family incl. dev_server_status/scan_servers/recent_activity/running_processes/session_info),
+  `projectActionHandlers` (5: metrics + open_in_vscode/explorer/site + copy_path). The metrics
+  handler's `await import('node-fetch')` could NEVER have resolved (node-fetch is not installed)
+  — a pre-existing bug in the moved body, fixed in place to the global `fetch` (Node 18+, same
+  pattern livenessProbe.js already uses).
+- **`builtinIntents.js`** (same commit): ~45-line orchestrator — merges the six maps, maps
+  `'undo'` → `'system.chit_chat.undo'`, `if (!handler) return false`, and normalizes
+  `result === false ? false : true` so the old trailing `return true` semantics are preserved
+  exactly. 79 handlers ↔ 79 `BUILTIN_INTENTS` members ↔ 79 INTENTS keys — the count that the
+  gate has silently drifted on 5+ times before.
+- **`server/scripts/checkHandlerCoverage.js`** (commit `564b01d`, `npm run check-handlers`):
+  15 checks — bidirectional handler-map ↔ `BUILTIN_INTENTS` ↔ `INTENTS` set comparisons
+  (sorted diff output), the `undo` alias dispatch, and one fake-ws handler per leaf module +
+  unknown-intent fallback. Same self-asserting pattern as the other check-* harnesses; run after
+  ANY edit to the handler modules or intentRegistry.
+- Verified end-to-end: import smoke 104/104; behavioral smokes for all four committed module
+  batches (git 16/16, chit-chat 19/19, file/npm 11/11, project 32/32 — fake ws needs
+  `readyState: 1` since executor.js gates on it; `node --check` per file since `tsc --noEmit`
+  doesn't cover server/*.js); full battery after step 6: check-handlers 15/15, check-matcher
+  78/78, check-indexer 71/71, check-tools 92/92, check-intents baseline (1/5/80), lint clean.
+  Remaining giants: connection.js 1274, executor.js 507, useConsole.ts 747.
+
 
 ## Matchday Exchange transcript fixes (2026-08-04, reported directly — 4 bugs, 4 commits)
 
