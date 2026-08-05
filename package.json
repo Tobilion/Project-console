@@ -18,7 +18,8 @@
     "build": "vite build && esbuild server/index.js --bundle --platform=node --format=esm --packages=external --sourcemap --outfile=dist/server.js",
     "lint": "tsc --noEmit",
     "check-intents": "node server/scripts/checkIntentDuplicates.js",
-    "check-matcher": "node server/scripts/checkMatcherCoverage.js"
+    "check-matcher": "node server/scripts/checkMatcherCoverage.js",
+    "check-indexer": "node server/scripts/checkIndexerCoverage.js"
   },
   "dependencies": {
     "@nlpjs/basic": "^5.0.0-alpha.5",
