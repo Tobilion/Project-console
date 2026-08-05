@@ -2795,6 +2795,44 @@ items were fixed. All harness-verified; NOT yet live-chat-verified (see the end-
     Remaining server giants, all deliberate orchestrators: matcher.js 253, executor.js 164,
     codebaseIndexer.js ~185, connectionLifecycle.js ~210; frontend useConsole.ts 368.
 
+## Phase 15 (2026-08-05, user-reported UI bug batch — commits `1b1f0d5`, `1ca3f4e`, `75308c7`, `08bec2d`)
+
+Four user-reported issues + the "open in VS Code" question, all root-caused in code and fixed:
+
+- **Dock Projects tab now toggles** (`src/components/ProcessDock.tsx`, `1b1f0d5`): re-clicking
+  Projects while it's the active expanded view collapses the dock (before it was a silent no-op);
+  clicking from the logs view or collapsed still switches/expands. Tab strip hardened with
+  `min-w-0` + `[scrollbar-width:thin]` so many running-project tabs scroll horizontally instead
+  of overflowing.
+- **Chat history opens from Home** (`src/hooks/useConsole.ts`, `1ca3f4e`): `handleSwitchSession`
+  was the only session-opening path that never called `setShowWelcome(false)` — clicking a chat
+  in the sidebar while on the Welcome screen loaded the messages behind the canvas forever
+  (`App.tsx` renders WelcomeScreen whenever `showWelcome && !chatFullscreen`). Fixed to mirror
+  handleNewChat/handleQuickStart/handleSelectProject/handleScan.
+- **Clickable links in chat** (`src/components/TerminalMessages.tsx`, `1ca3f4e`): react-markdown
+  never autolinks bare URLs, so "what is the link"-style answers (`http://localhost:5000`) were
+  dead text. New `extractUrl()` pulls the first http(s) URL out of any non-user message
+  (trailing punctuation trimmed) and renders a teal "Click here to open the site ↗" anchor
+  (`target="_blank"`) under the bubble; existing markdown anchors are now styled
+  (`prose-a:text-accent prose-a:underline`).
+- **"Open in vs code" now works without the `code` CLI** (`server/wsHandlers/builtinProjectActions.js`,
+  `75308c7`): the handler only spawned `code` (not on PATH on this machine → manual-instructions
+  fallback). On ENOENT it now falls back to the `vscode://file/<path>` protocol URI
+  (`start`/`open`/`xdg-open`, the same platform pattern as `open_site`) with an honest reply
+  ("tried opening via the `vscode://` protocol instead — if nothing opened, File → Open Folder →
+  path"). Never claims it opened.
+- **check-handlers calibration** (`server/scripts/checkHandlerCoverage.js`, `08bec2d`): the
+  `dev_server_status` check asserted "has no server running", but the Phase 14 common-ports
+  fallback makes that handler probe `COMMON_DEV_PORTS` — on a machine with any of those ports
+  live (NetPulse on :5000 while the user is testing), it honestly answers "responding at ...
+  started outside the console". The assert now accepts either legitimate single-answer shape.
+  **Gotcha:** this check is inherently environment-sensitive — it passes on a machine with no
+  dev-server-ish port listening; don't treat a failure on a live machine as a regression.
+
+Verification: lint clean; `npx vite build` clean; check-matcher 78/78; check-handlers 15/15
+(after calibration); `node --check` on the edited server file. NOT yet live-verified — restart
+the server and click through the four behaviors (dock toggle, home→history, link chip, vs code).
+
 ## Conventions
 
 - No file over ~400 lines; split by concern (see `server/wsHandlers/` for the pattern).

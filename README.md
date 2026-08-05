@@ -489,6 +489,17 @@ channel. See CLAUDE.md for the per-phase module maps and verification numbers.
   verification (dock tab, diff card, cancel broadcast, port scan) is on the end-of-upgrade
   checklist.
 
+**Phase 15 — UI bug batch (2026-08-05):**
+- **Dock Projects tab toggles**: re-clicking Projects while it's the active expanded view
+  collapses the dock; the tab strip scrolls horizontally when many projects are running.
+- **Chat history opens from Home**: clicking a chat in the sidebar from the Welcome screen now
+  actually opens that chat (was loading it behind the canvas).
+- **Clickable links in chat**: any message containing an http(s) URL gets a teal "Click here to
+  open the site ↗" button under the bubble (opens in a new tab); markdown links are styled too.
+- **"Open in vs code" without the CLI**: if the `code` command isn't on PATH, it falls back to
+  the `vscode://file/<path>` protocol (works with a normal VS Code install, no PATH setup) and
+  says honestly what it did.
+
 ## Architecture
 
 ```
