@@ -2307,7 +2307,27 @@ zero behavior change; one commit per phase; lint + check-intents must stay green
   "remaining large files" list is under 150 lines — only the big orchestrators/giants
   remain (matcher.js 437, tools.js 770, builtinIntents.js 1732, connection.js 1274,
   executor.js 507, codebaseIndexer.js 749, useConsole.ts 747), all out of scope for the
-  split-by-concern series so far.
+  split-by-concern series so far (matcher.js was the next one, now done — see Phase 7).
+- **Phase 7 (2026-08-04, matcher.js split — `420c749` + this docs entry).** `server/matcher.js`
+  437 → ~253 lines of pure orchestration (matchInput + the multi-intent block only); three new
+  leaf modules, all logic unchanged: `server/intentRegistry.js` (BUILTIN_INTENTS — the dispatch
+  gate that has silently killed intents 5+ times — plus CONFIG_RUN_ENTRY_FLOOR 0.55 /
+  OPEN_PROJECT_RE / ROUTER_REPO_MAP_CHARS 1200 / describeIntent), `server/intentTrust.js`
+  (PURE_CHITCHAT_INTENTS, KNOWLEDGE_INTENTS_NEVER_ABOUT_A_FILE, looksLikeRealRequest,
+  looksLikeFileReference, isTrustworthyChitChat, isTrustworthyKnowledgeIntent — the
+  "garbled input misfiring onto a safe-sounding canned reply" guards, each carrying its
+  historical confirmed-live bug comment), and `server/matchHelpers.js` (tryLookupEntry,
+  captureTelemetry, getFallbackSuggestions + the FALLBACK_SUGGESTIONS list, computeDidYouMean).
+  matcher.js re-exports describeIntent/BUILTIN_INTENTS/getFallbackSuggestions so its external
+  importers (connection.js: matchInput/describeIntent/getFallbackSuggestions; localRouter.js:
+  BUILTIN_INTENTS as its allowed-intent list) are untouched. The check-matcher harness gained a
+  10-input MATCHER-DISPATCH battery (config-entry dispatch, run-floor redirect, closeSecond,
+  didYouMean chips) with fmt() display enriched to show didYouMean=/closeSecond= — 4
+  pre-existing expectations updated for display only, no behavior change. Verified: 78/78
+  (byte-identical to the pre-split run), lint clean, check-intents baseline (1/5/80), import
+  smoke. Only the giants remain out of scope for the split series: tools.js 770,
+  builtinIntents.js 1732, connection.js 1274, executor.js 507, codebaseIndexer.js 749,
+  useConsole.ts 747.
 - Verification: Phases 1–3 lint-clean; check-intents identical to baseline (1/5/80);
   import smoke + guessCommand battery pass. Phase 1 commit excludes the
   data/user-profile.json write (live dev server on :3000).
