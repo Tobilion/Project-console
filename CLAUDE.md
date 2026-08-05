@@ -2468,7 +2468,74 @@ lookup with `return false` for unknown actions. `connection.js` (the only extern
   `readyState: 1` since executor.js gates on it; `node --check` per file since `tsc --noEmit`
   doesn't cover server/*.js); full battery after step 6: check-handlers 15/15, check-matcher
   78/78, check-indexer 71/71, check-tools 92/92, check-intents baseline (1/5/80), lint clean.
-  Remaining giants: connection.js 1274, executor.js 507, useConsole.ts 747.
+  Remaining giants: connection.js 1274, executor.js 507, useConsole.ts 747 (since done —
+  see Phase 11 for connection.js).
+
+## Phase 11 (2026-08-04, connection.js split — 4 commits `5a1fa3f` → final, all harness-verified)
+
+`server/wsHandlers/connection.js` 1274 → a ~14-line re-export shim. Every block body was moved
+verbatim into ten per-domain leaf modules; `server/index.js` is untouched — it still imports
+`initWebSocketServer` from `./wsHandlers/connection.js`, which re-exports it from
+`connectionLifecycle.js`, and the shim also re-exports the three `DEV_URL_*` regexes from
+`connectionDevServer.js` so `builtinIntents.js`/`readmeRunParser.js` importers are stable.
+Import graph is one-directional: shim → lifecycle → routes → execute/confirm/toolcall → blocks.
+
+- **`connectionState.js`** (`5a1fa3f`, add-only) — the `pendingMemorySuggestions` Map (shared
+  mutable state; `pendingConfirmations`/`pendingToolConfirmations` stay in `server/state.js`,
+  deliberately not duplicated).
+- **`connectionInterceptors.js`** — `handlePendingParamReply(ws, project, projectId, input,
+  sessionContext)`, `handlePendingFollowUpReply` (same signature), `handlePendingDisambiguationReply`,
+  `handlePendingMemorySuggestionReply(ws, project, lowerInput)` — each returns true when the reply
+  was consumed by the pending-ask flow, false otherwise; called in order at the top of
+  `handleExecute` (the 2026-08-03 pendingParam raw-text-fallback rule and the followUp
+  no/re-ask/cancel semantics are unchanged).
+- **`connectionTelemetry.js`** — `handleTelemetryCommand`: telemetry review/stats, thresholds
+  list/suggest/auto-apply, per-intent threshold set/remove/reset, check collisions, clear.
+- **`connectionAdminCommands.js`** — `handleDistillationCommand` (review/apply/apply all/clear),
+  `handleMemoryReview`, `handleLearningCommand` (review/approve suggestions).
+- **`connectionDevServer.js`** — `DEV_URL_WHERE_RE`/`DEV_URL_WHAT_RE`/`DEV_URL_BARE_RE`
+  (exported; `DEV_URL_GIT_CONTEXT_RE` private), `handleStopServer` (the stop regex incl. bare
+  "stop it" only when `runningProcesses.has(project.id)` — the 2026-07-30 fix), `handleDevUrl`
+  (liveness probe + `candidateDevUrls` discovery + `withPortCollisionWarning`).
+- **`connectionMatching.js`** — `handleMatchingPipeline`: matchInput → disambiguation →
+  router near-miss → history → multi → builtin (+ `closeSecond` did-you-mean) → matched entry →
+  `resolveContext` carryover → `guessCommand` confirm → fallback (codebaseIndex details +
+  `injectContext` + didYouMean + suggestions).
+- **`connectionConfirm.js`** — `handleConfirmResponse`: tool-token resolve, port-conflict
+  `stdinWrite`, fire-and-forget `retrainConfidenceModel()`, 5min expiry, `fileOp` via
+  `createProjectTools`, blocked/allowlist re-checks, git-commit checkpoint skip, `executeCommand`,
+  `trackCommand`/memory-suggestion nudge.
+- **`connectionToolCall.js`** — `handleToolCall`: metrics, `executeCommand` branch
+  (blocked/allowlist/risky checkpoint), `resolveToolGate` deny/ask/auto-approve with
+  `toolGrantKey`, pending tool confirmations, tool execution.
+- **`connectionLifecycle.js`** (`bced3a0`) — heartbeat, `initWebSocketServer`, `onConnection`
+  (the ws.send persistence interceptor with `commandOutputBuffer` — the 2026-07-28
+  start/output/end buffering fix — plus `sessionContext` creation and error/message wiring).
+- **`connectionRoutes.js`** — `routeMessage` (13 WS cases: execute, confirm_response, cancel,
+  stop_process, did_you_mean_pick, tool_call/execute_tool, approve_task, ai_toggle,
+  ai_set_model, workspace_set, learning_review, learning_approve, memory_suggestion_respond) +
+  `sendAiStatus`; exports `{ routeMessage, sendAiStatus }` for `connectionLifecycle.js`.
+- **`connectionExecute.js`** (`7c5d69b`, +10/−967 in connection.js) — `handleExecute`
+  orchestrator: head (session validation incl. the "Session is locked to ..." check),
+  appendMessage, the four interceptors in order, the typed-command bypass
+  (`isCommandAllowed(trimmed) && !isCommandBlocked(trimmed)` → direct `executeCommand` — the
+  2026-08-03 NetPulse fix), admin blocks, AI dispatch, the `directCmdPattern` regex
+  (npx/python3?/pip3?/yarn/pnpm/npm run|start|install|build|serve|test|dev/node/tsx) +
+  `guessCommand` confirm path, then `handleMatchingPipeline`.
+- Pre-existing unused imports dropped in `7c5d69b` (`broadcast`, `logMatch`, `trackQuestion`,
+  `addCandidateAddition`, `readDistillations`); the other two commits' file counts follow the
+  Phase 10 convention (`connection.js` now ~14 lines, all leaves ≤ ~210 lines).
+- Verified: `node --check` per leaf; import smoke 115/115 (Phase 10 precedent: auto-discovered
+  `server/*.js` — up from 113/113); full battery after `bced3a0` green (check-handlers 15/15,
+  check-matcher 78/78, check-indexer 71/71, check-tools 92/92, check-intents baseline 1/5/80,
+  lint); new behavioral smoke `C:\Users\tobil\AppData\Local\Temp\opencode\smoke-connection.mjs`
+  (fake ws, real split modules + fixture project, `semanticMatcher.initialize()` with cached
+  model): 24/24 — admin blocks, interceptors (pendingParam/pendingFollowUp cancel,
+  disambiguation reject, memory-suggestion yes → fixture CLAUDE.md), typed `npm --version`
+  subprocess start+end, pipeline greeting + fallback, routeMessage cases, confirm unknown/tool
+  token, tool_call missing/readFile/blocked. Not yet verified through a live chat session
+  (WS-layer wiring is verbatim-moved; fake-ws precedent same as Phase 10).
+  Remaining giants: executor.js 507, useConsole.ts 747 (future phases).
 
 
 ## Matchday Exchange transcript fixes (2026-08-04, reported directly — 4 bugs, 4 commits)
