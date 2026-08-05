@@ -12,6 +12,14 @@ import { readTelemetry, appendTelemetry, updateTelemetryEntry, clearTelemetry, l
 import { learnedFloor, getModelInfo } from './confidenceModel.js';
 import { getEffectiveThreshold, setThresholdOverride } from './telemetryThresholds.js';
 import { getIntentStats } from './telemetryStats.js';
+import { PURE_CHITCHAT_INTENTS } from './intentTrust.js';
+
+// Safety clamp (2026-08-05, approved directly after a confirmed-live check-matcher failure):
+// canned zero-argument chit-chat replies must never have their semantic floor lowered below
+// this. See suggestThresholds() for the full story — keyboard-mash input scored 0.386 against
+// status's cluster, so the model's 0.35 recommendation dispatched it to a confident canned
+// reply instead of falling through.
+export const CHITCHAT_FLOOR_MIN = 0.5;
 
 export {
   getEffectiveThreshold, getThresholdOverrides, setThresholdOverride, removeThresholdOverride,
@@ -89,6 +97,23 @@ export function suggestThresholds(projectId) {
     } else if (s.avgConfidence > 0.85 && s.falsePositiveRate < 0.05 && currentFloor > 0.5) {
       recommendedFloor = Math.max(0.35, currentFloor - 0.03);
       reason = `consistently high confidence (avg ${s.avgConfidence.toFixed(2)}) with low false positives`;
+    }
+
+    // Confirmed live 2026-08-05 (check-matcher GARBAGE battery): once the confidence model trained
+    // (20 real accept/reject labels), the learnedFloor path above ratcheted every high-match intent
+    // to the model's >=70%-accept score (0.35) — including zero-argument canned chit-chat.
+    // Keyboard-mash input ("asdfghjkl") scores 0.386 against status's phrase cluster, so floor 0.35
+    // dispatched it to a confident canned "console status" reply instead of falling through to the
+    // fallback — the exact garbled-input class PURE_CHITCHAT_INTENTS exists to block. These
+    // intents must never be reachable below CHITCHAT_FLOOR_MIN: a canned reply is never a
+    // plausible match for out-of-distribution input. Non-chit-chat intents keep the fully
+    // data-driven floor (that part of the Stage-1 ML design is untouched).
+    if (PURE_CHITCHAT_INTENTS.has(intent)) {
+      const clamped = Math.max(recommendedFloor, CHITCHAT_FLOOR_MIN);
+      if (clamped !== recommendedFloor) {
+        recommendedFloor = clamped;
+        reason = `safety clamp: pure-chitchat intents never below ${CHITCHAT_FLOOR_MIN}`;
+      }
     }
 
     if (reason && Math.abs(recommendedFloor - currentFloor) >= 0.03) {
