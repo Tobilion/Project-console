@@ -2,7 +2,7 @@
   "name": "local-project-console",
   "description": "A local, offline command dispatcher and AI assistant for managing multiple software projects from a single web interface.",
   "private": false,
-  "version": "1.0.0",
+  "version": "1.0.1",
   "bin": {
     "local-project-console": "bin/cli.js"
   },
