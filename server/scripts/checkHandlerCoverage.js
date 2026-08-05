@@ -92,7 +92,12 @@ eq('knowledge leaf: stack answers from parsedKnowledge', ws.sent.length === 1 &&
 
 sent.length = 0;
 await handleBuiltinIntent(ws, 'project.context.dev_server_status', 'is the server running', proj, {});
-eq('context leaf: dev_server_status (nothing) reports not running', ws.sent.length === 1 && ws.sent[0].data.includes('has no server running'), true);
+// Phase 15 calibration: since the Phase 14 common-ports fallback, a hint-less project with no
+// tracked/recorded server is probed against COMMON_DEV_PORTS — on a machine where any of those
+// ports is actually live (e.g. the console dev server or a site on :5000), the handler honestly
+// reports "responding at ... started outside the console" instead of "has no server running".
+// Both are valid answers; what's under test is the dispatch + single-answer shape, not the probe.
+eq('context leaf: dev_server_status (nothing) answers running-or-not', ws.sent.length === 1 && ws.sent[0].type === 'answer' && (ws.sent[0].data.includes('has no server running') || ws.sent[0].data.includes('responding at')), true);
 
 sent.length = 0;
 await handleBuiltinIntent(ws, 'project.action.copy_path', 'copy path', proj, {});
