@@ -76,7 +76,10 @@ when the cmd.exe wrapper exits before npm.
   Uses `pathToFileURL()` for all `import()` calls since Windows absolute paths with drive letters
   are not valid ESM loader URLs.
 
-Frontend: `src/hooks/useConsole.ts` owns all state + WS/fetch handlers; `src/App.tsx` is
+Frontend: `src/hooks/useConsole.ts` is the ~368-line orchestrator owning all state + WS/fetch
+handlers (WS message cases live in `src/hooks/wsMessageCases.ts` + `wsStreamingCases.ts`, state
+clusters in `useConsoleProcessDock`/`useConsoleToolHistory`/`useConsoleWorkspace`/`useConsoleExports`
+— see the Phase 13 entry); `src/App.tsx` is
 render-only; `src/components/SidebarDrawer.tsx` is the collapsible left rail (scan bar, New
 Chat button, per-project chat list with show-all toggle, compact Discovered Projects list with
 workspace add/remove, AI status + running count in the bottom slot; collapses to a ~48px icon
@@ -2601,8 +2604,57 @@ force-kill, then kill the orphan python.
   to 78/78. Note the clamp is scoped to `PURE_CHITCHAT_INTENTS` exactly as approved — `help` and
   `git_status` are NOT members of that set and keep data-driven floors.
 
+## Phase 13 (2026-08-05, useConsole.ts split — commits `1cde4ef` + `41628f6`, all harness-verified)
 
-## Matchday Exchange transcript fixes (2026-08-04, reported directly — 4 bugs, 4 commits)
+`src/hooks/useConsole.ts` 747 → ~368 lines of pure orchestration (the last remaining giant —
+every other file is now under ~150 lines except the deliberate orchestrators: matcher.js 253,
+codebaseIndexer.js ~185, useConsole.ts 368). `src/App.tsx` is untouched (still imports
+`./hooks/useConsole`). Two commits, same add-only-then-rewrite pattern as Phases 10–12:
+
+- **Commit 1 (`1cde4ef`) — add-only leaves, zero importers wired:**
+  - `src/hooks/wsCtx.ts` — the `WsCtx` bag type + `makeId` (type module for the case tables).
+  - `src/hooks/wsMessageCases.ts` — the 24 non-streaming `handleWebSocketMessage` switch cases
+    as pure `(ctx, payload) => void` handlers in a `WS_MESSAGE_CASES` table (answer, the
+    output/start/end stream, error_output/warning, suggestions/did_you_mean, clear_console,
+    confirm_prompt, projects_updated/project_updated, ai_status/ai_start/thinking, tool_start,
+    tool_confirm_prompt/task_granted/memory_suggestion/tool_result, workspace_updated,
+    server_url, copy_to_clipboard, dashboard_update, processes_update, learning_suggestion).
+    Every historical bug-comment moved with its case body.
+  - `src/hooks/wsStreamingCases.ts` — `stream_start`/`token`/`stream_end` separately (the
+    token-buffer + 16ms flush-timer cluster owns its own refs).
+  - `src/hooks/useConsoleProcessDock.ts` (~180) — processes/processLogs/selectedProcessId/
+    dockExpanded + fetchProcesses/fetchProcessLog/appendProcessOutput/handleStopProcess +
+    the fetch-on-first-selection replay effect. Takes `getActiveProject: () => Project | null`
+    (a ref-read getter, never a value) so output attribution never goes stale.
+  - `src/hooks/useConsoleToolHistory.ts` (~70) — toolHistory/showToolHistory + addToolCall/
+    rerunToolCall. `src/hooks/useConsoleWorkspace.ts` (~80) — workspace set + add/remove/clear
+    (each mutation sends the same `workspace_set`). `src/hooks/useConsoleExports.ts` (~80) —
+    markdown/JSON exports, pure.
+  - `scripts/checkWsMessageCases.ts` + `check-ws-cases` npm script — **the client's first
+    regression harness** (no client test runner exists; runs via `tsx`, already a devDependency).
+    Every case handler is a pure function of (ctx, payload), so the harness drives them with a
+    fake ctx (recording setters, mutable stream refs, stubbed `navigator` for
+    copy_to_clipboard, live `projects` getter mirroring the fresh-ctx design) — 72/72 checks.
+    Run after ANY edit to the case modules or the WsCtx shape.
+- **Commit 2 (`41628f6`) — orchestrator rewrite.** useConsole.ts keeps: sibling-hook
+  composition, commandPending/activeServers/dashboardUpdateSignal (tightly coupled to the mount
+  effect's 5s poll), the handleSendMessage monkey-patch, mount effect, chat-level handlers
+  (new-chat/quickstart/scan/select-project/switch/direct-command), the 63-field return.
+  **Stable-router design:** `handleWebSocketMessage` is a `useCallback([])` that looks up
+  `WS_MESSAGE_CASES[payload.type]` and calls it with `ctxRef.current`; the ctx bag is rebuilt
+  every render and stored on the ref. This was forced by `useWebSocket`'s `connectWebSocket`
+  being `useCallback`-dependent on `onMessage` and only ever wired once (mount effect `[]` +
+  reconnect reusing the stale closure) — the old router was a first-render capture. **This also
+  fixes a latent stale-closure bug**: the original `workspace_updated` case resolved
+  `projectIds` against a first-render `projects.projects` snapshot; the ref pattern reads the
+  live list per event. All case-handler deps are stable by invariant (React setState setters,
+  useRef objects), so event-time captures can't go stale.
+- Verified: lint clean, check-ws-cases 72/72 (commit 1 and 2), `npx vite build` clean (client-
+  only — deliberately not `npm run build`, which would regenerate the stale-`dist/server.js`
+  shadow). **NOT yet visually verified in a browser** — manual checklist per the established
+  convention: chat send + confirm chips, processes dock open/stop/log replay, workspace add/
+  remove/clear, AI toggle + streaming answer, Ctrl+K palette, exports.
+
 
 - **"run server" misrouted to `project.context.scan_servers` and "run its server" to
   `project.context.dev_server_status` instead of starting the server** (harness-confirmed with
@@ -2646,4 +2698,6 @@ force-kill, then kill the orphan python.
 - No file over ~400 lines; split by concern (see `server/wsHandlers/` for the pattern).
 - Tools/handlers take named-args objects, not positional args.
 - New WS message types belong in both `server/wsHandlers/connection.js` (or wherever emits them)
-  and the frontend's `useConsole.ts` `handleWebSocketMessage` switch — keep them in sync.
+  and the frontend's WS-message case tables — `src/hooks/wsMessageCases.ts` / `wsStreamingCases.ts`
+  — keep them in sync, and extend `scripts/checkWsMessageCases.ts` when the new type has
+  user-visible behavior.
