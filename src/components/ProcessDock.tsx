@@ -158,7 +158,7 @@ export function ProcessDock({
             )}
           </AnimatePresence>
 
-          <div className="flex items-center gap-1.5 px-2 py-1.5 overflow-x-auto">
+          <div className="flex items-center gap-1.5 px-2 py-1.5 overflow-x-auto min-w-0 [scrollbar-width:thin]">
             <button
               onClick={() => {
                 onSetDockTab?.('logs');
@@ -174,8 +174,14 @@ export function ProcessDock({
 
             <button
               onClick={() => {
+                // Phase 15: re-clicking Projects while it's the active expanded view collapses
+                // the dock (toggle), matching the "N running" button — before, it was a no-op.
+                if (expanded && dockTab === 'projects') {
+                  onToggleExpanded();
+                  return;
+                }
                 onSetDockTab?.('projects');
-                if (!expanded || dockTab !== 'projects') onToggleExpanded();
+                if (!expanded) onToggleExpanded();
               }}
               className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] transition-colors flex-shrink-0 ${
                 expanded && dockTab === 'projects'
