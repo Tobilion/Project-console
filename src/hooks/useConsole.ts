@@ -32,11 +32,25 @@ export function useConsole() {
     WS_MESSAGE_CASES[payload.type]?.(ctx, payload);
   }, []);
 
+  // WS (re)connect: the server's per-connection state (aiEnabled, in-flight turns, busy
+  // flags) resets whenever the socket reconnects — a busy indicator left true by a turn that
+  // died with the old socket would otherwise keep the input disabled on the new connection
+  // (audit 2026-08-06, Phase 3). Reads the setters via ctxRef at event time (the same pattern
+  // as the WS router) so this stays a stable callback with no render-order dependencies.
+  const handleWsOpen = useCallback(() => {
+    const ctx = ctxRef.current;
+    if (!ctx) return;
+    ctx.ai.setAiThinking(false);
+    ctx.ai.setAiThinkingText('');
+    ctx.ai.setAiQueryInFlight(false);
+    ctx.commandPending.setCommandPending(false);
+  }, []);
+
   // Wire up wsRef from useWebSocket first so terminal shares the real socket ref —
   // previously useTerminal got a brand-new, never-populated ref, so handleConfirm/
   // handleToolConfirm's `!wsRef.current` check was always true and every Approve/
   // Reject/Cancel/Execute click silently no-op'd.
-  const wsHandler = useWebSocket(handleWebSocketMessage);
+  const wsHandler = useWebSocket(handleWebSocketMessage, handleWsOpen);
   const terminal = useTerminal(
     wsHandler.wsRef,
     projects.activeProject,
@@ -104,6 +118,18 @@ export function useConsole() {
       wsHandler.wsRef.current.send(JSON.stringify({ type: 'cancel' }));
     }
   }, [wsHandler]);
+
+  // Switching chats/projects must stop a still-streaming AI turn — its tokens/tool output
+  // would otherwise land in the newly-opened chat and its final answer would persist into
+  // whatever session becomes current. Deliberately NOT handleCancel(): the 'cancel' message
+  // also kills running commands/dev servers (see the 'cancel' case in connectionRoutes.js),
+  // and switching chats must never tear down a dev server the user started (audit 2026-08-06,
+  // Phase 3). 'abort_ai' releases the turn's confirm cards and aborts the query, nothing else.
+  const handleAbortTurn = useCallback(() => {
+    if (wsHandler.wsRef.current?.readyState === WebSocket.OPEN) {
+      wsHandler.wsRef.current.send(JSON.stringify({ type: 'abort_ai' }));
+    }
+  }, [wsHandler.wsRef]);
 
   // Requested directly (2026-08-04): click on a non-blocking "did you mean" chip — sends
   // 'did_you_mean_pick' (server resolves a pending disambiguation question with the pick, or
@@ -195,8 +221,10 @@ export function useConsole() {
 
   const handleNewChat = async () => {
     try {
+      handleAbortTurn();
       terminal.setPendingConfirm(null);
       terminal.setPendingToolConfirm(null);
+      terminal.setPendingMemorySuggestion(null);
       await deleteCurrentSessionIfEmpty();
       sessions.setShowWelcome(false);
       sessions.createSession();
@@ -259,8 +287,10 @@ export function useConsole() {
   const handleSelectProject = async (p: any) => {
     // Mirror handleSwitchSession: a pending confirmation/tool-confirm from whatever project was
     // active before is misleading (and stale) once the user has jumped to a different project.
+    handleAbortTurn();
     terminal.setPendingConfirm(null);
     terminal.setPendingToolConfirm(null);
+    terminal.setPendingMemorySuggestion(null);
     await deleteCurrentSessionIfEmpty();
     projects.setActiveProject(p);
     sessions.setShowWelcome(false);
@@ -284,8 +314,10 @@ export function useConsole() {
   }, [wsHandler.wsRef, sessions.setMessages]);
 
   const handleSwitchSession = useCallback(async (sessionId: string) => {
+    handleAbortTurn();
     terminal.setPendingConfirm(null);
     terminal.setPendingToolConfirm(null);
+    terminal.setPendingMemorySuggestion(null);
     // Leaving a brand-new chat that never got a single message should clean it up instead of
     // leaving an empty orphan in the sidebar (same rule as New Chat / project select). Skip
     // when re-clicking the already-active chat — that must never delete itself.
@@ -306,7 +338,7 @@ export function useConsole() {
         }
       }
     }
-  }, [sessions, projects, terminal]);
+  }, [sessions, projects, terminal, handleAbortTurn]);
 
   // Recovery action for the "Session is locked to X" error: the currently-loaded chat and its
   // messages are already correct — the only thing out of sync is *which project is active*, so

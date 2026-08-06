@@ -1,7 +1,7 @@
 import { useRef, useCallback } from 'react';
 import { getWebSocketUrl } from '../utils/getWebSocketUrl';
 
-export function useWebSocket(onMessage: (payload: any) => void) {
+export function useWebSocket(onMessage: (payload: any) => void, onOpen?: () => void) {
   const wsRef = useRef<WebSocket | null>(null);
   // Confirmed live 2026-07-29 (from an exported chat transcript): `onclose` used to schedule a
   // reconnect unconditionally, even when the close was self-inflicted — connectWebSocket's own
@@ -37,6 +37,10 @@ export function useWebSocket(onMessage: (payload: any) => void) {
       // This connection is now the live one — a close from here on (until something explicitly
       // calls disconnect()) is unexpected and SHOULD trigger a reconnect.
       intentionalCloseRef.current = false;
+      // Reconnect hook: the server's per-connection state (in-flight turns, busy flags) was
+      // wiped when the old socket died, so the client must reset its own busy indicators too
+      // (audit 2026-08-06, Phase 3).
+      onOpen?.();
     };
 
     ws.onclose = () => {
@@ -45,7 +49,7 @@ export function useWebSocket(onMessage: (payload: any) => void) {
     };
 
     wsRef.current = ws;
-  }, [onMessage]);
+  }, [onMessage, onOpen]);
 
   /** Closes the socket without triggering the auto-reconnect — use this on real unmount. */
   const disconnect = useCallback(() => {

@@ -197,10 +197,6 @@ selectedProcessId, onSelectProcess, onStopProcess, dockExpanded, onToggleDock, d
     isFirstRender.current = false;
   }, [loadHistory]);
 
-  useEffect(() => {
-    endRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, pendingConfirm, pendingToolConfirm, pendingMemorySuggestion]);
-
   const isBlocked = !!pendingConfirm || !!pendingToolConfirm;
 
   // Full-screen mode centers the whole chat column (thread + input) so bubbles never stretch

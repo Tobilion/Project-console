@@ -51,10 +51,12 @@ npm run lint    # tsc --noEmit
   (`data/user-profile.json` — tracked by git, unlike gitignored conversations/near-misses/
   telemetry/dev-urls)
 - `server/wsHandlers/` — `connection.js` is a ~14-line re-export shim; real logic lives in
-  ten leaves (see Phase 11): `connectionLifecycle.js` (heartbeat, WS init, the ws.send
-  persistence interceptor with the command-output buffer), `connectionRoutes.js` (13 WS
-  cases incl. `stop_process`/`did_you_mean_pick`/`approve_task`/`ai_toggle`/`ai_set_model`/
-  `workspace_set`/`learning_*`/`memory_suggestion_respond` + `sendAiStatus`),
+   ten leaves (see Phase 11): `connectionLifecycle.js` (heartbeat, WS init + connect-time
+   `ai_status` push so the client's AI toggle syncs to the fresh per-connection defaults after
+   a reconnect, the ws.send persistence interceptor with the command-output buffer), `connectionRoutes.js` (14 WS
+   cases incl. `stop_process`/`did_you_mean_pick`/`approve_task`/`ai_toggle`/`ai_set_model`/
+   `workspace_set`/`learning_*`/`memory_suggestion_respond` + `abort_ai` +
+   `sendAiStatus`),
   `connectionExecute.js` (`handleExecute` orchestrator: session-lock check, four pending-ask
   interceptors, typed-command bypass, admin blocks, AI dispatch — with a narrow `AI_ACK_RE`
   short-circuit so bare "ok"/"thanks"/"got it" replies instantly without a model call (a real
@@ -215,8 +217,9 @@ as the trigger input via `getHistory`, shared `pushHistory` in Terminal), `ui/Th
 only renders for URLs in `knownDevUrls` (grows from `server_url` events + `/api/active-servers`
 polls — an Ollama endpoint in an error message no longer gets one; NetPulse complaint).
 Output blocks created while an AI turn is in flight (`aiQueryInFlight`, set by `ai_start`,
-cleared by `stream_end`) start expanded (`autoExpand` on TerminalMessage) so AI-run commands
-are actually visible instead of a collapsed header.
+cleared by the turn's final data-less `end` — not the per-round `stream_end`) start expanded
+(`autoExpand` on TerminalMessage) so AI-run commands are actually visible instead of a
+collapsed header.
 
 ## How the AI gets project context
 
@@ -488,8 +491,8 @@ CONTROL/PHASE1-3/BASICS/MATCHDAY/TRAPS/MUST_NOT_STEAL/GARBAGE (+ open-family row
   a live machine as a regression.
 - **Telemetry/harness baselines**: check-intents 1/5/80 (+1 documented near-dup after the
   open-file override); check-matcher 83/83; check-handlers 26/26; check-tools 92/92;
-  check-indexer 71/71; check-ws-cases 79/79. Run the relevant battery after ANY edit to the
-  corresponding module.
+  check-indexer 71/71; check-ws-cases 83/83 (baseline +4 rows for the Phase 3 aiQueryInFlight
+  lifecycle fix). Run the relevant battery after ANY edit to the corresponding module.
 - **editFile** tolerates whitespace differences (normalized line-range fallback) but not
   wrong wording; on total failure the error names both attempts and tells the caller to
   re-read the file. Truncation guard: `writeFile` re-reads and compares length after writes.

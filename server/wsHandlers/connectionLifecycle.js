@@ -2,7 +2,7 @@ import { wss } from '../wsServer.js';
 import { sweepExpiredConfirmations, pendingConfirmations, pendingToolConfirmations } from '../state.js';
 import { appendMessage } from '../conversationStore.js';
 import { metrics } from '../metrics.js';
-import { routeMessage } from './connectionRoutes.js';
+import { routeMessage, sendAiStatus } from './connectionRoutes.js';
 
 function heartbeat() {
   this.isAlive = true;
@@ -156,7 +156,7 @@ function onConnection(ws) {
     }
   });
 
-  ws.on('message', async (message) => {
+   ws.on('message', async (message) => {
     try {
       const parsed = JSON.parse(message);
       await routeMessage(ws, parsed, sessionContext);
@@ -171,5 +171,15 @@ function onConnection(ws) {
         ws.send(JSON.stringify({ type: 'end' }));
       } catch {}
     }
-  });
+   });
+
+   // Phase 3: the server's per-connection AI settings (aiEnabled/aiModel/aiMode — all reset to
+   // their defaults at the top of this handler) were never pushed to the client on connect.
+   // After a real drop/server-restart the client's toggle therefore showed AI ON while the
+   // session was actually OFF, and the next message silently fell through to trigger mode —
+   // the same "AI says it's on but responds like trigger mode" ghost-toggle class of bug the
+   // intentionalClose guard was added for, just for genuine reconnects (audit 2026-08-06,
+   // Phase 3). Push the fresh state so the toggle syncs honestly; the reconnect-reset of the
+   // busy indicators lives client-side in useWebSocket's onOpen instead.
+   if (ws.readyState === 1) sendAiStatus(ws, sessionContext);
 }

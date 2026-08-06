@@ -33,6 +33,16 @@ const streamOutputCase: WsCaseHandler = (ctx, payload) => {
   // after a builtin intent) — deliberately NOT cleared on 'start'/'output' alone, since a
   // still-booting dev server keeps emitting those without actually being done yet.
   if (payload.type === 'end') ctx.commandPending.setCommandPending(false);
+  // An 'end' with no data is the AI turn's OWN final turn-end (aiQuery.js sends a bare
+  // {type:'end'} once the whole turn — including every tool round — is done; mid-turn
+  // command 'end's carry the summarizer callout data instead). Clearing the auto-expand
+  // flag here instead of on 'stream_end' keeps AI-run command output blocks expanded
+  // across multi-round tool turns (audit 2026-08-06, Phase 3). The reasoning trace is
+  // cleared at the same point so the thinking panel can't linger after the turn ends.
+  if (payload.type === 'end' && !payload.data) {
+    ctx.ai.setAiQueryInFlight(false);
+    ctx.ai.setAiThinkingText('');
+  }
   if (payload.type === 'output' && payload.data) ctx.appendProcessOutput(payload.data);
   if (!payload.data?.trim()) return;
   ctx.sessions.setMessages(prev => {

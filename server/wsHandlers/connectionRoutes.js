@@ -30,27 +30,7 @@ async function routeMessage(ws, parsed, sessionContext) {
       // still-visible card after cancel would execute the gated tool on a turn the user thinks
       // is dead (audit 2026-08-06, Phase 2). Release them first so the AI loop gets a clean
       // rejection result before the abort below kills the next fetch.
-      let releasedConfirmations = false;
-      for (const [token, pending] of pendingToolConfirmations) {
-        if (pending.owner === ws) {
-          try { pending.resolve(false); } catch {}
-          pendingToolConfirmations.delete(token);
-          releasedConfirmations = true;
-        }
-      }
-      for (const [token, pending] of pendingConfirmations) {
-        if (pending.owner === ws) {
-          pendingConfirmations.delete(token);
-          releasedConfirmations = true;
-        }
-      }
-      // A canceled turn must not keep its pending question state either — otherwise the user's
-      // NEXT unrelated message gets silently consumed as the answer to the stale question
-      // (e.g. "15" substituted into a command they thought they'd canceled).
-      sessionContext.pendingParam = null;
-      sessionContext.pendingFollowUp = null;
-      sessionContext.pendingDisambiguation = null;
-      if (releasedConfirmations) didSomething = true;
+      if (releasePendingTurnState(ws, sessionContext)) didSomething = true;
       if (sessionContext.aiAbortController) {
         try { sessionContext.aiAbortController.abort(); } catch {}
         didSomething = true;
@@ -76,6 +56,19 @@ async function routeMessage(ws, parsed, sessionContext) {
       if (!didSomething) {
         ws.send(JSON.stringify({ type: 'answer', data: 'Nothing is currently running to cancel.' }));
         ws.send(JSON.stringify({ type: 'end' }));
+      }
+      return;
+    }
+    case 'abort_ai': {
+      // Chat/project switch (frontend handleAbortTurn): same turn-scoped cleanup as 'cancel'
+      // above, but WITHOUT killing a running command or dev server — a user switching chats
+      // must never tear down a dev server they started (audit 2026-08-06, Phase 3). Aborts an
+      // in-flight AI query so the ghost turn stops streaming (and can't persist its answer into
+      // whatever session becomes current) and releases its confirm cards. Deliberately silent:
+      // this is a background action, not a user-facing Cancel click.
+      releasePendingTurnState(ws, sessionContext);
+      if (sessionContext.aiAbortController) {
+        try { sessionContext.aiAbortController.abort(); } catch {}
       }
       return;
     }
@@ -238,6 +231,36 @@ function sendAiStatus(ws, sessionContext) {
       mode: sessionContext.aiMode
     }
   }));
+}
+
+/**
+ * Releases everything scoped to the current turn: this connection's pending confirm cards
+ * (tool + trigger) and its pending param/follow-up/disambiguation question state. Shared by
+ * 'cancel' and 'abort_ai' — both must kill the turn's card promises (a tool-confirm left
+ * pending sits until the 5-minute sweep, and approving the still-visible card would execute
+ * a gated tool on a turn the user thinks is dead) and its question state (the user's NEXT
+ * unrelated message would otherwise be silently consumed as the stale question's answer).
+ * Returns true if any confirmation was released, so 'cancel' can report whether it acted.
+ */
+function releasePendingTurnState(ws, sessionContext) {
+  let releasedConfirmations = false;
+  for (const [token, pending] of pendingToolConfirmations) {
+    if (pending.owner === ws) {
+      try { pending.resolve(false); } catch {}
+      pendingToolConfirmations.delete(token);
+      releasedConfirmations = true;
+    }
+  }
+  for (const [token, pending] of pendingConfirmations) {
+    if (pending.owner === ws) {
+      pendingConfirmations.delete(token);
+      releasedConfirmations = true;
+    }
+  }
+  sessionContext.pendingParam = null;
+  sessionContext.pendingFollowUp = null;
+  sessionContext.pendingDisambiguation = null;
+  return releasedConfirmations;
 }
 
 export { routeMessage, sendAiStatus };

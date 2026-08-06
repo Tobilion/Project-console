@@ -185,9 +185,20 @@ async function main() {
   dispatch(c.ctx, 'start', { data: 'venv\\Scripts\\python.exe main.py watch --interval 5' });
   check('output block created during AI turn starts expanded', last(c.state).autoExpand === true);
   dispatch(c.ctx, 'stream_end', {});
-  check('stream_end clears aiQueryInFlight', c.state.aiQueryInFlight === false);
+  check('stream_end keeps aiQueryInFlight (turn not over — tool rounds may follow)', c.state.aiQueryInFlight === true);
   dispatch(c.ctx, 'start', { data: 'npm run dev' });
+  check('output block between stream_end and final end still auto-expands', last(c.state).autoExpand === true);
+  dispatch(c.ctx, 'end', { data: 'summarizer callout' });
+  check('mid-turn end with data does not clear aiQueryInFlight', c.state.aiQueryInFlight === true);
+  dispatch(c.ctx, 'end', {});
+  check('data-less final end clears aiQueryInFlight', c.state.aiQueryInFlight === false);
+  dispatch(c.ctx, 'start', { data: 'git push' });
   check('output block after AI turn stays collapsed', last(c.state).autoExpand !== true && last(c.state).type === 'output');
+  c = makeFakeCtx();
+  dispatch(c.ctx, 'ai_start', {});
+  dispatch(c.ctx, 'thinking', { data: ' hmm' });
+  dispatch(c.ctx, 'end', {});
+  check('final end clears reasoning trace', c.state.aiThinkingText === '');
 
   // --- server_url feeds knownDevUrls (the chip gate) ---
   c = makeFakeCtx();

@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useRef, useEffect, useCallback } from 'react';
 import { TerminalMessage, PendingToolConfirm, PendingMemorySuggestion } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
 import ReactMarkdown from 'react-markdown';
@@ -97,8 +97,25 @@ export function TerminalMessages({
     }
   }), [aiMode, onSendMessage]);
 
+  // Auto-scroll to the newest message ONLY while the user is already at (or near) the bottom
+  // of the thread — scrolling up to re-read something must not be yanked back down by new
+  // output (audit 2026-08-06, Phase 3). The container owns both the scroll events and the
+  // anchor, so this lives here instead of Terminal.tsx.
+  const containerRef = useRef<HTMLDivElement>(null);
+  const atBottomRef = useRef(true);
+  const handleContainerScroll = useCallback(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    atBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+  }, []);
+  useEffect(() => {
+    if (atBottomRef.current) {
+      endRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [messages, pendingConfirm, pendingToolConfirm, pendingMemorySuggestion, endRef]);
+
   return (
-    <div className="flex-1 overflow-y-auto p-4">
+    <div ref={containerRef} onScroll={handleContainerScroll} className="flex-1 overflow-y-auto p-4">
       {messages.length === 0 ? (
         <div className={`${centerCol} min-h-full flex flex-col items-center justify-center`}>
           <TerminalEmptyState greeting={emptyStatePrompt} actions={emptyStateActions} onAction={onSendMessage} />
@@ -245,7 +262,12 @@ export function TerminalMessages({
 
       <div ref={endRef} />
 
-      {aiThinking && (
+      {/* Gate on aiThinking OR aiThinkingText: stream_start (which the server sends before
+          the model's thinking phase) clears aiThinking, so a reasoning trace that only ever
+          accumulated AFTER that event never rendered — the panel was hidden the entire time
+          the model was deliberating (audit 2026-08-06, Phase 3). The trace is cleared by the
+          turn's final 'end', so the panel can't linger after the turn either. */}
+      {(aiThinking || aiThinkingText) && (
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex flex-col gap-1.5">
           <div className="flex items-center gap-3 text-teal-400/60 text-xs">
             <Loader2 size={14} className="animate-spin" />
