@@ -4,6 +4,7 @@
 import fs from 'fs';
 import path from 'path';
 import { TELEMETRY_DIR, ensureDir } from './telemetryFile.js';
+import { writeFileAtomicSync } from './atomicWrite.js';
 
 const MODEL_FILE = path.join(TELEMETRY_DIR, 'confidence-model.json');
 
@@ -22,6 +23,6 @@ export function loadModel() {
 
 export function saveModel(model) {
   ensureDir();
-  fs.writeFileSync(MODEL_FILE, JSON.stringify(model, null, 2));
+  writeFileAtomicSync(MODEL_FILE, JSON.stringify(model, null, 2));
   cachedModel = model;
 }

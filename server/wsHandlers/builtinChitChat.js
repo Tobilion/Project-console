@@ -233,6 +233,7 @@ export const chitChatHandlers = {
         ? `git add -A && git commit -m "${commitMsg.replace(/"/g, '\\"')}" && git push`
         : 'git push';
       pendingConfirmations.set(token, {
+        owner: ws,
         projectId: project.id,
         command,
         trigger: input,

@@ -57,6 +57,7 @@ export function buildPortPromptConfirmation({ ws, projectId, cleanInput, trigger
   const busyPort = parseInt(promptMatch[1], 10);
   const token = crypto.randomUUID();
   pendingConfirmations.set(token, {
+    owner: ws,
     projectId,
     stdinWrite: { yes: 'Y\n', no: 'n\n' },
     command: `Respond to dev server port prompt (port ${busyPort} busy)`,
@@ -88,6 +89,7 @@ export function offerPortRetry({ ws, projectId, command, stdout, stderr, isDev, 
   const retryCommand = buildPortRetryCommand(command, busyPort);
   const token = crypto.randomUUID();
   pendingConfirmations.set(token, {
+    owner: ws,
     projectId,
     command: retryCommand,
     trigger: command,

@@ -8,6 +8,32 @@ import fs from 'fs/promises';
 import path from 'path';
 import { LEGACY_STORE_DIR, INDEX_PATH, projectSessionsDir } from './sessionPaths.js';
 
+// Global persistence serialization chain: every read→mutate→write cycle over the index (and
+// the session meta files appended alongside it) runs through this so only one is in flight at
+// a time. Without it, two concurrent appendMessage calls each read the same stale index
+// snapshot and write `staleCount + 1`, permanently drifting messageCount — and the chat-log
+// header / .gitignore blocks get written twice by racing first-messages (audit 2026-08-06,
+// Phase 2). Global, not per-session, because the index is shared.
+let persistenceChain = Promise.resolve();
+let persistenceHeld = false;
+export function serializePersistence(fn) {
+  // Reentrant call from inside the lock holder: run directly instead of queuing. Safe because
+  // everything else is queued behind the holder, so a bypassed call cannot run concurrently
+  // with anyone — and it avoids the self-deadlock of a chain item awaiting its own chain
+  // (e.g. migrateLegacySession -> ensureProjectConsoleDir -> ensureGitignored).
+  if (persistenceHeld) return fn();
+  const next = persistenceChain.then(async () => {
+    persistenceHeld = true;
+    try {
+      return await fn();
+    } finally {
+      persistenceHeld = false;
+    }
+  });
+  persistenceChain = next.catch(() => {});
+  return next;
+}
+
 export async function ensureLegacyDir() {
   await fs.mkdir(LEGACY_STORE_DIR, { recursive: true });
 }
@@ -27,7 +53,7 @@ export async function writeIndex(idx) {
   // and unparseable. readIndex() swallows a corrupt file and returns {} — which used to mean the
   // NEXT setIndexEntry() persisted an index containing only the one new session, silently wiping
   // every other session from the sidebar even though all their files were still on disk.
-  const tmp = `${INDEX_PATH}.tmp`;
+  const tmp = `${INDEX_PATH}.${process.pid}.${Date.now()}.tmp`;
   const data = JSON.stringify(idx, null, 2);
   await fs.writeFile(tmp, data);
   try {
@@ -89,6 +115,37 @@ export async function reconcileIndexFromDisk(roots = []) {
       try {
         const meta = JSON.parse(await fs.readFile(path.join(projectSessionsDir(dir), f), 'utf-8'));
         changed = absorb(id, meta, dir) || changed;
+      } catch {}
+    }
+
+    // NDJSON-only recovery: a session whose meta file is corrupt or missing but whose message
+    // log survives is still indexable from the log itself (title from the first user message,
+    // count from the line count) — previously such a session vanished from the sidebar forever
+    // with all its messages orphaned on disk (audit 2026-08-06, Phase 2).
+    for (const f of files) {
+      if (!f.endsWith('.ndjson')) continue;
+      const id = f.replace(/\.ndjson$/, '');
+      if (idx[id]) continue;
+      try {
+        const raw = await fs.readFile(path.join(projectSessionsDir(dir), f), 'utf-8');
+        const lines = raw.split('\n').filter((l) => l.trim());
+        if (lines.length === 0) continue;
+        let firstUser = null;
+        for (const l of lines) {
+          const m = JSON.parse(l);
+          if (m?.role === 'user') { firstUser = m; break; }
+        }
+        const first = JSON.parse(lines[0]);
+        idx[id] = {
+          projectId: null,
+          projectName: null,
+          projectPath: dir,
+          title: firstUser?.content?.substring(0, 60) || 'Untitled',
+          createdAt: first.timestamp || Date.now(),
+          updatedAt: Date.now(),
+          messageCount: lines.length,
+        };
+        changed = true;
       } catch {}
     }
   }

@@ -92,7 +92,10 @@ export async function probeUrl(url, timeoutMs = 3000) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const res = await fetch(urlObj.toString(), { method: 'GET', redirect: 'follow', signal: controller.signal });
+    // redirect: 'manual' — a follow redirect would fetch a Location that was never validated by
+    // isProbeableUrl (a localhost service could redirect to a link-local/metadata host; audit
+    // 2026-08-06, Phase 2). A 3xx still proves the server is alive, which is all a probe needs.
+    const res = await fetch(urlObj.toString(), { method: 'GET', redirect: 'manual', signal: controller.signal });
     return { alive: true, status: res.status };
   } catch (err) {
     return { alive: false, error: err.name === 'AbortError' ? 'timeout' : err.message };

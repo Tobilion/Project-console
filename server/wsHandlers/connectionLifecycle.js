@@ -1,5 +1,5 @@
 import { wss } from '../wsServer.js';
-import { sweepExpiredConfirmations } from '../state.js';
+import { sweepExpiredConfirmations, pendingConfirmations, pendingToolConfirmations } from '../state.js';
 import { appendMessage } from '../conversationStore.js';
 import { metrics } from '../metrics.js';
 import { routeMessage } from './connectionRoutes.js';
@@ -12,9 +12,15 @@ function heartbeat() {
 export function initWebSocketServer() {
   const heartbeatInterval = setInterval(() => {
     wss.clients.forEach((ws) => {
-      if (ws.isAlive === false) return ws.terminate();
-      ws.isAlive = false;
-      ws.ping();
+      try {
+        if (ws.isAlive === false) return ws.terminate();
+        ws.isAlive = false;
+        if (ws.readyState === 1) ws.ping();
+      } catch {
+        // A socket can flip to CLOSED between the isAlive check and the ping — the throw used
+        // to abort the whole sweep, leaving the remaining clients unchecked that tick and
+        // skipping sweepExpiredConfirmations (audit 2026-08-06, Phase 2).
+      }
     });
     sweepExpiredConfirmations();
   }, 20000);
@@ -34,11 +40,29 @@ function onConnection(ws) {
   // were persisted, so exported/reloaded sessions never showed executed-command output at
   // all (e.g. the git push/commit result from a "deploy" confirmation).
   let commandOutputBuffer = '';
+  // Cap the buffer so a chatty dev server can't produce one giant NDJSON line (and one giant
+  // line in chat-log.md) that gets read fully into memory on every session reload (audit
+  // 2026-08-06, Phase 2).
+  const COMMAND_BUFFER_CAP = 200_000;
+  const flushCommandBuffer = () => {
+    if (!sessionContext.currentSessionId || !commandOutputBuffer.trim()) return;
+    const content = commandOutputBuffer.trim();
+    commandOutputBuffer = '';
+    appendMessage(sessionContext.currentSessionId, {
+      role: 'output',
+      content,
+      isMarkdown: false,
+    }).catch(() => {});
+  };
   const origSend = ws.send.bind(ws);
   ws.send = (data) => {
     try {
       const parsed = JSON.parse(typeof data === 'string' ? data : data.toString());
       if (sessionContext.currentSessionId && (parsed.type === 'answer' || parsed.type === 'error_output' || parsed.type === 'warning') && parsed.data) {
+        // Flush any pending command output BEFORE the answer: executor.js streams output,
+        // then sends the summary answer, then 'end' — persisting the answer first put the
+        // summary before the output it summarizes on reload (audit 2026-08-06, Phase 2).
+        flushCommandBuffer();
         appendMessage(sessionContext.currentSessionId, {
           role: parsed.type === 'error_output' ? 'error' : parsed.type === 'warning' ? 'warning' : 'bot',
           content: typeof parsed.data === 'string' ? parsed.data : JSON.stringify(parsed.data),
@@ -47,22 +71,22 @@ function onConnection(ws) {
           isMarkdown: parsed.type === 'answer',
         }).catch(() => {});
       } else if (sessionContext.currentSessionId && (parsed.type === 'start' || parsed.type === 'output') && parsed.data) {
+        // A 'start' is a command boundary — flush the previous command's buffer first so two
+        // overlapping commands (AI tool loop timeout moves on while the previous process still
+        // streams) can't interleave into one garbled persisted output record.
+        if (parsed.type === 'start') flushCommandBuffer();
         commandOutputBuffer += parsed.data;
+        if (commandOutputBuffer.length > COMMAND_BUFFER_CAP) {
+          commandOutputBuffer = commandOutputBuffer.slice(-COMMAND_BUFFER_CAP);
+        }
       } else if (sessionContext.currentSessionId && parsed.type === 'end') {
         if (parsed.data) commandOutputBuffer += parsed.data;
-        if (commandOutputBuffer.trim()) {
-          // Raw command output — explicitly NOT markdown, so the renderer keeps the mono/plain
-          // treatment it had live in the output block. Phase 14: persisted as its own
-          // role-'output' record instead of a role-'bot' message, so a reloaded chat maps back
-          // to the collapsible terminal block directly (storedToTerminalMessages keeps the old
-          // 'Executing: '-prefix heuristic for legacy role-'bot' records).
-          appendMessage(sessionContext.currentSessionId, {
-            role: 'output',
-            content: commandOutputBuffer.trim(),
-            isMarkdown: false,
-          }).catch(() => {});
-        }
-        commandOutputBuffer = '';
+        // Raw command output — explicitly NOT markdown, so the renderer keeps the mono/plain
+        // treatment it had live in the output block. Phase 14: persisted as its own
+        // role-'output' record instead of a role-'bot' message, so a reloaded chat maps back
+        // to the collapsible terminal block directly (storedToTerminalMessages keeps the old
+        // 'Executing: '-prefix heuristic for legacy role-'bot' records).
+        flushCommandBuffer();
       } else if (sessionContext.currentSessionId && parsed.type === 'tool_start' && parsed.data) {
         // AI-mode tool trace ("Running: ..." / "Requesting approval ...") — previously never
         // persisted, so a reloaded AI session lost every tool line. Mirrors the live system
@@ -76,7 +100,11 @@ function onConnection(ws) {
           content: `⚙ Tool: ${parsed.data.tool}\n${resultStr.slice(0, 500)}${resultStr.length > 500 ? '…' : ''}`,
         }).catch(() => {});
       }
-    } catch {}
+    } catch (err) {
+      // A parse/persist failure here means the server sent something the interceptor couldn't
+      // read — previously swallowed silently. Log it; the original send still happens either way.
+      console.error('WS send interceptor error:', err.message);
+    }
     origSend(data);
   };
 
@@ -103,6 +131,31 @@ function onConnection(ws) {
     console.error('WebSocket client error:', err.message);
   });
 
+  ws.on('close', () => {
+    // A dropped connection can't press Cancel either — abort any in-flight AI query so the
+    // ghost turn stops generating (and stops persisting an answer nobody will see) instead
+    // of burning CPU until the model finishes (audit 2026-08-06, Phase 2).
+    if (sessionContext.aiAbortController) {
+      try { sessionContext.aiAbortController.abort(); } catch {}
+    }
+    // A mid-command disconnect used to drop the whole accumulated output buffer — the common
+    // case for long builds/dev servers when the tab closes. Flush what we have before clearing
+    // connection state (audit 2026-08-06, Phase 2).
+    flushCommandBuffer();
+    // A dropped connection can never answer its own confirm cards — release them immediately
+    // instead of letting the 5-minute TTL sweep linger. Tool confirmations resolve false so an
+    // in-flight AI tool loop awaiting approval fails cleanly instead of hanging until the sweep.
+    for (const [token, pending] of pendingConfirmations) {
+      if (pending.owner === ws) pendingConfirmations.delete(token);
+    }
+    for (const [token, pending] of pendingToolConfirmations) {
+      if (pending.owner === ws) {
+        try { pending.resolve(false); } catch {}
+        pendingToolConfirmations.delete(token);
+      }
+    }
+  });
+
   ws.on('message', async (message) => {
     try {
       const parsed = JSON.parse(message);
@@ -110,8 +163,13 @@ function onConnection(ws) {
     } catch (err) {
       metrics.inc('ws.parse_error');
       console.error('WS error:', err);
-      ws.send(JSON.stringify({ type: 'error_output', data: `Error processing request: ${err.message}` }));
-      ws.send(JSON.stringify({ type: 'end' }));
+      // The two sends below can themselves throw when the socket died mid-message — a throw
+      // here inside the catch would surface as an unhandled rejection and the client would get
+      // neither the error nor the end (audit 2026-08-06, Phase 2).
+      try {
+        ws.send(JSON.stringify({ type: 'error_output', data: `Error processing request: ${err.message}` }));
+        ws.send(JSON.stringify({ type: 'end' }));
+      } catch {}
     }
   });
 }

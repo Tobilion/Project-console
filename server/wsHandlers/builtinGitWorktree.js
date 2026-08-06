@@ -20,7 +20,7 @@ export const gitWorktreeHandlers = {
       ws.send(JSON.stringify({ type: 'answer', data: `**[${project.name}]** isn't a git repository yet.` }));
     } else {
       const token = crypto.randomUUID();
-      pendingConfirmations.set(token, { projectId: project.id, command: 'git stash', trigger: input, createdAt: Date.now() });
+      pendingConfirmations.set(token, { owner: ws, projectId: project.id, command: 'git stash', trigger: input, createdAt: Date.now() });
       ws.send(JSON.stringify({ type: 'confirm_prompt', token, command: 'git stash (shelves uncommitted changes — restore later with "git stash pop")', trigger: 'git_stash' }));
     }
   },
@@ -30,7 +30,7 @@ export const gitWorktreeHandlers = {
       ws.send(JSON.stringify({ type: 'answer', data: `**[${project.name}]** isn't a git repository yet.` }));
     } else {
       const token = crypto.randomUUID();
-      pendingConfirmations.set(token, { projectId: project.id, command: 'git stash pop', trigger: input, createdAt: Date.now() });
+      pendingConfirmations.set(token, { owner: ws, projectId: project.id, command: 'git stash pop', trigger: input, createdAt: Date.now() });
       ws.send(JSON.stringify({ type: 'confirm_prompt', token, command: 'git stash pop (restores the most recently stashed changes — can conflict with current changes)', trigger: 'git_stash_pop' }));
     }
   },
@@ -49,7 +49,7 @@ export const gitWorktreeHandlers = {
       } else {
         const token = crypto.randomUUID();
         const command = `git checkout -b ${branchName}`;
-        pendingConfirmations.set(token, { projectId: project.id, command, trigger: input, createdAt: Date.now() });
+        pendingConfirmations.set(token, { owner: ws, projectId: project.id, command, trigger: input, createdAt: Date.now() });
         ws.send(JSON.stringify({ type: 'confirm_prompt', token, command: `${command} (creates and switches to a new branch)`, trigger: 'git_branch_create' }));
       }
     }
@@ -72,7 +72,7 @@ export const gitWorktreeHandlers = {
       } else {
         const token = crypto.randomUUID();
         const command = `git tag ${tagName}`;
-        pendingConfirmations.set(token, { projectId: project.id, command, trigger: input, createdAt: Date.now() });
+        pendingConfirmations.set(token, { owner: ws, projectId: project.id, command, trigger: input, createdAt: Date.now() });
         ws.send(JSON.stringify({ type: 'confirm_prompt', token, command: `${command} (creates a tag on the current commit)`, trigger: 'git_tag' }));
       }
     }

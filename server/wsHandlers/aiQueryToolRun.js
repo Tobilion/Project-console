@@ -16,7 +16,7 @@ export const MAX_TOOL_ROUNDS = Number.parseInt(process.env.MAX_TOOL_ROUNDS ?? ''
 export function requestToolConfirmation(ws, tool, args, preview) {
   const token = crypto.randomUUID();
   return new Promise((resolve) => {
-    pendingToolConfirmations.set(token, { resolve, createdAt: Date.now() });
+    pendingToolConfirmations.set(token, { owner: ws, resolve, createdAt: Date.now() });
     ws.send(JSON.stringify({ type: 'tool_confirm_prompt', token, tool, args, preview }));
   });
 }
@@ -145,7 +145,17 @@ export async function runToolCall(ws, project, tools, call, workspaceTools = {},
     ws.send(JSON.stringify({ type: 'tool_start', data: `${prefix}Running ${tool}${loc}...` }));
   }
 
-  const result = await resolvedTools[tool](args);
+  let result;
+  try {
+    result = await resolvedTools[tool](args);
+  } catch (err) {
+    // A tool that throws instead of returning {success:false} (plugin bug, fs race, network
+    // edge in webSearch/deepResearch) used to kill the ENTIRE AI turn — the answer the user
+    // was already watching stream in was discarded and no distillation ran (audit 2026-08-06,
+    // Phase 2). Fold it into the normal failure shape so the loop continues and the model can
+    // react.
+    result = { success: false, error: `Tool error: ${err.message}` };
+  }
   // PASS 5.3 self-check nudge: the model can't see the filesystem, so after a successful write
   // its job isn't done — a read-back is the only thing that can confirm what actually landed on
   // disk. Ride the existing `note` field (same channel the console.config.json save-nudge uses)

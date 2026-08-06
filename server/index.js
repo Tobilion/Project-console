@@ -120,7 +120,7 @@ async function init() {
           }
         });
         nlpEngine.train(state.activeProjectsCache).catch(() => {});
-        semanticMatcher.clearProjectIntents();
+        semanticMatcher.clearProjectIntents().catch(() => {});
         semanticMatcher.addProjectIntents(state.activeProjectsCache).catch(() => {});
         broadcast({ type: 'projects_updated', data: state.activeProjectsCache });
       });
@@ -136,9 +136,15 @@ async function init() {
   // suggestThresholds()) rather than whatever was cached from the last server run. Below
   // MIN_LABELED examples this is a fast no-op and the sweep falls back to the original heuristic,
   // so a fresh install / low-usage project sees zero behavior change from this.
-  const modelResult = retrainConfidenceModel();
-  if (modelResult.trained) {
-    console.log(`Confidence model retrained from ${modelResult.sampleCount} labeled outcomes.`);
+  // The whole retrain must not take the server down on a write failure (read-only data/,
+  // disk full) — a failed startup sweep is logged and skipped, not fatal.
+  try {
+    const modelResult = retrainConfidenceModel();
+    if (modelResult.trained) {
+      console.log(`Confidence model retrained from ${modelResult.sampleCount} labeled outcomes.`);
+    }
+  } catch (err) {
+    console.error('Confidence model retrain failed (non-fatal):', err.message);
   }
 
   // Auto-apply telemetry-based threshold adjustments on startup
@@ -153,12 +159,16 @@ async function init() {
   // Auto-promote high-confidence near-miss patterns (5+ occurrences, >=80% acceptance) into
   // real intent examples on startup, instead of requiring a manual `review learning` +
   // `approve suggestions` round trip for patterns the engine is already sure about.
-  const learningResults = autoApplySuggestionsForAll();
-  if (learningResults.length > 0) {
-    console.log(`Auto-applied near-miss learning for ${learningResults.length} project(s):`);
-    for (const r of learningResults) {
-      console.log(`  ${r.projectId}: ${r.applied}/${r.total} suggestion(s) promoted`);
+  try {
+    const learningResults = autoApplySuggestionsForAll();
+    if (learningResults.length > 0) {
+      console.log(`Auto-applied near-miss learning for ${learningResults.length} project(s):`);
+      for (const r of learningResults) {
+        console.log(`  ${r.projectId}: ${r.applied}/${r.total} suggestion(s) promoted`);
+      }
     }
+  } catch (err) {
+    console.error('Auto-apply near-miss learning failed (non-fatal):', err.message);
   }
 
   // Port fallback: try PORT through PORT+10 like start.bat does. Reuses the single `httpServer`
@@ -239,4 +249,24 @@ async function init() {
   }
 }
 
-init();
+// Process-level safety net: a rejected promise that slips past every `.catch` (an async route
+// handler missed by asyncHandler, a callback inside a library we don't control, init() itself)
+// would otherwise terminate the whole console via Node's default unhandledRejection=throw —
+// the same crash class as the HTTP/upgrade socket errors above. Log and keep serving; the
+// console is a single-user local tool whose in-flight state survives individual failures.
+process.on('unhandledRejection', (reason) => {
+  console.error('Unhandled promise rejection (non-fatal, state preserved):', reason instanceof Error ? reason.stack : reason);
+});
+process.on('uncaughtException', (err) => {
+  console.error('Uncaught exception (non-fatal, state preserved):', err.stack);
+});
+
+// A rejection inside init() (discoverProjects, NLP training, watcher setup) used to be absorbed
+// by the unhandledRejection handler above, leaving a live process with NO HTTP listener — the
+// CLI client retries for 90s and gives up, the daemon scripts report a live process, and it
+// looks like a hung app instead of a crash (audit 2026-08-06, Phase 2). Fail loudly instead:
+// the listen loop only ever ran at the end of init(), so there's nothing worth preserving.
+init().catch((err) => {
+  console.error('Fatal init failure:', err instanceof Error ? err.stack : err);
+  process.exit(1);
+});

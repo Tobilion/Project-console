@@ -35,10 +35,17 @@ let flushTimer = null;
 function flushTelemetryQueue() {
   flushTimer = null;
   for (const [projectId, entries] of writeQueue) {
-    writeQueue.delete(projectId);
     try {
       appendTelemetry(projectId, entries);
-    } catch {}
+      // Delete only after a successful append. Deleting first dropped the whole batch on any
+      // error with zero logging — and the entries' ids were already handed out to pending
+      // confirmations, so a dropped entry permanently lost its falsePositive label (the
+      // confidence model's training data silently shrank). On failure the batch stays queued
+      // and the next flush retries it.
+      writeQueue.delete(projectId);
+    } catch (err) {
+      console.error('Telemetry flush failed (retrying on next flush):', err.message);
+    }
   }
 }
 
@@ -160,3 +167,8 @@ export function autoApplyThresholdsForAll() {
   } catch {}
   return results;
 }
+
+// Pending telemetry must not be dropped on shutdown. appendTelemetry is synchronous
+// (appendFileSync), so the flush completes inside these handlers — async I/O would not.
+process.on('exit', flushTelemetryQueue);
+process.on('SIGTERM', flushTelemetryQueue);

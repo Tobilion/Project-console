@@ -62,6 +62,7 @@ export async function runCommandEntry(ws, entry, input, matchedTrigger, project,
   if (entry.risky) {
     const token = crypto.randomUUID();
     pendingConfirmations.set(token, {
+      owner: ws,
       projectId: project.id,
       command: entry.action,
       trigger: input,

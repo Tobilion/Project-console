@@ -13,6 +13,8 @@ const MIN_CHARS_TO_SUMMARIZE = 400;
 
 // Same pattern as executor.js's live-stream collapsing — recognized separately here so the
 // closing summary can report a count without repeating the streamed detail.
+import { ANSI_RE } from './executorOutput.js';
+
 const LF_CRLF_RE = /^warning: in the working copy of '([^']+)', LF will be replaced by CRLF the next time Git touches it\.?$/;
 // NOTE: "ERR!" ends in a non-word character, so a trailing `\b` after it never matches (`\b`
 // needs a word/non-word transition, and "!" followed by a space/end-of-line is non-word on both
@@ -35,7 +37,10 @@ const GIT_CONFLICT_RE = /^CONFLICT\b.*$/m;
  * found. Deliberately additive to (never a replacement for) the full live-streamed log.
  */
 export function summarizeCommandOutput({ command, stdout = '', stderr = '', exitCode }) {
-  const combined = `${stdout}\n${stderr}`;
+  // Strip ANSI escapes before scanning — the raw accumulators keep them (they're stripped only
+  // for URL detection at stream time), so colored error lines used to land verbatim in the
+  // summary bubble as escape junk (the frontend has no ANSI handling; audit 2026-08-06).
+  const combined = `${stdout}\n${stderr}`.replace(ANSI_RE, '');
   const lineCount = combined.split('\n').filter((l) => l.trim()).length;
   if (lineCount < MIN_LINES_TO_SUMMARIZE && combined.length < MIN_CHARS_TO_SUMMARIZE) {
     return null;
@@ -48,7 +53,12 @@ export function summarizeCommandOutput({ command, stdout = '', stderr = '', exit
       lfCrlfCount++;
       continue;
     }
-    if (line.trim() && ERROR_LINE_RE.test(line)) errorLines.push(line.trim());
+    if (line.trim() && ERROR_LINE_RE.test(line)) {
+      // Cap each shown line — a minified error or giant stack trace used to be embedded whole,
+      // making the summary as large as the output it was meant to condense.
+      const t = line.trim();
+      errorLines.push(t.length > 200 ? `${t.slice(0, 200)}…` : t);
+    }
   }
 
   const highlights = [];

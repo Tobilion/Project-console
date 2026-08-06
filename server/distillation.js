@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
+import { writeFileAtomicSync } from './atomicWrite.js';
 
 const DISTILL_DIR = path.join(process.cwd(), 'data', 'distillations');
 const KNOWN_SCRIPT_NAMES = ['dev', 'start', 'build', 'preview', 'lint', 'test', 'format', 'deploy', 'publish', 'release'];
@@ -53,7 +54,7 @@ function pruneStalePending(projectId) {
   const kept = records.filter(r => r.status !== 'pending' || r.timestamp >= cutoff);
   if (kept.length !== records.length) {
     const fp = filePath(projectId);
-    fs.writeFileSync(fp, kept.length ? kept.map(r => JSON.stringify(r)).join('\n') + '\n' : '');
+    writeFileAtomicSync(fp, kept.length ? kept.map(r => JSON.stringify(r)).join('\n') + '\n' : '');
   }
 }
 
@@ -67,6 +68,10 @@ export function analyzeAIExchange(project, { input, finalText, toolHistory }) {
 
   const ids = [];
   const existingPending = readDistillations(project.id).filter(r => r.status === 'pending');
+  // Triggers logged in this same batch — logRecord appends to the file mid-loop, so
+  // `existingPending` (snapshotted once above) can't see them; without this, the AI reading
+  // the same file twice in one exchange logged an identical duplicate record every time.
+  const seenTriggers = new Set();
 
   for (const entry of toolHistory) {
     const { tool, args, result, approved } = entry;
@@ -95,7 +100,7 @@ export function analyzeAIExchange(project, { input, finalText, toolHistory }) {
       const fileName = args?.path ? path.basename(args.path) : 'file';
       const trigger = `what is ${fileName.replace(/\.\w+$/, '')}`;
       const alreadyPending = existingPending.some(r => r.type === 'knowledge_entry' && r.trigger === trigger);
-      if (!alreadyPending) {
+      if (!alreadyPending && !seenTriggers.has(trigger)) {
         // Extract a summary from the first paragraph of the final text
         const summary = finalText.split('\n\n')[0]?.trim() || finalText.slice(0, 300);
         ids.push(logRecord(project.id, {
@@ -108,6 +113,7 @@ export function analyzeAIExchange(project, { input, finalText, toolHistory }) {
           occurrences: 1,
           status: 'pending',
         }));
+        seenTriggers.add(trigger);
       }
     }
 
@@ -244,7 +250,7 @@ export function applyDistillation(projectId, suggestionIds, projectsCache) {
 
   if (added.length > 0) {
     // Write the updated config back to disk — the file watcher will pick it up
-    fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
+    writeFileAtomicSync(configPath, JSON.stringify(config, null, 2));
 
     // Mark these records as applied
     const allRecords = readDistillations(projectId);
@@ -254,7 +260,7 @@ export function applyDistillation(projectId, suggestionIds, projectsCache) {
       }
     }
     const fp = filePath(projectId);
-    fs.writeFileSync(fp, allRecords.map(r => JSON.stringify(r)).join('\n') + '\n');
+    writeFileAtomicSync(fp, allRecords.map(r => JSON.stringify(r)).join('\n') + '\n');
   }
 
   return added;

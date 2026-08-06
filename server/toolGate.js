@@ -17,7 +17,10 @@ export async function getPluginManifest(root) {
     pluginManifestCache.set(root, result);
     return result;
   }).catch(() => {
-    pluginManifestCache.set(root, null);
+    // Do NOT cache the failure (the old `set(root, null)` made a transient read error
+    // permanent — every later call would return null from cache and never retry the manifest).
+    // Deleting lets the next getPluginManifest call re-read the file.
+    pluginManifestCache.delete(root);
     return null;
   });
   pluginManifestCache.set(root, promise);

@@ -1,4 +1,4 @@
-import { state, pendingToolConfirmations } from '../state.js';
+import { state, pendingConfirmations, pendingToolConfirmations } from '../state.js';
 import { stopTrackedProcess } from '../executor.js';
 import { GATED_TOOLS, toolGrantKey } from '../tools.js';
 import { generateSuggestions, applySuggestions } from '../learningEngine.js';
@@ -25,6 +25,32 @@ async function routeMessage(ws, parsed, sessionContext) {
       // on sessionContext by aiQuery.js) and a still-running trigger-mode shell command (killed
       // via the same runningProcesses map "stop server" already uses).
       let didSomething = false;
+      // Cancel must also kill the turn's pending confirm cards, not just the in-flight fetch:
+      // a tool-confirm promise left pending sits until the 5-minute sweep, and approving the
+      // still-visible card after cancel would execute the gated tool on a turn the user thinks
+      // is dead (audit 2026-08-06, Phase 2). Release them first so the AI loop gets a clean
+      // rejection result before the abort below kills the next fetch.
+      let releasedConfirmations = false;
+      for (const [token, pending] of pendingToolConfirmations) {
+        if (pending.owner === ws) {
+          try { pending.resolve(false); } catch {}
+          pendingToolConfirmations.delete(token);
+          releasedConfirmations = true;
+        }
+      }
+      for (const [token, pending] of pendingConfirmations) {
+        if (pending.owner === ws) {
+          pendingConfirmations.delete(token);
+          releasedConfirmations = true;
+        }
+      }
+      // A canceled turn must not keep its pending question state either — otherwise the user's
+      // NEXT unrelated message gets silently consumed as the answer to the stale question
+      // (e.g. "15" substituted into a command they thought they'd canceled).
+      sessionContext.pendingParam = null;
+      sessionContext.pendingFollowUp = null;
+      sessionContext.pendingDisambiguation = null;
+      if (releasedConfirmations) didSomething = true;
       if (sessionContext.aiAbortController) {
         try { sessionContext.aiAbortController.abort(); } catch {}
         didSomething = true;

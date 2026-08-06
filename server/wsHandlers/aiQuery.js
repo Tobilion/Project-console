@@ -27,8 +27,20 @@ export async function handleAIQuery(ws, project, input, sessionContext, workspac
     return;
   }
 
-  const { messages, cleanInput, model, tools, workspaceTools } =
-    await buildAIQueryContext(project, input, sessionContext, workspaceProjects);
+  let messages, cleanInput, model, tools, workspaceTools;
+  try {
+    ({ messages, cleanInput, model, tools, workspaceTools } =
+      await buildAIQueryContext(project, input, sessionContext, workspaceProjects));
+  } catch (err) {
+    // buildAIQueryContext runs before the AbortController exists — a throw here used to reject
+    // out of handleAIQuery entirely, skipping both the error reply and the turn's end message
+    // (audit 2026-08-06, Phase 2).
+    metrics.inc('ai_query.error');
+    metrics.event({ type: 'ai_query_error', error: err.message });
+    ws.send(JSON.stringify({ type: 'error_output', data: `AI error: ${err.message}\n` }));
+    ws.send(JSON.stringify({ type: 'end' }));
+    return;
+  }
   let finalText = '';
   const toolHistory = [];
 
@@ -99,6 +111,14 @@ export async function handleAIQuery(ws, project, input, sessionContext, workspac
       ws.send(JSON.stringify({ type: 'error_output', data: 'Stopped after too many tool-call rounds — ask a more specific follow-up.\n' }));
     }
 
+    // A stream that produced neither text nor a tool call would otherwise end the turn
+    // silently — nothing shown, nothing persisted, and the placeholder bubble stayed empty
+    // (audit 2026-08-06, Phase 2).
+    if (!finalText || !finalText.trim()) {
+      ws.send(JSON.stringify({ type: 'error_output', data: 'The model returned an empty response — try again, or rephrase the request.\n' }));
+      metrics.inc('ai_query.empty_response');
+    }
+
     // Fabricated-action-claim check — see looksLikeFabricatedActionClaim above. Runs once, after
     // every round is done, against toolHistory (everything actually run this whole exchange), not
     // any single round's toolCalls, since a real tool could have run in an earlier round. The
@@ -115,9 +135,24 @@ export async function handleAIQuery(ws, project, input, sessionContext, workspac
     metrics.observe('ai_query.duration', Date.now() - tStart);
     metrics.event({ type: 'ai_query_complete', duration: Date.now() - tStart, rounds: round, toolCalls: toolHistory.length });
   } catch (err) {
+    // A stream that threw or was aborted never reached its own stream_end — the frontend
+    // clears its AI-busy state and finalizes the placeholder bubble ONLY on stream_end, so
+    // skipping it left the spinner stuck forever and an empty streaming bubble in the chat
+    // (audit 2026-08-06, Phase 2). Send it in every failure path; the frontend's stream_end
+    // case tolerates a stream with zero tokens.
+    try { ws.send(JSON.stringify({ type: 'stream_end' })); } catch {}
     if (err.name === 'AbortError') {
-      metrics.event({ type: 'ai_query_cancelled', duration: Date.now() - tStart });
-      ws.send(JSON.stringify({ type: 'answer', data: 'Cancelled.' }));
+      if (abortController.signal.aborted) {
+        metrics.event({ type: 'ai_query_cancelled', duration: Date.now() - tStart });
+        ws.send(JSON.stringify({ type: 'answer', data: 'Cancelled.' }));
+      } else {
+        // The user's signal was never aborted, so this AbortError came from chatStream's idle
+        // watchdog (hung daemon/GPU stall) — report it as an error, not a cancellation.
+        const timeoutMsg = err.reason?.message || err.message;
+        metrics.inc('ai_query.error');
+        metrics.event({ type: 'ai_query_error', error: timeoutMsg });
+        ws.send(JSON.stringify({ type: 'error_output', data: `AI error: ${timeoutMsg}\n` }));
+      }
     } else {
       metrics.inc('ai_query.error');
       metrics.event({ type: 'ai_query_error', error: err.message });
@@ -153,29 +188,37 @@ export async function handleAIQuery(ws, project, input, sessionContext, workspac
     }
   }
 
-  // Track the user's question in project memory for pattern detection
-  trackQuestion(project.path, cleanInput || input);
+  // Post-query tracking (project memory, distillation, persistence) must never be able to drop
+  // the turn's 'end' — a throw in any of these used to skip it, leaving the frontend's busy
+  // indicator stuck forever after a fully streamed answer (audit 2026-08-06, Phase 2).
+  try {
+    // Track the user's question in project memory for pattern detection
+    trackQuestion(project.path, cleanInput || input);
 
-  // If the AI produced a substantive answer, flag it as a candidate CLAUDE.md addition
-  if (finalText && finalText.trim().length > 300) {
-    const topic = cleanInput?.slice(0, 60) || input?.slice(0, 60) || 'AI analysis';
-    addCandidateAddition(project.path, topic, finalText.trim(), finalText.length > 800 ? 'high' : 'medium');
+    // If the AI produced a substantive answer, flag it as a candidate CLAUDE.md addition
+    if (finalText && finalText.trim().length > 300) {
+      const topic = cleanInput?.slice(0, 60) || input?.slice(0, 60) || 'AI analysis';
+      addCandidateAddition(project.path, topic, finalText.trim(), finalText.length > 800 ? 'high' : 'medium');
+    }
+
+    // Distillation: analyze what the AI did and suggest trigger-mode improvements
+    if (toolHistory.length > 0) {
+      analyzeAIExchange(project, {
+        input: cleanInput || input,
+        finalText: finalText || '',
+        toolHistory,
+      });
+    }
+
+    // Persist the final assistant text explicitly — token/stream events aren't auto-saved
+    // the way single 'answer' messages are (see the ws.send interceptor in wsHandlers/connection.js).
+    if (sessionContext.currentSessionId && finalText.trim()) {
+      appendMessage(sessionContext.currentSessionId, { role: 'bot', content: finalText.trim(), isMarkdown: true }).catch(() => {});
+    }
+  } catch (err) {
+    metrics.inc('ai_query.post_error');
+    console.error('AI post-query tracking error:', err);
   }
 
-  // Distillation: analyze what the AI did and suggest trigger-mode improvements
-  if (toolHistory.length > 0) {
-    analyzeAIExchange(project, {
-      input: cleanInput || input,
-      finalText: finalText || '',
-      toolHistory,
-    });
-  }
-
-  // Persist the final assistant text explicitly — token/stream events aren't auto-saved
-  // the way single 'answer' messages are (see the ws.send interceptor in wsHandlers/connection.js).
-  if (sessionContext.currentSessionId && finalText.trim()) {
-    appendMessage(sessionContext.currentSessionId, { role: 'bot', content: finalText.trim(), isMarkdown: true }).catch(() => {});
-  }
-
-  ws.send(JSON.stringify({ type: 'end' }));
+  if (ws.readyState === 1) ws.send(JSON.stringify({ type: 'end' }));
 }

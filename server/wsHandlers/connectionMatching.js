@@ -126,6 +126,7 @@ export async function handleMatchingPipeline(ws, project, projectId, input, sess
     });
     const token = crypto.randomUUID();
     pendingConfirmations.set(token, {
+      owner: ws,
       projectId: project.id,
       command: guessed.command,
       trigger: input,

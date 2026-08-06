@@ -50,14 +50,21 @@ export function generateSuggestions(projectId) {
     // Deduplicate input phrases
     const phrases = [...new Set(group.inputs)];
 
-    // Confidence based on acceptance rate and frequency
-    const acceptanceRate = group.accepted / (group.accepted + group.rejected || 1);
+    // Confidence based on acceptance rate and frequency. The || 1 must guard the whole
+    // fraction, not just the denominator: `a / (b || 1)` with both counts at 0 evaluates
+    // 0/1 = 0, which wrongly rates an unanswered group as 'low' forever — the intended
+    // fallback for "no feedback yet" is a perfect 1, not 0.
+    const acceptanceRate = group.accepted / (group.accepted + group.rejected) || 1;
     let confidence = 'low';
     if (group.inputs.length >= 5 && acceptanceRate >= 0.8) confidence = 'high';
     else if (group.inputs.length >= 3 && acceptanceRate >= 0.6) confidence = 'medium';
 
     suggestions.push({
-      id: crypto.randomUUID(),
+      // Deterministic and stable across generateSuggestions() calls — applySuggestions()
+      // re-runs this function to resolve the submitted IDs, and a random UUID (fresh on
+      // every call) could never match. The resolved command is the grouping key, so it
+      // uniquely identifies the suggestion and survives the review -> approve round-trip.
+      id: command,
       intent,
       phrases,
       count: group.inputs.length,
@@ -79,7 +86,6 @@ export function generateSuggestions(projectId) {
  * Returns the list of phrases actually added.
  */
 export function applySuggestions(suggestionIds, projectId) {
-  const entries = readNearMisses(projectId);
   const allSuggestions = generateSuggestions(projectId);
   const approved = allSuggestions.filter(s => suggestionIds.includes(s.id));
 
@@ -114,8 +120,12 @@ export function applySuggestions(suggestionIds, projectId) {
     nlpEngine.retrainFromLearned().catch(() => {});
   }
 
-  // Clear the near-miss log for this project since we've acted on it
-  if (added.length > 0) {
+  // Clear the near-miss log for this project once its suggestions have been acted on — even
+  // when every approved phrase already existed in INTENTS (previously auto-applied, or an
+  // overlap between grouped suggestions). Clearing only on `added.length > 0` left those
+  // patterns regenerating the same suggestions on every review and every startup sweep,
+  // and the log file growing unbounded.
+  if (approved.length > 0) {
     clearNearMisses(projectId);
   }
 

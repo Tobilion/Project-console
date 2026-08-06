@@ -30,12 +30,17 @@ goto :MODE_SELECT
 :: redirecting it, the background server's own startup logs (dotenvx env injection, NLP training,
 :: semanticMatcher's embedding-model loading, etc.) print directly into this window, interleaved
 :: with the interactive CLI chat itself (confirmed live 2026-07-29 — very confusing to read).
-:: Redirected to a log file instead; check server.log if something needs debugging.
+:: Redirected to a log file instead; check server.log if something needs debugging (stderr goes
+:: to server.err.log — Start-Process cannot redirect both streams to the same file).
+:: The server is launched through PowerShell so its wrapper PID can be captured; on failure we
+:: kill only that process tree (npm -> node server). The old `taskkill /f /im node.exe` killed
+:: every Node process on the machine, including unrelated dev servers and this console's own
+:: tooling (confirmed live 2026-08-06 audit) — never do that.
 echo Starting server in the background (log: server.log)...
 IF EXIST "dist\server.js" (
-    start /B "" npm start > server.log 2>&1
+    for /f "usebackq delims=" %%P in (`powershell -NoProfile -Command "$p = Start-Process -FilePath 'npm.cmd' -ArgumentList 'start' -RedirectStandardOutput 'server.log' -RedirectStandardError 'server.err.log' -WindowStyle Hidden -PassThru; $p.Id"`) do set SERVER_PID=%%P
 ) ELSE (
-    start /B "" npm run dev > server.log 2>&1
+    for /f "usebackq delims=" %%P in (`powershell -NoProfile -Command "$p = Start-Process -FilePath 'npm.cmd' -ArgumentList 'run','dev' -RedirectStandardOutput 'server.log' -RedirectStandardError 'server.err.log' -WindowStyle Hidden -PassThru; $p.Id"`) do set SERVER_PID=%%P
 )
 
 :: Previously waited here for `netstat` to show port 3000 as listening before starting the CLI
@@ -48,7 +53,9 @@ IF EXIST "dist\server.js" (
 node server/cli-client.js
 if errorlevel 1 (
     echo CLI chat exited. Stopping server...
-    taskkill /f /im node.exe >nul 2>&1
+    if defined SERVER_PID (
+        taskkill /f /t /pid !SERVER_PID! >nul 2>&1
+    )
 )
 pause
 exit /b 0

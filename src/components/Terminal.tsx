@@ -1,13 +1,13 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { TerminalMessage, Project, AIStatus, PendingToolConfirm, PendingMemorySuggestion, ToolCallEntry } from '../types';
-import { Send, Brain } from 'lucide-react';
-import { AIAssistantInterface } from './ui/AIAssistantInterface';
 import { getRandomChatPrompt, getRandomEmptyStatePrompt, getEmptyStateActions } from '../utils/greetings';
 import { ToolHistoryPanel } from './ToolHistoryPanel';
 import { ProcessDock, ProcessInfo } from './ProcessDock';
 import { TerminalHeader } from './TerminalHeader';
 import { TerminalMessages } from './TerminalMessages';
 import { TerminalSearchOverlay } from './TerminalSearchOverlay';
+import { TerminalInput } from './TerminalInput';
+import { ErrorBoundary } from './ErrorBoundary';
 
 const MAX_HISTORY = 200;
 
@@ -82,17 +82,7 @@ interface TerminalProps {
   knownDevUrls: string[];
 }
 
-const AI_MODES = [
-  { value: 'default', label: 'General' },
-  { value: 'coding', label: 'Coding' },
-  { value: 'tutor', label: 'Tutor' },
-  { value: 'creative', label: 'Creative' },
-  { value: 'consultant', label: 'Consultant' },
-  { value: 'structured', label: 'Structured' }
-];
-
-export const Terminal = ({ messages, onSendMessage, onSearch, onDeepResearch, activeProject, userName, pendingConfirm, onConfirm, pendingToolConfirm, onToolConfirm, onApproveTask, pendingMemorySuggestion, onMemorySuggestionRespond, aiEnabled, aiThinking, aiThinkingText, commandPending, onCancel, ollamaStatus, aiModel, aiMode, onAIToggle, onSetModel, onSetMode, toolHistory, showToolHistory, onToggleToolHistory, onRerunToolCall, onExportMarkdown, onExportJson, onDirectCommand, onDidYouMeanPick, workspaceProjects, addToWorkspace, 
-removeFromWorkspace, clearWorkspace, onSwitchToProject, isFullscreen, onToggleFullscreen, processes, processLogs, 
+export const Terminal = ({ messages, onSendMessage, onSearch, onDeepResearch, activeProject, userName, pendingConfirm, onConfirm, pendingToolConfirm, onToolConfirm, onApproveTask, pendingMemorySuggestion, onMemorySuggestionRespond, aiEnabled, aiThinking, aiThinkingText, commandPending, onCancel, ollamaStatus, aiModel, aiMode, onAIToggle, onSetModel, onSetMode, toolHistory, showToolHistory, onToggleToolHistory, onRerunToolCall, onExportMarkdown, onExportJson, onDirectCommand, onDidYouMeanPick, workspaceProjects, addToWorkspace, removeFromWorkspace, clearWorkspace, onSwitchToProject, isFullscreen, onToggleFullscreen, processes, processLogs, 
 selectedProcessId, onSelectProcess, onStopProcess, dockExpanded, onToggleDock, dockTab, onSetDockTab, projects, knownDevUrls }: TerminalProps) => {
   const [input, setInput] = useState('');
   const [showSearchOverlay, setShowSearchOverlay] = useState(false);
@@ -276,118 +266,75 @@ selectedProcessId, onSelectProcess, onStopProcess, dockExpanded, onToggleDock, d
         onToggleToolHistory={onToggleToolHistory}
       />
       
-      <TerminalMessages
-        messages={messages}
-        centerCol={centerCol}
-        isBlocked={isBlocked}
-        onSendMessage={onSendMessage}
-        onDirectCommand={onDirectCommand}
-        onSwitchToProject={onSwitchToProject}
-        aiMode={aiMode}
-        endRef={endRef}
-        aiThinking={aiThinking}
-        aiThinkingText={aiThinkingText}
-        commandPending={commandPending}
-        onCancel={onCancel}
-        pendingConfirm={pendingConfirm}
-        onConfirm={onConfirm}
-        pendingToolConfirm={pendingToolConfirm}
-        onToolConfirm={onToolConfirm}
-        onApproveTask={onApproveTask}
-        pendingMemorySuggestion={pendingMemorySuggestion}
-        onMemorySuggestionRespond={onMemorySuggestionRespond}
-        emptyStatePrompt={emptyStatePrompt}
-        emptyStateActions={emptyStateActions}
-        onDidYouMeanPick={onDidYouMeanPick}
-        knownDevUrls={knownDevUrls}
-      />
+      <ErrorBoundary>
+        <TerminalMessages
+          messages={messages}
+          centerCol={centerCol}
+          isBlocked={isBlocked}
+          onSendMessage={onSendMessage}
+          onDirectCommand={onDirectCommand}
+          onSwitchToProject={onSwitchToProject}
+          aiMode={aiMode}
+          endRef={endRef}
+          aiThinking={aiThinking}
+          aiThinkingText={aiThinkingText}
+          commandPending={commandPending}
+          onCancel={onCancel}
+          pendingConfirm={pendingConfirm}
+          onConfirm={onConfirm}
+          pendingToolConfirm={pendingToolConfirm}
+          onToolConfirm={onToolConfirm}
+          onApproveTask={onApproveTask}
+          pendingMemorySuggestion={pendingMemorySuggestion}
+          onMemorySuggestionRespond={onMemorySuggestionRespond}
+          emptyStatePrompt={emptyStatePrompt}
+          emptyStateActions={emptyStateActions}
+          onDidYouMeanPick={onDidYouMeanPick}
+          knownDevUrls={knownDevUrls}
+        />
+      </ErrorBoundary>
 
       <ToolHistoryPanel toolHistory={toolHistory} show={showToolHistory} onToggle={onToggleToolHistory} onRerun={onRerunToolCall} />
 
-      <ProcessDock
-        processes={processes || []}
-        processLogs={processLogs || {}}
-        selectedProcessId={selectedProcessId || null}
-        onSelectProcess={(pid) => onSelectProcess?.(pid)}
-        onStopProcess={(pid) => onStopProcess?.(pid)}
-        expanded={!!dockExpanded}
-        onToggleExpanded={() => onToggleDock?.()}
-        dockTab={dockTab || 'logs'}
-        onSetDockTab={onSetDockTab}
-        projects={projects || []}
+      <ErrorBoundary>
+        <ProcessDock
+          processes={processes || []}
+          processLogs={processLogs || {}}
+          selectedProcessId={selectedProcessId || null}
+          onSelectProcess={(pid) => onSelectProcess?.(pid)}
+          onStopProcess={(pid) => onStopProcess?.(pid)}
+          expanded={!!dockExpanded}
+          onToggleExpanded={() => onToggleDock?.()}
+          dockTab={dockTab || 'logs'}
+          onSetDockTab={onSetDockTab}
+          projects={projects || []}
+        />
+      </ErrorBoundary>
+
+      <TerminalInput
+        centerCol={centerCol}
+        aiEnabled={aiEnabled}
+        aiThinking={aiThinking}
+        commandPending={commandPending}
+        isBlocked={isBlocked}
+        activeProject={activeProject}
+        ollamaStatus={ollamaStatus}
+        aiModel={aiModel}
+        aiMode={aiMode}
+        onAIToggle={onAIToggle}
+        onSetModel={onSetModel}
+        onSetMode={onSetMode}
+        chatPrompt={chatPrompt}
+        input={input}
+        onInputChange={(value) => { setInput(value); resetTab(); }}
+        onInputKeyDown={handleInputKeyDown}
+        onSubmit={handleSubmit}
+        inputRef={inputRef}
+        onAISend={(text) => { pushHistory(text); onSendMessage(text); setInput(''); }}
+        onSearch={onSearch}
+        onDeepResearch={onDeepResearch}
+        getHistory={() => commandHistory.current}
       />
-
-      {ollamaStatus && (
-        <div className={`${centerCol} flex items-center gap-2 px-4 py-1.5 bg-panel border-t border-border-soft flex-wrap`}>
-          <button onClick={onAIToggle} className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] transition-colors border flex-shrink-0 ${aiEnabled ? 'bg-teal-500/20 border-teal-500/40 text-teal-300' : 'bg-panel border-border-soft text-fg-dim hover:text-fg-muted'}`}>
-            <Brain size={13} />
-            <span>AI {aiEnabled ? 'ON' : 'OFF'}</span>
-          </button>
-          {aiEnabled && ((ollamaStatus.models?.length ?? 0) > 0 || (ollamaStatus.cloudModels?.length ?? 0) > 0) && (
-            <>
-              <select
-                value={aiModel}
-                onChange={(e) => onSetModel(e.target.value)}
-                title={ollamaStatus.cloudModels?.some(m => m.name === aiModel) ? 'Running on Ollama Cloud — needs internet + `ollama signin`' : 'Running locally'}
-                className="bg-surface border border-border-soft rounded-md px-1.5 py-1 text-[11px] text-fg-muted focus:outline-none focus:border-teal-500/40 flex-shrink-0 max-w-[220px]"
-              >
-                {(ollamaStatus.models?.length ?? 0) > 0 && (
-                  <optgroup label="Local (offline)">
-                    {ollamaStatus.models.map((m: any) => (
-                      <option key={m.name} value={m.name}>{m.name}</option>
-                    ))}
-                  </optgroup>
-                )}
-                {(ollamaStatus.cloudModels?.length ?? 0) > 0 && (
-                  <optgroup label="Ollama Cloud (needs sign-in + internet)">
-                    {ollamaStatus.cloudModels!.map((m) => (
-                      <option key={m.name} value={m.name}>{m.label}</option>
-                    ))}
-                  </optgroup>
-                )}
-              </select>
-              <select
-                value={aiMode}
-                onChange={(e) => onSetMode(e.target.value)}
-                className="bg-surface border border-border-soft rounded-md px-1.5 py-1 text-[11px] text-fg-muted focus:outline-none focus:border-teal-500/40 flex-shrink-0"
-              >
-                {AI_MODES.map(m => (
-                  <option key={m.value} value={m.value}>{m.label}</option>
-                ))}
-              </select>
-            </>
-          )}
-        </div>
-      )}
-
-      {aiEnabled ? (
-        <div className={`${centerCol} p-3 bg-panel border-t border-border-soft`}>
-          <AIAssistantInterface onSend={(text) => { pushHistory(text); onSendMessage(text); setInput(''); }} onSearch={(q) => { onSearch?.(q); }} onDeepResearch={(q) => { onDeepResearch?.(q); }} disabled={!activeProject || aiThinking || isBlocked} placeholder={isBlocked ? 'Resolve the pending confirmation first (Esc to cancel)...' : aiThinking ? 'AI is thinking...' : chatPrompt} getHistory={() => commandHistory.current} />
-        </div>
-      ) : (
-        <form onSubmit={handleSubmit} className={`${centerCol} p-4 bg-panel border-t border-border-soft`}>
-          <div className="relative flex items-center">
-            <input
-              ref={inputRef}
-              type="text"
-              value={input}
-              onChange={(e) => { setInput(e.target.value); resetTab(); }}
-              onKeyDown={handleInputKeyDown}
-              disabled={!activeProject || aiThinking || commandPending}
-              placeholder={!activeProject ? "Select a project to start..." : aiThinking ? "AI is thinking..." : commandPending ? "Running..." : chatPrompt}
-              className="w-full bg-surface border border-border-soft rounded-xl py-3 pl-4 pr-12 text-fg text-sm focus:outline-none focus:border-[#3d6bff] transition-colors disabled:opacity-50"
-            />
-            <button
-              type="submit"
-              disabled={!input.trim() || !activeProject || aiThinking || commandPending || isBlocked}
-              title={isBlocked ? 'Resolve the pending confirmation first (Esc to cancel)' : undefined}
-              className="absolute right-2 p-2 text-fg-subtle hover:text-[#00d4a3] disabled:opacity-50 transition-colors"
-            >
-              <Send size={18} />
-            </button>
-          </div>
-        </form>
-      )}
 
       <TerminalSearchOverlay
         show={showSearchOverlay}

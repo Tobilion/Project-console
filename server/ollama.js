@@ -198,6 +198,13 @@ export async function chatOnce(model, messages, options = {}, signal, hostOverri
   return data.message?.content || '';
 }
 
+// Watchdog bound for the streaming loop: a daemon that accepts the request but never emits
+// chunks (hung model load, GPU stall) previously left the turn pending forever, with the busy
+// spinner stuck until the user happened to hit Cancel (audit 2026-08-06, Phase 2). Idle-based
+// rather than a total cap, because long CPU generations are legitimate; the external signal
+// (user cancel) still wins because the abort handler checks it independently.
+const STREAM_IDLE_TIMEOUT_MS = 120_000;
+
 /**
  * Streams a chat completion, yielding `{ type: 'content' | 'thinking', text }` chunks.
  *
@@ -216,40 +223,70 @@ export async function chatOnce(model, messages, options = {}, signal, hostOverri
  */
 export async function* chatStream(model, messages, signal, hostOverride) {
   const host = hostOverride || OLLAMA_HOST;
-  const res = await fetch(`${host}/api/chat`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ model, messages, stream: true, think: true, options: { num_ctx: NUM_CTX } }),
-    signal
-  });
-
-  if (!res.ok) {
-    throw new Error(`Ollama error (${res.status}): ${res.statusText}`);
+  // Internal controller: the external signal (user cancel) forwards into it, and the idle
+  // watchdog aborts it with a distinguishing reason. Callers can tell the two apart via the
+  // external signal's own `aborted` flag (user cancel) vs `err.reason` (watchdog timeout).
+  const controller = new AbortController();
+  const onExternalAbort = () => controller.abort();
+  let idleTimer = null;
+  const resetIdle = () => {
+    if (idleTimer) clearTimeout(idleTimer);
+    idleTimer = setTimeout(
+      () => controller.abort(new Error(`Ollama stream stalled (no chunks for ${STREAM_IDLE_TIMEOUT_MS / 1000}s)`)),
+      STREAM_IDLE_TIMEOUT_MS
+    );
+  };
+  if (signal) {
+    if (signal.aborted) controller.abort();
+    else signal.addEventListener('abort', onExternalAbort, { once: true });
   }
+  resetIdle();
+  try {
+    const res = await fetch(`${host}/api/chat`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model, messages, stream: true, think: true, options: { num_ctx: NUM_CTX } }),
+      signal: controller.signal
+    });
 
-  const reader = res.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = '';
-
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
-    const lines = buffer.split('\n');
-    buffer = lines.pop() || '';
-    for (const line of lines) {
-      if (!line.trim()) continue;
-      try {
-        const json = JSON.parse(line);
-        if (json.done) {
-          if (json.total_duration) {
-            yield { type: 'content', text: `\n\n_(${(json.total_duration / 1e9).toFixed(1)}s, ${(json.eval_count / (json.total_duration / 1e9)).toFixed(0)} tok/s)_` };
-          }
-          return;
-        }
-        if (json.message?.thinking) yield { type: 'thinking', text: json.message.thinking };
-        if (json.message?.content) yield { type: 'content', text: json.message.content };
-      } catch {}
+    if (!res.ok) {
+      throw new Error(`Ollama error (${res.status}): ${res.statusText}`);
     }
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      resetIdle();
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        try {
+          const json = JSON.parse(line);
+          if (json.done) {
+            if (json.total_duration) {
+              yield { type: 'content', text: `\n\n_(${(json.total_duration / 1e9).toFixed(1)}s, ${(json.eval_count / (json.total_duration / 1e9)).toFixed(0)} tok/s)_` };
+            }
+            return;
+          }
+          if (json.message?.thinking) yield { type: 'thinking', text: json.message.thinking };
+          if (json.message?.content) yield { type: 'content', text: json.message.content };
+        } catch {}
+      }
+    }
+    // A non-empty tail at end-of-stream means the daemon closed mid-line — NDJSON is always
+    // newline-terminated, so this is a truncated response, not a partial chunk. Surface it
+    // instead of silently ending the turn with whatever had already streamed.
+    if (buffer.trim()) {
+      throw new Error('Ollama stream ended mid-line (truncated response)');
+    }
+  } finally {
+    if (idleTimer) clearTimeout(idleTimer);
+    if (signal) signal.removeEventListener('abort', onExternalAbort);
   }
 }

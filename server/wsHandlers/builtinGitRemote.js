@@ -27,6 +27,7 @@ export const gitRemoteHandlers = {
       // Works whether "origin" already exists or not, without needing an extra round trip to check.
       const command = `git remote add origin ${url} || git remote set-url origin ${url}`;
       pendingConfirmations.set(token, {
+        owner: ws,
         projectId: project.id,
         command,
         trigger: input,
@@ -43,6 +44,7 @@ export const gitRemoteHandlers = {
   git_pull: async (ws, action, input, project, sessionContext) => {
     const token = crypto.randomUUID();
     pendingConfirmations.set(token, {
+      owner: ws,
       projectId: project.id,
       command: 'git pull',
       trigger: input,

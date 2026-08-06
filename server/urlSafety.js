@@ -8,7 +8,10 @@
 // search result pointing at an internal address (localhost, a LAN IP, a cloud metadata endpoint)
 // that this server would then fetch on the user's behalf. Guard against that class of target
 // instead of allowlisting hosts we can't predict in advance.
-const BLOCKED_HOSTNAME_RE = /^(localhost|127\.|10\.|192\.168\.|169\.254\.|0\.0\.0\.0|::1|\[::1\])/i;
+// IPv6 hostnames arrive bracket-wrapped from the WHATWG parser ("[fe80::1]"), so each IPv6
+// pattern appears in both bare and bracketed forms. fe80:: link-local is included because it
+// is a documented SSRF class (reachable without routing) and never a legitimate external target.
+const BLOCKED_HOSTNAME_RE = /^(localhost|127\.|10\.|192\.168\.|169\.254\.|0\.0\.0\.0|::1|\[::1\]|fe80::|\[fe80::)/i;
 const PRIVATE_172_RE = /^172\.(1[6-9]|2\d|3[01])\./;
 
 export function isSafeExternalUrl(urlObj) {
@@ -27,6 +30,9 @@ export function isSafeExternalUrl(urlObj) {
  * Mirrors the BLOCKED_HOSTNAME_RE deny-format above for the private ranges we DO permit.
  */
 const PROBEABLE_HOSTNAME_RE = /^(localhost|127\.|10\.|192\.168\.|::1|\[::1\])/i;
+// Link-local (fe80::) and the metadata endpoint (169.254.x) are deliberately NOT in the
+// probeable allowlist — they are SSRF-class targets and never a dev server. ::1 stays:
+// IPv6 loopback is a localhost-family dev-server target, the point of this allowlist.
 
 export function isProbeableUrl(urlObj) {
   if (urlObj.protocol !== 'http:' && urlObj.protocol !== 'https:') return false;

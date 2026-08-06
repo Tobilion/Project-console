@@ -1,12 +1,30 @@
+import { Mutex } from 'async-mutex';
 import { pipeline, env } from '@xenova/transformers';
 import Fuse from 'fuse.js';
 import { INTENTS } from './intentsData.js';
-import { getEffectiveThreshold } from './intentTelemetry.js';
 import { broadcast } from './wsServer.js';
-import { findPreSemanticOverride } from './preSemanticOverrides.js';
-import { matchKeywordRule } from './keywordRules.js';
-import { runSemanticStage, runFuzzyStage } from './matcherStages.js';
-import { scanAllVectors, bestProjectActionVector, averageIntentVectors, cosineSimilarity } from './intentVectorScan.js';
+import { bestProjectActionVector } from './intentVectorScan.js';
+import { runMatchPipeline } from './matcherMatch.js';
+import { computeNearestIntent } from './matcherNearest.js';
+import { matchMultiParts } from './matcherMulti.js';
+import { computeIntentCollisions } from './matcherCollisions.js';
+import { computeProjectDiff } from './matcherProjectDiff.js';
+import { searchFuseSuggestions } from './matcherFuse.js';
+
+// Tunable knobs (Phase 4: magic numbers standardized).
+// 0.4 was cutting off single-edit typos on short inputs (e.g. "hep" -> "help") before
+// they ever reached the code's own fuzzyFloor check below. 0.55 lets more near-misses
+// through to that second gate, which still filters on confidence per input length.
+export const FUSE_THRESHOLD = 0.55;
+export const FUSE_MIN_MATCH_CHAR_LENGTH = 2;
+/** Poll interval while waiting for another caller's in-flight initialize(). */
+export const INIT_WAIT_POLL_MS = 200;
+/** Deadline for the embedding-model download inside initialize() — see that method. */
+export const INIT_DOWNLOAD_TIMEOUT_MS = 120_000;
+/** Default number of "did you mean" suggestions to return. */
+export const SUGGESTION_DEFAULT_LIMIT = 5;
+/** Default cosine threshold for flagging intent pairs that may be hard to distinguish. */
+export const COLLISION_DEFAULT_THRESHOLD = 0.9;
 
 env.cacheDir = './.cache/xenova';
 
@@ -22,13 +40,15 @@ class SemanticMatcher {
     this.initError = null;
     this._lastTelemetry = null;
     this.lastProjectIntents = null;
+    // Serializes addProjectIntents / clearProjectIntents mutations (see those methods).
+    this._projectIntentsMutex = new Mutex();
   }
 
   async initialize() {
     if (this.ready) return;
     if (this.initializing) {
       while (!this.ready && !this.initError) {
-        await new Promise(r => setTimeout(r, 200));
+        await new Promise(r => setTimeout(r, INIT_WAIT_POLL_MS));
       }
       if (this.initError) throw this.initError;
       return;
@@ -38,9 +58,24 @@ class SemanticMatcher {
     try {
       broadcast({ type: 'semantic_matcher_progress', data: { stage: 'downloading', percent: 0 } });
       console.log('[SemanticMatcher] Loading embedding model (first load downloads ~23MB)...');
-      this.extractor = await pipeline('feature-extraction', 'Xenova/all-MiniLM-L6-v2', {
-        quantized: true,
-      });
+      // A stalled HuggingFace download (an offline/proxied/rate-limited connection that
+      // neither resolves nor rejects) previously hung initialize() forever: index.js awaits it
+      // before the port-fallback listen loop, so the whole server never bound, and every
+      // concurrent caller's ready/initError poll loop spun forever (audit 2026-08-06, Phase 2).
+      // Race the download against a deadline — on timeout this fails exactly like a real
+      // download failure (initError set, callers already degrade gracefully to the fuzzy/NLP
+      // stages), and the losing pipeline promise can't clobber anything because the race
+      // settled first.
+      let downloadTimer;
+      this.extractor = await Promise.race([
+        pipeline('feature-extraction', 'Xenova/all-MiniLM-L6-v2', { quantized: true }),
+        new Promise((_, reject) => {
+          downloadTimer = setTimeout(
+            () => reject(new Error(`Embedding model download timed out after ${INIT_DOWNLOAD_TIMEOUT_MS / 1000}s — semantic matching unavailable this session.`)),
+            INIT_DOWNLOAD_TIMEOUT_MS
+          );
+        }),
+      ]).finally(() => clearTimeout(downloadTimer));
       broadcast({ type: 'semantic_matcher_progress', data: { stage: 'embedding', percent: 50 } });
       console.log('[SemanticMatcher] Model loaded, computing intent embeddings...');
 
@@ -83,80 +118,31 @@ class SemanticMatcher {
     }
     this.fuseIndex = new Fuse(fuseItems, {
       keys: ['text'],
-      // 0.4 was cutting off single-edit typos on short inputs (e.g. "hep" -> "help") before
-      // they ever reached the code's own fuzzyFloor check below. 0.55 lets more near-misses
-      // through to that second gate, which still filters on confidence per input length.
-      threshold: 0.55,
+      // Rationale for FUSE_THRESHOLD (0.55): see the constant declaration at the top of this file.
+      threshold: FUSE_THRESHOLD,
       includeScore: true,
-      minMatchCharLength: 2,
+      minMatchCharLength: FUSE_MIN_MATCH_CHAR_LENGTH,
       ignoreLocation: true,
     });
   }
 
-  /** Add items to the Fuse index incrementally without a full rebuild. */
-  _addFuseItems(items) {
-    if (!this.fuseIndex) return;
-    for (const item of items) {
-      this.fuseIndex.add(item);
-    }
-  }
-
-  /** Remove items from the Fuse index by a predicate. */
-  _removeFuseItems(predicate) {
-    if (!this.fuseIndex) return;
-    const toRemove = [];
-    for (let i = this.fuseIndex.list.length - 1; i >= 0; i--) {
-      if (predicate(this.fuseIndex.list[i])) {
-        toRemove.push(this.fuseIndex.list[i]);
-      }
-    }
-    for (const item of toRemove) {
-      try { this.fuseIndex.remove((doc) => doc === item); } catch {}
-    }
-  }
-
   /** Compute diff between last known state and current projects, returning only added/changed entries. */
   _computeProjectDiff(projects) {
-    const current = projects.map(p => ({
-      id: p.id,
-      entries: (p.config?.entries || []).map(e => ({
-        type: e.type, triggers: e.triggers || [], action: e.action,
-      })),
-    }));
-    if (!this.lastProjectIntents) {
-      this.lastProjectIntents = current;
-      // Full recompute
-      return { full: true, changed: null };
-    }
-    const changed = [];
-    for (let pIdx = 0; pIdx < current.length; pIdx++) {
-      const cur = current[pIdx];
-      const prev = this.lastProjectIntents.find(p => p.id === cur.id);
-      if (!prev) {
-        // New project — all its entries are new
-        for (let eIdx = 0; eIdx < cur.entries.length; eIdx++) {
-          changed.push({ pIdx, eIdx, entry: cur.entries[eIdx] });
-        }
-      } else {
-        const maxEntries = Math.max(prev.entries.length, cur.entries.length);
-        for (let eIdx = 0; eIdx < maxEntries; eIdx++) {
-          const curEntry = cur.entries[eIdx];
-          const prevEntry = prev.entries[eIdx];
-          if (!curEntry) continue; // entry removed — handle below
-          if (!prevEntry || JSON.stringify(curEntry.triggers) !== JSON.stringify(prevEntry.triggers)) {
-            changed.push({ pIdx, eIdx, entry: curEntry });
-          }
-        }
-      }
-    }
-    this.lastProjectIntents = current;
-    return { full: false, changed };
+    const diff = computeProjectDiff(projects, this.lastProjectIntents);
+    this.lastProjectIntents = diff.next;
+    return { full: diff.full, changed: diff.changed, removed: diff.removed };
   }
 
   async addProjectIntents(projects) {
     if (!this.extractor) return;
     if (!projects) return;
+    // Watcher-driven (index.js) and scan-driven (projectRoutes.js) updates can arrive
+    // concurrently and all mutate the same project-intent vectors + Fuse items; route every
+    // mutation through one mutex so diffs and index rebuilds stay atomic.
+    await this._projectIntentsMutex.runExclusive(() => this._applyProjectIntents(projects));
+  }
 
+  async _applyProjectIntents(projects) {
     const diff = this._computeProjectDiff(projects);
 
     if (diff.full) {
@@ -191,8 +177,25 @@ class SemanticMatcher {
       return;
     }
 
+    // Entries removed from a project no longer have vectors — drop them so removed entries
+    // stop matching (and stop leaking memory). Runs before the changed-loop below: both can
+    // arrive in the same diff (an entry replaced by another is reported as remove + add).
+    const removedEntries = diff.removed || [];
+    for (const { pIdx, eIdx, type } of removedEntries) {
+      const intentName = type === 'command'
+        ? `project.action.${pIdx}.${eIdx}`
+        : `project.knowledge.${pIdx}.${eIdx}`;
+      delete this.projectIntentVectors[intentName];
+      this.projectFuseItems = this.projectFuseItems.filter(f => f.intent !== intentName);
+    }
+
     if (!diff.changed || diff.changed.length === 0) {
-      console.log('[SemanticMatcher] No project intent changes detected');
+      if (removedEntries.length > 0) {
+        this._rebuildFuseIndex();
+        console.log(`[SemanticMatcher] Removed ${removedEntries.length} deleted entries`);
+      } else {
+        console.log('[SemanticMatcher] No project intent changes detected');
+      }
       return;
     }
 
@@ -223,75 +226,24 @@ class SemanticMatcher {
     console.log(`[SemanticMatcher] Incremental update complete — ${diff.changed.length} intents rebuilt`);
   }
 
-  clearProjectIntents() {
-    this.projectIntentVectors = {};
-    this.projectFuseItems = [];
-    if (this.ready) this._rebuildFuseIndex();
+  async clearProjectIntents() {
+    // Same mutex as addProjectIntents — a clear landing mid-add would otherwise wipe state the
+    // in-flight add is still writing to (watcher events call clear then add back-to-back).
+    await this._projectIntentsMutex.runExclusive(() => {
+      this.projectIntentVectors = {};
+      this.projectFuseItems = [];
+      // Drop the diff snapshot too: the next addProjectIntents must see the cleared state as a
+      // full recompute, otherwise an unchanged project set diff's to "no changes" and the empty
+      // vector store silently stays empty until restart (confirmed live 2026-08-06 audit).
+      this.lastProjectIntents = null;
+      if (this.ready) this._rebuildFuseIndex();
+    });
   }
 
   async match(input) {
-    if (!this.ready) {
-      try {
-        await this.initialize();
-      } catch {
-        return null;
-      }
-    }
-
-    const inputStr = input.trim().toLowerCase();
-    if (!inputStr) return null;
-
-    const _stages = [];
-
-    // 0. Literal pre-checks for phrases confirmed (via live user testing, not just theory) to
-    // get misclassified by pure embedding similarity to a superficially-similar but wrong
-    // intent. Data + rationale live in preSemanticOverrides.js (Phase 5 split, 2026-08-04) —
-    // the check itself is unchanged.
-    const override = findPreSemanticOverride(inputStr);
-    if (override) {
-      _stages.push({ stage: 'literal_override', intent: override.intent, confidence: 0.9, matched: true });
-      this._lastTelemetry = { stages: _stages, winner: 'literal_override', finalIntent: override.intent, finalConfidence: 0.9 };
-      return { intent: override.intent, confidence: 0.9, source: 'keyword' };
-    }
-
-    // 1. Semantic matching via embedding cosine similarity (stage runner in matcherStages.js,
-    // Phase 5 split — floor/margin/collision/closeSecond logic and telemetry shape unchanged)
-    try {
-      const sem = await runSemanticStage(inputStr, {
-        extractor: this.extractor,
-        projectIntentVectors: this.projectIntentVectors,
-        intentVectors: this.intentVectors,
-        getFloor: getEffectiveThreshold,
-      });
-      _stages.push(sem.stage);
-      if (sem.result) {
-        this._lastTelemetry = { stages: _stages, winner: 'semantic', finalIntent: sem.result.intent, finalConfidence: sem.result.confidence };
-        return sem.result;
-      }
-    } catch (err) {
-      _stages.push({ stage: 'semantic', matched: false, error: err.message });
-    }
-
-    // 2. Fuse.js fuzzy fallback (stage runner in matcherStages.js, Phase 5 split)
-    const fz = runFuzzyStage(inputStr, this.fuseIndex);
-    _stages.push(fz.stage);
-    if (fz.result) {
-      this._lastTelemetry = { stages: _stages, winner: 'fuzzy', finalIntent: fz.result.intent, finalConfidence: fz.result.confidence };
-      return fz.result;
-    }
-
-    // 3. Keyword fallback for common patterns (rules + first-match-wins semantics in
-    // keywordRules.js, Phase 5 split — per-rule confidences and telemetry shape unchanged)
-    const kwRule = matchKeywordRule(inputStr);
-    if (kwRule) {
-      _stages.push({ stage: 'keyword', intent: kwRule.intent, confidence: kwRule.confidence, matched: true });
-      this._lastTelemetry = { stages: _stages, winner: 'keyword', finalIntent: kwRule.intent, finalConfidence: kwRule.confidence };
-      return { intent: kwRule.intent, confidence: kwRule.confidence, source: 'keyword' };
-    }
-
-    _stages.push({ stage: 'keyword', matched: false });
-    this._lastTelemetry = { stages: _stages, winner: null, finalIntent: null, finalConfidence: 0 };
-    return null;
+    // Full stage pipeline (pre-semantic overrides -> embedding -> fuzzy -> keyword) lives in
+    // matcherMatch.js (Phase 3 decomposition); this reads the singleton's live state.
+    return runMatchPipeline(this, input);
   }
 
   /**
@@ -326,46 +278,11 @@ class SemanticMatcher {
   }
 
   /**
-   * Best-effort "did you mean" suggestions for when match() comes back empty. Reuses the
-   * Fuse.js fuzzy index (built from both base-intent example phrases and project-specific
-   * triggers) instead of the plain embedding search, since Fuse ranks by literal string
-   * similarity — closer to what a human would guess caused the near-miss than cosine
-   * similarity would be at this point (the input already failed the embedding pass).
+   * Best-effort "did you mean" suggestions for when match() comes back empty — delegates to
+   * the Fuse.js search in matcherFuse.js (Phase 3 decomposition).
    */
-  getSuggestions(input, limit = 5) {
-    if (!this.fuseIndex || !input?.trim()) return [];
-    const results = this.fuseIndex.search(input.trim().toLowerCase());
-    const seen = new Set();
-    const out = [];
-    for (const r of results) {
-      const text = r.item.text;
-      if (seen.has(text)) continue;
-      seen.add(text);
-      out.push(text);
-      if (out.length >= limit) break;
-    }
-    return out;
-  }
-
-  _splitConjunctions(input) {
-    // Confirmed live 2026-07-29: `push this code with comment "Massive Memory and Learning
-    // improvements"` has "and" sitting right inside a quoted commit message that was never meant
-    // to be split at all — this function has no concept of quote boundaries, so it would happily
-    // chop that string into two "intents" at the word "and" regardless of the quotes around it.
-    // The regex bug that actually caused the observed truncation lived in builtinIntents.js's own
-    // comment-parsing (now fixed — see extractCommentMessage), but this splitter had the same
-    // blind spot and could still misfire the same way for any other quoted argument (file
-    // content, a URL, etc.) that happens to contain one of these conjunction words. Since a
-    // multi-intent split is only ever a convenience for genuinely separate requests ("show
-    // structure and run tests"), not something any quoted-argument command needs, just skip
-    // splitting entirely whenever the input contains a quote character — safer to fall through to
-    // normal single-intent matching (which already treats the whole string as one request) than
-    // to risk cutting a quoted value in half.
-    if (/["']/.test(input)) return null;
-    // Split on common conjunctions (non-capturing groups to avoid split artifacts)
-    const separators = /\s+(?:and|also|then|plus)\s+|,\s*|;\s*|\s+&\s+|\s+as well as\s+/i;
-    const parts = input.split(separators).map(s => s.trim()).filter(s => s && s.length > 3);
-    return parts.length > 1 ? parts : null;
+  getSuggestions(input, limit = SUGGESTION_DEFAULT_LIMIT) {
+    return searchFuseSuggestions(this.fuseIndex, input, limit);
   }
 
   /**
@@ -375,47 +292,11 @@ class SemanticMatcher {
    * themselves; this app's threshold is 0.45). Returns { intent, confidence, meta } or null.
    */
   async nearestIntent(inputStr) {
-    if (!this.extractor) return null;
-    try {
-      const inputVec = await this.extractor(inputStr, {
-        pooling: 'mean',
-        normalize: true,
-      });
-      let bestIntent = null;
-      let bestScore = -1;
-      let bestMeta = null;
-      const consider = (sim, intent, meta) => {
-        if (sim > bestScore) {
-          bestScore = sim;
-          bestIntent = intent;
-          bestMeta = meta;
-        }
-      };
-      scanAllVectors(inputVec.data, this.projectIntentVectors, this.intentVectors, consider);
-      if (bestIntent) return { intent: bestIntent, confidence: bestScore, meta: bestMeta };
-      return null;
-    } catch (err) {
-      return null;
-    }
+    return computeNearestIntent(this.extractor, inputStr, this.projectIntentVectors, this.intentVectors);
   }
 
   async matchMulti(input) {
-    const parts = this._splitConjunctions(input);
-    if (!parts) return null;
-
-    const results = [];
-    const seenIntents = new Set();
-
-    for (const part of parts) {
-      const r = await this.match(part);
-      if (r && !seenIntents.has(r.intent)) {
-        seenIntents.add(r.intent);
-        results.push({ ...r, originalPhrase: part });
-      }
-    }
-
-    if (results.length <= 1) return null;
-    return results;
+    return matchMultiParts(this, input);
   }
 
   /**
@@ -424,24 +305,8 @@ class SemanticMatcher {
    * similarity exceeds `threshold` — these intents may be hard for the model
    * to distinguish.
    */
-  findIntentCollisions(threshold = 0.9) {
-    if (!this.intentVectors) return [];
-    const avgVectors = averageIntentVectors(this.intentVectors);
-    const collisions = [];
-    const seen = new Set();
-    for (const [a, va] of Object.entries(avgVectors)) {
-      for (const [b, vb] of Object.entries(avgVectors)) {
-        const key = a < b ? `${a}|${b}` : `${b}|${a}`;
-        if (a === b || seen.has(key)) continue;
-        seen.add(key);
-        const sim = cosineSimilarity(va, vb);
-        if (sim >= threshold) {
-          collisions.push({ intentA: a, intentB: b, similarity: sim });
-        }
-      }
-    }
-    collisions.sort((a, b) => b.similarity - a.similarity);
-    return collisions;
+  findIntentCollisions(threshold = COLLISION_DEFAULT_THRESHOLD) {
+    return computeIntentCollisions(this.intentVectors, threshold);
   }
 }
 

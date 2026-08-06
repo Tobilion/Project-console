@@ -1,7 +1,7 @@
 import { createCheckpoint } from '../gitSafety.js';
 import { createProjectTools, isCommandAllowed } from '../tools.js';
 import { isCommandBlocked } from '../dangerousPatterns.js';
-import { executeCommand, runningProcesses } from '../executor.js';
+import { executeCommand, runningProcesses, PORT_PROMPT_ANSWER_TIMEOUT_MS } from '../executor.js';
 import { updateNearMiss } from '../nearMissLogger.js';
 import { updateTelemetryEntry } from '../intentTelemetry.js';
 import { retrainConfidenceModel } from '../confidenceModel.js';
@@ -11,7 +11,7 @@ import { pendingMemorySuggestions } from './connectionState.js';
 
 /** User reply to a risky-command / AI-tool confirm card (routeMessage 'confirm_response'). */
 export async function handleConfirmResponse(ws, parsed) {
-  const { token, confirmed } = parsed.payload;
+  const { token, confirmed } = parsed.payload || {};
 
   if (!token) {
     ws.send(JSON.stringify({ type: 'error_output', data: 'Confirmation token is invalid or expired.\n' }));
@@ -45,13 +45,30 @@ export async function handleConfirmResponse(ws, parsed) {
     const proc = runningProcesses.get(pending.projectId);
     const reply = confirmed ? pending.stdinWrite.yes : pending.stdinWrite.no;
     if (proc?.child?.stdin?.writable) {
-      proc.child.stdin.write(reply);
-      ws.send(JSON.stringify({
-        type: 'answer',
-        data: confirmed
-          ? 'Told the dev server to run on another port — watch for the new URL.'
-          : "Told the dev server not to switch ports — it may exit now if the port is still busy.",
-      }));
+      // Re-arm the prompt-pending force-detach bound and allow a repeat prompt: executor's
+      // closure cleared the force-detach timer when it asked the question, and nothing re-armed
+      // it — an unanswered (or twice-asked) port conflict left the command hung forever (audit
+      // 2026-08-06, Phase 2). The timers/flag live on the tracked entry so this handler can
+      // reach them.
+      if (proc.forceDetachTimer) clearTimeout(proc.forceDetachTimer);
+      if (typeof proc.forceDetach === 'function') {
+        proc.forceDetachTimer = setTimeout(proc.forceDetach, PORT_PROMPT_ANSWER_TIMEOUT_MS);
+      }
+      if (proc.portPromptAsked !== undefined) proc.portPromptAsked = false;
+      const wrote = proc.child.stdin.write(reply);
+      // A write returning false on a dead stream (child exited between the check and the
+      // write) means the reply never landed — say so instead of the optimistic "told it to
+      // switch ports" message.
+      if (wrote === false && !proc.child.stdin.writable) {
+        ws.send(JSON.stringify({ type: 'answer', data: "That process isn't running anymore — nothing to respond to." }));
+      } else {
+        ws.send(JSON.stringify({
+          type: 'answer',
+          data: confirmed
+            ? 'Told the dev server to run on another port — watch for the new URL.'
+            : "Told the dev server not to switch ports — it may exit now if the port is still busy.",
+        }));
+      }
     } else {
       ws.send(JSON.stringify({ type: 'answer', data: "That process isn't running anymore — nothing to respond to." }));
     }

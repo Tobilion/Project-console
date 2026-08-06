@@ -30,6 +30,7 @@ export const gitRepoSetupHandlers = {
     } else {
       const token = crypto.randomUUID();
       pendingConfirmations.set(token, {
+        owner: ws,
         projectId: project.id,
         command: 'git init',
         trigger: input,
@@ -57,6 +58,7 @@ export const gitRepoSetupHandlers = {
     const toRemove = rmMatch ? rmMatch[1].trim() : 'node_modules';
     const token = crypto.randomUUID();
     pendingConfirmations.set(token, {
+      owner: ws,
       projectId: project.id,
       command: `git rm --cached -r "${toRemove}"`,
       trigger: input,

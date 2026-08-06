@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import crypto from 'crypto';
 
 const NEAR_MISS_DIR = path.join(process.cwd(), 'data', 'near-misses');
 

@@ -117,6 +117,16 @@ export async function loadPluginManifest(projectPath) {
 }
 
 /**
+ * Escape a manifest arg key for use inside a RegExp source. Arg names are NOT validated as
+ * identifiers (only the tool name is), so a key like "a(b" would otherwise make the
+ * {{...}}/${...} template regex throw a SyntaxError at tool-call time, rejecting every
+ * invocation of that tool in AI mode (audit 2026-08-06, Phase 2).
+ */
+function escapeRegexToken(s) {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
  * Build a tool function from a manifest entry. The function interpolates named args into the
  * command string.
  *
@@ -153,8 +163,8 @@ export function createPluginToolFn(entry, root) {
           };
         }
         resolvedCommand = resolvedCommand
-          .replace(new RegExp(`\\{\\{\\s*${key}\\s*\\}\\}`, 'g'), strValue)
-          .replace(new RegExp(`\\$\\{${key}\\}`, 'g'), strValue);
+          .replace(new RegExp(`\\{\\{\\s*${escapeRegexToken(key)}\\s*\\}\\}`, 'g'), strValue)
+          .replace(new RegExp(`\\$\\{${escapeRegexToken(key)}\\}`, 'g'), strValue);
       }
     }
 

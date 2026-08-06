@@ -26,6 +26,20 @@ const MAX_PROMPT_CHARS = 4000;
 // dropped first once this is exceeded. Generous enough that this should rarely actually bite.
 const MAX_ENTRIES = 200;
 
+// Per-project promise chain serializing appendMemoryEntry's read-modify-write: two concurrent
+// saves would both read the base file, then both write — last writer wins and one entry
+// silently vanishes (AI mode can fire several saveMemory calls in the same tick, from the tool
+// loop and from threshold nudges). The chain guarantees one read→write cycle completes before
+// the next starts.
+const memoryWriteChains = new Map();
+
+function withMemoryLock(projectPath, fn) {
+  const prev = memoryWriteChains.get(projectPath) || Promise.resolve();
+  const next = prev.then(fn, fn);
+  memoryWriteChains.set(projectPath, next);
+  return next;
+}
+
 function memoryPath(projectPath) {
   return path.join(projectPath, MEMORY_DIR, MEMORY_FILE);
 }
@@ -87,27 +101,29 @@ export async function appendMemoryEntry(projectPath, content) {
     return { success: false, error: 'content is too long for a single memory entry (500 char max) — save one concise fact at a time.' };
   }
 
-  const filePath = memoryPath(projectPath);
-  let existing = '';
-  try {
-    existing = await fs.readFile(filePath, 'utf-8');
-  } catch (err) {
-    if (err.code !== 'ENOENT') throw err;
-  }
+  return withMemoryLock(projectPath, async () => {
+    const filePath = memoryPath(projectPath);
+    let existing = '';
+    try {
+      existing = await fs.readFile(filePath, 'utf-8');
+    } catch (err) {
+      if (err.code !== 'ENOENT') throw err;
+    }
 
-  const lines = existing.split('\n').filter((l) => l.trim());
-  const target = normalize(trimmed);
-  const isDuplicate = lines.some((l) => normalize(l.replace(/^- /, '').replace(/\s*\(\d{4}-\d{2}-\d{2}\)\s*$/, '')) === target);
-  if (isDuplicate) {
-    return { success: true, data: 'Already remembered (duplicate skipped).' };
-  }
+    const lines = existing.split('\n').filter((l) => l.trim());
+    const target = normalize(trimmed);
+    const isDuplicate = lines.some((l) => normalize(l.replace(/^- /, '').replace(/\s*\(\d{4}-\d{2}-\d{2}\)\s*$/, '')) === target);
+    if (isDuplicate) {
+      return { success: true, data: 'Already remembered (duplicate skipped).' };
+    }
 
-  const date = new Date().toISOString().slice(0, 10);
-  lines.push(`- ${trimmed} (${date})`);
-  const capped = lines.slice(-MAX_ENTRIES);
+    const date = new Date().toISOString().slice(0, 10);
+    lines.push(`- ${trimmed} (${date})`);
+    const capped = lines.slice(-MAX_ENTRIES);
 
-  await fs.mkdir(path.dirname(filePath), { recursive: true });
-  await ensureGitignored(projectPath);
-  await fs.writeFile(filePath, capped.join('\n') + '\n', 'utf-8');
-  return { success: true, data: `Remembered: ${trimmed}` };
+    await fs.mkdir(path.dirname(filePath), { recursive: true });
+    await ensureGitignored(projectPath);
+    await fs.writeFile(filePath, capped.join('\n') + '\n', 'utf-8');
+    return { success: true, data: `Remembered: ${trimmed}` };
+  });
 }

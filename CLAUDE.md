@@ -138,7 +138,12 @@ npm run lint    # tsc --noEmit
   (`runningProcesses` + `processLogs` LineRingBuffer 2000-line cap, `stopTrackedProcess` —
   the single kill+cleanup path: SIGTERM + map/log/URL cleanup + `dashboard_update` +
   `processes_update` broadcasts; `process.on('exit'/'SIGTERM')` cleanup),
-  `executorDevServer.js` (`isDevServerCommand`, `buildDetachMessage`)
+  `executorDevServer.js` (`isDevServerCommand`, `buildDetachMessage`). Tuning knobs are
+  exported named constants (`DEV_URL_DETACH_GRACE_MS`, `DEV_SERVER_FORCE_DETACH_MS`,
+  `LONG_RUNNING_FORCE_DETACH_MS`, `STDOUT_SUMMARY_CAP`, `STDERR_SUMMARY_CAP`); likewise
+  `semanticMatcher.js` exports `FUSE_THRESHOLD`/`FUSE_MIN_MATCH_CHAR_LENGTH`/
+  `INIT_WAIT_POLL_MS`/`SUGGESTION_DEFAULT_LIMIT`/`COLLISION_DEFAULT_THRESHOLD` — edit those,
+  not inline literals.
 - `server/matcher.js` — ~253-line orchestrator; leaves: `intentRegistry.js` (`BUILTIN_INTENTS`
   — the dispatch gate that has silently killed intents 6+ times; `CONFIG_RUN_ENTRY_FLOOR` 0.55,
   `OPEN_PROJECT_RE`, `ROUTER_REPO_MAP_CHARS` 1200, `describeIntent`), `intentTrust.js`
@@ -488,8 +493,6 @@ CONTROL/PHASE1-3/BASICS/MATCHDAY/TRAPS/MUST_NOT_STEAL/GARBAGE (+ open-family row
 - **editFile** tolerates whitespace differences (normalized line-range fallback) but not
   wrong wording; on total failure the error names both attempts and tells the caller to
   re-read the file. Truncation guard: `writeFile` re-reads and compares length after writes.
-- **update_index2.cjs** at the repo root is a leftover one-off migration script — safe to
-  delete whenever.
 - **Windows harness gotcha**: the phase2 smoke (python http.server) never exits on its own
   (orphaned child inherits stdio pipes) — run via Start-Process + timeout + force-kill.
 

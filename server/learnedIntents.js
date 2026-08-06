@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { INTENTS } from './intentsData.js';
+import { writeFileAtomicSync } from './atomicWrite.js';
 
 // `INTENTS` (from intentsData.js) is a single module-level object shared by the whole running
 // Node process — it is NOT per-project. That means when `learningEngine.js`'s applySuggestions()
@@ -64,5 +65,5 @@ export function persistLearnedPhrases(added) {
     if (!learned[intent]) learned[intent] = [];
     if (!learned[intent].includes(phrase)) learned[intent].push(phrase);
   }
-  fs.writeFileSync(LEARNED_FILE, JSON.stringify(learned, null, 2));
+  writeFileAtomicSync(LEARNED_FILE, JSON.stringify(learned, null, 2));
 }

@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import { writeFileAtomicSync } from './atomicWrite.js';
 
 // projectMemory JSON storage (Phase 4a split, 2026-08-04 — previously sharing the
 // memoryStore.js filename with the memory.md AI-memory store, which clobbered that module's
@@ -39,7 +40,7 @@ export function saveMemory(projectPath, memory) {
     fs.mkdirSync(dir, { recursive: true });
   }
   memory.lastUpdated = Date.now();
-  fs.writeFileSync(memoryPath(projectPath), JSON.stringify(memory, null, 2));
+  writeFileAtomicSync(memoryPath(projectPath), JSON.stringify(memory, null, 2));
 }
 
 // Batched async write queue — coalesces rapid trackCommand/trackFileEdit/trackQuestion
@@ -47,6 +48,17 @@ export function saveMemory(projectPath, memory) {
 // disk write, then flushes after a 200ms quiet period.
 const memoryWriteQueue = new Map();
 let memoryFlushTimer = null;
+
+function flushMemoryQueue() {
+  if (memoryFlushTimer) {
+    clearTimeout(memoryFlushTimer);
+    memoryFlushTimer = null;
+  }
+  for (const [p, m] of memoryWriteQueue) {
+    memoryWriteQueue.delete(p);
+    saveMemory(p, m);
+  }
+}
 
 export function queueMemoryWrite(projectPath, mutator) {
   if (!memoryWriteQueue.has(projectPath)) {
@@ -56,12 +68,12 @@ export function queueMemoryWrite(projectPath, mutator) {
   mutator(mem);
   mem.lastUpdated = Date.now();
   if (!memoryFlushTimer) {
-    memoryFlushTimer = setTimeout(() => {
-      memoryFlushTimer = null;
-      for (const [p, m] of memoryWriteQueue) {
-        memoryWriteQueue.delete(p);
-        saveMemory(p, m);
-      }
-    }, 200);
+    memoryFlushTimer = setTimeout(flushMemoryQueue, 200);
   }
 }
+
+// Pending memory writes must not be dropped on shutdown — a command/file/question count that
+// crossed a memory threshold within 200ms of exit would otherwise be lost (mirrors
+// intentTelemetry.js's exit handlers; saveMemory is synchronous so this drain completes).
+process.on('exit', flushMemoryQueue);
+process.on('SIGTERM', flushMemoryQueue);

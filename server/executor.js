@@ -7,7 +7,9 @@ import { spawn } from 'child_process';
 import path from 'path';
 import fs from 'fs';
 import { broadcast } from './wsServer.js';
-import { recordDevUrl } from './devUrlStore.js';
+import { recordDevUrl, forgetDevUrl } from './devUrlStore.js';
+import { state } from './state.js';
+import { probeUrl } from './livenessProbe.js';
 import { summarizeCommandOutput } from './outputSummarizer.js';
 import {
   runningProcesses,
@@ -27,6 +29,25 @@ import { isDevServerCommand, buildDetachMessage } from './executorDevServer.js';
 // connectionDevServer/connectionRoutes (runningProcesses), connectionDevServer/connectionRoutes
 // (stopTrackedProcess), processLogs (no external importer today — kept for the Phase 6 harness).
 export { runningProcesses, processLogs, getProcessLog, stopTrackedProcess };
+
+// Tunable knobs (Phase 4: magic numbers standardized).
+/** Grace after a dev-server URL appears before detaching, so trailing output can flush. */
+export const DEV_URL_DETACH_GRACE_MS = 500;
+/** Force-detach for recognized dev servers that never printed a URL. */
+export const DEV_SERVER_FORCE_DETACH_MS = 10000;
+/** Longer force-detach for unrecognized long-running commands (some one-shot scripts legitimately take a while). */
+export const LONG_RUNNING_FORCE_DETACH_MS = 20000;
+/** Final stdout/stderr caps for the tool-result summary — the UI only needs the tail. */
+export const STDOUT_SUMMARY_CAP = 4000;
+export const STDERR_SUMMARY_CAP = 2000;
+/** Delay before probing a detached process that exited on its own (Windows npm wrappers can
+ *  close the tracked child early while the real server keeps serving — give it a moment). */
+export const DETACHED_EXIT_PROBE_DELAY_MS = 2000;
+/** Timeout for that liveness probe. */
+export const DETACHED_EXIT_PROBE_TIMEOUT_MS = 1500;
+/** Bound on how long a dev server may sit at an unanswered port-conflict prompt before it is
+ *  force-detached (matches the 5-minute confirmation TTL in state.js's sweep). */
+export const PORT_PROMPT_ANSWER_TIMEOUT_MS = 5 * 60 * 1000;
 
 /** Rewrites `python ...` to the project's venv interpreter when a venv exists (verbatim rule). */
 function rewriteVenvPython(command, cwd) {
@@ -63,13 +84,37 @@ export function executeCommand(command, cwd, ws, projectId) {
     }
   };
 
+  // runningProcesses is single-slot per project, and executeCommand is reachable with no
+  // duplicate guard from npm_build/npm_install, the typed-command bypass and every confirmed
+  // command — overwriting a live entry used to orphan the previous process from every cleanup
+  // path (the short build then deleted the entry on close, leaving a real dev server untracked
+  // and unkillable; audit 2026-08-06, Phase 2). Refuse instead, mirroring the run_project
+  // duplicate guard's message shape.
+  const existing = projectId ? runningProcesses.get(projectId) : null;
+  if (existing?.child && existing.child.exitCode === null && existing.child.signalCode === null) {
+    sendEvent('answer', `**[${projectId}]** already has \`${existing.command}\` running — say "stop server" first if you want to run another command for this project.`);
+    sendEvent('end', '');
+    return Promise.resolve({ success: false, error: 'a process is already running for this project' });
+  }
+
   return new Promise((resolve) => {
     let stdout = '';
     let stderr = '';
     let child;
-    let detachTimer = null;
-    let forceDetachTimer = null;
-    let portPromptAsked = false;
+
+    // The tracked entry doubles as the shared handle for the port-prompt flow: connectionConfirm
+    // (which answers the stdin prompt) reads the timers/flag off this object to re-arm the
+    // force-detach bound and allow a repeat prompt, since executor's closure isn't reachable
+    // from there. `forceDetach` is the only closure-bound piece it needs.
+    const trackedEntry = {
+      child: null,
+      command: finalCommand,
+      startedAt: Date.now(),
+      detachTimer: null,
+      forceDetachTimer: null,
+      portPromptAsked: false,
+    };
+    trackedEntry.forceDetach = () => { if (!detached) detach(); };
 
     // Buffered relays for what actually gets shown to the user — see createBufferedSender above.
     // `stdout`/`stderr` (the raw accumulators above) still capture everything unbuffered for the
@@ -109,11 +154,17 @@ export function executeCommand(command, cwd, ws, projectId) {
       return;
     }
 
+    trackedEntry.child = child;
+    // A child whose pipe breaks mid-write (exited between a writable check and the write)
+    // emits 'error' on the stdin stream — attach a listener once at spawn so that error never
+    // surfaces as an uncaughtException from the port-prompt reply path (audit 2026-08-06).
+    if (child.stdin) child.stdin.on('error', () => {});
+
     sendEvent('start', `Executing: ${finalCommand}\n`);
 
     // Register so user can stop the server later
     if (projectId) {
-      runningProcesses.set(projectId, { child, command: finalCommand, startedAt: Date.now() });
+      runningProcesses.set(projectId, trackedEntry);
       processLogs.set(projectId, new LineRingBuffer(MAX_LOG_LINES));
       broadcast({ type: 'dashboard_update' });
       broadcast({ type: 'processes_update' });
@@ -122,8 +173,8 @@ export function executeCommand(command, cwd, ws, projectId) {
     function detach() {
       if (detached) return;
       detached = true;
-      if (detachTimer) clearTimeout(detachTimer);
-      if (forceDetachTimer) clearTimeout(forceDetachTimer);
+      if (trackedEntry.detachTimer) clearTimeout(trackedEntry.detachTimer);
+      if (trackedEntry.forceDetachTimer) clearTimeout(trackedEntry.forceDetachTimer);
       // Stop listening to output
       child.stdout.removeAllListeners('data');
       child.stderr.removeAllListeners('data');
@@ -162,7 +213,7 @@ export function executeCommand(command, cwd, ws, projectId) {
         }
         // If this is a dev server command, detach after URL + short grace to show it
         if (isDev) {
-          detachTimer = setTimeout(detach, 500);
+          trackedEntry.detachTimer = setTimeout(detach, DEV_URL_DETACH_GRACE_MS);
         }
       }
 
@@ -171,13 +222,17 @@ export function executeCommand(command, cwd, ws, projectId) {
       // process's stdin once they respond (see connection.js's handleConfirmResponse pending.
       // stdinWrite branch). Cancel the force-detach timer while this is pending so the console
       // doesn't claim "Dev server is running" while it's actually just sitting at this prompt.
-      if (isDev && !portPromptAsked && projectId) {
+      // The bound is re-armed on answer (connectionConfirm re-arms it to PORT_PROMPT_ANSWER_
+      // TIMEOUT_MS and resets portPromptAsked so a second conflict can prompt again) — without
+      // that, an unanswered prompt left the command hung forever.
+      if (isDev && !trackedEntry.portPromptAsked && projectId) {
         const asked = buildPortPromptConfirmation({
           ws, projectId, cleanInput: clean, triggerCommand: finalCommand,
         });
         if (asked) {
-          portPromptAsked = true;
-          if (forceDetachTimer) clearTimeout(forceDetachTimer);
+          trackedEntry.portPromptAsked = true;
+          if (trackedEntry.forceDetachTimer) clearTimeout(trackedEntry.forceDetachTimer);
+          trackedEntry.forceDetachTimer = setTimeout(trackedEntry.forceDetach, PORT_PROMPT_ANSWER_TIMEOUT_MS);
         }
       }
     });
@@ -205,12 +260,16 @@ export function executeCommand(command, cwd, ws, projectId) {
     // unrecognized case (some one-shot scripts legitimately take a while) — a slow one-shot script
     // getting labeled "running in background" a little early is a much smaller problem than a
     // process streaming into the chat indefinitely.
-    forceDetachTimer = setTimeout(() => {
+    trackedEntry.forceDetachTimer = setTimeout(() => {
       if (!detached) detach();
-    }, isDev ? 10000 : 20000);
+    }, isDev ? DEV_SERVER_FORCE_DETACH_MS : LONG_RUNNING_FORCE_DETACH_MS);
 
     child.on('close', (code) => {
-      if (forceDetachTimer) clearTimeout(forceDetachTimer);
+      // Clear BOTH timers — the URL-grace detach timer used to survive a natural exit or a
+      // "stop server", firing after the close handler had already sent its end and emitting a
+      // second, contradictory "still running in the background" end (audit 2026-08-06, Phase 2).
+      if (trackedEntry.detachTimer) clearTimeout(trackedEntry.detachTimer);
+      if (trackedEntry.forceDetachTimer) clearTimeout(trackedEntry.forceDetachTimer);
       // Confirmed live 2026-07-30 (Matchday Exchange transcript): "stop server" reported "No
       // running server" seconds after "what's the link?" confirmed the dev server was still
       // serving requests. Root cause — this used to delete the runningProcesses entry
@@ -226,37 +285,59 @@ export function executeCommand(command, cwd, ws, projectId) {
         processLogs.delete(projectId);
         broadcast({ type: 'dashboard_update' });
         broadcast({ type: 'processes_update' });
+        stdoutSender.flush();
+        stderrSender.flush();
+        // Requested explicitly (2026-07-29, in response to the LF/CRLF flood): don't just stream
+        // the raw log and stop — always look at what the command actually produced and call out
+        // the parts that matter (errors, package counts, commit/push results). Heuristic/regex-
+        // based (see outputSummarizer.js), not an LLM call. Returns null for short/uninteresting
+        // output — nothing extra is sent in that case.
+        const summary = summarizeCommandOutput({ command: finalCommand, stdout, stderr, exitCode: code });
+        if (summary) sendEvent('answer', summary);
+
+        // Hard port-conflict failure — the process crashed outright instead of prompting or
+        // auto-retrying (e.g. a plain Node/Express server with no built-in port fallback). Offer a
+        // one-click retry on the next port through the normal confirm-before-run flow, same as any
+        // other command — this never runs anything without the user approving it.
+        offerPortRetry({ ws, projectId, command: finalCommand, stdout, stderr, isDev, exitCode: code });
+
+        sendEvent('end', `\nProcess exited with code ${code}`);
+        resolve({
+          success: code === 0,
+          data: {
+            code,
+            stdout: stdout.length > STDOUT_SUMMARY_CAP ? `...${stdout.slice(-STDOUT_SUMMARY_CAP)}` : stdout,
+            stderr: stderr.length > STDERR_SUMMARY_CAP ? `...${stderr.slice(-STDERR_SUMMARY_CAP)}` : stderr
+          }
+        });
+        return;
       }
-      if (detached) return;
-      stdoutSender.flush();
-      stderrSender.flush();
-      // Requested explicitly (2026-07-29, in response to the LF/CRLF flood): don't just stream
-      // the raw log and stop — always look at what the command actually produced and call out
-      // the parts that matter (errors, package counts, commit/push results). Heuristic/regex-
-      // based (see outputSummarizer.js), not an LLM call. Returns null for short/uninteresting
-      // output — nothing extra is sent in that case.
-      const summary = summarizeCommandOutput({ command: finalCommand, stdout, stderr, exitCode: code });
-      if (summary) sendEvent('answer', summary);
 
-      // Hard port-conflict failure — the process crashed outright instead of prompting or
-      // auto-retrying (e.g. a plain Node/Express server with no built-in port fallback). Offer a
-      // one-click retry on the next port through the normal confirm-before-run flow, same as any
-      // other command — this never runs anything without the user approving it.
-      offerPortRetry({ ws, projectId, command: finalCommand, stdout, stderr, isDev, exitCode: code });
-
-      sendEvent('end', `\nProcess exited with code ${code}`);
-      resolve({
-        success: code === 0,
-        data: {
-          code,
-          stdout: stdout.length > 4000 ? `...${stdout.slice(-4000)}` : stdout,
-          stderr: stderr.length > 2000 ? `...${stderr.slice(-2000)}` : stderr
+      // Detached process exited on its own (crashed, or killed outside the console). The tracked
+      // child can also close early while the real server keeps serving (Windows npm wrapper
+      // above), so don't clean up immediately — probe the last-known dev URL after a short delay
+      // and only drop the entry when nothing answers. Previously the entry (and its recorded URL)
+      // lived on forever, reporting a phantom "running" server with a dead PID (audit 2026-08-06).
+      if (!projectId) return;
+      const lastUrl = state.lastDevUrls.get(projectId);
+      if (!lastUrl) return; // never had a URL — nothing to probe; keep the entry conservatively
+      setTimeout(async () => {
+        const probe = await probeUrl(lastUrl, DETACHED_EXIT_PROBE_TIMEOUT_MS);
+        if (probe.alive) return; // real server still serving (wrapper-close-early case)
+        const existed = runningProcesses.delete(projectId);
+        processLogs.delete(projectId);
+        forgetDevUrl(projectId);
+        if (existed) {
+          broadcast({ type: 'dashboard_update' });
+          broadcast({ type: 'processes_update' });
         }
-      });
+        console.log(`[Executor] Detached process for ${projectId} exited and its server is down — tracked entry cleaned up.`);
+      }, DETACHED_EXIT_PROBE_DELAY_MS);
     });
 
     child.on('error', (err) => {
-      if (forceDetachTimer) clearTimeout(forceDetachTimer);
+      if (trackedEntry.detachTimer) clearTimeout(trackedEntry.detachTimer);
+      if (trackedEntry.forceDetachTimer) clearTimeout(trackedEntry.forceDetachTimer);
       runningProcesses.delete(projectId);
       processLogs.delete(projectId);
       broadcast({ type: 'dashboard_update' });

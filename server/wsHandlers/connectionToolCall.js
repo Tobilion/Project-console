@@ -65,7 +65,7 @@ export async function handleToolCall(ws, parsed, sessionContext) {
     const token = crypto.randomUUID();
     const preview = tool !== 'executeCommand' ? await computeFileEditPreview(project.path, tool, args) : null;
     const confirmed = await new Promise((resolve) => {
-      pendingToolConfirmations.set(token, { resolve, createdAt: Date.now() });
+      pendingToolConfirmations.set(token, { owner: ws, resolve, createdAt: Date.now() });
       ws.send(JSON.stringify({ type: 'tool_confirm_prompt', token, tool, args, preview }));
     });
     if (!confirmed) {
@@ -79,7 +79,15 @@ export async function handleToolCall(ws, parsed, sessionContext) {
     ws.send(JSON.stringify({ type: 'tool_start', data: `${prefix}Running ${tool}...` }));
   }
 
-  const result = await tools[tool](args || {});
+  let result;
+  try {
+    result = await tools[tool](args || {});
+  } catch (err) {
+    // A tool that throws instead of returning {success:false} used to propagate out of this
+    // handler — the frontend got an error_output instead of a tool_result, silently losing
+    // the direct-tool-call record (audit 2026-08-06, Phase 2).
+    result = { success: false, error: `Tool error: ${err.message}` };
+  }
   metrics.observe('tool_call.duration', Date.now() - tStart);
   metrics.event({ type: 'tool_call_complete', tool, duration: Date.now() - tStart, success: result?.success !== false });
   ws.send(JSON.stringify({ type: 'tool_result', data: result }));

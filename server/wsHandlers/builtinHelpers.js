@@ -75,6 +75,7 @@ export function extractCommentMessage(input) {
 export function queueFileOpConfirmation(ws, project, input, { tool, args, summary }) {
   const token = crypto.randomUUID();
   pendingConfirmations.set(token, {
+    owner: ws,
     projectId: project.id,
     fileOp: { tool, args },
     command: summary, // so the generic "Cancelled: ..." path (keyed off pending.command) still works

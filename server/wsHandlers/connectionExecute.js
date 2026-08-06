@@ -27,7 +27,20 @@ const AI_ACK_RE = /^(ok|okay|k|kk|ok thanks|thanks|thank you|thx|ty|got it|gotch
  * the message.
  */
 export async function handleExecute(ws, parsed, sessionContext) {
-  const { projectId, input, sessionId } = parsed.payload;
+  const { projectId, input, sessionId } = parsed.payload || {};
+
+  // Two execute messages can't interleave while an AI turn is in flight: the second would
+  // clobber the shared aiAbortController (so Cancel would target the wrong query) and
+  // interleave a second token stream on the same socket, which the frontend's single-stream
+  // bookkeeping cannot separate (audit 2026-08-06, Phase 2). Reject the new message instead
+  // of serializing the whole socket — confirm_response/approve_task must stay concurrent so
+  // tool-confirm cards keep working during a turn.
+  if (sessionContext.aiAbortController) {
+    ws.send(JSON.stringify({ type: 'error_output', data: 'The AI is still working on your previous message — wait for it to finish (or press Cancel).\n' }));
+    ws.send(JSON.stringify({ type: 'end' }));
+    return;
+  }
+
   sessionContext.activeProjectId = projectId;
   if (sessionId) sessionContext.currentSessionId = sessionId;
 
@@ -131,7 +144,7 @@ export async function handleExecute(ws, parsed, sessionContext) {
       });
       const token = crypto.randomUUID();
       pendingConfirmations.set(token, {
-        projectId: project.id, command: guessed.command, trigger: input,
+        owner: ws, projectId: project.id, command: guessed.command, trigger: input,
         createdAt: Date.now(), nearMissId,
       });
       ws.send(JSON.stringify({ type: 'confirm_prompt', token, command: `${guessed.command}  (${guessed.description})`, trigger: 'direct_command' }));

@@ -6,6 +6,7 @@
 import fs from 'fs';
 import path from 'path';
 import { TELEMETRY_DIR, ensureDir } from './telemetryFile.js';
+import { writeFileAtomicSync } from './atomicWrite.js';
 
 export const DEFAULT_FLOOR = 0.6;
 
@@ -26,7 +27,7 @@ function loadThresholdOverrides() {
 
 function saveThresholdOverrides() {
   ensureDir();
-  fs.writeFileSync(THRESHOLDS_FILE, JSON.stringify(thresholdOverrides, null, 2));
+  writeFileAtomicSync(THRESHOLDS_FILE, JSON.stringify(thresholdOverrides, null, 2));
 }
 
 thresholdOverrides = loadThresholdOverrides();

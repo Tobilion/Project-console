@@ -1,12 +1,14 @@
 // Shared, process-wide mutable state for the console server. Kept in one small module so
 // routes and WS handlers reference the same instances instead of each holding their own copy.
 
+import os from 'os';
+import path from 'path';
 import { Mutex } from 'async-mutex';
 
 export const projectsMutex = new Mutex();
 
 export const state = {
-  currentScanDirectory: process.env.PROJECTS_DIR || 'C:\\Users\\tobil\\Desktop\\Projects',
+  currentScanDirectory: process.env.PROJECTS_DIR || path.join(os.homedir(), 'Desktop', 'Projects'),
   activeProjectsCache: [],
   // projectId -> last detected dev server URL (e.g. "http://localhost:5173")
   lastDevUrls: new Map(),

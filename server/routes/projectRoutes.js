@@ -7,6 +7,7 @@ import { nlpEngine } from '../nlpEngine.js';
 import { setupMockProjectsIfMissing } from '../mockProjects.js';
 import { state, projectsMutex } from '../state.js';
 import { broadcast } from '../wsServer.js';
+import { asyncHandler } from '../asyncHandler.js';
 
 // A plain browser tab (not Electron/Tauri) can never receive an absolute host filesystem path
 // from <input type="file" webkitdirectory> — that's a deliberate File API restriction, not a
@@ -42,24 +43,27 @@ function resolveScanTarget(candidate) {
 
 export function registerProjectRoutes(app, dirname) {
   // Current project list, scanned from state.currentScanDirectory
-  app.get('/api/projects', async (req, res) => {
+  app.get('/api/projects', asyncHandler(async (req, res) => {
     const dirToScan = setupMockProjectsIfMissing(state.currentScanDirectory, dirname);
     const projects = await discoverProjects(dirToScan);
     await projectsMutex.runExclusive(async () => {
       state.activeProjectsCache = projects;
     });
-    semanticMatcher.clearProjectIntents();
+    semanticMatcher.clearProjectIntents().catch(() => {});
     semanticMatcher.addProjectIntents(projects).catch(() => {});
     res.json({
       scanPath: state.currentScanDirectory,
       projects
     });
-  });
+  }));
 
   // Change the directory being scanned and rescan it. This is the endpoint the
-  // frontend's "Scan" box actually calls (see src/App.tsx handleScan).
-  app.post('/api/scan-path', async (req, res) => {
-    const { path: newPath } = req.body;
+  // frontend's "Scan" box actually calls (see src/App.tsx handleScan). Wrapped in
+  // asyncHandler: a POST without a JSON body leaves req.body undefined, and the
+  // destructure used to throw before the handler's own try/catch ever saw it — an
+  // unwrapped async rejection that hung the request (audit 2026-08-06, Phase 2).
+  app.post('/api/scan-path', asyncHandler(async (req, res) => {
+    const { path: newPath } = req.body || {};
 
     if (!newPath || typeof newPath !== 'string' || newPath.trim() === '') {
       return res.status(400).json({ success: false, error: 'Directory path is required.' });
@@ -81,9 +85,10 @@ export function registerProjectRoutes(app, dirname) {
       resolvedPath = found;
     }
 
-    const effectivePath = setupMockProjectsIfMissing(resolvedPath, dirname);
-
     try {
+      // Move the mock-seed inside the try too — it does filesystem work that can throw, and
+      // previously sat outside the handler's only guard (audit 2026-08-06, Phase 2).
+      const effectivePath = setupMockProjectsIfMissing(resolvedPath, dirname);
       const projects = await discoverProjects(effectivePath);
       state.currentScanDirectory = resolvedPath;
       await projectsMutex.runExclusive(async () => {
@@ -99,20 +104,20 @@ export function registerProjectRoutes(app, dirname) {
       nlpEngine.train(projects).catch((err) => {
         console.error('Background NLP retrain failed:', err.message);
       });
-      semanticMatcher.clearProjectIntents();
+      semanticMatcher.clearProjectIntents().catch(() => {});
       semanticMatcher.addProjectIntents(projects).catch(() => {});
     } catch (err) {
       res.status(500).json({ success: false, error: err.message });
     }
-  });
+  }));
 
   // Re-index a specific project's codebase and broadcast the update to connected clients.
-  app.post('/api/projects/:id/index', async (req, res) => {
+  app.post('/api/projects/:id/index', asyncHandler(async (req, res) => {
     const project = state.activeProjectsCache.find((p) => p.id === req.params.id);
     if (!project) return res.status(404).json({ error: 'Project not found' });
     const idx = await indexProject(project.path);
     project.codebaseIndex = idx;
     broadcast({ type: 'project_updated', data: project });
     res.json({ success: true, codebaseIndex: idx });
-  });
+  }));
 }

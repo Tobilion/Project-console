@@ -25,6 +25,7 @@ export const gitWorkflowHandlers = {
         ? `git add -A && git commit -m "${commitMsg.replace(/"/g, '\\"')}" && git push`
         : 'git push';
       pendingConfirmations.set(token, {
+        owner: ws,
         projectId: project.id,
         command,
         trigger: input,
@@ -48,6 +49,7 @@ export const gitWorkflowHandlers = {
       const commitMsg = extractCommentMessage(input) || 'update';
       const token = crypto.randomUUID();
       pendingConfirmations.set(token, {
+        owner: ws,
         projectId: project.id,
         command: `git add -A && git commit -m "${commitMsg.replace(/"/g, '\\"')}"`,
         trigger: input,
@@ -68,6 +70,7 @@ export const gitWorkflowHandlers = {
       const commitMsg = extractCommentMessage(input) || 'update';
       const token = crypto.randomUUID();
       pendingConfirmations.set(token, {
+        owner: ws,
         projectId: project.id,
         command: `git add -A && git commit -m "${commitMsg.replace(/"/g, '\\"')}" && git push`,
         trigger: input,
