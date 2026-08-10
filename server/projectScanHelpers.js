@@ -88,14 +88,36 @@ export function buildFallbackConfig(name, codebaseIndex) {
 
 // Files treated as project-context documentation, in priority order (index 0 wins ties for
 // which doc is treated as "the" doc in builtinIntents.js's overview/deep-dive responses).
-// Tobi's own convention (see insightflow on GitHub) is CLAUDE.md as source of truth, with
-// README.md, ABOUT-TOBI.md, and UNIVERSAL_CONTEXT.md as supporting context — widened from the
-// original CLAUDE.md/README.md-only list so those get ingested too instead of silently ignored.
-export const CONTEXT_FILENAMES = ['claude.md', 'readme.md', 'about-tobi.md', 'universal_context.md'];
+// CLAUDE.md is source of truth, with README.md and UNIVERSAL_CONTEXT.md as supporting context —
+// widened from the original CLAUDE.md/README.md-only list so those get ingested too instead of
+// silently ignored.
+export const CONTEXT_FILENAMES = ['claude.md', 'readme.md', 'universal_context.md'];
 
+// "About the maintainer" doc convention — ABOUT-<anything>.md (e.g. ABOUT-TOBI.md,
+// ABOUT-ALICE.md), not one hardcoded person's name. This used to be a single literal
+// 'about-tobi.md' entry in CONTEXT_FILENAMES, which only ever recognized the original author's
+// own file — anyone else installing this package with their own ABOUT-<them>.md would have it
+// silently ignored (audit 2026-08-10, raised while generalizing for npm/public distribution).
+const ABOUT_DOC_RE = /^about[-_].+\.md$/i;
+
+/** True for any recognized context-doc filename: the fixed CONTEXT_FILENAMES list or an
+ *  ABOUT-*.md-shaped file for whoever's using this install. */
+export function isContextFilename(filename) {
+  const lower = filename.toLowerCase();
+  return CONTEXT_FILENAMES.includes(lower) || ABOUT_DOC_RE.test(lower);
+}
+
+// Priority order: claude.md, readme.md, any about-*.md, universal_context.md, everything else
+// last. The about-doc slot sits between readme and universal_context — same position the old
+// hardcoded 'about-tobi.md' entry occupied, so existing sort behavior is unchanged for anyone
+// who already has one.
 export function contextPriority(filename) {
-  const idx = CONTEXT_FILENAMES.indexOf(filename.toLowerCase());
-  return idx === -1 ? CONTEXT_FILENAMES.length : idx;
+  const lower = filename.toLowerCase();
+  if (lower === 'claude.md') return 0;
+  if (lower === 'readme.md') return 1;
+  if (ABOUT_DOC_RE.test(lower)) return 2;
+  if (lower === 'universal_context.md') return 3;
+  return 4;
 }
 
 /**
@@ -111,7 +133,7 @@ export async function readProjectContextDocs(projectPath) {
   try {
     const filesInDir = await fs.readdir(projectPath);
     for (const file of filesInDir) {
-      if (CONTEXT_FILENAMES.includes(file.toLowerCase())) {
+      if (isContextFilename(file)) {
         const content = await fs.readFile(path.join(projectPath, file), 'utf-8');
         contextFiles.push({ filename: file, content });
 

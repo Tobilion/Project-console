@@ -1,8 +1,9 @@
-import React, { useEffect, useState, useCallback } from 'react';
-import { motion } from 'motion/react';
-import { X, GitCommit, FileWarning, Globe, Terminal, FolderGit2 } from 'lucide-react';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
+import { X, GitCommit, FileWarning, Globe, Terminal, FolderGit2, MessageSquare, UploadCloud, Copy, RefreshCw, Search, Radio } from 'lucide-react';
 import { formatPath } from '../utils/formatPath';
 import { apiFetchJson } from '../utils/apiFetch';
+import type { Project } from '../types';
 
 interface DashboardEntry {
   id: string;
@@ -12,15 +13,28 @@ interface DashboardEntry {
   recentCommits: string[];
   devUrl: string | null;
   runningCommand: string | null;
+  isGitRepo: boolean;
+  aheadCount: number;
+  hasUpstream: boolean;
 }
 
 interface DashboardProps {
   onClose: () => void;
   refreshSignal?: number;
+  projects: Project[];
+  onSelectProject: (p: Project) => Promise<void> | void;
+  onSendMessage: (content: string) => Promise<void> | void;
 }
 
-export const Dashboard = ({ onClose, refreshSignal = 0 }: DashboardProps) => {
+type DashboardTab = 'projects' | 'live';
+
+export const Dashboard = ({ onClose, refreshSignal = 0, projects, onSelectProject, onSendMessage }: DashboardProps) => {
   const [entries, setEntries] = useState<DashboardEntry[]>([]);
+  const [tab, setTab] = useState<DashboardTab>('projects');
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [filter, setFilter] = useState('');
+  const [refreshing, setRefreshing] = useState(false);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
 
   const fetchDashboard = useCallback(async () => {
     const data = await apiFetchJson<DashboardEntry[]>('/api/dashboard');
@@ -38,20 +52,94 @@ export const Dashboard = ({ onClose, refreshSignal = 0 }: DashboardProps) => {
     if (refreshSignal > 0) fetchDashboard();
   }, [refreshSignal, fetchDashboard]);
 
+  const handleManualRefresh = async () => {
+    setRefreshing(true);
+    await fetchDashboard();
+    setTimeout(() => setRefreshing(false), 400);
+  };
+
+  // Dirty/running projects surface first — the ones that actually need attention shouldn't be
+  // buried below a long list of idle, clean projects (QoL request, 2026-08-10).
+  const filteredEntries = useMemo(() => {
+    const needle = filter.trim().toLowerCase();
+    const filtered = needle
+      ? entries.filter((e) => e.name.toLowerCase().includes(needle))
+      : entries;
+    return [...filtered].sort((a, b) => {
+      const score = (e: DashboardEntry) =>
+        (e.uncommitted.length > 0 || e.aheadCount > 0 ? 2 : 0) + (e.runningCommand || e.devUrl ? 1 : 0);
+      return score(b) - score(a);
+    });
+  }, [entries, filter]);
+
+  const liveEntries = useMemo(() => entries.filter((e) => e.devUrl), [entries]);
+
   const totalUncommitted = entries.reduce((sum, e) => sum + e.uncommitted.length, 0);
   const totalRunning = entries.filter(e => e.runningCommand || e.devUrl).length;
+  const totalUnpushed = entries.filter(e => e.aheadCount > 0).length;
+
+  const needsPush = (entry: DashboardEntry) => entry.isGitRepo && (entry.uncommitted.length > 0 || entry.aheadCount > 0 || !entry.hasUpstream);
+
+  const handlePush = async (entry: DashboardEntry) => {
+    const project = projects.find((p) => p.id === entry.id);
+    if (!project) return;
+    // Dirty working tree -> stage+commit+push so the button always "just works"; a clean tree
+    // with commits already ahead only needs a bare push. Sent as a normal chat message (not a
+    // direct/bypassed command) so it goes through the same confirm_prompt flow as if the user
+    // had typed it themselves — the button is a shortcut into chat, not a silent auto-push.
+    const text = entry.uncommitted.length > 0 ? 'commit and push my changes' : 'push my changes';
+    await onSelectProject(project);
+    await onSendMessage(text);
+    onClose();
+  };
+
+  const handleOpenChat = async (entry: DashboardEntry) => {
+    const project = projects.find((p) => p.id === entry.id);
+    if (!project) return;
+    await onSelectProject(project);
+    onClose();
+  };
+
+  const handleCopyPath = async (entry: DashboardEntry) => {
+    try {
+      await navigator.clipboard.writeText(entry.path);
+      setCopiedId(entry.id);
+      setTimeout(() => setCopiedId((id) => (id === entry.id ? null : id)), 1500);
+    } catch {
+      // Clipboard API unavailable (non-HTTPS/non-localhost context) — silently no-op, nothing
+      // sensitive is at stake and there's no good fallback UI for a stray copy button.
+    }
+  };
 
   return (
     <div className="flex flex-col gap-4 h-full overflow-hidden">
-      <div className="flex items-center justify-between flex-shrink-0">
-        <div className="flex items-center gap-3">
+      <div className="flex items-center justify-between flex-shrink-0 flex-wrap gap-2">
+        <div className="flex items-center gap-3 flex-wrap">
           <h2 className="text-lg font-bold text-fg-strong">Dashboard</h2>
-          <span className="text-xs text-fg-dim">
-            {entries.length} projects
-          </span>
+          <div className="flex items-center gap-1 bg-scrim-faint rounded-lg p-0.5 border border-border-soft">
+            <button
+              onClick={() => setTab('projects')}
+              className={`px-2.5 py-1 text-xs rounded-md transition-colors ${tab === 'projects' ? 'bg-panel-strong text-fg-strong' : 'text-fg-dim hover:text-fg-muted'}`}
+            >
+              Projects
+            </button>
+            <button
+              onClick={() => setTab('live')}
+              className={`flex items-center gap-1 px-2.5 py-1 text-xs rounded-md transition-colors ${tab === 'live' ? 'bg-panel-strong text-fg-strong' : 'text-fg-dim hover:text-fg-muted'}`}
+            >
+              <Radio size={11} />
+              Live Sites
+              {liveEntries.length > 0 && <span className="text-[10px] text-fg-dim">({liveEntries.length})</span>}
+            </button>
+          </div>
           {totalUncommitted > 0 && (
             <span className="text-xs text-yellow-400 bg-yellow-400/10 px-2 py-0.5 rounded">
               {totalUncommitted} uncommitted
+            </span>
+          )}
+          {totalUnpushed > 0 && (
+            <span className="text-xs text-orange-400 bg-orange-400/10 px-2 py-0.5 rounded">
+              {totalUnpushed} unpushed
             </span>
           )}
           {totalRunning > 0 && (
@@ -60,19 +148,73 @@ export const Dashboard = ({ onClose, refreshSignal = 0 }: DashboardProps) => {
             </span>
           )}
         </div>
-        <button onClick={onClose} className="p-1 text-fg-dim hover:text-fg-muted transition-colors">
-          <X size={18} />
-        </button>
+        <div className="flex items-center gap-2">
+          {tab === 'projects' && (
+            <div className="relative">
+              <Search size={12} className="absolute left-2 top-1/2 -translate-y-1/2 text-fg-dim" />
+              <input
+                value={filter}
+                onChange={(e) => setFilter(e.target.value)}
+                placeholder="Filter projects..."
+                className="pl-6 pr-2 py-1 text-xs bg-scrim-faint border border-border-soft rounded-lg text-fg-strong placeholder:text-fg-dim focus:outline-none focus:border-accent/50 w-40"
+              />
+            </div>
+          )}
+          <button onClick={handleManualRefresh} className="p-1 text-fg-dim hover:text-fg-strong transition-colors" title="Refresh">
+            <RefreshCw size={15} className={refreshing ? 'animate-spin' : ''} />
+          </button>
+          <button onClick={onClose} className="p-1 text-fg-dim hover:text-fg-muted transition-colors">
+            <X size={18} />
+          </button>
+        </div>
       </div>
 
       <div className="flex-1 overflow-y-auto space-y-2 pr-1">
-        {entries.map((entry, i) => (
+        {tab === 'live' ? (
+          liveEntries.length === 0 ? (
+            <div className="text-sm text-fg-dim italic text-center py-12">
+              No projects have a known dev URL yet — start a dev server from a project's chat to record one.
+            </div>
+          ) : (
+            liveEntries.map((entry, i) => (
+              <motion.div
+                key={entry.id}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: i * 0.03 }}
+                className="bg-panel rounded-xl border border-border-soft p-4 flex items-center justify-between gap-4"
+              >
+                <div className="flex items-center gap-3 min-w-0">
+                  <span className={`w-2 h-2 rounded-full flex-shrink-0 ${entry.runningCommand ? 'bg-green-400 animate-pulse' : 'bg-fg-dim'}`} />
+                  <div className="min-w-0">
+                    <div className="text-sm font-bold text-fg-strong truncate">{entry.name}</div>
+                    <div className="text-[10px] text-fg-dim">
+                      {entry.runningCommand ? 'live now' : 'recorded — process not currently running'}
+                    </div>
+                  </div>
+                </div>
+                <a
+                  href={entry.devUrl!}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-1 text-xs text-green-400 hover:text-green-300 flex-shrink-0 font-mono"
+                >
+                  <Globe size={12} />
+                  {entry.devUrl}
+                </a>
+              </motion.div>
+            ))
+          )
+        ) : (
+        <>
+        {filteredEntries.map((entry, i) => (
           <motion.div
             key={entry.id}
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: i * 0.03 }}
-            className="bg-panel rounded-xl border border-border-soft p-4"
+            className="bg-panel rounded-xl border border-border-soft p-4 cursor-pointer"
+            onClick={() => setExpandedId((id) => (id === entry.id ? null : entry.id))}
           >
             <div className="flex items-start justify-between gap-4 mb-3">
               <div className="flex items-center gap-2 min-w-0">
@@ -87,6 +229,12 @@ export const Dashboard = ({ onClose, refreshSignal = 0 }: DashboardProps) => {
                   <span className="flex items-center gap-1 text-[10px] text-yellow-400 bg-yellow-400/10 px-1.5 py-0.5 rounded">
                     <FileWarning size={12} />
                     {entry.uncommitted.length}
+                  </span>
+                )}
+                {entry.aheadCount > 0 && (
+                  <span className="flex items-center gap-1 text-[10px] text-orange-400 bg-orange-400/10 px-1.5 py-0.5 rounded">
+                    <UploadCloud size={12} />
+                    {entry.aheadCount} unpushed
                   </span>
                 )}
                 {entry.runningCommand && (
@@ -151,6 +299,7 @@ export const Dashboard = ({ onClose, refreshSignal = 0 }: DashboardProps) => {
                       href={entry.devUrl}
                       target="_blank"
                       rel="noopener noreferrer"
+                      onClick={(e) => e.stopPropagation()}
                       className="text-green-400 hover:text-green-300 truncate block"
                     >
                       <Globe size={12} className="inline mr-1" />
@@ -163,6 +312,57 @@ export const Dashboard = ({ onClose, refreshSignal = 0 }: DashboardProps) => {
                 </div>
               </div>
             </div>
+
+            <AnimatePresence>
+              {expandedId === entry.id && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  exit={{ opacity: 0, height: 0 }}
+                  className="overflow-hidden"
+                >
+                  <div
+                    className="flex items-center gap-2 pt-3 mt-3 border-t border-border-soft flex-wrap"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <button
+                      onClick={() => handleOpenChat(entry)}
+                      className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg bg-scrim-faint hover:bg-panel-strong text-fg-strong border border-border-soft transition-colors"
+                    >
+                      <MessageSquare size={12} />
+                      Open in chat
+                    </button>
+                    {needsPush(entry) && (
+                      <button
+                        onClick={() => handlePush(entry)}
+                        className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg bg-accent/10 hover:bg-accent/20 text-accent border border-accent/20 transition-colors"
+                      >
+                        <UploadCloud size={12} />
+                        {entry.uncommitted.length > 0 ? 'Commit & push' : 'Push'}
+                      </button>
+                    )}
+                    {entry.devUrl && (
+                      <a
+                        href={entry.devUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg bg-green-500/10 hover:bg-green-500/20 text-green-400 border border-green-500/20 transition-colors"
+                      >
+                        <Globe size={12} />
+                        Open site
+                      </a>
+                    )}
+                    <button
+                      onClick={() => handleCopyPath(entry)}
+                      className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg bg-scrim-faint hover:bg-panel-strong text-fg-dim border border-border-soft transition-colors"
+                    >
+                      <Copy size={12} />
+                      {copiedId === entry.id ? 'Copied' : 'Copy path'}
+                    </button>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
           </motion.div>
         ))}
 
@@ -170,6 +370,13 @@ export const Dashboard = ({ onClose, refreshSignal = 0 }: DashboardProps) => {
           <div className="text-sm text-fg-dim italic text-center py-12">
             No projects loaded — scan a directory to get started.
           </div>
+        )}
+        {entries.length > 0 && filteredEntries.length === 0 && (
+          <div className="text-sm text-fg-dim italic text-center py-12">
+            No projects match "{filter}".
+          </div>
+        )}
+        </>
         )}
       </div>
     </div>

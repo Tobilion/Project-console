@@ -12,11 +12,35 @@
 import { readTelemetry, listTelemetryProjectIds } from './telemetryFile.js';
 import { loadModel, saveModel } from './modelStore.js';
 import { sigmoid, trainLogisticRegression } from './logisticRegression.js';
+import { PURE_CHITCHAT_INTENTS } from './intentTrust.js';
 
 // Below this many labeled examples, don't trust the model at all — a handful of accept/reject
 // outcomes would just overfit to noise. suggestThresholds() falls back to its original hardcoded
 // heuristic until real usage crosses this bar, so there's zero regression for a fresh install.
 const MIN_LABELED = 12;
+
+// Phase 4 (audit 2026-08-10 §2.2): one pooled model fit across every intent meant a single
+// family's quirks could only ever be patched with a hand-authored clamp bolted on afterward —
+// which is exactly how CHITCHAT_FLOOR_MIN (intentTelemetry.js) came to exist: the pooled model
+// ratcheted every high-match intent's floor down together, including zero-argument canned
+// chit-chat replies that should never get more permissive. Splitting by family means each
+// group's floor is learned from examples of THAT group's own behavior, and a future family with
+// its own quirks doesn't need its own hand-authored clamp — it just needs enough of its own
+// labeled examples. Coarse and heuristic on purpose (name-prefix matching over the existing
+// dot/underscore intent-naming convention — see CLAUDE.md's "Intent catalog"), not a real
+// taxonomy: the goal is separating groups that behave differently, not modeling the full
+// hierarchy. CHITCHAT_FLOOR_MIN in intentTelemetry.js stays in place regardless — this is
+// defense in depth, not a replacement for it.
+export const INTENT_FAMILIES = ['chitchat', 'git', 'knowledge', 'general'];
+
+/** Coarse family classification for an intent name, used to route it to its own sub-model. */
+export function familyOf(intent) {
+  if (!intent) return 'general';
+  if (PURE_CHITCHAT_INTENTS.has(intent) || intent.startsWith('system.chit_chat.')) return 'chitchat';
+  if (intent.startsWith('git_') || intent.startsWith('git.')) return 'git';
+  if (intent.startsWith('project.')) return 'knowledge';
+  return 'general';
+}
 
 const FEATURE_NAMES = ['confidence', 'margin', 'isSemantic', 'isFuzzy', 'isKeyword', 'isLiteralOverride', 'inputLenNorm'];
 
@@ -52,35 +76,26 @@ export function extractFeatures(record) {
   ];
 }
 
-/** Every labeled telemetry record across every project — falsePositive is only set (true/false)
- *  when a gated action's confirm/reject response actually got linked back to a telemetry entry
- *  (see connection.js's handleConfirmResponse); everything else is unlabeled and skipped. */
-function collectLabeledExamples() {
-  const X = [];
-  const y = [];
+/** Every labeled telemetry record across every project, grouped by intent family —
+ *  falsePositive is only set (true/false) when a gated action's confirm/reject response
+ *  actually got linked back to a telemetry entry (see connectionConfirm.js); everything else is
+ *  unlabeled and skipped. */
+function collectLabeledExamplesByFamily() {
+  const byFamily = Object.fromEntries(INTENT_FAMILIES.map((f) => [f, { X: [], y: [] }]));
   for (const projectId of listTelemetryProjectIds()) {
     for (const entry of readTelemetry(projectId)) {
       if (entry.falsePositive !== true && entry.falsePositive !== false) continue;
       if (!entry.finalIntent) continue;
-      X.push(extractFeatures(entry));
-      y.push(entry.falsePositive ? 0 : 1); // accepted -> 1, rejected -> 0
+      const family = familyOf(entry.finalIntent);
+      byFamily[family].X.push(extractFeatures(entry));
+      byFamily[family].y.push(entry.falsePositive ? 0 : 1); // accepted -> 1, rejected -> 0
     }
   }
-  return { X, y };
+  return byFamily;
 }
 
-/**
- * Retrains the confidence model from every project's labeled telemetry. Safe to call often
- * (startup sweep, and fire-and-forget after every new label — see index.js/connection.js): below
- * MIN_LABELED examples this is a no-op that leaves the previous model (or none) in place, so
- * suggestThresholds() keeps using its original hardcoded heuristic until there's real signal to
- * trust something learned over it.
- */
-export function retrainConfidenceModel() {
-  const { X, y } = collectLabeledExamples();
-  if (X.length < MIN_LABELED) {
-    return { trained: false, sampleCount: X.length, minRequired: MIN_LABELED };
-  }
+function trainOneFamily(X, y) {
+  if (X.length < MIN_LABELED) return null;
   const { weights, bias } = trainLogisticRegression(X, y);
 
   // learnedFloor() below needs to hold margin/input-length at "typical" values while it searches
@@ -95,7 +110,7 @@ export function retrainConfidenceModel() {
     ? acceptedIdx.reduce((s, i) => s + X[i][col], 0) / acceptedIdx.length
     : (col === 1 ? 0.08 : 0.33);
 
-  saveModel({
+  return {
     weights,
     bias,
     sampleCount: X.length,
@@ -103,33 +118,65 @@ export function retrainConfidenceModel() {
     features: FEATURE_NAMES,
     typicalMargin: meanOf(1),
     typicalInputLenNorm: meanOf(6),
-  });
-  return { trained: true, sampleCount: X.length };
+  };
 }
 
-/** Predicted probability [0,1] that a match with these features would be accepted, or null if no
- *  model has been trained yet. */
-export function predictAcceptProbability(features) {
-  const model = loadModel();
+/**
+ * Retrains one confidence model per intent family from every project's labeled telemetry. Safe
+ * to call often (startup sweep, and fire-and-forget after every new label — see
+ * index.js/connectionConfirm.js): a family below MIN_LABELED examples is left untrained (null),
+ * so suggestThresholds() keeps using the original hardcoded heuristic for that family's intents
+ * until there's real signal to trust something learned over it — independently per family, not
+ * gated on the total across all of them.
+ */
+export function retrainConfidenceModel() {
+  const byFamily = collectLabeledExamplesByFamily();
+  const families = {};
+  let totalSamples = 0;
+  let anyTrained = false;
+  for (const family of INTENT_FAMILIES) {
+    const { X, y } = byFamily[family];
+    const trained = trainOneFamily(X, y);
+    families[family] = trained || { sampleCount: X.length };
+    totalSamples += X.length;
+    if (trained) anyTrained = true;
+  }
+  saveModel({ families, retrainedAt: Date.now() });
+  return { trained: anyTrained, sampleCount: totalSamples, families: Object.fromEntries(
+    INTENT_FAMILIES.map((f) => [f, { trained: !!families[f].weights, sampleCount: families[f].sampleCount }])
+  ) };
+}
+
+function familyModel(family) {
+  const store = loadModel();
+  const m = store?.families?.[family];
+  return m?.weights ? m : null;
+}
+
+/** Predicted probability [0,1] that a match with these features would be accepted, for the given
+ *  intent family, or null if that family's model hasn't been trained yet. */
+export function predictAcceptProbability(features, family = 'general') {
+  const model = familyModel(family);
   if (!model) return null;
   const z = model.bias + features.reduce((s, x, j) => s + x * (model.weights[j] || 0), 0);
   return sigmoid(z);
 }
 
 /**
- * Finds the lowest semantic confidence score at which the trained model predicts P(accept) >=
- * TARGET_ACCEPT_PROB, holding margin/winning-stage/input-length at typical passing values — i.e.
- * "how confident does a semantic match need to be before it's actually worth trusting", learned
- * from real accept/reject outcomes instead of guessed at. Returns null if no model is trained yet
- * (caller should fall back to the existing hardcoded heuristic in that case).
+ * Finds the lowest semantic confidence score at which the given family's trained model predicts
+ * P(accept) >= TARGET_ACCEPT_PROB, holding margin/winning-stage/input-length at typical passing
+ * values — i.e. "how confident does a semantic match in this family need to be before it's
+ * actually worth trusting", learned from that family's own real accept/reject outcomes instead
+ * of guessed at, and instead of borrowing another family's curve. Returns null if this family's
+ * model isn't trained yet (caller should fall back to the existing hardcoded heuristic).
  */
-export function learnedFloor() {
-  const model = loadModel();
+export function learnedFloor(family = 'general') {
+  const model = familyModel(family);
   if (!model) return null;
   const typicalMargin = typeof model.typicalMargin === 'number' ? model.typicalMargin : 0.08;
   const typicalInputLenNorm = typeof model.typicalInputLenNorm === 'number' ? model.typicalInputLenNorm : 0.33;
   for (let c = FLOOR_SEARCH_MIN; c <= FLOOR_SEARCH_MAX; c += FLOOR_SEARCH_STEP) {
-    const p = predictAcceptProbability([c, typicalMargin, 1, 0, 0, 0, typicalInputLenNorm]);
+    const p = predictAcceptProbability([c, typicalMargin, 1, 0, 0, 0, typicalInputLenNorm], family);
     if (p !== null && p >= TARGET_ACCEPT_PROB) return Math.round(c * 100) / 100;
   }
   // Model never reaches the target confidence even at the search ceiling — be conservative
@@ -137,8 +184,31 @@ export function learnedFloor() {
   return FLOOR_SEARCH_MAX;
 }
 
-export function getModelInfo() {
-  const model = loadModel();
-  if (!model) return { trained: false, minRequired: MIN_LABELED };
-  return { trained: true, sampleCount: model.sampleCount, trainedAt: model.trainedAt, minRequired: MIN_LABELED };
+/**
+ * With a family name, returns that family's own training status. With no argument, returns an
+ * aggregate across every family (kept for the `telemetry review` summary line/existing callers)
+ * plus a `families` breakdown for anything that wants the detail.
+ */
+export function getModelInfo(family) {
+  const store = loadModel();
+  if (family) {
+    const m = store?.families?.[family];
+    if (!m?.weights) return { trained: false, minRequired: MIN_LABELED, sampleCount: m?.sampleCount || 0 };
+    return { trained: true, sampleCount: m.sampleCount, trainedAt: m.trainedAt, minRequired: MIN_LABELED };
+  }
+  if (!store?.families) return { trained: false, minRequired: MIN_LABELED, sampleCount: 0 };
+  let sampleCount = 0;
+  let trained = false;
+  let trainedAt = null;
+  const families = {};
+  for (const f of INTENT_FAMILIES) {
+    const m = store.families[f];
+    sampleCount += m?.sampleCount || 0;
+    families[f] = { trained: !!m?.weights, sampleCount: m?.sampleCount || 0 };
+    if (m?.weights) {
+      trained = true;
+      if (!trainedAt || m.trainedAt > trainedAt) trainedAt = m.trainedAt;
+    }
+  }
+  return { trained, sampleCount, trainedAt, minRequired: MIN_LABELED, families };
 }

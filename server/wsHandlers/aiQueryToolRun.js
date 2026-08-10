@@ -1,4 +1,5 @@
 import crypto from 'crypto';
+import path from 'path';
 import { createProjectTools, resolveToolGate, isCommandAllowed } from '../tools.js';
 import { executeCommand, runningProcesses } from '../executor.js';
 import { createCheckpoint } from '../gitSafety.js';
@@ -6,7 +7,7 @@ import { isCommandBlocked } from '../dangerousPatterns.js';
 import { pendingToolConfirmations } from '../state.js';
 import { commandMatchesTemplate } from '../paramCommand.js';
 import { computeFileEditPreview } from '../diffPreview.js';
-import { validateToolCall, FILE_MUTATING_TOOLS } from '../aiGuardrails.js';
+import { validateToolCall, withFileLock, FILE_MUTATING_TOOLS } from '../aiGuardrails.js';
 import { scheduleVerification } from '../verifyHarness.js';
 
 // Phase 5 (PASS 5.4): the tool-call cap is env-overridable so heavy multi-step workflows don't
@@ -157,18 +158,30 @@ export async function runToolCall(ws, project, tools, call, workspaceTools = {},
   // the edit lands on disk by the time we have the result. Never blocks (warnings only; the
   // approve/deny gates above are the only thing that can stop a write).
   let guard = null;
-  try { guard = await validateToolCall(tool, args, resolvedProject?.path); } catch {}
-
   let result;
-  try {
-    result = await resolvedTools[tool](args);
-  } catch (err) {
-    // A tool that throws instead of returning {success:false} (plugin bug, fs race, network
-    // edge in webSearch/deepResearch) used to kill the ENTIRE AI turn — the answer the user
-    // was already watching stream in was discarded and no distillation ran (audit 2026-08-06,
-    // Phase 2). Fold it into the normal failure shape so the loop continues and the model can
-    // react.
-    result = { success: false, error: `Tool error: ${err.message}` };
+  const runGuardAndExecute = async () => {
+    try { guard = await validateToolCall(tool, args, resolvedProject?.path); } catch {}
+    try {
+      result = await resolvedTools[tool](args);
+    } catch (err) {
+      // A tool that throws instead of returning {success:false} (plugin bug, fs race, network
+      // edge in webSearch/deepResearch) used to kill the ENTIRE AI turn — the answer the user
+      // was already watching stream in was discarded and no distillation ran (audit 2026-08-06,
+      // Phase 2). Fold it into the normal failure shape so the loop continues and the model can
+      // react.
+      result = { success: false, error: `Tool error: ${err.message}` };
+    }
+  };
+  // Serialize concurrent edits to the same file across different connections/AI turns (audit
+  // 2026-08-10 — see withFileLock's doc comment in aiGuardrails.js). Only file-mutating tools
+  // with a resolvable path need this; everything else runs as before.
+  const lockKey = FILE_MUTATING_TOOLS.has(tool) && args?.path && resolvedProject?.path
+    ? path.resolve(resolvedProject.path, args.path)
+    : null;
+  if (lockKey) {
+    await withFileLock(lockKey, runGuardAndExecute);
+  } else {
+    await runGuardAndExecute();
   }
   // PASS 5.3 self-check nudge: the model can't see the filesystem, so after a successful write
   // its job isn't done — a read-back is the only thing that can confirm what actually landed on

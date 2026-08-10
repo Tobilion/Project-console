@@ -1,6 +1,8 @@
 {
   "name": "local-project-console",
   "description": "A local, offline command dispatcher and AI assistant for managing multiple software projects from a single web interface.",
+  "author": "Tobi",
+  "license": "MIT",
   "private": false,
   "version": "1.0.1",
   "bin": {
@@ -11,7 +13,8 @@
     "bin/",
     "dist/",
     "server/",
-    "README.md"
+    "README.md",
+    "LICENSE"
   ],
   "scripts": {
     "dev": "tsx server/index.js",

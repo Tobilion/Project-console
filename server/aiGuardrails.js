@@ -73,15 +73,55 @@ export function clearPreImage(resolvedPath) {
 }
 
 /**
+ * Per-path write lock. Sequential tool calls within ONE AI turn already can't race (aiQuery.js's
+ * tool loop is a `for...of` + `await`), but two different WS connections — two browser tabs, or
+ * web + CLI — both AI-enabled against the same project can each independently call
+ * writeFile/editFile on the same path concurrently. `recordPreImage()` is first-write-wins per
+ * path, so a second concurrent edit's journal entry is silently dropped, quietly shrinking undo
+ * coverage exactly when two edits are racing each other (audit 2026-08-10). This doesn't
+ * eliminate the race — the two callers still both want to write the same file — it serializes
+ * it, so the guard-then-execute sequence for a given path always runs to completion one call at
+ * a time, in submission order, and each call gets its own honest journal entry for whatever the
+ * file looked like immediately before ITS turn.
+ *
+ * Standard promise-chain mutex: `tail` always resolves (never rejects) so one caller's error
+ * can't wedge the queue for callers after it; the actual caller awaits `run`, which carries
+ * `fn`'s real result or rejection. The map entry is dropped once nothing is queued behind it, so
+ * it can't grow unbounded for paths that are no longer being contended.
+ */
+const fileLocks = new Map(); // lockKey -> Promise (settles once that turn's fn is done)
+
+export function withFileLock(lockKey, fn) {
+  const priorTail = fileLocks.get(lockKey) || Promise.resolve();
+  const run = priorTail.then(fn, fn);
+  const tail = run.then(() => {}, () => {});
+  fileLocks.set(lockKey, tail);
+  tail.then(() => {
+    if (fileLocks.get(lockKey) === tail) fileLocks.delete(lockKey);
+  });
+  return run;
+}
+
+/**
  * Pre-execution guard for the file-mutating tools. Returns null when nothing is worth flagging
- * (non-file tool, un-simulatable edit, clean syntax, non-JS/TS file, or containment failure —
- * the sandbox rejects escapes anyway), or { ok: true, warning } when the simulated edit breaks
- * parsing and the pre-edit content was journaled.
+ * as a WARNING (un-simulatable edit, clean/unchecked syntax, or containment failure — the
+ * sandbox rejects escapes anyway), or { ok: true, warning } when the simulated edit breaks
+ * parsing. Journaling the pre-edit content, however, happens unconditionally for ANY genuine
+ * file-mutating edit this function can simulate — not only ones that fail a syntax check.
+ *
+ * Originally the pre-image was only recorded when `syntaxCheck` came back `{ ok: false }`,
+ * which itself only runs for AST_CAPABLE_EXTS (the JS/TS family). That left two real gaps
+ * (audit 2026-08-10): a semantically-wrong-but-syntactically-valid AI edit — deletes the wrong
+ * branch, overwrites the wrong function body, anything a parser can't catch — was written to
+ * disk with zero recovery path unless the project happened to be mid-git-checkpoint; and every
+ * non-JS/TS file (Python, Go, config/data files, anything outside AST_CAPABLE_EXTS) was never
+ * journaled at all, regardless of outcome, since the syntax-check gate came first. The journal
+ * itself (recordPreImage/restorePreImage) has no dependency on syntax checking — it's just a
+ * capped in-memory pre-image store — so there's no reason its coverage should be narrower than
+ * "every simulatable edit."
  */
 export async function validateToolCall(tool, args, root) {
   if (!root || !FILE_MUTATING_TOOLS.has(tool) || !args?.path) return null;
-  const ext = path.extname(args.path).toLowerCase();
-  if (!AST_CAPABLE_EXTS.has(ext)) return null;
   try {
     const resolved = path.resolve(root, args.path);
     if (resolved !== root && !resolved.startsWith(root + path.sep)) return null;
@@ -98,10 +138,16 @@ export async function validateToolCall(tool, args, root) {
     const next = simulateEditContent(current, tool, args);
     if (next === null || next === current) return null;
 
+    // Journal every genuine edit this function can simulate, regardless of file type or
+    // syntax outcome — recordPreImage() is first-write-wins per path, so this is a no-op if an
+    // earlier edit in this session already journaled the file.
+    recordPreImage(resolved, current, existed);
+
+    const ext = path.extname(args.path).toLowerCase();
+    if (!AST_CAPABLE_EXTS.has(ext)) return null;
     const check = await syntaxCheck(next, ext);
     if (!check || check.ok) return null;
 
-    recordPreImage(resolved, current, existed);
     return {
       ok: true,
       warning: `SYNTAX WARNING in ${args.path} (line ${check.line}): ${check.message} — the change was applied, but the file may not parse. ` +

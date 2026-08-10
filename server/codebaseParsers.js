@@ -233,7 +233,11 @@ export function resolveLocalImport(fromRelPath, spec, knownPaths) {
 
 export function buildReverseImportIndex(entries) {
   const knownPaths = new Set(entries.map((e) => e.path.split(path.sep).join('/')));
-  const reverse = {};
+  // Object.create(null), not {} — same reasoning as computeSymbolReferences() in
+  // codebaseGraph.js: a real file resolving to a bare extensionless path that collides with an
+  // inherited Object.prototype key (e.g. a repo file literally named `constructor`) would make
+  // `reverse[resolved]` truthy-but-not-an-array and corrupt this index silently.
+  const reverse = Object.create(null);
   for (const entry of entries) {
     for (const spec of entry.imports || []) {
       const resolved = resolveLocalImport(entry.path, spec, knownPaths);

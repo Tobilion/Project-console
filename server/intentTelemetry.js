@@ -8,8 +8,8 @@
 // the suggestion/aggregation logic, and re-exports the file/threshold ops below so existing
 // callers (matcher.js, semanticMatcher.js, connection.js, index.js) keep importing from here.
 import crypto from 'crypto';
-import { readTelemetry, appendTelemetry, updateTelemetryEntry, clearTelemetry, listTelemetryProjectIds } from './telemetryFile.js';
-import { learnedFloor, getModelInfo } from './confidenceModel.js';
+import { readTelemetry, appendTelemetry, updateTelemetryEntry as updateTelemetryEntryOnDisk, clearTelemetry, listTelemetryProjectIds } from './telemetryFile.js';
+import { learnedFloor, getModelInfo, familyOf } from './confidenceModel.js';
 import { getEffectiveThreshold, setThresholdOverride } from './telemetryThresholds.js';
 import { getIntentStats } from './telemetryStats.js';
 import { PURE_CHITCHAT_INTENTS } from './intentTrust.js';
@@ -24,7 +24,7 @@ export const CHITCHAT_FLOOR_MIN = 0.5;
 export {
   getEffectiveThreshold, getThresholdOverrides, setThresholdOverride, removeThresholdOverride,
 } from './telemetryThresholds.js';
-export { clearTelemetry, updateTelemetryEntry } from './telemetryFile.js';
+export { clearTelemetry } from './telemetryFile.js';
 export { getIntentStats } from './telemetryStats.js';
 
 // Batched async write queue — debounces writes so rapid sequential logMatch calls
@@ -68,16 +68,33 @@ export function logMatch(projectId, entry) {
   return record.id;
 }
 
+// Applies an update (typically `{ falsePositive: true/false }` from the confirm/reject flow) to
+// a telemetry record by id. Records live in one of two places depending on timing: still
+// in-memory in `writeQueue` if the 100ms debounced flush (scheduleFlush) hasn't fired yet, or
+// already on disk if it has. The on-disk-only version of this (telemetryFile.js's
+// updateTelemetryEntry) reads exclusively from disk via fs.readFileSync — if a user approves or
+// rejects a gated action fast enough to beat the flush (which every auto-approved grant does,
+// since there's no human click-latency in that path), the record isn't on disk yet, the disk
+// read finds nothing, and the label is silently dropped with no error (confirmed live audit
+// 2026-08-10 — this permanently shrinks confidenceModel.js's accept/reject training set,
+// preferentially for the fast/low-friction path). Checking the in-memory queue first closes
+// that gap: an update to a not-yet-flushed record is merged in place, so the eventual flush
+// writes the already-updated record instead of the stale pre-update one.
+export function updateTelemetryEntry(projectId, id, updates) {
+  const pending = writeQueue.get(projectId);
+  if (pending) {
+    const record = pending.find((r) => r.id === id);
+    if (record) {
+      Object.assign(record, updates);
+      return;
+    }
+  }
+  updateTelemetryEntryOnDisk(projectId, id, updates);
+}
+
 export function suggestThresholds(projectId) {
   const stats = getIntentStats(projectId);
   const suggestions = [];
-
-  // Stage 1 ML work (2026-07-29, requested directly): once enough real accept/reject outcomes
-  // have accumulated (see confidenceModel.js), prefer its learned floor over the hardcoded
-  // if/else bump rules below for every intent. Below MIN_LABELED examples this returns null and
-  // every intent falls through to exactly the original heuristic, so a fresh install behaves
-  // identically to before.
-  const modelFloor = learnedFloor();
 
   for (const [intent, s] of stats) {
     if (s.matches < 5) continue;
@@ -90,10 +107,18 @@ export function suggestThresholds(projectId) {
     const fuzzyRatio = (s.stages['fuzzy'] || 0) / s.matches;
     const keywordRatio = (s.stages['keyword'] || 0) / s.matches;
 
+    // Phase 4 (audit 2026-08-10 §2.2): learned per this intent's FAMILY, not one model pooled
+    // across every intent — see confidenceModel.js's familyOf()/INTENT_FAMILIES for why. Below
+    // MIN_LABELED examples FOR THIS FAMILY, learnedFloor() returns null and this intent falls
+    // through to exactly the original heuristic below, same zero-regression guarantee as before,
+    // just scoped per family instead of globally.
+    const family = familyOf(intent);
+    const modelFloor = learnedFloor(family);
+
     if (modelFloor !== null) {
       if (Math.abs(modelFloor - currentFloor) >= 0.03) {
         recommendedFloor = modelFloor;
-        reason = `learned from ${getModelInfo().sampleCount} real accept/reject outcomes (replaces the fixed heuristic)`;
+        reason = `learned from ${getModelInfo(family).sampleCount} real accept/reject outcomes for "${family}"-family intents (replaces the fixed heuristic)`;
       }
     } else if (semanticRatio < 0.3 && fuzzyRatio > 0.4 && s.avgConfidence < currentFloor) {
       recommendedFloor = Math.max(0.35, currentFloor - 0.05);

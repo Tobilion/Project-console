@@ -183,7 +183,11 @@ const MASCOT_COWS = ['cat', 'owl', 'dragon', 'robot', 'stegosaurus', 'tux', 'dog
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 function renderMascot() {
-  let name = 'Tobi';
+  // Generic fallback, not a hardcoded person's name — data/user-profile.json isn't published
+  // with the npm package and only exists once a user sets their own profile, so a fresh install
+  // used to greet every stranger as "Tobi" (the original author) by name (audit 2026-08-10,
+  // raised while generalizing for npm/public distribution).
+  let name = 'there';
   try {
     const profile = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'data', 'user-profile.json'), 'utf8'));
     if (profile.userProfile?.name) name = profile.userProfile.name;

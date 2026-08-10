@@ -1,4 +1,5 @@
 import crypto from 'crypto';
+import path from 'path';
 import { metrics } from '../metrics.js';
 import { state, pendingToolConfirmations } from '../state.js';
 import { createCheckpoint } from '../gitSafety.js';
@@ -6,7 +7,7 @@ import { createProjectTools, isCommandAllowed, resolveToolGate } from '../tools.
 import { isCommandBlocked } from '../dangerousPatterns.js';
 import { executeCommand } from '../executor.js';
 import { computeFileEditPreview } from '../diffPreview.js';
-import { validateToolCall, FILE_MUTATING_TOOLS } from '../aiGuardrails.js';
+import { validateToolCall, withFileLock, FILE_MUTATING_TOOLS } from '../aiGuardrails.js';
 import { scheduleVerification } from '../verifyHarness.js';
 
 /** Direct tool invocation from the frontend (not via AI chat). Scoped to the client's active project. */
@@ -84,16 +85,29 @@ export async function handleToolCall(ws, parsed, sessionContext) {
   // Phase 1, Part 1.2 (aiGuardrails): snapshot the pre-edit state for file mutations that would
   // break syntax — never blocks; the warning rides on the result the frontend shows.
   let guard = null;
-  try { guard = await validateToolCall(tool, args, project.path); } catch {}
-
   let result;
-  try {
-    result = await tools[tool](args || {});
-  } catch (err) {
-    // A tool that throws instead of returning {success:false} used to propagate out of this
-    // handler — the frontend got an error_output instead of a tool_result, silently losing
-    // the direct-tool-call record (audit 2026-08-06, Phase 2).
-    result = { success: false, error: `Tool error: ${err.message}` };
+  const runGuardAndExecute = async () => {
+    try { guard = await validateToolCall(tool, args, project.path); } catch {}
+    try {
+      result = await tools[tool](args || {});
+    } catch (err) {
+      // A tool that throws instead of returning {success:false} used to propagate out of this
+      // handler — the frontend got an error_output instead of a tool_result, silently losing
+      // the direct-tool-call record (audit 2026-08-06, Phase 2).
+      result = { success: false, error: `Tool error: ${err.message}` };
+    }
+  };
+  // Serialize concurrent edits to the same file across different connections/AI turns (audit
+  // 2026-08-10 — see withFileLock's doc comment in aiGuardrails.js; same lock the AI tool path
+  // in aiQueryToolRun.js uses, so a direct frontend edit and an AI edit to the same file also
+  // can't race each other).
+  const lockKey = FILE_MUTATING_TOOLS.has(tool) && args?.path && project?.path
+    ? path.resolve(project.path, args.path)
+    : null;
+  if (lockKey) {
+    await withFileLock(lockKey, runGuardAndExecute);
+  } else {
+    await runGuardAndExecute();
   }
   metrics.observe('tool_call.duration', Date.now() - tStart);
   metrics.event({ type: 'tool_call_complete', tool, duration: Date.now() - tStart, success: result?.success !== false });

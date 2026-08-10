@@ -252,6 +252,35 @@ npm run lint    # tsc --noEmit
 - `server/cli-client.js` — CLI chat (clack prompt picker, discovery with spinner, banner)
 - `server/commandGuesser.js` (+ `guessData.js`) — post-matching regex fallback,
   platform-branched (Windows cmd builtins vs POSIX); fires only when no intent matched
+- `server/taskQueue.js` — infrastructure expansion (2026-08-10): lightweight in-memory
+  per-project FIFO queue (`enqueueTask`/`hasActiveTask`/`activeTaskLabel`) so slow,
+  non-interactive handler work can run off the chat turn instead of blocking the WS connection.
+  Not persistent — cleared on restart, one task at a time per project, cross-project tasks run in
+  parallel. First (and currently only) consumer: `project.diagnostics.type_check` enqueues its
+  `tsc --noEmit` run and posts the result as an out-of-band `answer` WS message when done — no
+  frontend protocol change needed since `answerCase` in `wsMessageCases.ts` renders any incoming
+  `answer` as a fresh bubble with no matching `end` required.
+- `server/pluginTools.js` also exports `validateToolEntry`/`sanitizePermissions`/
+  `MANIFEST_FILENAME` (infrastructure expansion, 2026-08-10) for the pack-install admin
+  commands in `connectionPackAdmin.js` — `install pack <path>` reads a local
+  console.tools.json-shaped file, validates it against the exact same schema real manifests use,
+  and shows a preview (tool names/commands/risky flags) before anything is written. Two-step
+  confirm via `sessionContext.pendingPackInstall` (5-min TTL, mirrors pendingConfirmations'
+  expiry) — `confirm install pack` merges into the project's own console.tools.json (by-name
+  overwrite), `cancel install pack` discards. `list packs` shows what's currently installed.
+  Deliberately local-file-only, no URL/registry fetch — a hosted pack registry is a real
+  vetting/hosting commitment, not a chat command, and installed tools still run through
+  `createPluginToolFn`'s normal isSafeParamValue/isCommandBlocked checks at call time regardless
+  of how they got into the manifest.
+- `server/crossProjectMemory.js` — infrastructure expansion (2026-08-10): searches every scanned
+  project's `.console/memory.md` at once via the shared embedding extractor (same lazy
+  dynamic-import pattern as `memoryDedupe.js`, to avoid a load-order cycle through
+  `semanticMatcher.js`). No persisted index — fans out at ask time, capped at
+  `MAX_TOTAL_LINES` (400) so a query stays bounded regardless of project count. Powers
+  `system.knowledge.cross_project_search` (handler in `builtinContextRuntime.js`, global like
+  `running_processes` — ignores the active project, searches `state.activeProjectsCache`).
+  Uses the raw input as the embedding query rather than parsing out "which project did I ... in"
+  wrapper phrasing.
 - Misc leaves: `urlSafety.js` (isSafeExternalUrl/isProbeableUrl — SSRF guards; webSearch.js
   re-exports), `regexUtils.js`, `markdownUtils.js`, `webSearch.js` (DuckDuckGo, decodes
   `uddg` redirects, deep-research SSRF guard), `pluginTools.js` (console.tools.json manifest
@@ -278,7 +307,11 @@ as the trigger input via `getHistory`, shared `pushHistory` in Terminal), `ui/Th
 `ui/UserProfileModal.tsx`. The "Click here to open the site" chip in `TerminalMessages.tsx`
 only renders for URLs in `knownDevUrls` (grows from `server_url` events + `/api/active-servers`
 polls — an Ollama endpoint in an error message no longer gets one; NetPulse complaint).
-Output blocks created while an AI turn is in flight (`aiQueryInFlight`, set by `ai_start`,
+`Dashboard.tsx` (2026-08-10 QoL pass: Projects/Live Sites tabs, a project card expands on click
+into an action row — Open in chat / Commit & push (or Push) when the project has uncommitted or
+unpushed-but-committed work / Open site / Copy path — plus a name filter and dirty/running-first
+sort; `/api/dashboard` entries now carry `isGitRepo`/`aheadCount`/`hasUpstream` so "needs push"
+means real unpushed commits, not just a dirty working tree). Output blocks created while an AI turn is in flight (`aiQueryInFlight`, set by `ai_start`,
 cleared by the turn's final data-less `end` — not the per-round `stream_end`) start expanded
 (`autoExpand` on TerminalMessage) so AI-run commands are actually visible instead of a
 collapsed header.
@@ -581,6 +614,10 @@ CONTROL/PHASE1-3/BASICS/MATCHDAY/TRAPS/MUST_NOT_STEAL/GARBAGE (+ open-family row
   extend `scripts/checkWsMessageCases.ts` when the new type has user-visible behavior.
 - Run `npm run lint`, `node --check` on edited server files, and the relevant check-*
   harness after every change; verify with the live server when possible.
+- **CI**: `.github/workflows/ci.yml` (added 2026-08-10) runs `npm run lint` +
+  all `check-*` harnesses on every push/PR to `main` — this is now the automated backstop for the
+  matcher/handler/indexer/intent regressions that used to only be caught by remembering to run
+  them manually.
 - **Professional code, not vibe-coded**: comments explain *why* in plain professional
   language — no slang, no emoji in code; no dead code; no scratch files or leftover artifacts
   in the repo (delete or gitignore them); consistent formatting; any hack carries a comment

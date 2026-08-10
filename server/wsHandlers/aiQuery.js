@@ -94,9 +94,24 @@ export async function handleAIQuery(ws, project, input, sessionContext, workspac
         }
       }
 
+      // Same-tool failure-streak detection (Phase 4, audit 2026-08-10 §2.3): a tool call that
+      // executes and fails was previously just folded into resultsSummary as plain text —
+      // nothing stopped the model from retrying the identical failing call every round up to
+      // MAX_TOOL_ROUNDS, burning the whole exchange on a call that was never going to succeed.
+      // Counts failures per tool across the WHOLE exchange (toolHistory accumulates every round,
+      // not just this one), so a streak that started two rounds ago is still caught here.
+      const failureCounts = new Map();
+      for (const { tool, result } of toolHistory) {
+        if (result?.success === false) failureCounts.set(tool, (failureCounts.get(tool) || 0) + 1);
+      }
+      const stuckTools = [...failureCounts.entries()].filter(([, n]) => n >= 2).map(([tool]) => tool);
+      const stuckNote = stuckTools.length
+        ? `\n\nNote: ${stuckTools.map((t) => `"${t}"`).join(', ')} has now failed twice with the same kind of error this exchange — don't retry it with the same or similar arguments. Try a different approach, or tell the user why it can't be done.`
+        : '';
+
       messages.push({
         role: 'user',
-        content: `Tool results:\n${resultsSummary.join('\n')}\n\nBased on these results, continue helping the user. Call another tool only if you still need one; otherwise give your final answer without any <tool_call> tags.`
+        content: `Tool results:\n${resultsSummary.join('\n')}\n\nBased on these results, continue helping the user. Call another tool only if you still need one; otherwise give your final answer without any <tool_call> tags.${stuckNote}`
       });
 
       ws.send(JSON.stringify({ type: 'stream_start' }));

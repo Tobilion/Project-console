@@ -37,12 +37,14 @@ import path from 'node:path';
 import os from 'node:os';
 import { exec } from 'node:child_process';
 import util from 'node:util';
-import { pathToFileURL } from 'url';
+import { fileURLToPath, pathToFileURL } from 'url';
 
 const execAsync = util.promisify(exec);
 
 const PROBE = process.argv.includes('--probe');
-const base = 'C:/Users/tobil/Desktop/Projects/Project console/server/';
+// Derived from this script's own location, not hardcoded to one machine/username (audit
+// 2026-08-10 — see checkMatcherCoverage.js for the full rationale).
+const base = path.join(path.dirname(fileURLToPath(import.meta.url)), '..') + path.sep;
 const FIXTURE_ROOT = path.join(os.tmpdir(), 'console-tools-fixtures');
 
 const tools = await import(pathToFileURL(base + 'tools.js').href);

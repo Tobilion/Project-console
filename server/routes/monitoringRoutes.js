@@ -116,6 +116,14 @@ export function registerMonitoringRoutes(app) {
         recentCommits: [],
         devUrl: state.lastDevUrls.get(project.id) || null,
         runningCommand: null,
+        isGitRepo: false,
+        // Dashboard QoL expansion (2026-08-10, requested directly — a project card's push
+        // button needs to know about commits that are committed-but-unpushed, not just dirty
+        // working-tree files). `hasUpstream: false` covers both "no upstream branch configured
+        // yet" and "detached HEAD" — either way there's no ahead/behind count to report, but a
+        // first push is still meaningful, so the frontend treats it as "needs push" too.
+        aheadCount: 0,
+        hasUpstream: false,
       };
 
       const procs = [...(runningProcesses.get(project.id)?.values() || [])];
@@ -123,7 +131,8 @@ export function registerMonitoringRoutes(app) {
 
       try {
         const gitDir = path.join(project.path, '.git');
-        if (fs.existsSync(gitDir)) {
+        entry.isGitRepo = fs.existsSync(gitDir);
+        if (entry.isGitRepo) {
           const { stdout: statusOut } = await runGit(project.path, ['status', '--short']);
           if (statusOut.trim()) {
             entry.uncommitted = statusOut.trim().split('\n').slice(0, 100);
@@ -132,6 +141,14 @@ export function registerMonitoringRoutes(app) {
           const { stdout: logOut } = await runGit(project.path, ['log', '--oneline', '-5']);
           if (logOut.trim()) {
             entry.recentCommits = logOut.trim().split('\n').filter(Boolean);
+          }
+
+          try {
+            const { stdout: aheadOut } = await runGit(project.path, ['rev-list', '--count', '@{u}..HEAD']);
+            entry.hasUpstream = true;
+            entry.aheadCount = parseInt(aheadOut.trim(), 10) || 0;
+          } catch {
+            // No upstream configured (or detached HEAD) — leave hasUpstream false, aheadCount 0.
           }
         }
       } catch {

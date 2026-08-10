@@ -23,7 +23,7 @@ export const MAX_OUTPUT_LINES = 12;
 
 const TSC_BIN = isWindows ? 'npx.cmd' : 'npx';
 
-/** Per-root tracker: { timer, running } so edits collapse and don't overlap. */
+/** Per-root tracker: { timer, running, pending } so edits collapse and don't overlap. */
 const state = new Map();
 
 /** True if `root` contains a tsconfig.json — only TS projects get the typecheck pass. */
@@ -46,10 +46,18 @@ export function scheduleVerification(root, log) {
   const logger = typeof log === 'function' ? log : console.log;
   let s = state.get(root);
   if (!s) {
-    s = { timer: null, running: false };
+    s = { timer: null, running: false, pending: false };
     state.set(root, s);
   }
-  if (s.running) return; // a check is already in flight — coalesce
+  // An edit that lands while a check is already running used to be dropped silently: this
+  // returned early with nothing recorded, and when the in-flight run finished nothing
+  // re-triggered it, so the latest file state could go unverified indefinitely (confirmed
+  // 2026-08-10 audit). `pending` remembers that a follow-up check is owed and the `finally`
+  // below reschedules it once the current run finishes.
+  if (s.running) {
+    s.pending = true;
+    return;
+  }
   if (s.timer) return; // a debounced check is waiting — let it fire
 
   s.timer = setTimeout(() => {
@@ -60,11 +68,13 @@ export function scheduleVerification(root, log) {
         s.running = false;
         return;
       }
-      runTypeScriptCheck(root, logger).catch(() => {
-        s.running = false;
-      }).finally(() => {
-        s.running = false;
-      });
+      return runTypeScriptCheck(root, logger).catch(() => {});
+    }).finally(() => {
+      s.running = false;
+      if (s.pending) {
+        s.pending = false;
+        scheduleVerification(root, log);
+      }
     });
   }, DEBOUNCE_MS);
 }
@@ -78,8 +88,10 @@ export function cancelVerification(root) {
   }
 }
 
-/** Runs `npx tsc --noEmit` in `root` with the 60s cap; never throws. */
-async function runTypeScriptCheck(root, log) {
+/** Runs `npx tsc --noEmit` in `root` with the 60s cap; never throws. Exported (Phase 5, audit
+ *  2026-08-10) for the on-demand `project.diagnostics.type_check` trigger-mode intent, which
+ *  runs the same check synchronously instead of waiting for a post-edit background trigger. */
+export async function runTypeScriptCheck(root, log) {
   const child = spawn(TSC_BIN, ['tsc', '--noEmit'], {
     cwd: root,
     windowsHide: true,

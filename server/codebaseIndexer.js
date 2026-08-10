@@ -26,10 +26,29 @@ import { computeSymbolReferences } from './codebaseGraph.js';
 const keyFileCache = new Map();
 
 // Keyed by absolute file path (not projectPath:name like keyFileCache, since repo-map files
-// aren't a small fixed list) — same mtime-invalidation shape as keyFileCache above. Like
-// keyFileCache, entries for deleted/renamed files are never evicted; acceptable for a
-// dev-machine-local cache that lives for the process lifetime, same tradeoff already made there.
+// aren't a small fixed list) — same mtime-invalidation shape as keyFileCache above.
+//
+// Bounded via a simple insertion-order eviction (Map preserves insertion order): the Phase 1
+// symbol-graph work (2026-08-10) started storing each file's full `content` (up to
+// MAX_FILE_READ_BYTES, 20KB) on every entry so computeSymbolReferences() doesn't have to
+// re-read from disk on every rescan — but that turned this from "a few small metadata fields
+// per file" into "up to 20KB per file, never evicted, for every file the app has ever indexed
+// across every project scanned in the process's lifetime" (audit 2026-08-10). On a machine with
+// many real projects that grows unbounded for as long as the server stays up. Capped here at a
+// generous size (well above MAX_REPO_MAP_FILES × a realistic number of concurrently-scanned
+// projects) rather than switching to a real LRU, since eviction order only matters for which
+// file gets a cheap disk re-read next, not correctness.
+const REPO_MAP_CACHE_MAX_ENTRIES = 4000;
 const repoMapFileCache = new Map();
+
+function setRepoMapCache(key, value) {
+  repoMapFileCache.delete(key); // re-insert at the end so it counts as most-recently-used
+  repoMapFileCache.set(key, value);
+  while (repoMapFileCache.size > REPO_MAP_CACHE_MAX_ENTRIES) {
+    const oldest = repoMapFileCache.keys().next().value;
+    repoMapFileCache.delete(oldest);
+  }
+}
 
 async function readKeyFiles(projectPath) {
   const contents = {};
@@ -92,6 +111,7 @@ async function buildRepoMap(projectPath, tree) {
         routes = cached.routes || [];
         symbols = cached.symbols || [];
         content = cached.content;
+        setRepoMapCache(fullPath, cached); // touch: keep actively-scanned files from aging out
       } else {
         const raw = await fs.readFile(fullPath, 'utf-8');
         content = raw.length > MAX_FILE_READ_BYTES ? raw.slice(0, MAX_FILE_READ_BYTES) : raw;
@@ -99,7 +119,7 @@ async function buildRepoMap(projectPath, tree) {
         imports = extractImports(content, ext);
         routes = extractRoutes(content, ext, f.path);
         symbols = await extractSymbols(content, ext);
-        repoMapFileCache.set(fullPath, { mtime: stat.mtimeMs, signatures, imports, routes, symbols, content });
+        setRepoMapCache(fullPath, { mtime: stat.mtimeMs, signatures, imports, routes, symbols, content });
       }
       if (routes.length && allRoutes.length < MAX_TOTAL_ROUTES) {
         routes.forEach((r) => allRoutes.push({ ...r, file: f.path }));

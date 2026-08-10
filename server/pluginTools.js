@@ -3,7 +3,7 @@ import path from 'path';
 import { isSafeParamValue } from './paramCommand.js';
 import { isCommandBlocked } from './dangerousPatterns.js';
 
-const MANIFEST_FILENAME = 'console.tools.json';
+export const MANIFEST_FILENAME = 'console.tools.json';
 
 // Phase 5 (2026-08-03, PASS 5.1): an optional top-level
 // `permissions` object in console.tools.json lets a project relax (or tighten) the per-tool
@@ -19,7 +19,7 @@ const PERMISSION_ASK_ONLY_TOOLS = new Set(['executeCommand']);
  * coerced back to 'ask' (its only legal value — risky stays gated forever). Returns the sanitized
  * object, or null when the manifest had no valid permissions.
  */
-function sanitizePermissions(rawPermissions) {
+export function sanitizePermissions(rawPermissions) {
   if (rawPermissions === undefined || rawPermissions === null) return null;
   if (typeof rawPermissions !== 'object' || Array.isArray(rawPermissions)) {
     console.warn('[pluginTools] Ignoring invalid console.tools.json "permissions" — expected an object keyed by tool name.');
@@ -41,8 +41,11 @@ function sanitizePermissions(rawPermissions) {
   return Object.keys(out).length > 0 ? out : null;
 }
 
-/** Schema validation for a single custom tool entry. */
-function validateToolEntry(tool, index) {
+/** Schema validation for a single custom tool entry. Exported (infrastructure expansion,
+ *  2026-08-10) so the pack-install admin command (connectionPackAdmin.js) can validate a
+ *  shared manifest file against the exact same rules before merging it into a project's own
+ *  console.tools.json — one schema, not a second hand-copied one that could drift. */
+export function validateToolEntry(tool, index) {
   const errors = [];
   if (!tool || typeof tool !== 'object') {
     errors.push(`entry ${index}: must be an object`);

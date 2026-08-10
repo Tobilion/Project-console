@@ -4,13 +4,15 @@ import { fileNpmHandlers } from './builtinFileNpm.js';
 import { projectKnowledgeHandlers } from './builtinProjectKnowledge.js';
 import { projectContextHandlers } from './builtinProjectContext.js';
 import { projectActionHandlers } from './builtinProjectActions.js';
+import { diagnosticsHandlers } from './builtinDiagnostics.js';
 
 // Phase 10 (2026-08-04, splitting builtinIntents.js into per-domain leaf modules): this file
-// is now a pure orchestrator — every branch body lives in one of the six domain modules
+// is now a pure orchestrator — every branch body lives in one of the domain modules
 // (builtinGit / builtinChitChat / builtinFileNpm / builtinProjectKnowledge /
-// builtinProjectContext / builtinProjectActions). The merge map preserves the historical
-// dispatch surface exactly; the `undo` alias existed as a literal branch in the original
-// dispatcher and is folded into the lookup here.
+// builtinProjectContext / builtinProjectActions / builtinDiagnostics — the last added Phase 5,
+// audit 2026-08-10). The merge map preserves the historical dispatch surface exactly; the
+// `undo` alias existed as a literal branch in the original dispatcher and is folded into the
+// lookup here.
 const handlers = {
   ...gitHandlers,
   ...chitChatHandlers,
@@ -18,6 +20,7 @@ const handlers = {
   ...projectKnowledgeHandlers,
   ...projectContextHandlers,
   ...projectActionHandlers,
+  ...diagnosticsHandlers,
 };
 
 /**

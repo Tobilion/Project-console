@@ -22,10 +22,16 @@
  * NOTE: 'stop server' / 'what is the dev url' have connection.js pre-checks in the live app and
  * never reach the matcher there — they are deliberately NOT in this harness (matcher-only).
  */
-import { pathToFileURL } from 'url';
+import { fileURLToPath, pathToFileURL } from 'url';
+import path from 'path';
 
 const PROBE = process.argv.includes('--probe');
-const base = 'C:/Users/tobil/Desktop/Projects/Project console/server/';
+// Derived from this script's own location, not hardcoded to one machine/username — was
+// literally `C:/Users/tobil/Desktop/Projects/Project console/server/`, which only ever worked
+// on the original author's own machine (broke immediately for any other contributor, any other
+// install path, or npm-published use — audit 2026-08-10, raised while generalizing the package
+// for public distribution).
+const base = path.join(path.dirname(fileURLToPath(import.meta.url)), '..') + path.sep;
 
 const { semanticMatcher } = await import(pathToFileURL(base + 'semanticMatcher.js').href);
 const { matchInput } = await import(pathToFileURL(base + 'matcher.js').href);

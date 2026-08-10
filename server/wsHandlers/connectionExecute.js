@@ -10,6 +10,7 @@ import { logNearMiss } from '../nearMissLogger.js';
 import { handlePendingParamReply, handlePendingFollowUpReply, handlePendingDisambiguationReply, handlePendingMemorySuggestionReply } from './connectionInterceptors.js';
 import { handleTelemetryCommand } from './connectionTelemetry.js';
 import { handleDistillationCommand, handleMemoryReview, handleLearningCommand } from './connectionAdminCommands.js';
+import { handlePackCommand, handlePendingPackInstallReply } from './connectionPackAdmin.js';
 import { handleStopServer, handleDevUrl } from './connectionDevServer.js';
 import { handleMatchingPipeline } from './connectionMatching.js';
 
@@ -27,19 +28,40 @@ const AI_ACK_RE = /^(ok|okay|k|kk|ok thanks|thanks|thank you|thx|ty|got it|gotch
  * the message.
  */
 export async function handleExecute(ws, parsed, sessionContext) {
-  const { projectId, input, sessionId } = parsed.payload || {};
-
   // Two execute messages can't interleave while an AI turn is in flight: the second would
   // clobber the shared aiAbortController (so Cancel would target the wrong query) and
   // interleave a second token stream on the same socket, which the frontend's single-stream
   // bookkeeping cannot separate (audit 2026-08-06, Phase 2). Reject the new message instead
-  // of serializing the whole socket — confirm_response/approve_task must stay concurrent so
-  // tool-confirm cards keep working during a turn.
-  if (sessionContext.aiAbortController) {
+  // of serializing the whole socket — confirm_response/approve_task go through a separate WS
+  // message type/handler entirely, so they stay concurrent and tool-confirm cards keep working
+  // during a turn; this guard only ever re-enters via the 'execute' message type.
+  //
+  // `aiAbortController` alone isn't set synchronously with this check: handleAIQuery() (below,
+  // via the AI-dispatch branch) only assigns it after awaiting checkOllama() and
+  // buildAIQueryContext() — both real async work. Between this guard's check and that
+  // assignment, handleExecuteBody also awaits several other things first (getSession, the
+  // pending-reply interceptors, admin/dev-server command checks), each a genuine yield point.
+  // A second 'execute' message sent before any of those resolve would see aiAbortController
+  // still null, pass this guard, and start running the same interceptor chain concurrently —
+  // both messages could reach handleAIQuery() before either sets aiAbortController, producing
+  // exactly the interleaved-stream failure this guard exists to prevent (confirmed live audit
+  // 2026-08-10). `executeInFlight` is set synchronously, before any await, so the second
+  // message is rejected the instant it's evaluated instead of racing through the same window.
+  if (sessionContext.aiAbortController || sessionContext.executeInFlight) {
     ws.send(JSON.stringify({ type: 'error_output', data: 'The AI is still working on your previous message — wait for it to finish (or press Cancel).\n' }));
     ws.send(JSON.stringify({ type: 'end' }));
     return;
   }
+  sessionContext.executeInFlight = true;
+  try {
+    await handleExecuteBody(ws, parsed, sessionContext);
+  } finally {
+    sessionContext.executeInFlight = false;
+  }
+}
+
+async function handleExecuteBody(ws, parsed, sessionContext) {
+  const { projectId, input, sessionId } = parsed.payload || {};
 
   sessionContext.activeProjectId = projectId;
   if (sessionId) sessionContext.currentSessionId = sessionId;
@@ -77,6 +99,7 @@ export async function handleExecute(ws, parsed, sessionContext) {
   if (await handlePendingParamReply(ws, project, projectId, input, sessionContext)) return;
   if (await handlePendingFollowUpReply(ws, project, projectId, input, sessionContext)) return;
   if (await handlePendingDisambiguationReply(ws, project, projectId, input, sessionContext)) return;
+  if (await handlePendingPackInstallReply(ws, project, input.trim().toLowerCase(), sessionContext)) return;
 
   // Confirmed live 2026-08-03 (NetPulse transcript, reported directly): typing a literal,
   // already-correct command (e.g. "python main.py serve") did NOT run it — it went through the
@@ -105,6 +128,7 @@ export async function handleExecute(ws, parsed, sessionContext) {
   if (await handleTelemetryCommand(ws, project, lowerInput)) return;
   if (await handleDistillationCommand(ws, project, lowerInput)) return;
   if (await handleMemoryReview(ws, project, lowerInput)) return;
+  if (await handlePackCommand(ws, project, lowerInput, input, sessionContext)) return;
   if (await handleStopServer(ws, project, lowerInput)) return;
   if (await handleDevUrl(ws, project, lowerInput)) return;
   if (await handlePendingMemorySuggestionReply(ws, project, lowerInput)) return;

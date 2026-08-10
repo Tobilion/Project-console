@@ -32,8 +32,16 @@ function escapeRegExp(s) {
  *   { files: { relPath: [symbolRecords] }, usedBy: { relPath: { symbolName: [relPath...] } } }
  */
 export function computeSymbolReferences(entries, contents) {
-  const files = {};
-  const usedBy = {};
+  // Plain `{}` maps inherit Object.prototype — a real exported symbol/file name that collides
+  // with an inherited key (`constructor`, `toString`, `valueOf`, `hasOwnProperty`, ...) makes
+  // `byOwner[name]` resolve to that inherited function instead of undefined, so `??= []` never
+  // fires and the later `refs.includes(...)` throws "refs.includes is not a function" — this
+  // silently aborted discoverProjects() for the ENTIRE scan directory (confirmed live
+  // 2026-08-10: one project among many exporting something named `constructor` was enough to
+  // zero out every project in the scan, with no error surfaced in the UI). `Object.create(null)`
+  // has no prototype chain, so any symbol/file name is a safe plain key.
+  const files = Object.create(null);
+  const usedBy = Object.create(null);
   const byPath = new Map();
   for (const entry of entries) {
     byPath.set(normPath(entry.path), entry);
@@ -65,7 +73,7 @@ export function computeSymbolReferences(entries, contents) {
 
     for (const name of found) {
       const owner = nameOwner.get(name);
-      const byOwner = (usedBy[normPath(owner)] ??= {});
+      const byOwner = (usedBy[normPath(owner)] ??= Object.create(null));
       const refs = (byOwner[name] ??= []);
       if (!refs.includes(normPath(entry.path)) && refs.length < MAX_REFS_PER_SYMBOL) {
         refs.push(normPath(entry.path));

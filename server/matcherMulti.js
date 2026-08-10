@@ -31,9 +31,19 @@ export async function matchMultiParts(matcher, input) {
 
   for (const part of parts) {
     const r = await matcher.match(part);
+    // `matcher.match()` sets a single shared `_lastTelemetry` field per call, overwritten on
+    // every subsequent call. Reading and clearing it HERE, immediately after each part's match,
+    // is the only correct place to capture it — waiting until this loop finishes (as the old
+    // caller in matcher.js used to do) means every part except the last one has already had its
+    // telemetry silently clobbered by the part after it (audit 2026-08-10: confirmed the caller
+    // was reconstructing per-item telemetry after the fact and getting `null` for all but one
+    // part, permanently losing training data for compound commands). Attaching it to the result
+    // object carries it out of this function correctly instead of relying on the caller to poll
+    // a mutable singleton after the fact.
+    const telemetry = matcher.getAndClearLastTelemetry();
     if (r && !seenIntents.has(r.intent)) {
       seenIntents.add(r.intent);
-      results.push({ ...r, originalPhrase: part });
+      results.push({ ...r, originalPhrase: part, telemetry });
     }
   }
 

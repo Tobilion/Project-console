@@ -45,7 +45,7 @@
 
 ### Project discovery & indexing
 
-- Scans the base directory for project folders containing `console.config.json`, a project doc (CLAUDE.md, README.md, ABOUT-TOBI.md, UNIVERSAL_CONTEXT.md), or a `package.json`.
+- Scans the base directory for project folders containing `console.config.json`, a project doc (CLAUDE.md, README.md, an `ABOUT-*.md` file, UNIVERSAL_CONTEXT.md), or a `package.json`.
 - **Code-only fallback**: a folder with none of the above is still recognized if it has real source files in any of ~15 languages, a recognized config file (`Cargo.toml`, `go.mod`, `requirements.txt`, etc.), or a real `.git` directory — with an auto-generated summary of its detected stack.
 - **Script auto-derivation**: `package.json` scripts become runnable entries automatically, each gated on `node_modules` existing first. Hand-authored entries always win on collision.
 - **Codebase indexing**: on project select, builds a directory tree, detects languages/entry points, reads key config files, detects frameworks (React, Express, Flask, Django, Spring Boot, Laravel, Vite, etc.), and builds a repo map of exports/functions/classes (TypeScript compiler API for JS/TS/TSX, regex fallback for other languages) plus import relationships, API routes, and monorepo detection.
@@ -273,3 +273,9 @@ npm run build               # vite build + esbuild server bundle → dist/
 ```
 
 Cross-platform note: `start.bat` is Windows-only; on macOS/Linux run `npm run dev` directly. The server, sandboxed file tools, and safety blocklist are all `process.platform`-aware.
+
+---
+
+## Author & License
+
+Created by **Tobi**. Released under the [MIT License](LICENSE) — free to use, modify, and redistribute.

@@ -19,10 +19,13 @@
  *  - ALIAS: the legacy bare 'undo' alias maps to system.chit_chat.undo.
  *  - DISPATCH: fake-ws smoke, one deterministic handler per leaf module + unknown-intent fallback.
  */
-import { pathToFileURL } from 'url';
+import { fileURLToPath, pathToFileURL } from 'url';
+import path from 'path';
 
 const PROBE = process.argv.includes('--probe');
-const base = 'C:/Users/tobil/Desktop/Projects/Project console/server/';
+// Derived from this script's own location, not hardcoded to one machine/username (audit
+// 2026-08-10 — see checkMatcherCoverage.js for the full rationale).
+const base = path.join(path.dirname(fileURLToPath(import.meta.url)), '..') + path.sep;
 
 const { handleBuiltinIntent } = await import(pathToFileURL(base + 'wsHandlers/builtinIntents.js').href);
 const { gitHandlers } = await import(pathToFileURL(base + 'wsHandlers/builtinGit.js').href);
@@ -32,6 +35,7 @@ const { projectKnowledgeHandlers } = await import(pathToFileURL(base + 'wsHandle
 const { projectContextHandlers } = await import(pathToFileURL(base + 'wsHandlers/builtinProjectContext.js').href);
 const { projectActionHandlers } = await import(pathToFileURL(base + 'wsHandlers/builtinProjectActions.js').href);
 const { normalizeGithubPageUrl } = await import(pathToFileURL(base + 'wsHandlers/builtinProjectActions.js').href);
+const { diagnosticsHandlers } = await import(pathToFileURL(base + 'wsHandlers/builtinDiagnostics.js').href);
 const { BUILTIN_INTENTS } = await import(pathToFileURL(base + 'intentRegistry.js').href);
 const { INTENTS } = await import(pathToFileURL(base + 'intentsData.js').href);
 const { state } = await import(pathToFileURL(base + 'state.js').href);
@@ -47,7 +51,7 @@ function eq(label, got, expect) {
   else if (!ok) console.log(`  FAIL ${label}\n    expected: ${e}\n    got:      ${g}`);
 }
 
-const merged = { ...gitHandlers, ...chitChatHandlers, ...fileNpmHandlers, ...projectKnowledgeHandlers, ...projectContextHandlers, ...projectActionHandlers };
+const merged = { ...gitHandlers, ...chitChatHandlers, ...fileNpmHandlers, ...projectKnowledgeHandlers, ...projectContextHandlers, ...projectActionHandlers, ...diagnosticsHandlers };
 const handlerKeys = Object.keys(merged).sort();
 const builtinKeys = [...BUILTIN_INTENTS].sort();
 const intentKeys = Object.keys(INTENTS).sort();
@@ -126,6 +130,19 @@ eq('normalizer: non-github host -> null', normalizeGithubPageUrl('https://gitlab
 eq('normalizer: ssh non-github host -> null', normalizeGithubPageUrl('git@gitlab.com:tobi/x.git'), null);
 eq('normalizer: empty -> null', normalizeGithubPageUrl(''), null);
 eq('normalizer: local path -> null', normalizeGithubPageUrl('C:/Users/tobil/foo'), null);
+
+// Phase 5 (audit 2026-08-10): diagnostics leaf + git-maintenance leaf dispatch shapes.
+sent.length = 0;
+await handleBuiltinIntent(ws, 'project.diagnostics.env_check', 'check my env variables', proj, {});
+eq('diagnostics leaf: env_check answers', ws.sent.length === 1 && ws.sent[0].type === 'answer', true);
+
+sent.length = 0;
+await handleBuiltinIntent(ws, 'project.diagnostics.dead_code', 'find dead code', proj, {});
+eq('diagnostics leaf: dead_code answers (no symbol index on fixture)', ws.sent.length === 1 && ws.sent[0].type === 'answer' && /no symbol index/i.test(ws.sent[0].data), true);
+
+sent.length = 0;
+await handleBuiltinIntent(ws, 'git_branch_cleanup', 'clean up merged branches', proj, {});
+eq('git leaf: branch_cleanup on non-git project answers no-repo', ws.sent.length === 1 && ws.sent[0].type === 'answer' && ws.sent[0].data.includes('not a git repository'), true);
 
 sent.length = 0;
 const unknown = await handleBuiltinIntent(ws, 'no_such_intent', 'x', proj, {});

@@ -12,6 +12,7 @@ import { getRandomGreeting } from './utils/greetings';
 import { Home, LayoutDashboard, Search, Settings, Loader2 } from 'lucide-react';
 import { ThemeToggle } from './components/ui/ThemeToggle';
 import { UserProfileModal } from './components/UserProfileModal';
+import { FirstRunSetup } from './components/FirstRunSetup';
 
 function App() {
   const folderInputRef = useRef<HTMLInputElement>(null);
@@ -23,7 +24,12 @@ function App() {
   const [sidebarCollapsed, setSidebarCollapsed] = React.useState(false);
   const [deckOpen, setDeckOpen] = React.useState(false);
   const [profileOpen, setProfileOpen] = React.useState(false);
-  const { profile, updateProfile, getFormattedName } = useUserProfile();
+  const { profile, updateProfile, getFormattedName, loaded: profileLoaded } = useUserProfile();
+  // Gate on `loaded` too, not just `!profile.setupComplete` — the hook's DEFAULT_PROFILE (used
+  // before the /api/profile fetch resolves) also has setupComplete: false, so without this the
+  // wizard would flash open for every returning user for one render before their real,
+  // already-completed profile loads in.
+  const showFirstRunSetup = profileLoaded && !profile.setupComplete;
   // Re-rolls the hero greeting only when the profile itself changes (load or save) —
   // not on every render, and not on every keystroke.
   const heroGreeting = useMemo(() => getRandomGreeting(getFormattedName()), [profile]);
@@ -160,7 +166,13 @@ function App() {
       <main className={`relative z-10 flex-1 min-h-0 overflow-hidden ${showDashboard ? '' : chatFullscreen ? 'block' : 'flex flex-col lg:flex-row gap-6'}`}>
         {showDashboard ? (
           <div className="h-full p-4">
-            <Dashboard onClose={() => setShowDashboard(false)} refreshSignal={dashboardUpdateSignal} />
+            <Dashboard
+              onClose={() => setShowDashboard(false)}
+              refreshSignal={dashboardUpdateSignal}
+              projects={projects}
+              onSelectProject={handleSelectProject}
+              onSendMessage={handleSendMessage}
+            />
           </div>
         ) : (<>
         {!chatFullscreen && (
@@ -286,6 +298,14 @@ function App() {
         profile={profile}
         onClose={() => setProfileOpen(false)}
         onSave={updateProfile}
+      />
+
+      <FirstRunSetup
+        open={showFirstRunSetup}
+        scanPath={scanPath}
+        setScanPath={setScanPath}
+        handleScan={handleScan}
+        onFinish={updateProfile}
       />
     </div>
   );

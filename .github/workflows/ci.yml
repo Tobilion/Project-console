@@ -1,0 +1,48 @@
+name: CI
+
+# Infrastructure expansion (2026-08-10): the check-* harnesses documented in CLAUDE.md
+# ("Matching pipeline" / "Known gotchas" sections) were only ever run manually — this wires them
+# into GitHub Actions so a matcher/handler/indexer/intent regression is caught on every push and
+# pull request instead of relying on remembering to run `npm run check-*` locally. Runs on
+# ubuntu-latest: the check scripts themselves are pure Node logic, not Windows-specific (the
+# Windows-only behavior — taskkill, cmd batch launchers — lives in code paths these harnesses
+# don't exercise).
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      - name: Type check (tsc --noEmit)
+        run: npm run lint
+
+      - name: Intent duplicate scan
+        run: npm run check-intents
+
+      - name: Codebase indexer coverage
+        run: npm run check-indexer
+
+      - name: Matcher coverage
+        run: npm run check-matcher
+
+      - name: Tool-execution coverage
+        run: npm run check-tools
+
+      - name: Builtin-handler coverage
+        run: npm run check-handlers
+
+      - name: WS message-case coverage
+        run: npm run check-ws-cases

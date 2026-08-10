@@ -19,8 +19,16 @@ export async function handleTelemetryCommand(ws, project, lowerInput) {
       }
       const modelInfo = getModelInfo();
       reply += modelInfo.trained
-        ? `\n**Learned confidence model**: active — trained on ${modelInfo.sampleCount} real accept/reject outcomes, last updated ${new Date(modelInfo.trainedAt).toLocaleString()}. Threshold suggestions below now come from this model instead of the fixed heuristic.\n`
-        : `\n**Learned confidence model**: not trained yet — needs ${modelInfo.minRequired}+ real accept/reject outcomes (currently uses the fixed heuristic for suggestions).\n`;
+        ? `\n**Learned confidence model**: active — trained on ${modelInfo.sampleCount} real accept/reject outcomes across all families, most recently updated ${new Date(modelInfo.trainedAt).toLocaleString()}. Threshold suggestions below use each intent's own family model where trained, the fixed heuristic otherwise.\n`
+        : `\n**Learned confidence model**: not trained yet — needs ${modelInfo.minRequired}+ real accept/reject outcomes in at least one intent family (currently uses the fixed heuristic for suggestions).\n`;
+      // Phase 4 (audit 2026-08-10 §2.2): one model per intent family now, not one pooled model —
+      // surface each family's own status so it's clear which ones are actually learned vs. still
+      // on the fixed heuristic, instead of a single trained/not-trained flag hiding the split.
+      if (modelInfo.families) {
+        reply += Object.entries(modelInfo.families)
+          .map(([fam, f]) => `  ${fam}: ${f.trained ? `learned (${f.sampleCount} samples)` : `heuristic (${f.sampleCount}/${modelInfo.minRequired} samples)`}`)
+          .join('\n') + '\n';
+      }
       ws.send(JSON.stringify({ type: 'answer', data: reply }));
     }
     ws.send(JSON.stringify({ type: 'end' }));

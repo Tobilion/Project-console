@@ -2,7 +2,7 @@ import fs from 'fs/promises';
 import path from 'path';
 import { indexProject } from './codebaseIndexer.js';
 import { deriveScriptEntriesForProject, mergeAutoEntries } from './scriptEntries.js';
-import { sanitizeChatReplies, CONTEXT_FILENAMES, readProjectContextDocs, commandEntriesFromDocs, isRecognizableByCodeAlone, buildFallbackConfig } from './projectScanHelpers.js';
+import { sanitizeChatReplies, isContextFilename, readProjectContextDocs, commandEntriesFromDocs, isRecognizableByCodeAlone, buildFallbackConfig } from './projectScanHelpers.js';
 import { scanSingleProject } from './projectScanSingle.js';
 
 /**
@@ -38,7 +38,7 @@ export async function discoverProjects(baseDir) {
     const rootNames = new Set(entries.map((e) => e.name.toLowerCase()));
     const looksLikeSingleProjectRoot =
       rootNames.has('console.config.json') ||
-      CONTEXT_FILENAMES.some((f) => rootNames.has(f)) ||
+      [...rootNames].some(isContextFilename) ||
       rootNames.has('package.json');
     if (looksLikeSingleProjectRoot) {
       const folderName = path.basename(baseDir);
@@ -49,9 +49,17 @@ export async function discoverProjects(baseDir) {
     const projects = [];
 
     for (const entry of entries) {
-      if (entry.isDirectory()) {
-        const projectPath = path.join(baseDir, entry.name);
+      if (!entry.isDirectory()) continue;
+      const projectPath = path.join(baseDir, entry.name);
 
+      // Each project's scan is independently guarded: this used to be unguarded, so a single
+      // throw anywhere in one project's indexing (e.g. the 2026-08-10 prototype-pollution bug in
+      // computeSymbolReferences, or any future per-file parse error) unwound all the way to the
+      // outer try/catch and silently zeroed out the ENTIRE scan directory — a folder full of
+      // real, working projects would report "no projects found" because of one bad file in one
+      // of them, with nothing surfaced in the UI. One bad project should be skipped, not fatal
+      // to everyone else's.
+      try {
         let config = null;
         try {
           const configPath = path.join(projectPath, 'console.config.json');
@@ -106,6 +114,8 @@ export async function discoverProjects(baseDir) {
             codebaseIndex
           });
         }
+      } catch (err) {
+        console.error(`Skipping project "${entry.name}" — failed to scan it:`, err.message);
       }
     }
 

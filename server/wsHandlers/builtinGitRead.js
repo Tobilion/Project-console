@@ -48,4 +48,27 @@ export const gitReadHandlers = {
     executeCommand('git status -sb', project.path, ws, project.id);
     return true;
   },
+
+  git_stash_summary: async (ws, action, input, project, sessionContext) => {
+    // Phase 5 (audit 2026-08-10, §4 row 2): distinct from git_stash_list (plain `stash list`) —
+    // this shows the file/insertion/deletion stat summary of the most recent stash so the user
+    // can see roughly what's in it without popping it. Read-only, immediate.
+    if (!(await isGitRepo(project.path))) {
+      ws.send(JSON.stringify({ type: 'answer', data: `**[${project.name}]** isn't a git repository yet.` }));
+    } else {
+      executeCommand('git stash show --stat', project.path, ws, project.id);
+      return true;
+    }
+  },
+
+  git_diff_summary: async (ws, action, input, project, sessionContext) => {
+    // Phase 5 (audit 2026-08-10, §4 row 3): distinct from git_diff (full patch text) — the
+    // `--stat` shape: file list + insertion/deletion counts, for a quick "what changed" glance.
+    if (!(await isGitRepo(project.path))) {
+      ws.send(JSON.stringify({ type: 'answer', data: `**[${project.name}]** isn't a git repository yet.` }));
+    } else {
+      executeCommand('git diff --stat', project.path, ws, project.id);
+      return true;
+    }
+  },
 };

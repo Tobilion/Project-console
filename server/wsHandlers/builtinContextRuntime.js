@@ -2,6 +2,7 @@ import { runningProcesses } from '../executor.js';
 import { state, withPortCollisionWarning } from '../state.js';
 import { probeUrl, scanProjectServers, candidateDevUrls } from '../livenessProbe.js';
 import { recordDevUrl } from '../devUrlStore.js';
+import { searchAllProjectMemory } from '../crossProjectMemory.js';
 
 /**
  * Live-runtime handlers (Phase 14 split of builtinProjectContext.js, 2026-08-05 — bodies moved
@@ -93,6 +94,26 @@ export const contextRuntimeHandlers = {
       ).join('\n');
       ws.send(JSON.stringify({ type: 'answer', data: `### Running processes\n\n${lines}` }));
     }
+  },
+
+  async 'system.knowledge.cross_project_search'(ws, _action, input, _project) {
+    // Infrastructure expansion (2026-08-10): searches every scanned project's memory.md at once
+    // — global, not scoped to the active project, same treatment as running_processes above.
+    // Uses the raw input as the embedding query rather than trying to strip the "which project
+    // did I ... in" wrapper — cosine similarity against a short saved fact tolerates the extra
+    // wrapper words reasonably well, and a real parser for every phrasing variant isn't worth it
+    // for a heuristic search feature.
+    const results = await searchAllProjectMemory(state.activeProjectsCache, input);
+    if (results === null) {
+      ws.send(JSON.stringify({ type: 'answer', data: `Cross-project search isn't ready yet — the embedding model is still loading. Try again in a moment.` }));
+      return;
+    }
+    if (results.length === 0) {
+      ws.send(JSON.stringify({ type: 'answer', data: `No saved memory across any project matches that. This only searches what's been explicitly remembered (via AI mode's saveMemory) — it doesn't search file contents.` }));
+      return;
+    }
+    const lines = results.map((r) => `- **[${r.projectName}]** ${r.line} *(${Math.round(r.score * 100)}% match)*`).join('\n');
+    ws.send(JSON.stringify({ type: 'answer', data: `### Cross-project memory search\n\n${lines}\n\nOnly searches remembered facts, not file contents — say "switch to [project]" to jump into one of these.` }));
   },
 
   async 'project.context.session_info'(ws) {

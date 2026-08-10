@@ -44,8 +44,13 @@ export async function matchInput(input, project, projectIndex, options = {}) {
     const items = [];
     const telemetryIds = [];
     for (const r of multiResult) {
-      // Capture telemetry for each sub-intent
-      const subTelemetry = semanticMatcher.getAndClearLastTelemetry();
+      // Telemetry for each sub-intent is captured by matchMultiParts() (matcherMulti.js) at the
+      // moment each part is matched and carried on the result as `r.telemetry` — NOT re-read
+      // here via getAndClearLastTelemetry(). That singleton field gets overwritten by every
+      // subsequent part's match() call, so polling it in this loop (the old approach) only ever
+      // returned the last part's telemetry once and null for every other part (audit
+      // 2026-08-10 — silently lost training data for every compound command).
+      const subTelemetry = r.telemetry;
       if (subTelemetry) {
         const tid = captureTelemetry(project?.id, r.originalPhrase || input, subTelemetry);
         if (tid) telemetryIds.push(tid);

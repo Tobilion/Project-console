@@ -3,6 +3,7 @@ import { gitRemoteHandlers } from './builtinGitRemote.js';
 import { gitRepoSetupHandlers } from './builtinGitRepoSetup.js';
 import { gitReadHandlers } from './builtinGitRead.js';
 import { gitWorktreeHandlers } from './builtinGitWorktree.js';
+import { gitMaintenanceHandlers } from './builtinGitMaintenance.js';
 
 /**
  * Git intent handlers (Phase 10 step 2, extracted verbatim from builtinIntents.js; Phase 14
@@ -16,4 +17,5 @@ export const gitHandlers = {
   ...gitRepoSetupHandlers,
   ...gitReadHandlers,
   ...gitWorktreeHandlers,
+  ...gitMaintenanceHandlers,
 };

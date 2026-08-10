@@ -85,6 +85,11 @@ export const BUILTIN_INTENTS = new Set([
   'project.action.open_in_terminal', 'project.action.open_github_page',
   'project.action.open_in_cursor', 'project.action.open_file',
   'system.monitoring.metrics', 'system.chit_chat.port',
+  // Phase 5 intent taxonomy expansion (audit report 2026-08-10): 4 git-family + 5 diagnostics.
+  'git_branch_cleanup', 'git_stash_summary', 'git_diff_summary', 'git_pr_ready_check',
+  'project.diagnostics.dead_code', 'project.diagnostics.circular_imports',
+  'project.diagnostics.type_check', 'project.diagnostics.env_check',
+  'project.diagnostics.log_errors', 'system.knowledge.cross_project_search',
 ]);
 
 // Exported via matcher.js so localRouter.js's allowed-intent list is always drawn from exactly

@@ -119,6 +119,11 @@ function onConnection(ws) {
     conversationHistory: [],
     // Set by aiQuery.js while an AI query is in flight; read by the 'cancel' handler above.
     aiAbortController: null,
+    // Set synchronously by handleExecute (connectionExecute.js) for the full duration of one
+    // 'execute' message's processing — closes the TOCTOU window where a second 'execute' could
+    // slip past the aiAbortController guard before handleAIQuery has actually assigned it (see
+    // connectionExecute.js's handleExecute for the full trigger trace).
+    executeInFlight: false,
     // Phase 5 (PASS 5.1): session-scoped tool grants — grantKey set for (project, tool) pairs
     // the user has already approved for this conversation. Filled by the 'approve_task' WS
     // message ("Approve this task") and by allow-after-first-ask policy approvals. Consulted by

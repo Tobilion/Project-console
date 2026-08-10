@@ -5,17 +5,28 @@ export interface UserProfile {
   name: string;
   title: string;
   customRole: string;
+  // True once the first-run setup wizard (FirstRunSetup.tsx) has been completed or skipped —
+  // distinct from `name` being empty, since a user can skip setup and keep no name set without
+  // the wizard reappearing on every reload.
+  setupComplete: boolean;
 }
 
+// Neutral defaults, not a hardcoded person's name/title — matches server/routes/profileRoutes.js's
+// DEFAULT_PROFILE (audit 2026-08-10, raised while generalizing the package for npm/public
+// distribution: a fresh install used to hardcode the original author's own name into the hero
+// greeting for every stranger's first paint, before the async profile fetch even resolved). An
+// empty name string flows through getRandomGreeting()'s existing `name || 'there'` fallback
+// (src/utils/greetings.ts) with no further changes needed.
 const DEFAULT_PROFILE: UserProfile = {
-  name: 'Tobi',
-  title: 'Master',
-  customRole: 'Software Engineer',
+  name: '',
+  title: '',
+  customRole: '',
+  setupComplete: false,
 };
 
 /** Client state for the user profile persisted to the server (GET/POST /api/profile).
- *  Starts from the same defaults the server uses, so first paint matches today's
- *  hardcoded hero greeting exactly; the profile loads asynchronously right after. */
+ *  Starts from the same neutral defaults the server uses; the real profile (if the user has
+ *  set one) loads asynchronously right after and replaces this. */
 export function useUserProfile() {
   const [profile, setProfile] = useState<UserProfile>(DEFAULT_PROFILE);
   const [loaded, setLoaded] = useState(false);

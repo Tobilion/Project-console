@@ -7,10 +7,23 @@ import path from 'path';
 // from both in server/index.js).
 const PROFILE_FILE = path.resolve('data/user-profile.json');
 
+// Neutral defaults for a fresh install — `data/user-profile.json` isn't published with the npm
+// package (see package.json's "files" list) and is only ever created once a user sets their own
+// profile via the UI, but until they do, every brand-new install used to greet every stranger as
+// "Tobi" (the original author) — clearly wrong for a tool meant for public distribution (audit
+// 2026-08-10, raised while generalizing for npm). An empty string (not a hardcoded name) lets
+// every caller's existing "name || 'there'"-style fallback (see src/utils/greetings.ts,
+// cli-client.js's renderMascot) do the right thing with zero further changes, and matches the
+// frontend's `UserProfile.name: string` type so client/server defaults stay in sync.
 const DEFAULT_PROFILE = {
-  name: 'Tobi',
-  title: 'Master',
-  customRole: 'Software Engineer',
+  name: '',
+  title: '',
+  customRole: '',
+  // Drives the first-run setup wizard (src/components/FirstRunSetup.tsx): false until the user
+  // completes (or explicitly skips) it once, then stays true forever so it never nags again.
+  // Distinct from `name` being empty — a user can skip setup and keep no name set, and that
+  // must not re-trigger the wizard on every reload.
+  setupComplete: false,
 };
 
 // Only plain, trimmed strings up to a sane length — mirrors the conservative
@@ -22,6 +35,10 @@ function sanitizeField(value, fallback) {
   return cleaned;
 }
 
+function sanitizeBool(value, fallback) {
+  return typeof value === 'boolean' ? value : fallback;
+}
+
 function readProfile() {
   try {
     const raw = fs.readFileSync(PROFILE_FILE, 'utf-8');
@@ -31,6 +48,7 @@ function readProfile() {
       name: sanitizeField(p.name, DEFAULT_PROFILE.name),
       title: sanitizeField(p.title, DEFAULT_PROFILE.title),
       customRole: sanitizeField(p.customRole, DEFAULT_PROFILE.customRole),
+      setupComplete: sanitizeBool(p.setupComplete, DEFAULT_PROFILE.setupComplete),
     };
   } catch {
     // Missing or corrupt file — serve defaults without touching disk.
@@ -50,6 +68,7 @@ export function registerProfileRoutes(app) {
       name: sanitizeField(body.name, current.name),
       title: sanitizeField(body.title, current.title),
       customRole: sanitizeField(body.customRole, current.customRole),
+      setupComplete: sanitizeBool(body.setupComplete, current.setupComplete),
     };
     try {
       fs.mkdirSync(path.dirname(PROFILE_FILE), { recursive: true });

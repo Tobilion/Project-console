@@ -10,6 +10,7 @@ import { PROJECT_CONTEXT_INTENTS } from './intents/projectContextIntents.js';
 import { GIT_INTENTS } from './intents/gitIntents.js';
 import { NPM_AND_FILE_INTENTS } from './intents/npmAndFileIntents.js';
 import { MISC_INTENTS } from './intents/miscIntents.js';
+import { DIAGNOSTICS_INTENTS } from './intents/diagnosticsIntents.js';
 
 export const INTENTS = {
   ...CHIT_CHAT_INTENTS,
@@ -18,4 +19,5 @@ export const INTENTS = {
   ...GIT_INTENTS,
   ...NPM_AND_FILE_INTENTS,
   ...MISC_INTENTS,
+  ...DIAGNOSTICS_INTENTS,
 };

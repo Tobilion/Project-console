@@ -283,4 +283,49 @@ export const GIT_INTENTS = {
       'show remote info', 'what is the git remote', 'remote repository info',
     ],
   },
+  // Phase 5 intent taxonomy expansion (audit report 2026-08-10, §4 row 1): distinct from
+  // git_branch (list) and git_branch_create — this one finds branches already merged into the
+  // current branch and offers to delete them, confirm-gated like every other mutating git intent.
+  'git_branch_cleanup': {
+    examples: [
+      'clean up merged branches', 'delete merged branches', 'clean up my branches',
+      'remove merged branches', 'delete branches that are merged', 'prune merged branches',
+      'clean up old branches', 'delete stale branches', 'remove old branches',
+      'tidy up my branches', 'get rid of merged branches', 'clean up branches',
+      'delete branches already merged', 'remove branches that have been merged',
+      'clean up finished branches', 'purge merged branches',
+    ],
+  },
+  // Row 2: distinct from git_stash_list (plain `git stash list`) — this adds a stat summary of
+  // the most recent stash so you can see roughly what's in it without popping it.
+  'git_stash_summary': {
+    examples: [
+      "what's in my stash", 'summarize my stashes', 'summarize my stash',
+      'give me a summary of my stashes', "what's in the stash", 'describe my stash',
+      'stash summary', 'summarize what i stashed', 'tell me about my stash',
+      "what's stashed and what does it change", 'stash overview',
+      'give me an overview of my stashes', 'recap my stashes',
+    ],
+  },
+  // Row 3: distinct from git_diff (raw `git diff`) — this is the `--stat` shape: file list +
+  // insertion/deletion counts, for a quick "what changed" glance instead of the full patch text.
+  'git_diff_summary': {
+    examples: [
+      'summarize my changes', 'what did i change', 'summarize my uncommitted changes',
+      'give me a diff summary', 'which files changed', 'summarize the diff',
+      'how many files did i change', 'quick summary of my changes',
+      'what did i change today', 'recap my changes', 'diff stat',
+      'show a summary of changes', 'how much did i change',
+    ],
+  },
+  // Row 20: composite readiness check — clean tree + ahead/behind — before opening a PR.
+  'git_pr_ready_check': {
+    examples: [
+      'am i ready to open a pr', 'is this branch ready for a pr', 'is my branch clean',
+      'ready to open a pull request', 'can i open a pr yet', 'pr readiness check',
+      'is this ready to merge', 'check if im ready for a pull request',
+      'am i ready to merge', 'is my branch ready', 'pre-pr check',
+      'is everything committed and pushed', 'ready for review',
+    ],
+  },
 };
