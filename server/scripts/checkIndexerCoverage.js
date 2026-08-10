@@ -21,6 +21,8 @@
  *    frameworks (npm/pip/Spring Boot), entry-point picking, monorepo grouping.
  *  - INDEX: indexProject() on small fixture trees (git + Express app, truncation, monorepo)
  *    incl. repo-map reverse imports and the formatRepoMap/formatApiRoutes renderers.
+ *  - SYMBOLS & GRAPH: extractSymbols AST/fallback records + codebaseGraph (symbol index,
+ *    used-by edges, target-file resolution, targeted slice, symbolGraph renderer).
  *  - SCANS: findTodos/findBiggestFiles/findRecentActivity/hasGitRepo on fixture dirs incl.
  *    IGNORE_DIRS behavior (node_modules/.git/.hidden skipped).
  */
@@ -38,6 +40,7 @@ const parsers = await import(pathToFileURL(base + 'codebaseParsers.js').href);
 const detection = await import(pathToFileURL(base + 'codebaseDetection.js').href);
 const indexer = await import(pathToFileURL(base + 'codebaseIndexer.js').href);
 const scans = await import(pathToFileURL(base + 'codebaseScans.js').href);
+const graph = await import(pathToFileURL(base + 'codebaseGraph.js').href);
 
 let total = 0, failed = 0;
 function eq(label, got, expect) {
@@ -192,6 +195,26 @@ try {
   eq('truncated package.json fails framework parse -> []', truncIdx.frameworks, []);
   eq('monorepo isMonorepo true', monoIdx.isMonorepo, true);
   eq('monorepo subPackages', monoIdx.subPackages.length, 2);
+
+  console.log('\n=== SYMBOLS & GRAPH (extractSymbols + codebaseGraph) ===');
+  eq('symbols AST records', await parsers.extractSymbols('export const foo = 1;\nexport function bar() {}\nclass Baz {}', '.js'), [
+    { name: 'foo', kind: 'const', exported: true, line: 1, heritage: [] },
+    { name: 'bar', kind: 'function', exported: true, line: 2, heritage: [] },
+    { name: 'Baz', kind: 'class', exported: false, line: 3, heritage: [] }]);
+  eq('symbols py regex fallback', await parsers.extractSymbols('def run():\n    pass', '.py'),
+    [{ name: 'run', kind: null, exported: null, line: 0, heritage: [] }]);
+  eq('symbolIndex files', Object.keys(appIdx.symbolIndex.files).sort(), ['src/lib/util.js', 'src/server.js']);
+  eq('symbolIndex usedBy greet', appIdx.symbolIndex.usedBy['src/lib/util.js'].greet, ['src/server.js']);
+  eq('resolve exact path', norm(graph.resolveTargetFile(appIdx, 'src/server.js')), 'src/server.js');
+  eq('resolve basename', norm(graph.resolveTargetFile(appIdx, 'util.js')), 'src/lib/util.js');
+  eq('resolve path substring', norm(graph.resolveTargetFile(appIdx, 'lib/util')), 'src/lib/util.js');
+  eq('resolve embedded in sentence', norm(graph.resolveTargetFile(appIdx, 'how does src/server.js start?')), 'src/server.js');
+  eq('resolve short generic -> null', graph.resolveTargetFile(appIdx, 'app'), null);
+  eq('resolve symbol name -> null', graph.resolveTargetFile(appIdx, 'start'), null);
+  eq('slice has start + imports', graph.renderTargetedSlice(appIdx, 'src/server.js').includes('function start @3'), true);
+  eq('slice has usedBy', graph.renderTargetedSlice(appIdx, 'src/lib/util.js').includes('greet: src/server.js'), true);
+  eq('symbolGraph render', graph.formatSymbolGraph(appIdx).includes('function greet'), true);
+  eq('symbolGraph empty idx', graph.formatSymbolGraph({}), '(no symbols indexed)');
 
   console.log('\n=== SCANS (on-demand IO scans on fixtures) ===');
   const todos = await scans.findTodos(fixtures.app);

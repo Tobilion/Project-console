@@ -83,9 +83,9 @@ export function analyzeAIExchange(project, { input, finalText, toolHistory }) {
       if (scriptName) {
         ids.push(logRecord(project.id, {
           type: 'command_entry',
-          trigger: `run ${scriptName}`,
+          trigger: inferTriggerFromInput(input, scriptName),
           action: cmd,
-          description: `AI ran \`${cmd}\` — suggest trigger-mode entry`,
+          description: `AI ran \`${cmd}\` in response to: ${input || '(no user question)'}. Suggest trigger-mode entry.`,
           confidence: scriptName === 'custom' ? 'low' : 'medium',
           occurrences: 1,
           status: 'pending',
@@ -145,6 +145,49 @@ function inferScriptName(command) {
   if (/^npx\s/.test(command)) return 'custom';
 
   return null;
+}
+
+// Groups known script names into intent families so an input phrased as "start the server"
+// pairs with `npm run start` (scriptName 'start') just like `npm run dev` (scriptName 'dev').
+const INTENT_TO_SCRIPTS = { dev: ['dev', 'start'], build: ['build'], lint: ['lint', 'format'], test: ['test'], preview: ['preview'] };
+
+function intentFromScript(scriptName) {
+  for (const [intent, names] of Object.entries(INTENT_TO_SCRIPTS)) {
+    if (names.includes(scriptName)) return intent;
+  }
+  return null;
+}
+
+// Derives the intent family from the user's actual phrasing — so a trigger surfaced to the
+// user reads like what they asked ("run the tests") instead of a hardcoded template. Falls
+// back to null when the input doesn't clearly map to one of the known run intents.
+function intentFromInput(input) {
+  const q = (input || '').trim().toLowerCase();
+  if (!q) return null;
+  if (/start the dev server|launch the dev server|run the dev server/.test(q)) return 'dev';
+  if (/\b(dev\b|dev server|server|app\b)/.test(q) && /\b(start|run|launch|open)\b/.test(q)) return 'dev';
+  if (/\btest(s|ing)?\b/.test(q)) return 'test';
+  if (/\blint\b|\bformat\b/.test(q)) return 'lint';
+  if (/\bbuild\b/.test(q)) return 'build';
+  if (/\bpreview\b|\bopen (in|the)?\b/.test(q)) return 'preview';
+  return null;
+}
+
+const NATURAL_TRIGGERS = { dev: 'start the dev server', build: 'build the project', lint: 'run the linter', test: 'run the tests', preview: 'open in the browser' };
+
+/**
+ * Pairs the user's input phrasing with the command the AI actually ran: when the input intent
+ * matches the discovered script's intent, emit a natural trigger phrase sourced from how the
+ * user asked ("run the tests") rather than the hardcoded `run <scriptName>`. Otherwise falls
+ * back to `run <scriptName>`, preserving the existing behavior for ambiguous/unknown inputs.
+ * Pure — no side effects.
+ */
+export function inferTriggerFromInput(input, scriptName) {
+  const scriptIntent = intentFromScript(scriptName);
+  if (scriptIntent && intentFromInput(input) === scriptIntent) {
+    return NATURAL_TRIGGERS[scriptIntent];
+  }
+  return `run ${scriptName || 'script'}`;
 }
 
 /**

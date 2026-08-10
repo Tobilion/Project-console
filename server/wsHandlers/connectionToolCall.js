@@ -6,6 +6,8 @@ import { createProjectTools, isCommandAllowed, resolveToolGate } from '../tools.
 import { isCommandBlocked } from '../dangerousPatterns.js';
 import { executeCommand } from '../executor.js';
 import { computeFileEditPreview } from '../diffPreview.js';
+import { validateToolCall, FILE_MUTATING_TOOLS } from '../aiGuardrails.js';
+import { scheduleVerification } from '../verifyHarness.js';
 
 /** Direct tool invocation from the frontend (not via AI chat). Scoped to the client's active project. */
 export async function handleToolCall(ws, parsed, sessionContext) {
@@ -79,6 +81,11 @@ export async function handleToolCall(ws, parsed, sessionContext) {
     ws.send(JSON.stringify({ type: 'tool_start', data: `${prefix}Running ${tool}...` }));
   }
 
+  // Phase 1, Part 1.2 (aiGuardrails): snapshot the pre-edit state for file mutations that would
+  // break syntax — never blocks; the warning rides on the result the frontend shows.
+  let guard = null;
+  try { guard = await validateToolCall(tool, args, project.path); } catch {}
+
   let result;
   try {
     result = await tools[tool](args || {});
@@ -90,5 +97,12 @@ export async function handleToolCall(ws, parsed, sessionContext) {
   }
   metrics.observe('tool_call.duration', Date.now() - tStart);
   metrics.event({ type: 'tool_call_complete', tool, duration: Date.now() - tStart, success: result?.success !== false });
+  if (result?.success && guard?.warning) {
+    result.warning = guard.warning;
+  }
+  // Phase 1, Part 1.4: background type-check on successful file writes (never blocks).
+  if (result?.success && FILE_MUTATING_TOOLS.has(tool)) {
+    void scheduleVerification(project.path);
+  }
   ws.send(JSON.stringify({ type: 'tool_result', data: result }));
 }

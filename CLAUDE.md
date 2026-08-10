@@ -110,8 +110,24 @@ npm run lint    # tsc --noEmit
   `GATED_TOOLS`, `ALWAYS_CONFIRM_TOOLS` (runTests, stopProcess), `CUSTOM_RISKY_TOOLS`,
   `getToolPermission`, `toolGrantKey`, `resolveToolGate`), `toolProcess.js` (+
   `findTestCommand` — shared with the trigger-mode `run_tests` handler), `toolSandbox.js`,
-  `toolFileOps.js`, `toolFileEdit.js`, `toolFileSearch.js`, `toolProjectInfo.js`
-- `server/dangerousPatterns.js` — hard blocklist (last resort, not a security boundary)
+   `toolFileOps.js`, `toolFileEdit.js`, `toolFileSearch.js`, `toolProjectInfo.js`
+   (`undoLastChange` takes an optional `{path}` — if given, restores that file's pre-edit
+   content from the aiGuardrails journal, which works even in projects with no git repo;
+   without a path, falls through to the git-checkpoint undo).
+ - `server/aiGuardrails.js` — Phase 1, Part 1.2 write-path guards: `syntaxCheck` (parse-level
+   diagnostics via the lazy `typescript` module for JS/TS-family files — parse diagnostics only,
+   never semantic, and null when TS is unavailable); `validateToolCall` (pre-execution guard in
+   `runToolCall`/`connectionToolCall` — simulates the edit, syntax-checks the result, journals the
+   pre-edit content on failure and returns a warning that rides on the tool result, never blocks);
+   a capped journal (`recordPreImage` first-write-wins) with `restorePreImage` consumed by
+    `undoLastChange({path})`. Both file-mutating tool paths (AI `runToolCall` and the direct
+    frontend `handleToolCall`) call `scheduleVerification` (verifyHarness.js) after a successful
+    file write/edit/insert/append.
+ - `server/verifyHarness.js` — Phase 1, Part 1.4 background type-check: debounced
+   (`DEBOUNCE_MS` 2s), single-flight, non-blocking `npx tsc --noEmit` against any project that
+   has a `tsconfig.json` (skipped silently for non-TS projects), 60s cap, result logged to
+   server stdout. Never blocks the tool loop or the next model turn.
+ - `server/dangerousPatterns.js` — hard blocklist (last resort, not a security boundary)
 - `server/confidenceModel.js` — logistic regression on real accept/reject telemetry
   (logisticRegression.js + modelStore.js); `server/intentTelemetry.js` (+ telemetryFile/
   telemetryThresholds/telemetryStats) — per-intent confidence floors, `suggestThresholds()`,
@@ -124,7 +140,12 @@ npm run lint    # tsc --noEmit
   `codebaseDetection.js` (detectLanguages — skips unmapped extensions, no fabricated entries;
   detectFrameworks; findEntryPoints across the whole tree; detectSubPackages for monorepos),
   `codebaseScans.js` (findTodos/findBiggestFiles/findRecentActivity — on-demand, capped,
-  NOT cached in the index)
+  NOT cached in the index), `codebaseGraph.js` (Phase 1, Part 1.1: AST symbol records via
+  `extractSymbols` in codebaseParsers.js feed a per-file symbol index + used-by reference
+  edges — import-resolved, name-scan heuristic; `resolveTargetFile`/`renderTargetedSlice`/
+  `formatSymbolGraph`; indexProject attaches `symbolIndex`; when a query names a file,
+  `formatIndex(idx, targetSlice)` swaps the whole-project repo map for that file's focused
+  slice in the AI system prompt; getProjectInfo carries an additive `symbolGraph` key)
 - `server/projectScanner.js` + `projectScanHelpers.js`/`projectScanSingle.js`/
   `projectScanContainer.js` — discovery: console.config.json / CONTEXT_FILENAMES
   (CLAUDE.md, README.md, ABOUT-TOBI.md, UNIVERSAL_CONTEXT.md — CLAUDE.md always first) /
@@ -160,8 +181,16 @@ npm run lint    # tsc --noEmit
   (`runningProcesses` is MULTI-SLOT per project — `Map<projectId, Map<pid, entry>>` since the
   2026-08-10 NetPulse serve+watch fix, so several commands can run concurrently and each owns
   its own slot; `processLogs` LineRingBuffer 2000-line cap is per-project shared; `stopTrackedProcess`
-  — the single kill+cleanup path: SIGTERM on EVERY tracked process for the project + map/log/URL
-  cleanup + `dashboard_update` + `processes_update` broadcasts; `removeTrackedProcess` deletes one
+  — the single kill+cleanup path used by every caller ("stop server", dock stop, AI stopProcess):
+  on Windows a SYNCHRONOUS `taskkill /f /t /pid <wrapper>` (an async spawn raced the SIGTERM, the
+  wrapper died first and taskkill reported exit 128 "no running instance" while python.exe survived
+  as an orphan serving on :5000 — confirmed live 2026-08-10), then map/log/URL
+  cleanup + `dashboard_update` + `processes_update` broadcasts + post-stop verification
+  (2026-08-10, user-requested: never leave the user believing the site is down while a process
+  survived) — child-pid liveness, a Windows command-line survivor scan (whitespace-normalized
+  `Get-CimInstance Win32_Process` match), and a 1.5s dev-URL probe; survivors surface as a
+  "Heads-up" warning appended to the answer, verification never re-kills (a same-command process
+  may be the user's own manual instance); `removeTrackedProcess` deletes one
   pid and cleans the project key when its slot empties; `process.on('exit'/'SIGTERM')` cleanup),
   `executorDevServer.js` (`isDevServerCommand`, `buildDetachMessage`). Tuning knobs are
   exported named constants (`DEV_URL_DETACH_GRACE_MS`, `DEV_SERVER_FORCE_DETACH_MS`,
@@ -192,8 +221,13 @@ npm run lint    # tsc --noEmit
   `applySuggestions()` also calls `nlpEngine.addLearnedPhrase()` (fire-and-forget) and
   persists via `learnedIntents.js` (`data/learned-intents.json`, merged into INTENTS before
   `semanticMatcher.initialize()`)
-- `server/distillation.js` — AI-exchange analysis → config suggestions (no `file_pattern`
-  type anymore; pending records pruned after 30 days)
+ - `server/distillation.js` — AI-exchange analysis → config suggestions (no `file_pattern`
+   type anymore; pending records pruned after 30 days). Analyzes a completed exchange
+   (`analyzeAIExchange`, called from aiQuery.js) and pairs the user's input phrasing to the
+   command the AI ran: `inferTriggerFromInput` emits a natural trigger ("run the tests",
+   "start the dev server") when the input intent matches the discovered script, falling back
+   to `run <scriptName>`. Suggestions stay approve-gated — `applyDistillation` requires the
+   user to select them via the `review distillations` admin command (never auto-applied).
 - `server/projectMemory.js` + `projectMemoryStore.js`/`memoryThresholdChecks.js` — usage
   patterns (commands/files/questions) with `adaptiveThreshold()` scaling (3/20/10 base,
   scaled down <15 events, up >150)
@@ -208,7 +242,12 @@ npm run lint    # tsc --noEmit
   model 404s rather than blaming auth), telemetry footer appended by chatStream (stripped by
   the frontend's `splitTelemetry()` and rendered as a muted footer)
 - `server/ollamaContext.js` — AI system-prompt builder (+ `toolDefs.js` 20 BUILTIN_TOOL_DEFS,
-  `aiModePrompts.js` mode instructions, `promptRenderers.js` 6000-char caps)
+  `aiModePrompts.js` mode instructions, `promptRenderers.js` 6000-char caps). Static prefix is
+  built once per turn with `options.targetSlice` (Phase 1, Part 1.1 — see codebaseGraph.js);
+  the dynamic session-history suffix is pruned per turn by `contextPruner.js` (Phase 1,
+  Part 1.3: keeps the system + last 3 turns verbatim, compresses the middle, hard tail-drop).
+  `memoryStore.js`'s cross-session memory is deduped by `memoryDedupe.js` (cosine ≥ 0.92 vs
+  the newest saved lines — shares semanticMatcher's extractor, null-safe).
 - `server/configInitializer.js` — `initConfig()` for `npx local-project-console init`
 - `server/cli-client.js` — CLI chat (clack prompt picker, discovery with spinner, banner)
 - `server/commandGuesser.js` (+ `guessData.js`) — post-matching regex fallback,
@@ -478,7 +517,10 @@ CONTROL/PHASE1-3/BASICS/MATCHDAY/TRAPS/MUST_NOT_STEAL/GARBAGE (+ open-family row
   sibling processes of the same project keep their slots).
   `processes_update`/`dashboard_update` broadcast on every process start/URL/close/error.
 - **Cancellation**: `cancel` routes through `stopTrackedProcess()` (SIGTERM + map/log/URL
-  cleanup + broadcasts) — never a raw `child.kill()` with no cleanup. The AI query's
+  cleanup + broadcasts) — never a raw `child.kill()` with no cleanup. On Windows the kill is a
+  SYNCHRONOUS `taskkill /f /t /pid <wrapper>` (async spawns race the SIGTERM and report exit 128
+  "no running instance" while the real process survives as an orphan — confirmed live
+  2026-08-10) and no SIGTERM is sent at all (taskkill kills the wrapper too). The AI query's
   AbortController lives on `sessionContext.aiAbortController`; the router tier's bounded call
   needs no cancel path.
 - **Upgrade sockets need error listeners** (bit twice — a WS client that connected to a
@@ -495,7 +537,10 @@ CONTROL/PHASE1-3/BASICS/MATCHDAY/TRAPS/MUST_NOT_STEAL/GARBAGE (+ open-family row
   (`PORT_PROMPT_RE`), the detach timer cancels, and approve/reject writes `Y\n`/`n\n` to the
   child's stdin (`pending.stdinWrite`). EADDRINUSE exits offer a one-click retry on the next
   port. `isCommandAllowed` strips one leading env-var-assignment prefix (`PORT=3001 ...` /
-  `set PORT=3001&& ...`) before checking the executable.
+  `set PORT=3001&& ...`) before checking the executable. Note: on Windows, werkzeug/Flask binds
+  with SO_REUSEADDR, so a second `main.py serve` while the port is occupied does NOT hit
+  EADDRINUSE — it binds anyway and runs alongside (confirmed live 2026-08-10). Never rely on
+  EADDRINUSE to protect against double-serve.
 - **LF/CRLF flood**: git's per-file warning collapse into one summary line; output bursts
   coalesce via `createBufferedSender` (150ms). Purely-informational stderr batches reroute
   to the `warning` WS channel (amber notice) — mixed batches with real errors stay
@@ -515,7 +560,7 @@ CONTROL/PHASE1-3/BASICS/MATCHDAY/TRAPS/MUST_NOT_STEAL/GARBAGE (+ open-family row
   a live machine as a regression.
 - **Telemetry/harness baselines**: check-intents 1/5/80 (+1 documented near-dup after the
   open-file override); check-matcher 83/83; check-handlers 26/26; check-tools 92/92;
-  check-indexer 71/71; check-ws-cases 83/83 (baseline +4 rows for the Phase 3 aiQueryInFlight
+  check-indexer 85/85 (+14 SYMBOLS & GRAPH rows for the Phase 1.1 codebase-graph work); check-ws-cases 83/83 (baseline +4 rows for the Phase 3 aiQueryInFlight
   lifecycle fix). Run the relevant battery after ANY edit to the corresponding module.
 - **editFile** tolerates whitespace differences (normalized line-range fallback) but not
   wrong wording; on total failure the error names both attempts and tells the caller to

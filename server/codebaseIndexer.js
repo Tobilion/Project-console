@@ -16,9 +16,10 @@ import path from 'path';
 import { KEY_FILES, CODE_EXTS, MAX_REPO_MAP_FILES, MAX_FILE_READ_BYTES,
   MAX_TOTAL_ROUTES, MAX_IMPORTS_PER_FILE, MAX_REPO_MAP_TOTAL_CHARS,
   MAX_ENTRY_SNIPPETS, ENTRY_SNIPPET_CHARS } from './codebaseData.js';
-import { extractSignatures, extractImports, extractRoutes, buildReverseImportIndex, pathParts } from './codebaseParsers.js';
+import { extractSignatures, extractImports, extractRoutes, extractSymbols, buildReverseImportIndex, pathParts } from './codebaseParsers.js';
 import { detectLanguages, hasRealCodeFiles, detectFrameworks, findEntryPoints, detectSubPackages } from './codebaseDetection.js';
 import { readProjectTree, hasGitRepo } from './codebaseScans.js';
+import { computeSymbolReferences } from './codebaseGraph.js';
 
 // Cache key file reads with mtime invalidation — avoids re-reading package.json and other
 // config files on every indexProject call when nothing has changed on disk.
@@ -77,29 +78,34 @@ async function buildRepoMap(projectPath, tree) {
 
   const entries = [];
   const allRoutes = [];
+  const contents = new Map();
   for (const f of selected) {
     const fullPath = path.join(projectPath, f.path);
     const ext = path.extname(f.path).toLowerCase();
     try {
       const stat = fsSync.statSync(fullPath);
       const cached = repoMapFileCache.get(fullPath);
-      let signatures, imports, routes;
+      let signatures, imports, routes, symbols, content;
       if (cached && cached.mtime >= stat.mtimeMs) {
         signatures = cached.signatures;
         imports = cached.imports || [];
         routes = cached.routes || [];
+        symbols = cached.symbols || [];
+        content = cached.content;
       } else {
         const raw = await fs.readFile(fullPath, 'utf-8');
-        const content = raw.length > MAX_FILE_READ_BYTES ? raw.slice(0, MAX_FILE_READ_BYTES) : raw;
+        content = raw.length > MAX_FILE_READ_BYTES ? raw.slice(0, MAX_FILE_READ_BYTES) : raw;
         signatures = await extractSignatures(content, ext);
         imports = extractImports(content, ext);
         routes = extractRoutes(content, ext, f.path);
-        repoMapFileCache.set(fullPath, { mtime: stat.mtimeMs, signatures, imports, routes });
+        symbols = await extractSymbols(content, ext);
+        repoMapFileCache.set(fullPath, { mtime: stat.mtimeMs, signatures, imports, routes, symbols, content });
       }
       if (routes.length && allRoutes.length < MAX_TOTAL_ROUTES) {
         routes.forEach((r) => allRoutes.push({ ...r, file: f.path }));
       }
-      if (signatures.length || imports.length) entries.push({ path: f.path, signatures, imports });
+      contents.set(f.path.split(path.sep).join('/'), content);
+      if (signatures.length || imports.length || symbols.length) entries.push({ path: f.path, signatures, imports, symbols });
     } catch {}
   }
   // Reverse index ("what imports this file") — computed once over the whole selected file set
@@ -111,7 +117,7 @@ async function buildRepoMap(projectPath, tree) {
     const importedBy = reverse[entry.path.split(path.sep).join('/')];
     if (importedBy?.length) entry.importedBy = importedBy.slice(0, MAX_IMPORTS_PER_FILE);
   }
-  return { entries, routes: allRoutes };
+  return { entries, routes: allRoutes, contents };
 }
 
 /**
@@ -161,7 +167,8 @@ export async function indexProject(projectPath) {
   const frameworks = detectFrameworks(keyFiles);
   const entryPoints = findEntryPoints(tree);
   const entrySnippets = await readEntrySnippets(projectPath, entryPoints);
-  const { entries: repoMap, routes: apiRoutes } = await buildRepoMap(projectPath, tree);
+  const { entries: repoMap, routes: apiRoutes, contents } = await buildRepoMap(projectPath, tree);
+  const symbolIndex = computeSymbolReferences(repoMap, contents);
   const gitRepo = await hasGitRepo(projectPath);
   const subPackages = detectSubPackages(tree);
 
@@ -176,6 +183,7 @@ export async function indexProject(projectPath) {
     entryPoints,
     entrySnippets,
     repoMap,
+    symbolIndex,
     apiRoutes,
     subPackages,
     isMonorepo: subPackages.length > 1,

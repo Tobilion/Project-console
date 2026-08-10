@@ -13,8 +13,13 @@ const MAX_SYSTEM_PROMPT_REPO_MAP_CHARS = 6000;
 // answers accurate instead of generic.
 const MAX_DOC_CHARS = 6000;
 
-/** Renders a codebaseIndex into a compact project-summary string for the AI system prompt. */
-export function formatIndex(idx) {
+/**
+ * Renders a codebaseIndex into a compact project-summary string for the AI system prompt.
+ * When `targetSlice` is given (a file the user explicitly asked about — see codebaseGraph.js),
+ * it replaces the whole-project signature map with the focused per-file slice, so the context
+ * answers the question instead of dumping every export in the project.
+ */
+export function formatIndex(idx, targetSlice) {
   if (!idx) return 'No index data available.';
   let lines = [`- ${idx.totalFiles} files, ${idx.totalDirs} directories`];
   if (idx.languages?.length) lines.push(`- Languages: ${idx.languages.slice(0, 5).join(', ')}`);
@@ -35,9 +40,12 @@ export function formatIndex(idx) {
   // Repo map: whole-project export/function/class names, not just the 1-2 entry-point files
   // above — lets the model resolve "the config file" / "that component" with real project
   // awareness instead of guessing or always reaching for readFile first. See codebaseIndexer.js.
-  const repoMapText = formatRepoMap(idx.repoMap, MAX_SYSTEM_PROMPT_REPO_MAP_CHARS);
+  const repoMapText = targetSlice ?? formatRepoMap(idx.repoMap, MAX_SYSTEM_PROMPT_REPO_MAP_CHARS);
   if (repoMapText) {
-    lines.push(`\n--- Project signature map (exports/functions/classes by file, plus which files import/are imported by each other) ---\n${repoMapText}`);
+    const header = targetSlice
+      ? '--- Project signature map (focused on the file you asked about; the full map is available via getProjectInfo) ---'
+      : '--- Project signature map (exports/functions/classes by file, plus which files import/are imported by each other) ---';
+    lines.push(`\n${header}\n${repoMapText}`);
   }
   // API surface (Express/Flask/FastAPI/Django route declarations) — a different, often more
   // directly useful kind of structural understanding than the export list above: "what does this

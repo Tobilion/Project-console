@@ -22,14 +22,14 @@ import {
 // catches and falls through to the regex extractor — this is a strict enhancement, never a new
 // hard requirement, and JS/TS/TSX correctness never regresses below what regex already gave.
 let tsModulePromise = null;
-function getTsModule() {
+export function getTsModule() {
   if (!tsModulePromise) {
     tsModulePromise = import('typescript').then((m) => m.default ?? m).catch(() => null);
   }
   return tsModulePromise;
 }
 
-function scriptKindFor(TS, ext) {
+export function scriptKindFor(TS, ext) {
   switch (ext) {
     case '.ts': return TS.ScriptKind.TS;
     case '.tsx': return TS.ScriptKind.TSX;
@@ -99,6 +99,67 @@ export async function extractSignatures(content, ext) {
     }
   }
   return [...new Set(names)].slice(0, MAX_SIGNATURES_PER_FILE);
+}
+
+/**
+ * Precise top-level symbol records for the codebase graph (Phase 1, Part 1.1 — AST-aware
+ * symbol navigation): name, kind, export status, 1-based source line, and heritage clauses
+ * (extends/implements) for classes/interfaces. `line`/`heritage` are 0/[] for the regex
+ * fallback path, which only knows names.
+ */
+async function extractSymbolsViaAst(content, ext) {
+  if (!AST_CAPABLE_EXTS.has(ext)) return null;
+  const TS = await getTsModule();
+  if (!TS) return null;
+  try {
+    const sourceFile = TS.createSourceFile(`file${ext}`, content, TS.ScriptTarget.Latest, false, scriptKindFor(TS, ext));
+    const lineOf = (node) => TS.getLineAndCharacterOfPosition(sourceFile, node.getStart(sourceFile)).line + 1;
+    const symbols = [];
+    const push = (name, kind, exported, stmt, heritage = []) => {
+      if (!name) return;
+      symbols.push({ name, kind, exported: !!exported, line: lineOf(stmt), heritage });
+    };
+    for (const stmt of sourceFile.statements) {
+      const mods = TS.getModifiers(stmt) || [];
+      const exported = mods.some((m) => m.kind === TS.SyntaxKind.ExportKeyword);
+      const heritage = (stmt.heritageClauses || []).flatMap((hc) => hc.types.map((t) => t.getText(sourceFile)));
+      if (TS.isFunctionDeclaration(stmt) && stmt.name) push(stmt.name.text, 'function', exported, stmt, heritage);
+      else if (TS.isClassDeclaration(stmt) && stmt.name) push(stmt.name.text, 'class', exported, stmt, heritage);
+      else if (TS.isInterfaceDeclaration(stmt)) push(stmt.name.text, 'interface', exported, stmt, heritage);
+      else if (TS.isTypeAliasDeclaration(stmt)) push(stmt.name.text, 'type', exported, stmt);
+      else if (TS.isEnumDeclaration(stmt)) push(stmt.name.text, 'enum', exported, stmt);
+      else if (TS.isVariableStatement(stmt)) {
+        const kind = stmt.declarationList.flags & TS.NodeFlags.Const ? 'const'
+          : stmt.declarationList.flags & TS.NodeFlags.Let ? 'let' : 'var';
+        for (const decl of stmt.declarationList.declarations) {
+          if (TS.isIdentifier(decl.name)) push(decl.name.text, kind, exported, stmt);
+        }
+      } else if (TS.isExportDeclaration(stmt) && stmt.exportClause && TS.isNamedExports(stmt.exportClause)) {
+        for (const spec of stmt.exportClause.elements) push(spec.name.text, 're-export', true, stmt);
+      } else if (TS.isExportAssignment(stmt) && stmt.expression) {
+        // export default function/class NAME and export default <identifier> — the common
+        // shapes, mirroring extractSignaturesViaAst's existing handling.
+        const expr = stmt.expression;
+        if ((TS.isFunctionExpression(expr) || TS.isClassExpression(expr)) && expr.name) {
+          push(expr.name.text, TS.isFunctionExpression(expr) ? 'function' : 'class', true, stmt);
+        } else if (TS.isIdentifier(expr)) {
+          push(expr.text, 'export-default', true, stmt);
+        }
+      }
+    }
+    const seen = new Set();
+    const deduped = symbols.filter((s) => (seen.has(s.name) ? false : (seen.add(s.name), true)));
+    return deduped.slice(0, MAX_SIGNATURES_PER_FILE);
+  } catch {
+    return null; // real parse error — fall back to regex-derived name records
+  }
+}
+
+export async function extractSymbols(content, ext) {
+  const viaAst = await extractSymbolsViaAst(content, ext);
+  if (viaAst && viaAst.length) return viaAst;
+  const names = await extractSignatures(content, ext);
+  return names.map((name) => ({ name, kind: null, exported: null, line: 0, heritage: [] }));
 }
 
 export function extractImports(content, ext) {

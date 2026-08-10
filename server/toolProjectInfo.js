@@ -1,7 +1,10 @@
+import path from 'path';
 import { exec } from 'child_process';
 import util from 'util';
 import { performUndo } from './gitSafety.js';
 import { appendMemoryEntry } from './memoryStore.js';
+import { restorePreImage } from './aiGuardrails.js';
+import { formatSymbolGraph } from './codebaseGraph.js';
 
 const execAsync = util.promisify(exec);
 
@@ -22,7 +25,8 @@ export function createProjectInfoTools({ project, root }) {
         configEntries: project.config?.entries?.length || 0,
         docFiles: project.contextFiles?.length || 0,
         stack: project.parsedKnowledge?.stack?.trim() || null,
-        commandsFound: project.parsedKnowledge?.commands?.trim() || null
+        commandsFound: project.parsedKnowledge?.commands?.trim() || null,
+        symbolGraph: formatSymbolGraph(project.codebaseIndex)
       }
     };
   }
@@ -36,7 +40,20 @@ export function createProjectInfoTools({ project, root }) {
     }
   }
 
-  async function undoLastChange() {
+  /**
+   * Undoes the last change. With a `path` argument, restores that file's pre-edit content from
+   * the aiGuardrails journal — this is the rollback path for a syntax-breaking edit flagged by
+   * validateToolCall, and works in projects that have no git repo. Without a path, falls through
+   * to the git-checkpoint undo (unchanged behavior).
+   */
+  async function undoLastChange({ path: filePath } = {}) {
+    if (filePath) {
+      const resolved = path.resolve(root, filePath);
+      const restored = await restorePreImage(resolved, root);
+      return restored.success
+        ? { success: true, message: restored.data }
+        : { success: false, message: restored.error };
+    }
     return await performUndo(root);
   }
 

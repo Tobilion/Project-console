@@ -6,6 +6,8 @@ import { isCommandBlocked } from '../dangerousPatterns.js';
 import { pendingToolConfirmations } from '../state.js';
 import { commandMatchesTemplate } from '../paramCommand.js';
 import { computeFileEditPreview } from '../diffPreview.js';
+import { validateToolCall, FILE_MUTATING_TOOLS } from '../aiGuardrails.js';
+import { scheduleVerification } from '../verifyHarness.js';
 
 // Phase 5 (PASS 5.4): the tool-call cap is env-overridable so heavy multi-step workflows don't
 // hit an artificial wall — defaults to 6, the original constant. Owned here since it bounds the
@@ -150,6 +152,13 @@ export async function runToolCall(ws, project, tools, call, workspaceTools = {},
     ws.send(JSON.stringify({ type: 'tool_start', data: `${prefix}Running ${tool}${loc}...` }));
   }
 
+  // Phase 1, Part 1.2 (aiGuardrails): snapshot the pre-edit state if this is a file mutation
+  // that would break the file's syntax — the journal must be populated BEFORE execution, since
+  // the edit lands on disk by the time we have the result. Never blocks (warnings only; the
+  // approve/deny gates above are the only thing that can stop a write).
+  let guard = null;
+  try { guard = await validateToolCall(tool, args, resolvedProject?.path); } catch {}
+
   let result;
   try {
     result = await resolvedTools[tool](args);
@@ -167,6 +176,14 @@ export async function runToolCall(ws, project, tools, call, workspaceTools = {},
   // so it shows up fresh in every tool result, not as a remembered instruction.
   if (result?.success && ['writeFile', 'editFile', 'insertAtLine', 'appendToFile'].includes(tool)) {
     result.note = 'You cannot see the file on disk directly — verify the change by calling readFile right after this unless the user says otherwise.';
+  }
+  if (result?.success && guard?.warning) {
+    result.warning = guard.warning;
+  }
+  // Phase 1, Part 1.4: background type-check on successful file writes (never blocks the tool
+  // loop — see verifyHarness.js).
+  if (result?.success && FILE_MUTATING_TOOLS.has(tool)) {
+    void scheduleVerification(resolvedProject?.path);
   }
   return result;
 }

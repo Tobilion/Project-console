@@ -3,7 +3,15 @@ import { BUILTIN_TOOL_DEFS } from './toolDefs.js';
 import { MODE_INSTRUCTIONS } from './aiModePrompts.js';
 import { formatIndex, formatProjectDoc, formatMinimalProject } from './promptRenderers.js';
 
-export async function buildSystemPrompt(project, mode = 'default', workspaceProjects = []) {
+// Static/dynamic prompt sectioning (Phase 1, Part 1.3): buildSystemPrompt produces the
+// STATIC PREFIX — system instructions + tool declarations + project/memory context, which
+// is byte-identical across turns of a session (it only changes when the project or its
+// index/memory changes). The DYNAMIC SUFFIX (session history + current input) is assembled
+// in wsHandlers/aiQueryContext.js, which applies adaptive pruning via contextPruner.js.
+// Keeping the prefix stable is what lets Ollama's KV-cache prefix reuse actually hit; any
+// per-turn variation belongs in the suffix, never here.
+
+export async function buildSystemPrompt(project, mode = 'default', workspaceProjects = [], options = {}) {
   const modeInstruction = MODE_INSTRUCTIONS[mode] || MODE_INSTRUCTIONS.default;
 
   // Build tool descriptions including any custom plugin tools from console.tools.json
@@ -35,7 +43,7 @@ export async function buildSystemPrompt(project, mode = 'default', workspaceProj
   let projectInfo = 'No project currently selected. You can still chat normally or help with general questions.';
   if (project) {
     const doc = formatProjectDoc(project);
-    projectInfo = `Project: ${project.name}\nPath: ${project.path}\n\nCodebase Index:\n${formatIndex(project.codebaseIndex)}`;
+    projectInfo = `Project: ${project.name}\nPath: ${project.path}\n\nCodebase Index:\n${formatIndex(project.codebaseIndex, options.targetSlice)}`;
     if (doc) {
       projectInfo += `\n\n## Project Documentation (read this first — it is the source of truth for this project)\n${doc}`;
     }

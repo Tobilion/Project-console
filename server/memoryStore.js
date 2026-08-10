@@ -1,6 +1,7 @@
 import fs from 'fs/promises';
 import path from 'path';
 import { ensureGitignored } from './conversationStore.js';
+import { isSemanticallyRedundant } from './memoryDedupe.js';
 
 // Persistent, cross-session AI memory — a per-project plain-text file the AI itself writes to
 // during AI-mode conversations (see the saveMemory tool in tools.js), so facts/preferences/
@@ -115,6 +116,18 @@ export async function appendMemoryEntry(projectPath, content) {
     const isDuplicate = lines.some((l) => normalize(l.replace(/^- /, '').replace(/\s*\(\d{4}-\d{2}-\d{2}\)\s*$/, '')) === target);
     if (isDuplicate) {
       return { success: true, data: 'Already remembered (duplicate skipped).' };
+    }
+
+    // Semantic redundancy check (Phase 1, Part 1.3): re-saving the same fact with different
+    // wording used to append a near-duplicate entry — the string dedupe above only catches
+    // whitespace/case variations. Compare against the cleaned existing lines (no bullet
+    // prefix, no trailing date) via the shared embedding model; the check falls back to
+    // false when the model isn't loaded, so this never blocks or breaks a save.
+    const cleanLines = lines
+      .map((l) => l.replace(/^- /, '').replace(/\s*\(\d{4}-\d{2}-\d{2}\)\s*$/, '').trim())
+      .filter(Boolean);
+    if (cleanLines.length >= 1 && await isSemanticallyRedundant(cleanLines, trimmed)) {
+      return { success: true, data: 'Already remembered (similar fact skipped).' };
     }
 
     const date = new Date().toISOString().slice(0, 10);
