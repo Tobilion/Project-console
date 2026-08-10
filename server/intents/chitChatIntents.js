@@ -228,6 +228,35 @@ export const CHIT_CHAT_INTENTS = {
       'tell me the port number', 'whats the local port', 'give me the port',
     ],
   },
+  // Phase 0 (2026-08-10): utility intents — plain server-computed facts that need no project
+  // context and no model call. Time and date deliberately split into two intents so answers can
+  // be precise instead of one intent deciding whether the user asked for a clock or a calendar.
+  'system.chit_chat.time': {
+    examples: [
+      'what time is it', 'what time is it right now', 'whats the time',
+      'what is the current time', 'current time', 'tell me the time',
+      'whats the current time', 'what time is it now', 'give me the time',
+      'do you know what time it is', 'what is the time right now',
+    ],
+  },
+  'system.chit_chat.date': {
+    examples: [
+      'whats the date', 'what is the date', 'what is todays date',
+      'whats todays date', 'what date is it', 'what day is it',
+      'what day is today', 'what is today', 'current date', 'todays date',
+      'whats today', 'what day of the week is it', 'which day is it',
+      'give me the date', 'whats the date today', 'what is the date today',
+    ],
+  },
+  'system.chit_chat.calculate': {
+    examples: [
+      'what is 12 times 7', 'whats 340 divided by 4', 'what is 5 plus 3',
+      'whats 10 minus 4', 'calculate 2 plus 2', 'what is 8 times 6',
+      'whats 100 divided by 5', 'what is 2 plus 2', 'whats 9 times 9',
+      'calculate 144 divided by 12', 'what is 25 minus 13', 'whats 7 times 8',
+      'calculate 50 plus 25', 'what is 100 minus 37', 'whats 11 times 11',
+    ],
+  },
   'system.chit_chat.needs_ai_mode': {
     examples: [
       'turn on ai mode', 'enable ai mode', 'use ai mode',

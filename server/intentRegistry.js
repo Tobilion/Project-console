@@ -85,6 +85,9 @@ export const BUILTIN_INTENTS = new Set([
   'project.action.open_in_terminal', 'project.action.open_github_page',
   'project.action.open_in_cursor', 'project.action.open_file',
   'system.monitoring.metrics', 'system.chit_chat.port',
+  // Phase 0 (2026-08-10): utility intents (time/date/calculate) — zero-argument, canned-shape
+  // answers computed from Date.now()/mathEval.js, same family as status/port.
+  'system.chit_chat.time', 'system.chit_chat.date', 'system.chit_chat.calculate',
   // Phase 5 intent taxonomy expansion (audit report 2026-08-10): 4 git-family + 5 diagnostics.
   'git_branch_cleanup', 'git_stash_summary', 'git_diff_summary', 'git_pr_ready_check',
   'project.diagnostics.dead_code', 'project.diagnostics.circular_imports',

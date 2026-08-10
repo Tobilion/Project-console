@@ -203,6 +203,23 @@ const BATTERIES = [
     ],
   },
   {
+    // Phase 0 (2026-08-10): the utility intents. Positive rows for each phrase family and one
+    // garbled-input row that pins the PURE_CHITCHAT_INTENTS guard specifically against the new
+    // canned replies (a garbage hit on "It's 4:32 PM" is the same failure mode as gratitude).
+    name: 'PHASE0 (utility intents: time / date / calculate)',
+    items: [
+      ['what time is it', 'BUILTIN=system.chit_chat.time'],
+      ['whats the time', 'BUILTIN=system.chit_chat.time'],
+      ['what is the current time', 'BUILTIN=system.chit_chat.time'],
+      ['whats the date', 'BUILTIN=system.chit_chat.date'],
+      ['what day is it', 'BUILTIN=system.chit_chat.date'],
+      ['what is today', 'BUILTIN=system.chit_chat.date'],
+      ['what is 12 times 7', 'BUILTIN=system.chit_chat.calculate'],
+      ['whats 340 divided by 4', 'BUILTIN=system.chit_chat.calculate'],
+      ['asdf1234', 'FALLBACK'],
+    ],
+  },
+  {
     // Stage-level dispatch coverage for matcher.js itself (Phase 7, 2026-08-04) — the
     // batteries above already route through matchInput(), but several branches had no
     // dedicated input: the stage-1b config-run-entry redirect positive path (winner

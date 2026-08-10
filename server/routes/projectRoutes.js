@@ -8,6 +8,7 @@ import { setupMockProjectsIfMissing } from '../mockProjects.js';
 import { state, projectsMutex } from '../state.js';
 import { broadcast } from '../wsServer.js';
 import { asyncHandler } from '../asyncHandler.js';
+import { projectChatLogPath } from '../sessionExport.js';
 
 // A plain browser tab (not Electron/Tauri) can never receive an absolute host filesystem path
 // from <input type="file" webkitdirectory> — that's a deliberate File API restriction, not a
@@ -119,5 +120,18 @@ export function registerProjectRoutes(app, dirname) {
     project.codebaseIndex = idx;
     broadcast({ type: 'project_updated', data: project });
     res.json({ success: true, codebaseIndex: idx });
+  }));
+
+  // "Export whole project" (Phase 0): direct download of the project's existing
+  // .console/chat-log.md — already a complete human-readable transcript of every session in
+  // that project (chatLog.js), no generation logic needed here, just exposure.
+  app.get('/api/projects/:id/chat-log', asyncHandler(async (req, res) => {
+    const project = state.activeProjectsCache.find((p) => p.id === req.params.id);
+    if (!project) return res.status(404).json({ error: 'Project not found' });
+    const logPath = await projectChatLogPath(project.path);
+    if (!logPath) return res.status(404).json({ error: 'No chat log yet for this project — send a message first.' });
+    // folderName is a real Windows filesystem name (cannot contain / " etc.), safe as a
+    // Content-Disposition filename.
+    res.download(logPath, `${project.folderName}-chat-log.md`);
   }));
 }

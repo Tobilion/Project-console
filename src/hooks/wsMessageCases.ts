@@ -16,7 +16,7 @@ const answerCase: WsCaseHandler = (ctx, payload) => {
   // 'end') — its own bubble, unchanged.
   ctx.ai.setAiThinking(false);
   if (!payload.data?.trim()) return;
-  ctx.sessions.setMessages(prev => [...prev, { id, type: 'bot', content: payload.data, isMarkdown: true }]);
+  ctx.sessions.setMessages(prev => [...prev, { id, type: 'bot', content: payload.data, isMarkdown: true, timestamp: Date.now() }]);
 };
 
 const streamOutputCase: WsCaseHandler = (ctx, payload) => {
@@ -56,7 +56,7 @@ const streamOutputCase: WsCaseHandler = (ctx, payload) => {
     // the user asked to actually see the terminal for commands the AI ran (real NetPulse
     // chat: the AI claimed it started a background watcher and the only trace was a
     // collapsed block header). Trigger-mode blocks stay collapsed as before.
-    return [...prev, { id, type: 'output', content: payload.data, autoExpand: ctx.ai.aiQueryInFlight }];
+    return [...prev, { id, type: 'output', content: payload.data, autoExpand: ctx.ai.aiQueryInFlight, timestamp: Date.now() }];
   });
 };
 
@@ -69,6 +69,7 @@ const errorOutputCase: WsCaseHandler = (ctx, payload) => {
   ctx.sessions.setMessages(prev => [...prev, {
     id, type: 'error', content: payload.data,
     switchProjectAction: payload.switchProjectAction,
+    timestamp: Date.now(),
   }]);
 };
 
@@ -81,6 +82,7 @@ const warningCase: WsCaseHandler = (ctx, payload) => {
   if (payload.data) ctx.appendProcessOutput(payload.data);
   ctx.sessions.setMessages(prev => [...prev, {
     id, type: 'warning', content: payload.data,
+    timestamp: Date.now(),
   }]);
 };
 
@@ -172,7 +174,7 @@ const toolStartCase: WsCaseHandler = (ctx, payload) => {
   // no visible progress at all for long-running steps). Surface it immediately as its
   // own lightweight line instead of waiting for the eventual tool_result.
   if (payload.data) {
-    ctx.sessions.setMessages(prev => [...prev, { id, type: 'system', content: `⚙ ${payload.data}` }]);
+    ctx.sessions.setMessages(prev => [...prev, { id, type: 'system', content: `⚙ ${payload.data}`, timestamp: Date.now() }]);
   }
 };
 
@@ -183,7 +185,7 @@ const toolConfirmPromptCase: WsCaseHandler = (ctx, payload) => {
 const taskGrantedCase: WsCaseHandler = (ctx) => {
   const id = makeId();
   // Phase 5 (PASS 5.1): "Approve this task" acknowledged server-side.
-  ctx.sessions.setMessages(prev => [...prev, { id, type: 'system', content: '✓ Approved this task — file edits for this conversation will run without further prompts (commands and tests still confirm).' }]);
+  ctx.sessions.setMessages(prev => [...prev, { id, type: 'system', content: '✓ Approved this task — file edits for this conversation will run without further prompts (commands and tests still confirm).', timestamp: Date.now() }]);
 };
 
 const memorySuggestionCase: WsCaseHandler = (ctx, payload) => {
@@ -200,7 +202,8 @@ const toolResultCase: WsCaseHandler = (ctx, payload) => {
   if (toolData.tool && toolData.result && !toolData.error) {
     ctx.sessions.setMessages(prev => [...prev, {
       id, type: 'system',
-      content: `⚙ Tool: ${toolData.tool}\n${typeof toolData.result === 'string' ? toolData.result : JSON.stringify(toolData.result, null, 2).slice(0, 500)}${JSON.stringify(toolData.result, null, 2).length > 500 ? '…' : ''}`
+      content: `⚙ Tool: ${toolData.tool}\n${typeof toolData.result === 'string' ? toolData.result : JSON.stringify(toolData.result, null, 2).slice(0, 500)}${JSON.stringify(toolData.result, null, 2).length > 500 ? '…' : ''}`,
+      timestamp: Date.now(),
     }]);
   }
 };
@@ -219,15 +222,15 @@ const serverUrlCase: WsCaseHandler = (ctx, payload) => {
   // The one event that authoritatively says "this is the project's dev-server site" — record
   // it so the "Click here to open the site" chip only ever appears for real site links.
   if (payload.data) ctx.setKnownDevUrls(prev => prev.includes(payload.data) ? prev : [...prev, payload.data]);
-  ctx.sessions.setMessages(prev => [...prev, { id, type: 'bot', content: `→ Dev server running at **${payload.data}**`, isMarkdown: true }]);
+  ctx.sessions.setMessages(prev => [...prev, { id, type: 'bot', content: `→ Dev server running at **${payload.data}**`, isMarkdown: true, timestamp: Date.now() }]);
 };
 
 const copyToClipboardCase: WsCaseHandler = (ctx, payload) => {
   const id = makeId();
   navigator.clipboard.writeText(payload.data).then(() => {
-    ctx.sessions.setMessages(prev => [...prev, { id, type: 'system', content: `✓ Copied to clipboard: \`${payload.data}\`` }]);
+    ctx.sessions.setMessages(prev => [...prev, { id, type: 'system', content: `✓ Copied to clipboard: \`${payload.data}\``, timestamp: Date.now() }]);
   }).catch(() => {
-    ctx.sessions.setMessages(prev => [...prev, { id, type: 'error', content: 'Failed to copy to clipboard' }]);
+    ctx.sessions.setMessages(prev => [...prev, { id, type: 'error', content: 'Failed to copy to clipboard', timestamp: Date.now() }]);
   });
 };
 
@@ -248,7 +251,7 @@ const learningSuggestionCase: WsCaseHandler = (ctx, payload) => {
   // (audit 2026-08-06, Phase 3).
   const suggestions = payload?.data?.suggestions;
   if (!Array.isArray(suggestions) || suggestions.length === 0) {
-    ctx.sessions.setMessages(prev => [...prev, { id, type: 'bot', content: 'No learning suggestions yet — keep using the console and check back later!' }]);
+    ctx.sessions.setMessages(prev => [...prev, { id, type: 'bot', content: 'No learning suggestions yet — keep using the console and check back later!', timestamp: Date.now() }]);
   } else {
     const formatted = suggestions.map((s: any) =>
       `**${s.intent}** (${s.confidence}) — ${s.count} occurrences, ${s.accepted} accepted, ${s.rejected} rejected\nPhrases: ${s.phrases.slice(0, 5).join(', ')}${s.phrases.length > 5 ? ` (+${s.phrases.length - 5} more)` : ''}`
@@ -256,7 +259,8 @@ const learningSuggestionCase: WsCaseHandler = (ctx, payload) => {
     ctx.sessions.setMessages(prev => [...prev, {
       id, type: 'bot', content: `### Learning Suggestions\n\n${formatted}\n\nType "approve suggestions" to add all, or "approve suggestions 1 3" to approve specific ones.`,
       isMarkdown: true,
-      suggestions: suggestions.map((_: any, i: number) => `approve ${i + 1}`)
+      suggestions: suggestions.map((_: any, i: number) => `approve ${i + 1}`),
+      timestamp: Date.now(),
     }]);
   }
 };

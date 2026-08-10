@@ -12,6 +12,8 @@ interface TerminalHeaderProps {
   clearWorkspace: () => void;
    onExportMarkdown: () => void;
    onExportJson: () => void;
+   onExportPdf: () => void;
+   onExportProjectChatLog: () => void;
    toolHistory: ToolCallEntry[];
    showToolHistory: boolean;
    onToggleToolHistory: () => void;
@@ -30,6 +32,8 @@ export function TerminalHeader({
   clearWorkspace,
   onExportMarkdown,
   onExportJson,
+  onExportPdf,
+  onExportProjectChatLog,
   toolHistory,
   showToolHistory,
    onToggleToolHistory,
@@ -74,6 +78,9 @@ export function TerminalHeader({
             <button onClick={onExportJson} className="p-1.5 flex items-center gap-0.5 text-fg-dim hover:text-teal-400 transition-colors" title="Export session as JSON">
               <Download size={11} /><span className="text-[9px]">JSON</span>
             </button>
+            <button onClick={onExportPdf} className="p-1.5 text-fg-dim hover:text-teal-400 transition-colors" title="Export session as PDF">
+              <FileDown size={14} />
+            </button>
           </div>
           <button onClick={onToggleToolHistory} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs transition-colors border ${showToolHistory ? 'bg-[#3d6bff]/20 border-[#3d6bff]/40 text-[#3d6bff]' : 'bg-panel border-border-soft text-fg-dim hover:text-fg-muted'}`} title="Tool Call History">
             <ListChecks size={14} />
@@ -93,6 +100,14 @@ export function TerminalHeader({
                   <button onClick={() => { setShowSessionMenu(false); onExportJson(); }} className="w-full text-left px-3 py-1.5 text-xs text-fg-muted hover:bg-panel flex items-center gap-2 transition-colors">
                     <FileDown size={12} /> Export as JSON
                   </button>
+                  <button onClick={() => { setShowSessionMenu(false); onExportPdf(); }} className="w-full text-left px-3 py-1.5 text-xs text-fg-muted hover:bg-panel flex items-center gap-2 transition-colors">
+                    <FileDown size={12} /> Export as PDF
+                  </button>
+                  {activeProject && (
+                    <button onClick={() => { setShowSessionMenu(false); onExportProjectChatLog(); }} className="w-full text-left px-3 py-1.5 text-xs text-fg-muted hover:bg-panel flex items-center gap-2 transition-colors" title="Download this project's full .console/chat-log.md">
+                      <Download size={12} /> Export project chat log
+                    </button>
+                  )}
                   <button onClick={() => { setShowSessionMenu(false); onToggleToolHistory(); }} className="w-full text-left px-3 py-1.5 text-xs text-fg-muted hover:bg-panel flex items-center gap-2 transition-colors">
                     <ListChecks size={12} /> Tool Call History
                   </button>

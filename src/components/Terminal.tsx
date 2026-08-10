@@ -60,6 +60,8 @@ interface TerminalProps {
   onRerunToolCall: (entry: ToolCallEntry) => void;
   onExportMarkdown: () => void;
   onExportJson: () => void;
+  onExportPdf: () => void;
+  onExportProjectChatLog: () => void;
   onDirectCommand?: (command: string) => void;
   onDidYouMeanPick?: (intent: string) => void;
   workspaceProjects: Project[];
@@ -83,7 +85,7 @@ interface TerminalProps {
    connected: boolean;
  }
 
-export const Terminal = ({ messages, onSendMessage, onSearch, onDeepResearch, activeProject, userName, pendingConfirm, onConfirm, pendingToolConfirm, onToolConfirm, onApproveTask, pendingMemorySuggestion, onMemorySuggestionRespond, aiEnabled, aiThinking, aiThinkingText, commandPending, onCancel, ollamaStatus, aiModel, aiMode, onAIToggle, onSetModel, onSetMode, toolHistory, showToolHistory, onToggleToolHistory, onRerunToolCall, onExportMarkdown, onExportJson, onDirectCommand, onDidYouMeanPick, workspaceProjects, addToWorkspace, removeFromWorkspace, clearWorkspace, onSwitchToProject, isFullscreen, onToggleFullscreen, processes, processLogs, 
+export const Terminal = ({ messages, onSendMessage, onSearch, onDeepResearch, activeProject, userName, pendingConfirm, onConfirm, pendingToolConfirm, onToolConfirm, onApproveTask, pendingMemorySuggestion, onMemorySuggestionRespond, aiEnabled, aiThinking, aiThinkingText, commandPending, onCancel, ollamaStatus, aiModel, aiMode, onAIToggle, onSetModel, onSetMode, toolHistory, showToolHistory, onToggleToolHistory, onRerunToolCall, onExportMarkdown, onExportJson, onExportPdf, onExportProjectChatLog, onDirectCommand, onDidYouMeanPick, workspaceProjects, addToWorkspace, removeFromWorkspace, clearWorkspace, onSwitchToProject, isFullscreen, onToggleFullscreen, processes, processLogs, 
  selectedProcessId, onSelectProcess, onStopProcess, dockExpanded, onToggleDock, dockTab, onSetDockTab, projects, knownDevUrls, connected }: TerminalProps) => {
   const [input, setInput] = useState('');
   const [showSearchOverlay, setShowSearchOverlay] = useState(false);
@@ -258,6 +260,8 @@ export const Terminal = ({ messages, onSendMessage, onSearch, onDeepResearch, ac
          clearWorkspace={clearWorkspace}
          onExportMarkdown={onExportMarkdown}
          onExportJson={onExportJson}
+         onExportPdf={onExportPdf}
+         onExportProjectChatLog={onExportProjectChatLog}
          toolHistory={toolHistory}
          showToolHistory={showToolHistory}
          onToggleToolHistory={onToggleToolHistory}

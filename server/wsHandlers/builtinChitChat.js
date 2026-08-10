@@ -6,6 +6,7 @@ import { injectContext } from '../contextInjector.js';
 import { pickRandom, chatReplyPool, smartChitchatReply, enrichWithIndex, extractCommentMessage } from './builtinHelpers.js';
 import { buildLiveStateLine, buildMemoryBlock } from './builtinLiveState.js';
 import { buildHelpMessage } from './builtinHelp.js';
+import { evaluateArithmetic, formatValue } from '../mathEval.js';
 
 /**
  * system.chit_chat.* handlers (Phase 10 step 3, extracted verbatim from builtinIntents.js).
@@ -208,6 +209,42 @@ export const chitChatHandlers = {
         ? `This console itself is running on port **${state.serverPort}** (http://127.0.0.1:${state.serverPort}). If you meant this project's own dev server, ask "what is the link" instead.`
         : `I don't have a confirmed server port yet — try refreshing the page, or check the terminal that launched "npm run dev".`,
     }));
+  },
+
+  'system.chit_chat.time': async (ws, action, input, project, sessionContext) => {
+    // Phase 0 utility intent. Deliberately NO smartChitchatReply (unlike greeting/status): this
+    // must answer instantly with zero model call even while AI mode is on. Server-local wall
+    // clock — the one correct answer for an offline single-user local tool with no user-side
+    // timezone config anywhere in the app.
+    ws.send(JSON.stringify({
+      type: 'answer',
+      data: `It's **${new Date().toLocaleTimeString()}** — this machine's local time.`,
+    }));
+  },
+
+  'system.chit_chat.date': async (ws, action, input, project, sessionContext) => {
+    // Same deliberate no-model-call rule as system.chit_chat.time; server-local calendar date.
+    ws.send(JSON.stringify({
+      type: 'answer',
+      data: `Today is **${new Date().toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}**.`,
+    }));
+  },
+
+  'system.chit_chat.calculate': async (ws, action, input, project, sessionContext) => {
+    // Safe shunting-yard parser in mathEval.js — never eval()/new Function() on chat text, and
+    // unsupported input gets an honest "can't do that" instead of a best-guess.
+    const result = evaluateArithmetic(input);
+    if (result.ok) {
+      ws.send(JSON.stringify({
+        type: 'answer',
+        data: `**${result.expression}** = **${formatValue(result.value)}**`,
+      }));
+    } else {
+      const hint = result.reason === 'divide-by-zero'
+        ? 'Can\'t divide by zero.'
+        : 'I can only handle basic arithmetic — numbers with + - * / and parentheses, like "what is 12 times 7".';
+      ws.send(JSON.stringify({ type: 'answer', data: hint }));
+    }
   },
 
   'system.chit_chat.git_status': async (ws, action, input, project, sessionContext) => {

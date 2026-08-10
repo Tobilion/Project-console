@@ -56,7 +56,7 @@ function App() {
     handleSearch, handleDeepResearch, handleNewChat, handleQuickStart, handleScan,
     createSession, switchSession, deleteSession, renameSession, handleSwitchToProject,
     toolHistory, showToolHistory, setShowToolHistory, rerunToolCall,
-    exportAsMarkdown, exportAsJson,
+    exportAsMarkdown, exportAsJson, exportAsPdf, exportProjectChatLog,
     handleDirectCommand, activeServers, knownDevUrls, dashboardUpdateSignal,
     workspaceProjects, addToWorkspace, removeFromWorkspace, clearWorkspace,
     processes, processLogs, selectedProcessId, setSelectedProcessId,
@@ -251,6 +251,8 @@ function App() {
               onRerunToolCall={rerunToolCall}
               onExportMarkdown={exportAsMarkdown}
               onExportJson={exportAsJson}
+              onExportPdf={exportAsPdf}
+              onExportProjectChatLog={exportProjectChatLog}
               onDirectCommand={handleDirectCommand}
               onDidYouMeanPick={handleDidYouMeanPick}
               workspaceProjects={workspaceProjects}

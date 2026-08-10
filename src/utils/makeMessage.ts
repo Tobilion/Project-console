@@ -11,5 +11,5 @@ export function makeMessage(
   content: string,
   extra?: Partial<Omit<TerminalMessage, 'type' | 'content'>>,
 ): TerminalMessage {
-  return { id: Date.now().toString(), type, content, ...extra };
+  return { id: Date.now().toString(), type, content, timestamp: Date.now(), ...extra };
 }

@@ -417,6 +417,8 @@ export function useConsole() {
     rerunToolCall: toolHistory.rerunToolCall,
     exportAsMarkdown: exports.exportAsMarkdown,
     exportAsJson: exports.exportAsJson,
+    exportAsPdf: exports.exportAsPdf,
+    exportProjectChatLog: exports.exportProjectChatLog,
     handleDirectCommand,
     workspaceProjects: workspace.workspaceProjects,
     addToWorkspace: workspace.addToWorkspace,

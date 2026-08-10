@@ -14,7 +14,7 @@ export const streamStartCase: WsCaseHandler = (ctx, payload) => {
   ctx.ai.setAiThinking(false);
   ctx.ai.setAiThinkingText('');
   if (ctx.wsRef.current) (ctx.wsRef.current as any)._streamId = id;
-  ctx.sessions.setMessages(prev => [...prev, { id, type: 'bot', content: '', isMarkdown: true, streaming: true }]);
+  ctx.sessions.setMessages(prev => [...prev, { id, type: 'bot', content: '', isMarkdown: true, streaming: true, timestamp: Date.now() }]);
 };
 
 export const tokenCase: WsCaseHandler = (ctx, payload) => {

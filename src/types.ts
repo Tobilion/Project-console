@@ -54,6 +54,10 @@ export interface TerminalMessage {
   id: string;
   type: 'user' | 'bot' | 'system' | 'error' | 'warning' | 'output';
   content: string;
+  /** Epoch ms when this message happened. Set by makeMessage/WS cases on live messages and
+   *  carried through from the persisted NDJSON entry (appendMessage's `timestamp`) when a
+   *  session is reloaded — the export endpoint reads the persisted record, so the two agree. */
+  timestamp?: number;
   suggestions?: string[];
   /** Non-blocking "did you mean" suggestion (intent id + confidence + human label) attached to a bot answer. */
   didYouMean?: { intent: string; confidence: number; label?: string } | null;

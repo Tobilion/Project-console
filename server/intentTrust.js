@@ -35,6 +35,10 @@ export const PURE_CHITCHAT_INTENTS = new Set([
   'system.chit_chat.ack',
   // joke (2026-08-03, Phase 2.3): zero-argument, deterministic jokes — same garbled-input guard.
   'system.chit_chat.joke',
+  // Phase 0 (2026-08-10): time/date/calculate — zero-argument canned-shape answers with no real
+  // semantic bar once any stage claims a match, exactly the thanks/gratitude failure mode this
+  // set guards against. A garbled request must not land on "It's 4:32 PM".
+  'system.chit_chat.time', 'system.chit_chat.date', 'system.chit_chat.calculate',
 ]);
 
 export function looksLikeRealRequest(input) {

@@ -63,7 +63,11 @@ npm run lint    # tsc --noEmit
   `state.serverPort` set once the fallback loop binds)
 - `server/wsServer.js` — the `wss` instance + `broadcast()`
 - `server/mockProjects.js` — seeds fake projects on non-Windows sandboxes
-- `server/routes/` — `projectRoutes.js`, `sessionRoutes.js`, `searchRoutes.js`,
+- `server/routes/` — `projectRoutes.js` (incl. `GET /api/projects/:id/chat-log` →
+  `res.download` of the project's `.console/chat-log.md`; 404s for unknown project or missing
+  log), `sessionRoutes.js` (incl. `GET /api/sessions/:id/export?format=md|json` — the full
+  ring-buffer-uncapped NDJSON record, never the 200-message `getSession` cap; 404 for unknown
+  session; explicit Content-Type; no temp files), `searchRoutes.js`,
   `monitoringRoutes.js` (`/api/metrics`, `/api/active-servers`, `/api/processes` +
   `/api/processes/:projectId/log`, `/api/dashboard` with a 30s cache invalidated by a
   `volatileSignature()` over projects+runningProcesses+lastDevUrls), `profileRoutes.js`
@@ -237,6 +241,15 @@ npm run lint    # tsc --noEmit
   server failed to start — check every external importer when moving exports.
 - `server/conversationStore.js` — orchestration over `sessionPaths.js`/`sessionIndex.js`/
   `messageLog.js`/`chatLog.js`/`sessionMigration.js` (see "How chat memory works")
+- `server/sessionExport.js` — session export (Phase 0, 2026-08-10):
+  `readFullSessionHistory()` reads the ring-buffer-UNCAPPED NDJSON message log (via the
+  session index → per-project `.console/` path), then `formatExportMarkdown()` /
+  `formatExportJson()` render it. Markdown labels roles (User/Assistant/System/Output/Error/
+  Notice — bot content raw, every other role fenced in a code block) with
+  `_localized timestamp_` lines; JSON is `{id, role, content, timestamp, isMarkdown}`;
+  `projectChatLogPath()` finds a project's `.console/chat-log.md`. This server-side
+  formatter is the single source both export file formats and the client-side PDF come
+  from — the frontend (`useConsoleExports`) always downloads, it never reformats React state.
 - `server/ollama.js` — `/api/chat` client (`chatStream`/`chatOnce`), `NUM_CTX` 16384
   (env `OLLAMA_NUM_CTX`), `listCloudModels()` (`CLOUD_MODELS` — check the cloud catalog if a
   model 404s rather than blaming auth), telemetry footer appended by chatStream (stripped by
@@ -288,12 +301,17 @@ npm run lint    # tsc --noEmit
   (codebase-index snippets appended to some trigger replies), `contextResolver.js`
   (last-resort keyword fallback with word-boundary regex — `.env`-style keywords special-cased),
   `gitSafety.js` (createCheckpoint/performUndo/isGitRepo), `metrics.js`, `fileWatcher.js`,
-  `platformCommand.js`
+  `mathEval.js` (safe shunting-yard evaluator for the `calculate` intent — `+ - * / ( )`
+  only, no eval/Function), `platformCommand.js`
 
 Frontend (`src/`): `hooks/useConsole.ts` ~368-line orchestrator owning all state + WS/fetch
 handlers (WS message cases live in `hooks/wsMessageCases.ts` + `wsStreamingCases.ts`, state
 clusters in `useConsoleProcessDock`/`useConsoleToolHistory`/`useConsoleWorkspace`/
-`useConsoleExports` — see Phase 13). **Stable-router design**: `handleWebSocketMessage` is a
+`useConsoleExports` — see Phase 13; exports are downloads-only now (Phase 0, 2026-08-10):
+  markdown/JSON/blob downloads of `GET /api/sessions/:id/export`, PDF built client-side from
+  the same JSON via `jspdf` (a real dependency — app UI glyphs like ⚙/✓/→ are ASCII-mapped in
+  `sanitizePdfText` since jsPDF's fonts are latin-1-only), plus project chat-log download).
+  **Stable-router design**: `handleWebSocketMessage` is a
 `useCallback([])` that looks up the case table via a per-render `ctxRef` — never capture
 first-render state in a case handler. `App.tsx` is render-only. Components: `Terminal.tsx`
 (~520 lines, thin orchestrator over `TerminalHeader`/`TerminalMessages`/`TerminalConfirmCards`/
@@ -403,7 +421,8 @@ collapsed header.
 
 Run `npm run check-matcher` after ANY matcher edit (68+ self-asserting inputs; `--probe`
 mode to print routing when an intent intentionally changes). Current batteries green:
-CONTROL/PHASE1-3/BASICS/MATCHDAY/TRAPS/MUST_NOT_STEAL/GARBAGE (+ open-family rows, 83/83).
+CONTROL/PHASE1-3/BASICS/MATCHDAY/TRAPS/MUST_NOT_STEAL/GARBAGE (+ open-family rows + PHASE0
+time/date/calculate rows, 92/92).
 
 - **Stage order**: pre-semantic literal overrides → embedding scan (floor 0.6, margin 0.03,
   collision/close-second second pass) → stage-1b config-entry scan (`bestProjectCommandEntry`
@@ -445,9 +464,9 @@ CONTROL/PHASE1-3/BASICS/MATCHDAY/TRAPS/MUST_NOT_STEAL/GARBAGE (+ open-family row
   suggestion chips (no-param entries only).
 - **`langs.includes('Python')` never matched** (labels are "Python (4 files)") — use
   `langs.some(l => l.startsWith(...))` style checks.
-- **Intent phrase data**: 83 intents / ~2312 phrases in `server/intents/` merged in
+- **Intent phrase data**: 96 intents / ~2494 phrases in `server/intents/` merged in
   `intentsData.js`. `npm run check-intents` flags exact/near duplicates (static, no server);
-  baseline is 1 within-intent / 5 cross-intent / 80 near (pre-existing, deliberately left:
+  baseline is 1 within-intent / 5 cross-intent / 82 near (pre-existing, deliberately left:
   genuinely-ambiguous pairs where both sides answer reasonably). After intent changes also
   re-check `check-handlers` and `check-matcher`.
 
@@ -469,8 +488,11 @@ CONTROL/PHASE1-3/BASICS/MATCHDAY/TRAPS/MUST_NOT_STEAL/GARBAGE (+ open-family row
   running_processes (global), session_info, needs_ai_mode.
 - **chit-chat** (chitChatIntents.js): greeting (time-of-day aware, live-state + memory
   enrichment; AI ON → `chatOnce` with canned fallback), status, gratitude, farewell,
-  identity, ack, joke, clear, help, explain_followup, yes_no, port, git_status, undo alias,
-  needs_ai_mode. Project-customizable via `chatReplies` in console.config.json.
+  identity, ack, joke, clear, help, explain_followup, yes_no, port,
+  time/date (server-local clock, never a model call), calculate (safe arithmetic via
+  `mathEval.js` — `evaluateArithmetic`, no eval/Function, word-synonym + `+ - * / ( )`
+  only, `formatValue`), git_status, undo alias, needs_ai_mode. Project-customizable via
+  `chatReplies` in console.config.json.
 - **actions** (miscIntents.js / projectActionIntents): metrics, open_in_vscode (code CLI →
   `vscode://file/` protocol fallback), open_in_cursor, open_in_explorer, open_in_terminal,
   open_github_page (normalizeGithubPageUrl), open_site, copy_path (copy_to_clipboard WS
@@ -591,10 +613,11 @@ CONTROL/PHASE1-3/BASICS/MATCHDAY/TRAPS/MUST_NOT_STEAL/GARBAGE (+ open-family row
   fallback probes live ports, so on a machine with one of `COMMON_DEV_PORTS` listening it
   honestly answers "responding at ..." — both shapes are accepted; don't treat a failure on
   a live machine as a regression.
-- **Telemetry/harness baselines**: check-intents 1/5/80 (+1 documented near-dup after the
-  open-file override); check-matcher 83/83; check-handlers 26/26; check-tools 92/92;
-  check-indexer 85/85 (+14 SYMBOLS & GRAPH rows for the Phase 1.1 codebase-graph work); check-ws-cases 83/83 (baseline +4 rows for the Phase 3 aiQueryInFlight
-  lifecycle fix). Run the relevant battery after ANY edit to the corresponding module.
+- **Telemetry/harness baselines**: check-intents 1/5/82 (+1 documented near-dup after the
+  open-file override; +2 new near-dups from the 3 new PHASE0 chit-chat intents); check-matcher
+  92/92; check-handlers 29/29; check-tools 128/128;
+  check-indexer 85/85 (+14 SYMBOLS & GRAPH rows for the Phase 1.1 codebase-graph work); check-ws-cases 84/84 (baseline +4 rows for the Phase 3 aiQueryInFlight
+  lifecycle fix; +1 drift row from later WS-case additions). Run the relevant battery after ANY edit to the corresponding module.
 - **editFile** tolerates whitespace differences (normalized line-range fallback) but not
   wrong wording; on total failure the error names both attempts and tells the caller to
   re-read the file. Truncation guard: `writeFile` re-reads and compares length after writes.

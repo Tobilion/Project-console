@@ -142,7 +142,7 @@ eq('diagnostics leaf: dead_code answers (no symbol index on fixture)', ws.sent.l
 
 sent.length = 0;
 await handleBuiltinIntent(ws, 'git_branch_cleanup', 'clean up merged branches', proj, {});
-eq('git leaf: branch_cleanup on non-git project answers no-repo', ws.sent.length === 1 && ws.sent[0].type === 'answer' && ws.sent[0].data.includes('not a git repository'), true);
+eq('git leaf: branch_cleanup on non-git project answers no-repo', ws.sent.length === 1 && ws.sent[0].type === 'answer' && (ws.sent[0].data.includes('not a git repository') || ws.sent[0].data.includes("isn't a git repository")), true);
 
 sent.length = 0;
 const unknown = await handleBuiltinIntent(ws, 'no_such_intent', 'x', proj, {});

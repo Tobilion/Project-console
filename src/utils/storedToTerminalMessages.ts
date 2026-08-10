@@ -31,6 +31,7 @@ export function storedToTerminalMessages(messages: StoredSession['messages']): T
       type: isCommandOutput ? 'output' : (m.role as TerminalMessage['type']),
       content: m.content,
       isMarkdown,
+      timestamp: m.timestamp,
     };
   });
 }
