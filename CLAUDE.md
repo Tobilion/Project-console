@@ -20,8 +20,17 @@ npm run dev     # tsx server/index.js, http://127.0.0.1:3000
 npm run lint    # tsc --noEmit
 ```
 
-- `start.bat` handles port fallback (3000 → 3001-3010) automatically; the frontend derives
-  the WebSocket URL from `window.location`, so it follows whatever port the server used.
+- `start.bat` (styled W/C/Q launcher, ANSI colors, ASCII-only file) probes ports 3000-3009
+  first and skips starting a server if one already responds — no duplicate instance landing on
+  a fallback port. Server-start PID capture is via `server.pid` file (`Set-Content` + `set /p`),
+  NOT a `for /f` pipe: the pipe variant hung forever (confirmed 2026-08-10 — the detached
+  server tree kept the pipe's write end open and the batch never reached the cli-client
+  handoff). Kill-on-error uses `taskkill /f /t /pid` from that file, never `/im node.exe`.
+  The file must stay ASCII-only: cmd's parser desyncs on multi-byte chars (UTF-8 box-drawing
+  broke echo lines; an OEM-encoded variant survived cmd but corrupted on any editor save).
+  Also no parentheses inside echo lines inside IF blocks ("X was unexpected at this time").
+  The frontend derives the WebSocket URL from `window.location`, so it follows whatever port
+  the server used.
 - **Global npx launcher**: `node bin/cli.js` (or `npx local-project-console`) imports the
   bundled or source server into the same process and polls `globalThis.__consoleServerPort`
   (a process-global integer set by `server/index.js` once the port-fallback loop binds).
@@ -34,7 +43,17 @@ npm run lint    # tsc --noEmit
 - CLI chat mode: `node server/cli-client.js [--dir "<full path>"] [--project "<name>"]`;
   it scans ports 3000-3009, retries up to 90s (cold boot is ~41s), and reports which port it
   connected on. Interactive arrow-key picker via @clack/prompts when a TTY is available,
-  numbered-list fallback otherwise; invalid input re-asks instead of guessing.
+  numbered-list fallback otherwise; invalid input re-asks instead of guessing. The TTY path
+  renders a cowsay mascot (the project's pre-commit hook runs `npm install` when
+  `package.json` is touched, so `cowsay` is a real dependency — renderMascot() must stay
+  defensive against a missing install). Chip-style server messages (`suggestions` /
+  `did_you_mean`) render as a numbered option list the user picks by typing the number
+  (suggestion pick → `execute`, did-you-mean pick → `did_you_mean_pick`); `memory_suggestion`
+  and `learning_suggestion` render with their yes/no and "approve suggestions 1 3" reply hints.
+  Stale options are cleared on any new answer/error/confirm (a number typed later can never
+  fire a pick from a dead turn). Per-port probe timeout is 5s, not 2s: this machine's
+  `/api/projects` takes ~1.7s on a freshly booted server, so the old 2s abort fired on most
+  retry cycles and the CLI reported "could not connect" against a healthy server.
 
 ## Architecture
 

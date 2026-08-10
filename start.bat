@@ -1,6 +1,15 @@
 @echo off
-TITLE Local Project Console Launcher
+:: ASCII-only by design (no box-drawing / emoji). cmd.exe's batch parser desyncs on multi-byte
+:: characters (confirmed live 2026-08-10 with a UTF-8 file: echo lines randomly executed as
+:: commands and the menu broke; an OEM-encoded file with box-drawing survived cmd but any
+:: editor save converted it back to UTF-8 and corrupted it again). Colors + layout carry the
+:: style instead. Also: never put parentheses inside an echo line inside an IF block - cmd
+:: misparses the block (confirmed live 2026-08-10: "X was unexpected at this time").
+title Local Project Console Launcher
 setlocal enabledelayedexpansion
+
+:: ANSI escape detection - yields the ESC character used by the colored output below.
+for /F "tokens=1,2 delims=#" %%a in ('"prompt #$H#$E# & echo on & for %%b in (1) do rem"') do set "ESC=%%b"
 
 cd /d "%~dp0"
 
@@ -9,62 +18,107 @@ IF NOT EXIST "node_modules\" (
     call npm install
 )
 
-:: Mode selection
+:MENU
+cls
+echo %ESC%[36m  ================================================================
+echo  %ESC%[0m%ESC%[1m%ESC%[37m              LOCAL PROJECT CONSOLE ENGINE V4%ESC%[36m
+echo  ================================================================%ESC%[0m
 echo.
-echo ====================================
-echo    Local Project Console Launcher
-echo ====================================
+echo %ESC%[90m  Select execution interface:%ESC%[0m
 echo.
-echo Choose mode:
-echo   [W] Web UI (opens browser)
-echo   [C] CLI Chat (terminal chat mode)
+echo %ESC%[32m    [W]%ESC%[1m Web UI %ESC%[0m%ESC%[90m   (Opens browser canvas @ localhost:3000)%ESC%[0m
+echo %ESC%[33m    [C]%ESC%[1m CLI Chat %ESC%[0m%ESC%[90m   (Interactive terminal agent mode)%ESC%[0m
+echo %ESC%[31m    [Q]%ESC%[1m Quit %ESC%[0m%ESC%[90m   (Exit launcher)%ESC%[0m
 echo.
-:MODE_SELECT
-set /p MODE="Mode (w/c): "
-if /i "!MODE!"=="c" goto :CLI_MODE
-if /i "!MODE!"=="w" goto :WEB_MODE
-goto :MODE_SELECT
+echo %ESC%[36m  ----------------------------------------------------------------%ESC%[0m
+echo.
+set /p MODE=%ESC%[35m  Enter choice (W/C/Q): %ESC%[0m
+
+if /i "!MODE!"=="W" goto WEB_MODE
+if /i "!MODE!"=="C" goto CLI_MODE
+if /i "!MODE!"=="Q" goto QUIT
+goto MENU
 
 :CLI_MODE
-:: `start /B` shares this same console window's stdout with whatever it launches — so without
-:: redirecting it, the background server's own startup logs (dotenvx env injection, NLP training,
-:: semanticMatcher's embedding-model loading, etc.) print directly into this window, interleaved
-:: with the interactive CLI chat itself (confirmed live 2026-07-29 — very confusing to read).
-:: Redirected to a log file instead; check server.log if something needs debugging (stderr goes
-:: to server.err.log — Start-Process cannot redirect both streams to the same file).
-:: The server is launched through PowerShell so its wrapper PID can be captured; on failure we
-:: kill only that process tree (npm -> node server). The old `taskkill /f /im node.exe` killed
-:: every Node process on the machine, including unrelated dev servers and this console's own
-:: tooling (confirmed live 2026-08-06 audit) — never do that.
-echo Starting server in the background (log: server.log)...
-IF EXIST "dist\server.js" (
-    for /f "usebackq delims=" %%P in (`powershell -NoProfile -Command "$p = Start-Process -FilePath 'npm.cmd' -ArgumentList 'start' -RedirectStandardOutput 'server.log' -RedirectStandardError 'server.err.log' -WindowStyle Hidden -PassThru; $p.Id"`) do set SERVER_PID=%%P
+echo.
+echo %ESC%[33m  [+] Checking for a running server on ports 3000-3009...%ESC%[0m
+REM Already-running probe - deliberately pipe-free (no `for /f`): the probe result is written
+REM to server.pid (gitignored via *.pid) and read back with `set /p`. If a console server
+REM already responds, skip starting a second instance (it would only land on a fallback port)
+REM and hand straight to the CLI client, which waits out cold boot itself (up to 90s, ports
+REM 3000-3009). Proxy detection is disabled and the per-port timeout is 5s because PowerShell
+REM 5.1's first WebRequest can stall on proxy auto-detection - measured live: a 1s timeout
+REM missed a running server while 2s was borderline (this machine's /api/projects takes ~1.7s).
+powershell -NoProfile -Command "[Net.WebRequest]::DefaultWebProxy=$null; $f=$null; foreach($i in 3000..3009){ try { $r=Invoke-RestMethod -Uri ('http://127.0.0.1:'+$i+'/api/projects') -TimeoutSec 5; if($r.projects){$f=$i;break} } catch {} }; if($null -ne $f){ 'UP '+$f | Set-Content server.pid } else { 'DOWN' | Set-Content server.pid }"
+set /p PROBE_RESULT=<server.pid
+if /i "!PROBE_RESULT:~0,2!"=="UP" (
+    echo %ESC%[32m  [+] Server already running on port !PROBE_RESULT:~3! - skipping start.%ESC%[0m
 ) ELSE (
-    for /f "usebackq delims=" %%P in (`powershell -NoProfile -Command "$p = Start-Process -FilePath 'npm.cmd' -ArgumentList 'run','dev' -RedirectStandardOutput 'server.log' -RedirectStandardError 'server.err.log' -WindowStyle Hidden -PassThru; $p.Id"`) do set SERVER_PID=%%P
+    REM `start /B` would share this console window's stdout with the server, printing its
+    REM startup logs (NLP training, embedding model loading, etc.) right into the interactive
+    REM CLI - very confusing (confirmed live 2026-07-29). So the server is launched hidden
+    REM through PowerShell with both streams redirected to log files (server.log and
+    REM server.err.log - Start-Process cannot redirect both streams to the same file). On
+    REM failure we kill only that process tree (npm -> node server), captured via a PID file;
+    REM the old `taskkill /f /im node.exe` killed every Node process on the machine, including
+    REM unrelated dev servers and this console's own tooling (confirmed live 2026-08-06 audit)
+    REM - never do that.
+    REM PID capture uses Set-Content + `set /p` instead of a `for /f` pipe because the pipe
+    REM variant hung forever (confirmed 2026-08-10): the detached server process tree kept the
+    REM capture pipe's write end open, so the batch never reached the cli-client handoff and
+    REM the window sat idle at "Starting server..." with no child process and no error. A file
+    REM has no handles, so nothing can hold it open.
+    echo %ESC%[33m  [+] Starting server in the background - logs: server.log, server.err.log...%ESC%[0m
+    IF EXIST "dist\server.js" (
+        powershell -NoProfile -Command "$p = Start-Process -FilePath 'npm.cmd' -ArgumentList 'start' -RedirectStandardOutput 'server.log' -RedirectStandardError 'server.err.log' -WindowStyle Hidden -PassThru; $p.Id | Set-Content server.pid"
+    ) ELSE (
+        powershell -NoProfile -Command "$p = Start-Process -FilePath 'npm.cmd' -ArgumentList 'run','dev' -RedirectStandardOutput 'server.log' -RedirectStandardError 'server.err.log' -WindowStyle Hidden -PassThru; $p.Id | Set-Content server.pid"
+    )
+    set /p SERVER_PID=<server.pid
 )
 
-:: Previously waited here for `netstat` to show port 3000 as listening before starting the CLI
-:: client — but that only confirms *something* is bound to that exact port, not that this app's
-:: server is actually the one there or that it's finished starting (route registration / Vite
-:: middleware setup / semanticMatcher's embedding model load all take real time), and it had no
-:: way to notice the server falling back to a different port. cli-client.js now handles both
-:: concerns itself (retries for up to 20s, checks ports 3000-3009), so just hand off to it
-:: directly instead of duplicating a weaker version of that logic here.
+REM Previously waited here for `netstat` to show port 3000 as listening before starting the
+REM CLI client - but that only confirms *something* is bound to that exact port, not that this
+REM app's server is actually the one there or that it's finished starting (route registration /
+REM Vite middleware setup / semanticMatcher's embedding model load all take real time), and it
+REM had no way to notice the server falling back to a different port. cli-client.js now handles
+REM both concerns itself (retries for up to 90s, checks ports 3000-3009), so just hand off to it
+REM directly instead of duplicating a weaker version of that logic here.
 node server/cli-client.js
 if errorlevel 1 (
-    echo CLI chat exited. Stopping server...
+    echo %ESC%[31m  CLI chat exited with an error - code !ERRORLEVEL!. Stopping server...%ESC%[0m
     if defined SERVER_PID (
         taskkill /f /t /pid !SERVER_PID! >nul 2>&1
     )
+) else (
+    echo %ESC%[90m  [cli chat exited cleanly]%ESC%[0m
 )
 pause
 exit /b 0
 
 :WEB_MODE
-echo Starting on port 3000 (port fallback handled by server)...
-start http://localhost:3000
-IF EXIST "dist\server.js" (
-    call npm start
+echo.
+echo %ESC%[32m  [+] Checking for a running server on ports 3000-3009...%ESC%[0m
+REM Same already-running probe as CLI mode - opening the browser against an existing server is
+REM all that's needed; starting a second foreground instance would land on a fallback port and
+REM leave a duplicate process behind.
+powershell -NoProfile -Command "[Net.WebRequest]::DefaultWebProxy=$null; $f=$null; foreach($i in 3000..3009){ try { $r=Invoke-RestMethod -Uri ('http://127.0.0.1:'+$i+'/api/projects') -TimeoutSec 5; if($r.projects){$f=$i;break} } catch {} }; if($null -ne $f){ 'UP '+$f | Set-Content server.pid } else { 'DOWN' | Set-Content server.pid }"
+set /p PROBE_RESULT=<server.pid
+if /i "!PROBE_RESULT:~0,2!"=="UP" (
+    echo %ESC%[32m  [+] Server already running on port !PROBE_RESULT:~3! - opening browser.%ESC%[0m
+    start http://localhost:!PROBE_RESULT:~3!
 ) ELSE (
-    call npm run dev
+    echo %ESC%[32m  [+] Starting server and opening the browser...%ESC%[0m
+    start http://localhost:3000
+    IF EXIST "dist\server.js" (
+        call npm start
+    ) ELSE (
+        call npm run dev
+    )
 )
+exit /b 0
+
+:QUIT
+echo.
+echo %ESC%[90m  Exiting launcher...%ESC%[0m
+exit /b 0

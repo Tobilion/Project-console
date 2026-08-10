@@ -37,6 +37,7 @@
     "chokidar": "^5.0.0",
     "clsx": "^2.1.1",
     "compression": "^1.8.1",
+    "cowsay": "^1.6.0",
     "express": "^4.21.2",
     "figlet": "^1.11.4",
     "fuse.js": "^7.5.0",

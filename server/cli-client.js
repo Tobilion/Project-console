@@ -4,6 +4,10 @@ import * as p from '@clack/prompts';
 import chalk from 'chalk';
 import boxen from 'boxen';
 import figlet from 'figlet';
+import cowsay from 'cowsay';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
 
 // Mirrors server/index.js's own PORT..PORT+9 fallback range — if something else already had
 // BASE_PORT (a stale console instance, another dev server, anything), the real server may have
@@ -39,7 +43,10 @@ function stripMarkdown(text) {
 
 async function tryFetchProjects(port) {
   try {
-    const res = await fetch(`http://${HOST}:${port}/api/projects`, { signal: AbortSignal.timeout(2000) });
+    // 5s, not 2s: measured live 2026-08-10 — this machine's /api/projects takes ~1.7s on a
+    // freshly booted server (project discovery rescans 15 folders), so a 2s abort fired on
+    // most retry cycles and the CLI reported "could not connect" against a healthy server.
+    const res = await fetch(`http://${HOST}:${port}/api/projects`, { signal: AbortSignal.timeout(5000) });
     if (!res.ok) return null;
     const data = await res.json();
     return { projects: data.projects || [], port };
@@ -167,6 +174,32 @@ function findProjectFromArgs(projects) {
   return null;
 }
 
+// ASCII mascot greeting shown above the project picker (TTY path only, matching the figlet
+// banner). The animal is picked at random from a curated list validated against the installed
+// cowsay package's cows/ directory (2026-08-10: cat/owl/dragon/robot/stegosaurus all present);
+// the fallback exists because cowsay.say() throws on an unknown f value, and the greeting name
+// comes from the tracked user profile when available, never hardcoded per user.
+const MASCOT_COWS = ['cat', 'owl', 'dragon', 'robot', 'stegosaurus', 'tux', 'doge'];
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+function renderMascot() {
+  let name = 'Tobi';
+  try {
+    const profile = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'data', 'user-profile.json'), 'utf8'));
+    if (profile.userProfile?.name) name = profile.userProfile.name;
+  } catch {
+    // Missing/corrupt profile must not fail the whole CLI — keep the fallback name.
+  }
+  const animal = MASCOT_COWS[Math.floor(Math.random() * MASCOT_COWS.length)];
+  let art;
+  try {
+    art = cowsay.say({ text: `Welcome back, ${name}! Select a project to initialize session:`, e: 'oO', T: 'U ', f: animal });
+  } catch {
+    art = cowsay.say({ text: `Welcome back, ${name}!`, f: 'cat' });
+  }
+  console.log(chalk.cyan(art));
+}
+
 async function main() {
   console.clear();
   if (isTTY) {
@@ -179,6 +212,7 @@ async function main() {
         borderColor: 'cyan',
       })
     );
+    renderMascot();
   } else {
     console.log(`\n${C.bgBlue}${C.bold}  Local Project Console — CLI Chat  ${C.reset}\n`);
   }
@@ -234,6 +268,13 @@ async function main() {
   // (after the user answers) is what re-prompts, so nothing is lost by skipping it here.
   let confirmPending = false;
 
+  // Numbered option picks for the server's chip-style messages ('suggestions' / 'did_you_mean').
+  // The web UI renders these as clickable chips; the CLI renders them as numbers the user types
+  // in the input line. Entries are cleared on ANY next input — a non-number just falls through
+  // as a normal message (the web UI's chips are non-blocking too), so a stray "1" typed later
+  // can never fire a stale pick.
+  let pendingOptions = [];
+
   // stdout.write() calls below don't reliably end in '\n' — some WS message types (start/output/
   // token) are meant to run together mid-stream. But 'answer' is always a discrete reply, and the
   // server can send more than one in a single turn (e.g. an "answer" from npm_run immediately
@@ -250,6 +291,19 @@ async function main() {
   function writeRaw(text) {
     process.stdout.write(text);
     atLineStart = text.endsWith('\n');
+  }
+
+  // Renders a numbered block for server chip messages and records the options so the next bare
+  // in-range number input picks one (see setupReadline). Numbering continues across successive
+  // chip messages within the same turn — the fallback path sends did_you_mean before suggestions.
+  function addPendingOptions(entries, header) {
+    const start = pendingOptions.length + 1;
+    const lines = entries.map((e, i) => {
+      const label = e.kind === 'didYouMean' ? e.label : e.text;
+      return `  ${C.cyan}${start + i}${C.reset}) ${C.green}${label}${C.reset}`;
+    });
+    writeLine(`${C.dim}${header}:${C.reset}\n${lines.join('\n')}\n`);
+    pendingOptions.push(...entries);
   }
 
   async function refreshProjects() {
@@ -269,6 +323,12 @@ async function main() {
   function setupReadline() {
     if (rl) rl.close();
     rl = readline.createInterface({ input: process.stdin, output: process.stdout, crlfDelay: Infinity });
+    // Piped/redirected stdin (echo foo | cli-client, CI) hits EOF, which closes the interface
+    // under us — a server 'end' arriving afterwards used to crash with ERR_USE_AFTER_CLOSE
+    // (reproduced 2026-08-10). Track liveness via a close listener so the 'end' handler's
+    // existing `&& rl` guard actually works; real TTY sessions never EOF, so this only affects
+    // scripted runs.
+    rl.on('close', () => { rl = null; });
     rl.setPrompt(`${C.cyan}${C.bold}chat>${C.reset} `);
     waitingForInput = true;
     rl.prompt();
@@ -283,6 +343,24 @@ async function main() {
         const ok = trimmed.toLowerCase() === 'y' || trimmed.toLowerCase() === 'yes';
         resolve(ok);
         return;
+      }
+      // If a chip-style question is pending, a bare in-range number picks that option (the web
+      // UI equivalent of clicking a chip). Anything else clears the options and flows on as a
+      // normal message — same non-blocking semantics as the web UI's chip bar.
+      if (pendingOptions.length > 0) {
+        const numeric = /^\d+$/.test(trimmed) ? parseInt(trimmed, 10) : NaN;
+        const chosen = Number.isInteger(numeric) && numeric >= 1 && numeric <= pendingOptions.length
+          ? pendingOptions[numeric - 1]
+          : null;
+        pendingOptions = [];
+        if (chosen) {
+          if (chosen.kind === 'didYouMean') {
+            ws.send(JSON.stringify({ type: 'did_you_mean_pick', payload: { intent: chosen.intent } }));
+          } else {
+            ws.send(JSON.stringify({ type: 'execute', payload: { projectId: project.id, input: chosen.text, sessionId: null } }));
+          }
+          return;
+        }
       }
       const lower = trimmed.toLowerCase();
       if (lower === 'quit' || lower === 'exit') {
@@ -333,9 +411,15 @@ async function main() {
 
     switch (msg.type) {
       case 'answer':
+        // A new answer starts a fresh turn (or continues one whose options already fired) —
+        // stale options from a previous turn must not linger, or a later "1" could fire a pick
+        // from a dead conversation (seen live: fallback suggestions from turn N still pending
+        // when turn N+1's suggestions arrived, mis-numbering them 8-13).
+        pendingOptions = [];
         if (msg.data) writeLine(`${C.reset}${stripMarkdown(msg.data)}\n`);
         break;
       case 'error_output':
+        pendingOptions = [];
         if (msg.data) writeLine(`${C.red}${msg.data}${C.reset}`);
         break;
       case 'output':
@@ -362,6 +446,7 @@ async function main() {
         atLineStart = true;
         break;
       case 'confirm_prompt':
+        pendingOptions = [];
         confirmPending = true;
         questionAsync(`Risky command "${msg.command}"? (y/N):`).then((ans) => {
           confirmPending = false;
@@ -369,6 +454,7 @@ async function main() {
         });
         break;
       case 'tool_confirm_prompt':
+        pendingOptions = [];
         confirmPending = true;
         questionAsync(`AI wants to run ${C.bold}${msg.tool}${C.reset}${C.yellow} with ${JSON.stringify(msg.args)} — approve? (y/N):`).then((ans) => {
           confirmPending = false;
@@ -385,6 +471,49 @@ async function main() {
         if (msg.data?.result?.error || msg.data?.error) process.stdout.write(`${C.red}✖ ${msg.data.result?.error || msg.data.error}${C.reset}\n`);
         else process.stdout.write(`${C.green}✔ ${msg.data?.tool || 'Tool'} done${C.reset}\n`);
         break;
+      case 'suggestions':
+        // Run-command suggestions (config entries, npm scripts, documented commands) — the web
+        // UI renders clickable chips; render them as a numbered list the user can pick from.
+        if (Array.isArray(msg.data) && msg.data.length > 0) {
+          addPendingOptions(msg.data.map((text) => ({ kind: 'suggestion', text })), 'Options');
+          writeLine(`${C.dim}(type a number to run it, or type your own message)${C.reset}\n`);
+        }
+        break;
+      case 'did_you_mean':
+        // Non-blocking "did you mean" chip (matcher's closeSecond / nearest-intent hint).
+        if (msg.data && typeof msg.data.intent === 'string' && typeof msg.data.label === 'string') {
+          addPendingOptions([{ kind: 'didYouMean', intent: msg.data.intent, label: msg.data.label }], 'Did you mean');
+          writeLine(`${C.dim}(type its number to pick it)${C.reset}\n`);
+        }
+        break;
+      case 'memory_suggestion':
+        // Accept/reject card for a suggested CLAUDE.md memory note. The reply is plain text
+        // ("yes"/"no") handled by the server's pending-memory-suggestion interceptor, so this
+        // only renders the card — no interception needed.
+        if (msg.data?.topic) {
+          writeLine(`${C.yellow}[Memory suggestion]${C.reset} ${C.bold}${msg.data.topic}${C.reset}${msg.data.content ? `: ${msg.data.content}` : ''}\n${C.dim}(reply "yes" to add this to CLAUDE.md, "no" to skip)${C.reset}\n`);
+        }
+        break;
+      case 'learning_suggestion': {
+        // "review learning" output — mirror the web UI's formatting and offer the same
+        // per-item "approve N" chips as numbered options (text replies also work).
+        const lSuggestions = msg.data?.suggestions;
+        if (!Array.isArray(lSuggestions) || lSuggestions.length === 0) {
+          writeLine('No learning suggestions yet — keep using the console and check back later!\n');
+        } else {
+          const lines = ['Learning suggestions:'];
+          lSuggestions.forEach((s) => {
+            const phrases = (s.phrases || []).slice(0, 5).join(', ');
+            const extra = (s.phrases || []).length > 5 ? ` (+${s.phrases.length - 5} more)` : '';
+            lines.push(`  ${C.bold}${s.intent}${C.reset} (${s.confidence}) — ${s.count} occurrences, ${s.accepted} accepted, ${s.rejected} rejected`);
+            lines.push(`    Phrases: ${phrases}${extra}`);
+          });
+          lines.push('Type "approve suggestions" to add all, or "approve suggestions 1 3" to approve specific ones.');
+          writeLine(lines.join('\n') + '\n');
+          addPendingOptions(lSuggestions.map((_, i) => ({ kind: 'suggestion', text: `approve ${i + 1}` })), 'Approve');
+        }
+        break;
+      }
       default:
         break;
     }
