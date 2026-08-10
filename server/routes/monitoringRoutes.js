@@ -4,6 +4,7 @@ import fs from 'fs';
 import { metrics } from '../metrics.js';
 import { runningProcesses, getProcessLog } from '../executor.js';
 import { state } from '../state.js';
+import { forgetDevUrl } from '../devUrlStore.js';
 
 /** Runs a git command in the given directory with a timeout, returning { stdout, stderr }. */
 function runGit(cwd, args, timeoutMs = 5000) {
@@ -107,14 +108,34 @@ export function registerMonitoringRoutes(app) {
     }
 
     const results = [];
+    const consoleRoot = path.resolve(process.cwd());
     for (const project of state.activeProjectsCache) {
+      const rawDevUrl = state.lastDevUrls.get(project.id) || null;
+      // A stored URL on the console's own port is the console, not this project's server —
+      // the console took that port over (or held it all along); drop it and forget it so the
+      // stale entry can't keep "showing live" (confirmed live 2026-08-10: Matchday Exchange
+      // stayed live on :3001 after the console moved there). recordDevUrl now refuses such
+      // URLs at write time; this cleanup handles entries stored before that guard existed.
+      let devUrl = rawDevUrl;
+      try {
+        if (rawDevUrl && Number(new URL(rawDevUrl).port) === Number(state.serverPort)) {
+          devUrl = null;
+          forgetDevUrl(project.id);
+        }
+      } catch { devUrl = rawDevUrl; }
+      // The console itself is a live server — its own frontend answers on state.serverPort.
+      // A project whose root IS this repository gets the console URL so it shows up as live
+      // in the dashboard and its "Open site" action works.
+      if (!devUrl && path.resolve(project.path) === consoleRoot) {
+        devUrl = `http://127.0.0.1:${state.serverPort}`;
+      }
       const entry = {
         id: project.id,
         name: project.name,
         path: project.path,
         uncommitted: [],
         recentCommits: [],
-        devUrl: state.lastDevUrls.get(project.id) || null,
+        devUrl,
         runningCommand: null,
         isGitRepo: false,
         // Dashboard QoL expansion (2026-08-10, requested directly — a project card's push

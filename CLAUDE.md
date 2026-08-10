@@ -719,6 +719,47 @@ time/date/calculate rows, 92/92).
   re-read the file. Truncation guard: `writeFile` re-reads and compares length after writes.
 - **Windows harness gotcha**: the phase2 smoke (python http.server) never exits on its own
   (orphaned child inherits stdio pipes) — run via Start-Process + timeout + force-kill.
+
+## Phase 5 (2026-08-10)
+
+- **requestedPort.js** — "run the site on port 3010" / "serve the site on port 3040":
+  `extractRequestedPort`/`applyRequestedPort`. Replaces an existing `--port`/`-p` flag;
+  uses `npm run dev -- --port=N` for vite-shaped scripts (vite ignores PORT env); falls
+  back to `set PORT=N&& ` / `PORT=N ` env prefix. Wired into `npm_run`/`run_project`
+  (incl. the npm start|serve shortcuts and the run/serve-the-site branch). When a port is
+  requested the duplicate-dev-server guard is skipped deliberately (explicit re-run on a
+  new port).
+- **deploy intent examples fixed**: intentsData.js `deploy` example list OWNED the whole
+  run/serve/open-site family ("run the site", "serve the site", "open the site", ...), so
+  those phrasings silently ran a git push. Removed — `run_project`/`npm_run` own them now.
+  Run-on-port examples added to npmAndFileIntents.js/miscIntents.js ('serve the site',
+  'serve the app', 'run the app on port 3010', ...; 'run the site on port 3010' lives in
+  npm_run only — check-intents still 1/5/82).
+- **serve-the-site pre-semantic override** (preSemanticOverrides.js): "serve the site on
+  port 3040" fell out of the embedding stage entirely and landed on system.chit_chat.deploy
+  via a later stage — the literal `^serve the site[ on port N]$` override routes it to
+  npm_run before anything else can vote (confirmed live).
+- **run/serve/start-the-site branch** (builtinFileNpm.js npm_run): the script-name capture
+  deliberately excludes generic nouns (site/app/server/...) so "run the site on port 3010"
+  can't dead-end on "No script called site"; the branch runs the dev script with the
+  requested port. With a requested port it confirms first — parity with the config-entry
+  path (the same phrase confirms when the project's own dev-script entry wins the match);
+  without a port it runs immediately, matching plain "run the site". "stop the server" is
+  immediate by design (handleStopServer kills only tracked processes).
+- **Dashboard project modal** (Dashboard.tsx): expanded project card gained Run / Stop
+  buttons (normal chat flow, never a bypass) and an embedded `HistoryPanel`.
+- **Live-site truth**: `recordDevUrl`/`loadDevUrls` refuse URLs on the console's own port
+  (a project can never own that port). `/api/dashboard` also drops stale colliding stored
+  URLs (reported live: Matchday Exchange stayed "live" at :3001 after the console took that
+  port). The console's own project entry shows as live at `http://127.0.0.1:<serverPort>`.
+- **Harness gotchas (2026-08-10)**: copying scratch driver scripts into the repo root
+  triggers Vite rebuilds that stall the WS pipeline 60-90s — keep live-test drivers in
+  `%TEMP%` and resolve `ws` via `createRequire` with an absolute path. A killed harness
+  shell ORPHANS its Start-Process child, which keeps holding the port, and a later
+  "restart" silently binds a fallback — verify the listening PID after every restart
+  (`Get-NetTCPConnection -LocalPort N`). Test servers were run on :3007 with
+  PORT=3007 env; the user's own console may hold :3000/:3001 — never kill by
+  `/im node.exe`, always by PID/command line.
 - **"append to X the text Y" routes to `system.chit_chat.deploy`, not `file_append`**
   (pre-existing matcher quirk, confirmed 2026-08-10 via a matcher probe; the check-matcher
   battery is unaffected because it tests canonical example phrasings). "add a line to X: ..." /

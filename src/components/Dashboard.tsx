@@ -1,8 +1,9 @@
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, GitCommit, FileWarning, Globe, Terminal, FolderGit2, MessageSquare, UploadCloud, Copy, RefreshCw, Search, Radio } from 'lucide-react';
+import { X, GitCommit, FileWarning, Globe, Terminal, FolderGit2, MessageSquare, UploadCloud, Copy, RefreshCw, Search, Radio, Play, Square } from 'lucide-react';
 import { formatPath } from '../utils/formatPath';
 import { apiFetchJson } from '../utils/apiFetch';
+import { HistoryPanel } from './HistoryPanel';
 import type { Project } from '../types';
 
 interface DashboardEntry {
@@ -97,6 +98,24 @@ export const Dashboard = ({ onClose, refreshSignal = 0, projects, onSelectProjec
     const project = projects.find((p) => p.id === entry.id);
     if (!project) return;
     await onSelectProject(project);
+    onClose();
+  };
+
+  // Run/Stop route through the normal chat flow (same pattern as handlePush) — the command
+  // lands on the same confirm cards the user would get from typing it, never a bypass.
+  const handleRun = async (entry: DashboardEntry) => {
+    const project = projects.find((p) => p.id === entry.id);
+    if (!project) return;
+    await onSelectProject(project);
+    await onSendMessage('run the site');
+    onClose();
+  };
+
+  const handleStop = async (entry: DashboardEntry) => {
+    const project = projects.find((p) => p.id === entry.id);
+    if (!project) return;
+    await onSelectProject(project);
+    await onSendMessage('stop the server');
     onClose();
   };
 
@@ -332,6 +351,24 @@ export const Dashboard = ({ onClose, refreshSignal = 0, projects, onSelectProjec
                       <MessageSquare size={12} />
                       Open in chat
                     </button>
+                    {!entry.runningCommand && (
+                      <button
+                        onClick={() => handleRun(entry)}
+                        className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg bg-teal-500/10 hover:bg-teal-500/20 text-[#00d4a3] border border-teal-500/20 transition-colors"
+                      >
+                        <Play size={12} />
+                        Run
+                      </button>
+                    )}
+                    {(entry.runningCommand || entry.devUrl) && (
+                      <button
+                        onClick={() => handleStop(entry)}
+                        className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 transition-colors"
+                      >
+                        <Square size={12} />
+                        Stop
+                      </button>
+                    )}
                     {needsPush(entry) && (
                       <button
                         onClick={() => handlePush(entry)}
@@ -359,6 +396,16 @@ export const Dashboard = ({ onClose, refreshSignal = 0, projects, onSelectProjec
                       <Copy size={12} />
                       {copiedId === entry.id ? 'Copied' : 'Copy path'}
                     </button>
+                  </div>
+                  <div
+                    className="mt-3 pt-3 border-t border-border-soft"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <HistoryPanel
+                      projects={[{ id: entry.id, name: entry.name }]}
+                      activeProjectId={entry.id}
+                      onSendMessage={onSendMessage}
+                    />
                   </div>
                 </motion.div>
               )}

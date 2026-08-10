@@ -15,6 +15,19 @@ const DEV_URLS_FILE = path.join(process.cwd(), 'data', 'dev-urls.json');
 
 let saveTimer = null;
 
+// A stored URL on the console's own port can never be a project's dev server (the console
+// itself holds that port). Refused at record AND load time so a URL captured while the console
+// ran on another port can't falsely claim a project is live after the console moves there —
+// confirmed live 2026-08-10: Matchday Exchange's stored :3001 stayed "live" in the dashboard
+// after the console itself took over port 3001.
+function collidesWithConsole(url) {
+  try {
+    return Number(new URL(url).port) === Number(state.serverPort);
+  } catch {
+    return false;
+  }
+}
+
 function persist() {
   try {
     fs.mkdirSync(path.dirname(DEV_URLS_FILE), { recursive: true });
@@ -39,7 +52,7 @@ export function loadDevUrls() {
     const parsed = JSON.parse(fs.readFileSync(DEV_URLS_FILE, 'utf8'));
     if (parsed && typeof parsed === 'object') {
       for (const [projectId, url] of Object.entries(parsed)) {
-        if (typeof url === 'string' && /^https?:\/\//.test(url)) {
+        if (typeof url === 'string' && /^https?:\/\//.test(url) && !collidesWithConsole(url)) {
           state.lastDevUrls.set(projectId, url);
         }
       }
@@ -49,8 +62,10 @@ export function loadDevUrls() {
   }
 }
 
-/** Record a detected dev URL (executor.js's URL scan) and persist it. */
+/** Record a detected dev URL (executor.js's URL scan) and persist it. Refuses URLs on the
+ *  console's own port — that port belongs to the console, not to any project. */
 export function recordDevUrl(projectId, url) {
+  if (collidesWithConsole(url)) return;
   state.lastDevUrls.set(projectId, url);
   schedulePersist();
 }

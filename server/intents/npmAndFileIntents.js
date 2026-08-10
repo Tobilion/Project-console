@@ -54,6 +54,8 @@ export const NPM_AND_FILE_INTENTS = {
       'start the development server', 'start dev server',
       'fire up the dev environment', 'get the dev server going',
       'boot the dev server', 'spin up dev mode', 'run npm start',
+      'serve the site', 'serve the app', 'serve the live site',
+      'run the site on port 3010', 'start the dev server on port 3010',
     ],
   },
   'file_create': {

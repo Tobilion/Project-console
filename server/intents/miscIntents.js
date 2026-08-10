@@ -37,6 +37,7 @@ export const MISC_INTENTS = {
       'fire up the server', 'spin up the server', 'spin up the app',
       'get this running', 'get this project running', 'boot up the project',
       'boot the app', 'kick off the server', 'fire this up',
+      'run the app on port 3010',
     ],
   },
   'project_scan': {

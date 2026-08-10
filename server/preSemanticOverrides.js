@@ -66,6 +66,12 @@ export const PRE_SEMANTIC_OVERRIDES = [
   // site/url/link (run_project/open_site), github (open_github_page), and vs code/cursor/
   // editor/browser (open_in_vscode/open_in_cursor).
   { intent: 'project.action.open_file', pattern: /^(?:open|open\s+up|open\s+me)\b(?!(?:.*\b(?:explorer|folder|directory|site|website|url|link|github|editor|browser|vs\s*c?ode|cursor)\b)).*\b(?:files?|readme|[\w./-]+\.[a-zA-Z0-9]{1,10})\b/i },
+  // Confirmed live (Phase 5, 2026-08-10, matcher probe): "serve the site on port 3040" fell
+  // out of the embedding stage entirely (match: null) and landed on system.chit_chat.deploy
+  // via a later stage — a bare "serve the site[ on port N]" never means deploy, it means
+  // run the dev server on that port. Deliberately narrow: requires the literal serve verb
+  // AND the site noun, optional port suffix only.
+  { intent: 'npm_run', pattern: /^serve\s+the\s+site(?:\s+(?:on|at|using)\s+port\s+\d{2,5})?$/i },
 ];
 
 /**

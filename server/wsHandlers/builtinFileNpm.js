@@ -1,8 +1,10 @@
+import crypto from 'crypto';
 import { executeCommand, runningProcesses } from '../executor.js';
-import { state } from '../state.js';
+import { state, pendingConfirmations } from '../state.js';
 import { createProjectTools, findTestCommand } from '../tools.js';
 import { parseFileNameAndContent, parseFileNameOnly, queueFileOpConfirmation } from './builtinHelpers.js';
 import { projectTypeSuggestions, findMentionedScript } from './builtinRunSuggestions.js';
+import { extractRequestedPort, applyRequestedPort } from '../requestedPort.js';
 
 /**
  * npm/file/run handlers (Phase 10 step 4, extracted verbatim from builtinIntents.js).
@@ -23,8 +25,15 @@ export const fileNpmHandlers = {
     // Load scripts from codebase index
     let scripts = {};
     try { scripts = JSON.parse(project.codebaseIndex?.keyFiles?.['package.json'] || '{}').scripts || {}; } catch {}
-    // Try to extract a script name from "run dev" / "run the dev script" patterns
-    const runMatch = input.match(/(?:run|execute)\s+(?:the\s+)?["']?(\w+(?:-\w+)*)["']?/i);
+    // "run the site on port 3010" — an explicit port overrides the script's default. When a
+    // port is requested the duplicate-dev-server guard below is skipped: the user is
+    // deliberately (re)starting on a different port, not re-spawning the same one (Phase 5).
+    const requestedPort = extractRequestedPort(input);
+    // Try to extract a script name from "run dev" / "run the dev script" patterns. Generic
+    // site/app/server nouns are excluded from the capture: "run the site on port 3010" must
+    // NOT read "site" as a script name — it falls through to the run-the-site branch below
+    // (Phase 5, confirmed live: the port-request phrase dead-ended on "No script called site").
+    const runMatch = input.match(/(?:run|execute)\s+(?:the\s+)?["']?((?!site|app|server|project|live|it|thing|something|program|application\b)\w+(?:-\w+)*)["']?/i);
     if (runMatch) {
       const scriptName = runMatch[1];
       if (scripts[scriptName]) {
@@ -34,7 +43,7 @@ export const fileNpmHandlers = {
         // Matches only when a tracked process IS this script (same reasoning as run_project:
         // a project running a backend on 4400 must still be able to start vite on 3001).
         const expected = scriptName === 'dev' ? 'npm run dev' : scriptName === 'start' ? 'npm start' : 'npm run serve';
-        const tracked = ['dev', 'start', 'serve'].includes(scriptName)
+        const tracked = !requestedPort && ['dev', 'start', 'serve'].includes(scriptName)
           ? [...(runningProcesses.get(project.id)?.values() || [])].find((p) => p.command && p.command.trim() === expected)
           : null;
         if (tracked && tracked.command && tracked.command.trim() === expected) {
@@ -45,7 +54,7 @@ export const fileNpmHandlers = {
           }));
           return true;
         }
-        executeCommand(`npm run ${scriptName}`, project.path, ws, project.id);
+        executeCommand(applyRequestedPort(`npm run ${scriptName}`, requestedPort, { script: scripts[scriptName] }), project.path, ws, project.id);
       } else {
         ws.send(JSON.stringify({ type: 'answer', data: `No script called **\`${scriptName}\`** found in \`package.json\`.` }));
         await projectTypeSuggestions(ws, project, input, scripts);
@@ -55,21 +64,21 @@ export const fileNpmHandlers = {
     // "npm serve" / "npm start" shortcut — no "run" keyword
     const serveMatch = input.match(/\bnpm\s+serve\b/i);
     if (serveMatch && scripts.serve) {
-      executeCommand('npm run serve', project.path, ws, project.id);
+      executeCommand(applyRequestedPort('npm run serve', requestedPort, { script: scripts.serve }), project.path, ws, project.id);
       return true;
     }
     const startDirect = input.match(/\bnpm\s+start\b/i);
     if (startDirect && scripts.start) {
-      executeCommand('npm start', project.path, ws, project.id);
+      executeCommand(applyRequestedPort('npm start', requestedPort, { script: scripts.start }), project.path, ws, project.id);
       return true;
     }
     // Try "start the dev server" / "start a live server" patterns
     const startMatch = input.match(/start\s+(?:the\s+|a\s+)?(?:live\s+)?(?:dev\s+)?(?:server|site|app)\b/i);
     if (startMatch) {
       if (scripts.dev) {
-        executeCommand('npm run dev', project.path, ws, project.id);
+        executeCommand(applyRequestedPort('npm run dev', requestedPort, { script: scripts.dev }), project.path, ws, project.id);
       } else if (scripts.start) {
-        executeCommand('npm start', project.path, ws, project.id);
+        executeCommand(applyRequestedPort('npm start', requestedPort, { script: scripts.start }), project.path, ws, project.id);
       } else {
         ws.send(JSON.stringify({ type: 'answer', data: `No \`dev\` or \`start\` script found in \`package.json\`.` }));
         await projectTypeSuggestions(ws, project, input, scripts);
@@ -79,11 +88,50 @@ export const fileNpmHandlers = {
     // Try "start developing" / "start dev mode"
     if (/\bstart\s+developing\b|\bstart\s+dev\s+mode\b/i.test(input)) {
       if (scripts.dev) {
-        executeCommand('npm run dev', project.path, ws, project.id);
+        executeCommand(applyRequestedPort('npm run dev', requestedPort, { script: scripts.dev }), project.path, ws, project.id);
       } else if (scripts.start) {
-        executeCommand('npm start', project.path, ws, project.id);
+        executeCommand(applyRequestedPort('npm start', requestedPort, { script: scripts.start }), project.path, ws, project.id);
       } else {
         await projectTypeSuggestions(ws, project, input, scripts);
+      }
+      return true;
+    }
+    // "run/serve/start the site[/app/server] on port N" — the runMatch capture above
+    // deliberately skips these generic nouns, so port-shaped run requests land here and run
+    // the dev script with the requested port (Phase 5). Without a port these phrases mostly
+    // route to run_project; this branch also catches "serve the site" variants that reach
+    // npm_run directly. "start the server" normally goes to run_project via a pre-semantic
+    // override, so the start variant here is belt-and-braces for a same-script re-run.
+    if (/\b(?:run|serve|start)\s+(?:the\s+|a\s+)?(?:live\s+)?(?:site|app|server|application)\b/i.test(input)) {
+      let command = null;
+      if (scripts.dev) {
+        command = applyRequestedPort('npm run dev', requestedPort, { script: scripts.dev });
+      } else if (scripts.start) {
+        command = applyRequestedPort('npm start', requestedPort, { script: scripts.start });
+      } else if (scripts.serve) {
+        command = applyRequestedPort('npm run serve', requestedPort, { script: scripts.serve });
+      } else {
+        await projectTypeSuggestions(ws, project, input, scripts);
+        return true;
+      }
+      // Parity with the config-entry path: "run the site on port 3010" confirms when the
+      // project's own dev-script entry wins the match (confirmed live Phase 5), so the
+      // same phrase reaching this builtin branch must confirm identically instead of
+      // running the dev server unasked. Without a requested port the builtin run stays
+      // immediate — matching plain "run the site", which also runs immediately.
+      if (requestedPort) {
+        const token = crypto.randomUUID();
+        pendingConfirmations.set(token, {
+          owner: ws, projectId: project.id, command, trigger: input, createdAt: Date.now(),
+        });
+        ws.send(JSON.stringify({
+          type: 'confirm_prompt',
+          token,
+          command: `${command}  (starts the dev server on the requested port)`,
+          trigger: 'run_server',
+        }));
+      } else {
+        executeCommand(command, project.path, ws, project.id);
       }
       return true;
     }
@@ -223,9 +271,10 @@ export const fileNpmHandlers = {
     // Prefer a script the user actually named ("run its server", "is the server running") over
     // the generic dev/start/serve default — see findMentionedScript's own comment for the real
     // transcript this fixes. dev/start/serve fall through to the normal path below unchanged.
+    const requestedPort = extractRequestedPort(input);
     const mentioned = findMentionedScript(input, scripts);
     if (mentioned && !['dev', 'start', 'serve'].includes(mentioned)) {
-      executeCommand(`npm run ${mentioned}`, project.path, ws, project.id);
+      executeCommand(applyRequestedPort(`npm run ${mentioned}`, requestedPort, { script: scripts[mentioned] }), project.path, ws, project.id);
       return true;
     }
 
@@ -237,11 +286,14 @@ export const fileNpmHandlers = {
     // Matches only when the tracked process is the SAME script we're about to spawn — Matchday
     // Exchange runs two independent servers (vite on 3001 AND a tsx backend on 4400), so "run
     // the site" must still start `dev` while `server` is tracked; the guard exists to stop
-    // duplicate instances of one script, not to freeze the whole project.
+    // duplicate instances of one script, not to freeze the whole project. Skipped entirely when
+    // the user requested a specific port (Phase 5) — that's an explicit re-run on a new port.
     const targetScript = scripts.dev ? 'dev' : scripts.start ? 'start' : scripts.serve ? 'serve' : null;
     const targetCommand = targetScript === 'dev' ? 'npm run dev' : targetScript === 'start' ? 'npm start' : targetScript === 'serve' ? 'npm run serve' : null;
-    const tracked = [...(runningProcesses.get(project.id)?.values() || [])]
-      .find((p) => p.command && p.command.trim() === targetCommand) || null;
+    const tracked = !requestedPort && targetCommand
+      ? [...(runningProcesses.get(project.id)?.values() || [])]
+          .find((p) => p.command && p.command.trim() === targetCommand) || null
+      : null;
     if (tracked && targetCommand && tracked.command && tracked.command.trim() === targetCommand) {
       const url = state.lastDevUrls.get(project.id);
       ws.send(JSON.stringify({
@@ -253,11 +305,11 @@ export const fileNpmHandlers = {
 
     // Check for known dev/start scripts first
     if (scripts.dev) {
-      executeCommand('npm run dev', project.path, ws, project.id);
+      executeCommand(applyRequestedPort('npm run dev', requestedPort, { script: scripts.dev }), project.path, ws, project.id);
     } else if (scripts.start) {
-      executeCommand('npm start', project.path, ws, project.id);
+      executeCommand(applyRequestedPort('npm start', requestedPort, { script: scripts.start }), project.path, ws, project.id);
     } else if (scripts.serve) {
-      executeCommand('npm run serve', project.path, ws, project.id);
+      executeCommand(applyRequestedPort('npm run serve', requestedPort, { script: scripts.serve }), project.path, ws, project.id);
     } else {
       await projectTypeSuggestions(ws, project, input, scripts);
     }
