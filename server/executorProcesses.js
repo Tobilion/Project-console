@@ -3,6 +3,7 @@
 // (stop server, Processes dock, AI stopProcess tool, monitoring routes) reads — it must never
 // be duplicated.
 
+import { spawnSync } from 'child_process';
 import { forgetDevUrl } from './devUrlStore.js';
 import { broadcast } from './wsServer.js';
 
@@ -79,6 +80,23 @@ export function removeTrackedProcess(projectId, pid) {
 }
 
 /**
+ * Windows: the tracked child is a cmd.exe shell wrapper (executor.js spawns with shell: true),
+ * and TerminateProcess on the wrapper alone leaves the real process (python.exe, node, ...)
+ * running as an orphan — confirmed live 2026-08-10: the console reported "Stopped" while the
+ * Flask server kept serving on :5000 with its port still occupied and no way to stop it from
+ * the console anymore. taskkill /f /t kills the wrapper AND its whole descendant tree, so it
+ * MUST run synchronously: an async spawn raced the caller's SIGTERM, the wrapper died first,
+ * and taskkill then reported "no running instance" (exit 128) without killing anything. POSIX
+ * keeps plain SIGTERM on the child (no behavior change).
+ */
+function killProcessTree(child) {
+  if (process.platform !== 'win32' || !child?.pid) return;
+  try {
+    spawnSync('taskkill', ['/f', '/t', '/pid', String(child.pid)], { windowsHide: true, stdio: 'ignore' });
+  } catch {}
+}
+
+/**
  * Single kill path for every caller that stops a tracked process — the "stop server" trigger
  * phrase (connection.js), the `stop_process` WS message (dock stop button), and the AI-mode
  * `stopProcess` tool. Was previously copy-pasted three times; all three now route here so the
@@ -92,9 +110,15 @@ export function stopTrackedProcess(projectId) {
   if (procs.length === 0) return { ok: false };
   const commands = [];
   for (const proc of procs) {
-    try {
-      proc.child.kill('SIGTERM');
-    } catch {}
+    if (process.platform === 'win32') {
+      // taskkill /f /t kills the wrapper itself — no SIGTERM needed, and sending one first
+      // would orphan the tree from the kill (see killProcessTree's sync note).
+      killProcessTree(proc.child);
+    } else {
+      try {
+        proc.child.kill('SIGTERM');
+      } catch {}
+    }
     commands.push(proc.command);
   }
   runningProcesses.delete(projectId);
@@ -109,7 +133,8 @@ export function stopTrackedProcess(projectId) {
 process.on('exit', () => {
   for (const [, slot] of runningProcesses) {
     for (const [, proc] of slot) {
-      try { proc.child.kill('SIGTERM'); } catch {}
+      if (process.platform === 'win32') killProcessTree(proc.child);
+      else { try { proc.child.kill('SIGTERM'); } catch {} }
     }
   }
   runningProcesses.clear();
@@ -117,7 +142,8 @@ process.on('exit', () => {
 process.on('SIGTERM', () => {
   for (const [, slot] of runningProcesses) {
     for (const [, proc] of slot) {
-      try { proc.child.kill('SIGTERM'); } catch {}
+      if (process.platform === 'win32') killProcessTree(proc.child);
+      else { try { proc.child.kill('SIGTERM'); } catch {} }
     }
   }
   runningProcesses.clear();
