@@ -315,6 +315,25 @@ npm run lint    # tsc --noEmit
   send renders AND persists like a typed answer), else appended to `data/schedule-log.md`
   (400-line cap) for `review schedule log`. `initScheduler()` is called from
   `server/index.js` after project discovery (loadSchedules before any connection can create).
+- `server/notify.js` + `server/notify/` — Phase 2 (2026-08-10): push notifications beyond the chat.
+  Rules persist to gitignored `data/notifications.json` (webhook URLs are bearer secrets,
+  deliberately NOT in the git-tracked `data/user-profile.json`); everything defaults OFF — zero
+  behavior change until opted in, and enabling an event turns the desktop channel on
+  (`notifyStore.js`, debounced like scheduleStore). `notifyChannels.js`:
+  `sendDesktopNotification` is a best-effort PowerShell 5.1 WinRT toast (no new npm dependency;
+  may silently no-op on Windows 11 without a registered AppUserModelID — documented, never
+  crashes), `sendWebhook` POSTs JSON with an 8s AbortSignal timeout and is re-validated through
+  `isSafeExternalUrl` AT SEND TIME — localhost/private webhook endpoints are blocked by design
+  (same SSRF guard as webSearch), so webhook testing requires a real public URL. `notifyEvents.js`
+  keeps a bounded event set (`dev-server-crash` / `schedule-find` / `task-done`) with aliases.
+  Admin commands in `connectionNotifyAdmin.js` (pre-matcher tier): `notify me when <event>` /
+  `stop notifying me about <event>` / `list notifications` / `webhook add <url>` /
+  `webhook remove <url>` / `test notification`. Wiring: `initNotifications()` runs from
+  `server/index.js` after `initScheduler()` (loads rules before any connection, registers the
+  taskQueue completion listener — `setTaskCompletionListener` in taskQueue.js); `scheduleFire.js`
+  notifies when a fire produced non-empty output; executor.js's detached-close handler notifies
+  when a still-tracked process died and its URL stopped answering (deliberate stops delete
+  entries first in `stopTrackedProcess`, so they never fire).
 - Misc leaves: `urlSafety.js` (isSafeExternalUrl/isProbeableUrl — SSRF guards; webSearch.js
   re-exports), `regexUtils.js`, `markdownUtils.js`, `webSearch.js` (DuckDuckGo, decodes
   `uddg` redirects, deep-research SSRF guard), `consoleCommandDocs.js` (reference catalog for

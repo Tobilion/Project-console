@@ -24,6 +24,7 @@ import {
 import { ANSI_RE, URL_PATTERN, collapseLfCrlfWarnings, createBufferedSender } from './executorOutput.js';
 import { buildPortPromptConfirmation, offerPortRetry } from './executorPorts.js';
 import { isDevServerCommand, buildDetachMessage } from './executorDevServer.js';
+import { notify } from './notify.js';
 
 // Re-exports so every external importer keeps using `../executor.js` unchanged:
 // monitoringRoutes (runningProcesses, getProcessLog), toolProcess (runningProcesses,
@@ -349,6 +350,13 @@ export function executeCommand(command, cwd, ws, projectId) {
           broadcast({ type: 'dashboard_update' });
           broadcast({ type: 'processes_update' });
           console.log(`[Executor] Detached process for ${projectId} exited and its server is down — tracked entry cleaned up.`);
+          // Phase 2: an entry that was still tracked when the process died means it was never
+          // deliberately stopped (stopTrackedProcess removes entries first) — that's a crash,
+          // so surface it through the notify dispatcher. Fire-and-forget by design.
+          notify(projectId, 'dev-server-crash', {
+            title: 'Dev server stopped',
+            body: `\`${finalCommand}\` exited with code ${code} and no longer answers at ${lastUrl}.`,
+          });
         }
       }, DETACHED_EXIT_PROBE_DELAY_MS);
     });

@@ -13,6 +13,16 @@ const queues = new Map(); // projectId -> array of { id, label, run }
 const active = new Map(); // projectId -> label of the currently-running task
 
 let counter = 0;
+let completionListener = null;
+
+/**
+ * Optional single completion hook (Phase 2 notifications). Called once per finished task with
+ * { projectId, label, failed } — the listener decides what, if anything, to do with it; a
+ * throwing listener must never take the pump down, so it is wrapped. Pass null to clear.
+ */
+export function setTaskCompletionListener(fn) {
+  completionListener = fn;
+}
 
 /**
  * Queues `run` (an async function, no args) for `projectId` under a human-readable `label`.
@@ -34,11 +44,22 @@ function pump(projectId) {
   if (!q || q.length === 0) return;
   const task = q.shift();
   active.set(projectId, task.label);
+  let failed = false;
   Promise.resolve()
     .then(task.run)
-    .catch((err) => console.error(`[taskQueue] "${task.label}" failed for project ${projectId}:`, err.message))
+    .catch((err) => {
+      failed = true;
+      console.error(`[taskQueue] "${task.label}" failed for project ${projectId}:`, err.message);
+    })
     .finally(() => {
       active.delete(projectId);
+      if (completionListener) {
+        try {
+          completionListener({ projectId, label: task.label, failed });
+        } catch (err) {
+          console.error('[taskQueue] completion listener failed:', err.message);
+        }
+      }
       pump(projectId);
     });
 }

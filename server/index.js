@@ -18,6 +18,7 @@ import { autoApplySuggestionsForAll } from './learningEngine.js';
 import { loadLearnedIntents } from './learnedIntents.js';
 import { loadDevUrls } from './devUrlStore.js';
 import { initScheduler } from './schedules/scheduler.js';
+import { initNotifications } from './notify.js';
 import { wss, broadcast } from './wsServer.js';
 import { initWebSocketServer } from './wsHandlers/connection.js';
 import { registerProjectRoutes } from './routes/projectRoutes.js';
@@ -103,6 +104,11 @@ async function init() {
   // Phase 1: restore persisted schedules and start the scheduler tick (loadSchedules runs
   // before any connection can create a schedule; activeProjectsCache is populated above).
   initScheduler();
+
+  // Phase 2: restore notification rules and register the taskQueue completion hook. Rules load
+  // before any connection arrives, and defaults are all-off, so this is a no-op until the user
+  // opts in via the notify/admin commands.
+  initNotifications();
 
   // Initialize semantic matcher (embedding + Fuse.js)
   await semanticMatcher.initialize().catch((err) => console.error('SemanticMatcher init failed:', err.message));

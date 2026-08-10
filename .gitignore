@@ -24,6 +24,8 @@ data/dev-urls.json
 # Phase 1: persisted scheduled triggers + unattended-fire log (see schedules/scheduleStore.js)
 data/schedules.json
 data/schedule-log.md
+# Phase 2: notification rules + webhook URLs (bearer secrets — never git-tracked, see notify/notifyStore.js)
+data/notifications.json
 
 # Local Project Console chat memory (not for git)
 .console/

@@ -20,6 +20,7 @@ import { matchInput } from '../matcher.js';
 import { handleBuiltinIntent } from '../wsHandlers/builtinIntents.js';
 import { isReadOnlyIntent, readOnlySummary } from './scheduleIntents.js';
 import { markFired } from './scheduleStore.js';
+import { notify } from '../notify.js';
 
 const SCHEDULE_LOG_FILE = path.join(process.cwd(), 'data', 'schedule-log.md');
 const SCHEDULE_LOG_CAP_LINES = 400;
@@ -147,4 +148,13 @@ async function runScheduled(schedule) {
 
   const text = `${scheduleHeader(schedule)}:\n\n${output || '(ran with no output)'}`;
   deliverResult(schedule, text);
+
+  // Phase 2: only fires worth a notification are ones that produced output — an empty
+  // "all clear" still answers the chat/log but doesn't buzz anyone.
+  if (output.trim()) {
+    notify(project.id, 'schedule-find', {
+      title: `${project.name}: scheduled check has results`,
+      body: `${schedule.label} — \`${schedule.command}\`\n${output.slice(0, 400)}`,
+    });
+  }
 }
