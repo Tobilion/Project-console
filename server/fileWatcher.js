@@ -63,3 +63,46 @@ export function watchProjectConfigs(projectsDir, onProjectChanged) {
 
   return watcher;
 }
+
+// Phase 1: per-project watcher for the scheduler's file-save / git-commit triggers. The spec
+// says to hook into the existing fileWatcher rather than build a second watching mechanism,
+// so this lives in the same module — but watches a whole project tree instead of the config
+// glob. node_modules, .console and the bulk of .git are ignored to keep the event rate
+// sane; git-commit detection watches the ref files a commit actually rewrites
+// (.git/refs/heads/*, .git/HEAD, .git/packed-refs — a commit moves the branch ref, so its
+// mtime/path event is the commit signal). 1s debounce coalesces editor save bursts.
+export function watchProjectChanges(project, onFsEvent) {
+  const watcher = chokidar.watch(project.path, {
+    ignoreInitial: true,
+    ignored: (p) => {
+      if (typeof p !== 'string') return false;
+      const n = p.split('\\').join('/');
+      if (n.includes('/node_modules/')) return true;
+      if (n.includes('/.console/')) return true;
+      if (!n.includes('/.git/')) return false;
+      return !/(\/\.git\/(?:refs\/heads\/[^/]+$|HEAD$|packed-refs$))/.test(n);
+    },
+  });
+  let debounceTimer = null;
+  const fire = (eventType) => {
+    clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(() => {
+      try {
+        onFsEvent(eventType);
+      } catch (err) {
+        console.error(`[fileWatcher] scheduler event failed for ${project.id}:`, err.message);
+      }
+    }, 1000);
+  };
+  watcher.on('add', () => fire('file-save'));
+  watcher.on('change', (p) => {
+    const n = p.split('\\').join('/');
+    // A .git ref change means a commit (or branch op) happened — distinct signal.
+    fire(n.includes('/.git/') ? 'git-commit' : 'file-save');
+  });
+  watcher.on('unlink', () => fire('file-save'));
+  watcher.on('error', (err) => {
+    console.error(`[fileWatcher] project watcher error (${project.id}):`, err.message);
+  });
+  return watcher;
+}

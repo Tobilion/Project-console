@@ -1,5 +1,5 @@
 import { wss } from '../wsServer.js';
-import { sweepExpiredConfirmations, pendingConfirmations, pendingToolConfirmations } from '../state.js';
+import { sweepExpiredConfirmations, pendingConfirmations, pendingToolConfirmations, connectionRegistry } from '../state.js';
 import { appendMessage } from '../conversationStore.js';
 import { metrics } from '../metrics.js';
 import { routeMessage, sendAiStatus } from './connectionRoutes.js';
@@ -132,11 +132,17 @@ function onConnection(ws) {
     toolGrants: new Set(),
   };
 
+  // Phase 1: register for out-of-band targeting (scheduled-fire answers). Unregistered in
+  // the close handler below; a stale entry for a dead socket could otherwise receive
+  // schedule answers forever (the send would silently fail on the closed socket).
+  connectionRegistry.set(ws, sessionContext);
+
   ws.on('error', (err) => {
     console.error('WebSocket client error:', err.message);
   });
 
   ws.on('close', () => {
+    connectionRegistry.delete(ws);
     // A dropped connection can't press Cancel either — abort any in-flight AI query so the
     // ghost turn stops generating (and stops persisting an answer nobody will see) instead
     // of burning CPU until the model finishes (audit 2026-08-06, Phase 2).

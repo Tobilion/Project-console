@@ -17,6 +17,7 @@ import { retrainConfidenceModel } from './confidenceModel.js';
 import { autoApplySuggestionsForAll } from './learningEngine.js';
 import { loadLearnedIntents } from './learnedIntents.js';
 import { loadDevUrls } from './devUrlStore.js';
+import { initScheduler } from './schedules/scheduler.js';
 import { wss, broadcast } from './wsServer.js';
 import { initWebSocketServer } from './wsHandlers/connection.js';
 import { registerProjectRoutes } from './routes/projectRoutes.js';
@@ -98,6 +99,10 @@ async function init() {
   // Restore last-known dev-server URLs so "is the server running" can probe servers that were
   // started outside the console or before this restart.
   loadDevUrls();
+
+  // Phase 1: restore persisted schedules and start the scheduler tick (loadSchedules runs
+  // before any connection can create a schedule; activeProjectsCache is populated above).
+  initScheduler();
 
   // Initialize semantic matcher (embedding + Fuse.js)
   await semanticMatcher.initialize().catch((err) => console.error('SemanticMatcher init failed:', err.message));

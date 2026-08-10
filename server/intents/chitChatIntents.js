@@ -257,6 +257,33 @@ export const CHIT_CHAT_INTENTS = {
       'calculate 50 plus 25', 'what is 100 minus 37', 'whats 11 times 11',
     ],
   },
+  // Phase 1 (2026-08-10): "how do I ..." guidance intent. Questions about console features
+  // (scheduling, exports, theme, models, packs, learning/telemetry commands) previously had no
+  // route and fell to the generic fallback; the handler answers from the consoleCommandDocs.js
+  // catalog. Examples deliberately exclude run/open/push/stop-shaped phrasings — those belong to
+  // run_project/how_to_run/deploy/stop-server and must not be stolen.
+  'system.chit_chat.how_do_i': {
+    examples: [
+      'how do i export this chat', 'how can i export this chat',
+      'how do i export the chat log', 'how do i download this conversation',
+      'how can i save this conversation', 'how do i export to pdf',
+      'how do i schedule a command', 'how can i schedule a command',
+      'how do i create a schedule', 'how do i set up a timer',
+      'how do i change the theme', 'how can i change the theme',
+      'how do i switch themes', 'how do i turn on dark mode',
+      'how do i add an ai model', 'how can i add a model',
+      'how do i install a model', 'how do i use a cloud model',
+      'how do i install a pack', 'how can i install custom tools',
+      'how do i add tools', 'how do i review my learning',
+      'how can i check telemetry', 'how do i check collisions',
+      'how do i use the commands', 'how can i use the console commands',
+      'how do i use a command', 'how do i configure this console',
+      'how can i customize the console', 'how do i switch projects',
+      'how can i change projects', 'how do i see the dashboard',
+      'how can i see the dashboard', 'how do i view running processes',
+      'how can i check running processes',
+    ],
+  },
   'system.chit_chat.needs_ai_mode': {
     examples: [
       'turn on ai mode', 'enable ai mode', 'use ai mode',

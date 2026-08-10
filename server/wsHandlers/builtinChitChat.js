@@ -7,6 +7,7 @@ import { pickRandom, chatReplyPool, smartChitchatReply, enrichWithIndex, extract
 import { buildLiveStateLine, buildMemoryBlock } from './builtinLiveState.js';
 import { buildHelpMessage } from './builtinHelp.js';
 import { evaluateArithmetic, formatValue } from '../mathEval.js';
+import { lookupCommandDocs } from '../consoleCommandDocs.js';
 
 /**
  * system.chit_chat.* handlers (Phase 10 step 3, extracted verbatim from builtinIntents.js).
@@ -192,6 +193,25 @@ export const chitChatHandlers = {
       if (ctx) detailText += `\n\n${ctx}`;
       ws.send(JSON.stringify({ type: 'answer', data: detailText }));
     }
+  },
+
+  'system.chit_chat.how_do_i': async (ws, action, input, project, sessionContext) => {
+    // Phase 1 (2026-08-10): guidance answers from the consoleCommandDocs.js catalog —
+    // deliberately no smartChitchatReply (the answer is deterministic reference text, no model
+    // call needed even with AI mode on). Side-effect-free: never runs the referenced command.
+    const matches = lookupCommandDocs(input);
+    if (matches.length === 0) {
+      ws.send(JSON.stringify({
+        type: 'answer',
+        data: `I don't have a documented answer for that yet. Type "help" for the full command reference, or try one of these — "how do i schedule a backup", "how do i export this chat", "how do i change the theme".`,
+      }));
+      return;
+    }
+    const lines = matches.map((m, i) => `  ${i + 1}. **\`${m.command}\`** — ${m.explain}`);
+    ws.send(JSON.stringify({
+      type: 'answer',
+      data: `Here's how, for **[${project.name}]**:\n\n${lines.join('\n')}\n\nType "help" for the full command reference, or ask "how do i <thing>" about anything else.`,
+    }));
   },
 
   'system.chit_chat.yes_no': async (ws, action, input, project, sessionContext) => {

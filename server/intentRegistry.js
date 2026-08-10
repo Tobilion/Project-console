@@ -88,6 +88,10 @@ export const BUILTIN_INTENTS = new Set([
   // Phase 0 (2026-08-10): utility intents (time/date/calculate) — zero-argument, canned-shape
   // answers computed from Date.now()/mathEval.js, same family as status/port.
   'system.chit_chat.time', 'system.chit_chat.date', 'system.chit_chat.calculate',
+  // Phase 1 (2026-08-10): "how do i ..." guidance intent — answers from the
+  // consoleCommandDocs.js catalog. Same gate rationale as the NOTE above: a registered intent
+  // that never made it into this Set silently died at dispatch.
+  'system.chit_chat.how_do_i',
   // Phase 5 intent taxonomy expansion (audit report 2026-08-10): 4 git-family + 5 diagnostics.
   'git_branch_cleanup', 'git_stash_summary', 'git_diff_summary', 'git_pr_ready_check',
   'project.diagnostics.dead_code', 'project.diagnostics.circular_imports',

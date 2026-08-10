@@ -44,6 +44,12 @@ export const pendingConfirmations = new Map();
 // token -> { resolve, createdAt }  (AI-initiated writeFile/editFile/risky executeCommand confirmations)
 export const pendingToolConfirmations = new Map();
 
+// ws -> { activeProjectId, currentSessionId, ... }  (Phase 1: connection->sessionContext map
+// so out-of-band work like scheduled fires can find "a live session for project X". The
+// sessionContext itself is a per-connection closure in connectionLifecycle.js — it registers
+// here on connect and unregisters on close; entries are only ever read, never mutated here.)
+export const connectionRegistry = new Map();
+
 const CONFIRMATION_TTL_MS = 5 * 60 * 1000;
 
 /** Periodic sweep so abandoned confirmation prompts don't sit in memory forever. */

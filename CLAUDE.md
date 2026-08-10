@@ -294,9 +294,33 @@ npm run lint    # tsc --noEmit
   `running_processes` — ignores the active project, searches `state.activeProjectsCache`).
   Uses the raw input as the embedding query rather than parsing out "which project did I ... in"
   wrapper phrasing.
+- `server/schedules/` + `server/wsHandlers/connectionScheduleAdmin.js` — Phase 1 (autonomous
+  triggers): per-project scheduled commands ("schedule every 10 minutes \"git status\"",
+  "schedule daily at 09:30 X", "schedule on file save X", "schedule on git commit X") persisted
+  to `data/schedules.json` (gitignored, debounced by `scheduleStore.js`), plus the admin
+  commands `list schedules` / `remove schedule <id>` / `review schedule log` (all dispatched
+  from the same pre-matcher admin tier as telemetry/pack, returning true when consumed).
+  `scheduleParser.js` handles the four interval shapes (1 min – 24 h, 24h time, the two event
+  triggers); `scheduler.js` runs a 15s `setInterval` tick (unref'd, `lastFiredAt`-based cadence
+  so restarts never double-fire) and owns per-project chokidar watchers (via
+  `fileWatcher.watchProjectChanges` — git-commit is signalled by `.git/refs`/HEAD changes,
+  node_modules/.console ignored, 1s debounce, 60s per-schedule event throttle) matched to
+  however many event schedules exist. Safety: `scheduleIntents.js` allowlists read-only intents
+  only (project.knowledge/context/diagnostics prefixes + explicit git read/diagnostics/status/
+  time/date/port entries); creation-time `matchInput` validation rejects mutating, ambiguous,
+  or config-entry-resolving commands with a clear error, and `scheduleFire.js` re-checks at
+  fire time as a drift guard, then runs through `taskQueue.js` with a fake ws collecting
+  output. Delivery: to the first live session of that project via `state.connectionRegistry`
+  (ws → sessionContext map registered on connect, unregistered on close — the intercepted
+  send renders AND persists like a typed answer), else appended to `data/schedule-log.md`
+  (400-line cap) for `review schedule log`. `initScheduler()` is called from
+  `server/index.js` after project discovery (loadSchedules before any connection can create).
 - Misc leaves: `urlSafety.js` (isSafeExternalUrl/isProbeableUrl — SSRF guards; webSearch.js
   re-exports), `regexUtils.js`, `markdownUtils.js`, `webSearch.js` (DuckDuckGo, decodes
-  `uddg` redirects, deep-research SSRF guard), `pluginTools.js` (console.tools.json manifest
+  `uddg` redirects, deep-research SSRF guard), `consoleCommandDocs.js` (reference catalog for
+  the `system.chit_chat.how_do_i` intent — keyword-matched entries rendered by builtinChitChat;
+  keep keywords narrow, "push"/"port" alone hijack adjacent docs), `pluginTools.js`
+  (console.tools.json manifest
   parsing + sanitizePermissions + injection-safe substitution), `contextInjector.js`
   (codebase-index snippets appended to some trigger replies), `contextResolver.js`
   (last-resort keyword fallback with word-boundary regex — `.env`-style keywords special-cased),
@@ -491,7 +515,11 @@ time/date/calculate rows, 92/92).
   identity, ack, joke, clear, help, explain_followup, yes_no, port,
   time/date (server-local clock, never a model call), calculate (safe arithmetic via
   `mathEval.js` — `evaluateArithmetic`, no eval/Function, word-synonym + `+ - * / ( )`
-  only, `formatValue`), git_status, undo alias, needs_ai_mode. Project-customizable via
+  only, `formatValue`), git_status, undo alias, needs_ai_mode,
+  how_do_i (Phase 1, 2026-08-10: "how do i <feature>" guidance answered from the
+  consoleCommandDocs.js catalog — side-effect-free, no model call; examples deliberately
+  exclude run/open/push/stop-shaped phrasings so how_to_run/deploy/stop-server keep their
+  routes). Project-customizable via
   `chatReplies` in console.config.json.
 - **actions** (miscIntents.js / projectActionIntents): metrics, open_in_vscode (code CLI →
   `vscode://file/` protocol fallback), open_in_cursor, open_in_explorer, open_in_terminal,
@@ -615,7 +643,11 @@ time/date/calculate rows, 92/92).
   a live machine as a regression.
 - **Telemetry/harness baselines**: check-intents 1/5/82 (+1 documented near-dup after the
   open-file override; +2 new near-dups from the 3 new PHASE0 chit-chat intents); check-matcher
-  92/92; check-handlers 29/29; check-tools 128/128;
+  97/98 — 92/92 core + 6 NEW PHASE1b how_do_i rows, with one PRE-EXISTING drift on CONTROL's
+  "run the calculation" (routes to system.chit_chat.calculate on this machine's local data;
+  reproduced identically on clean HEAD with the how_do_i work stashed, 91/92 — not a
+  regression of this change); check-handlers 30/30 (baseline 29/29 + 1 how_do_i dispatch row);
+  check-tools 128/128;
   check-indexer 85/85 (+14 SYMBOLS & GRAPH rows for the Phase 1.1 codebase-graph work); check-ws-cases 84/84 (baseline +4 rows for the Phase 3 aiQueryInFlight
   lifecycle fix; +1 drift row from later WS-case additions). Run the relevant battery after ANY edit to the corresponding module.
 - **editFile** tolerates whitespace differences (normalized line-range fallback) but not

@@ -145,6 +145,10 @@ await handleBuiltinIntent(ws, 'git_branch_cleanup', 'clean up merged branches', 
 eq('git leaf: branch_cleanup on non-git project answers no-repo', ws.sent.length === 1 && ws.sent[0].type === 'answer' && (ws.sent[0].data.includes('not a git repository') || ws.sent[0].data.includes("isn't a git repository")), true);
 
 sent.length = 0;
+await handleBuiltinIntent(ws, 'system.chit_chat.how_do_i', 'how do i export this chat', proj, {});
+eq('chitchat leaf: how_do_i answers from the command catalog', ws.sent.length === 1 && ws.sent[0].type === 'answer' && /export/i.test(ws.sent[0].data) && /chat header download icon/.test(ws.sent[0].data), true);
+
+sent.length = 0;
 const unknown = await handleBuiltinIntent(ws, 'no_such_intent', 'x', proj, {});
 eq('unknown intent -> false, nothing sent', unknown === false && ws.sent.length === 0, true);
 

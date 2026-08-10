@@ -1,0 +1,150 @@
+// The unattended fire path for Phase 1 schedules. A fired schedule must run through the
+// SAME matching pipeline a typed message would use (spec requirement) but with no human to
+// answer confirm prompts, so:
+//   - the schedule's phrase is re-matched at fire time (embedding match is in-memory/cheap)
+//     and the resolved intent re-checked against the read-only allowlist — if it drifted to
+//     something mutating, unresolvable, or a config entry, the fire is skipped and logged;
+//   - the handler runs with a fake `ws` whose send() collects output instead of streaming,
+//     and a minimal ephemeral session context (no session -> nothing gets persisted);
+//   - the run is wrapped in taskQueue.js's per-project FIFO so it can never block a chat turn
+//     or collide with a type-check on the same project.
+// Results go to the first currently-connected session of that project (through the real
+// connection's intercepted send, so it renders AND persists like a normal answer); with
+// nobody connected, they land in data/schedule-log.md for `review schedule log`.
+
+import fs from 'fs';
+import path from 'path';
+import { state } from '../state.js';
+import { enqueueTask } from '../taskQueue.js';
+import { matchInput } from '../matcher.js';
+import { handleBuiltinIntent } from '../wsHandlers/builtinIntents.js';
+import { isReadOnlyIntent, readOnlySummary } from './scheduleIntents.js';
+import { markFired } from './scheduleStore.js';
+
+const SCHEDULE_LOG_FILE = path.join(process.cwd(), 'data', 'schedule-log.md');
+const SCHEDULE_LOG_CAP_LINES = 400;
+
+/** Header prefix that marks a fire result as scheduled, not user-typed. */
+export function scheduleHeader(schedule) {
+  return `⏰ Scheduled ("${schedule.label}" — \`${schedule.command}\`)`;
+}
+
+/** Append a line to data/schedule-log.md, trimming to the last ~400 lines. */
+export function appendScheduleLog(line) {
+  try {
+    fs.mkdirSync(path.dirname(SCHEDULE_LOG_FILE), { recursive: true });
+    let existing = '';
+    try {
+      existing = fs.readFileSync(SCHEDULE_LOG_FILE, 'utf8');
+    } catch {}
+    const lines = (existing.split('\n').filter(Boolean));
+    lines.push(`- **${new Date().toLocaleString()}** ${line}`);
+    fs.writeFileSync(SCHEDULE_LOG_FILE, lines.slice(-SCHEDULE_LOG_CAP_LINES).join('\n') + '\n');
+  } catch {
+    // best-effort — a failed log write must never take a fire down with it
+  }
+}
+
+/** Last N lines of the schedule log, for `review schedule log`. */
+export function readScheduleLog(n = 40) {
+  try {
+    if (!fs.existsSync(SCHEDULE_LOG_FILE)) return '(empty — no scheduled runs have logged anything yet)';
+    const lines = fs.readFileSync(SCHEDULE_LOG_FILE, 'utf8').split('\n').filter(Boolean);
+    return lines.slice(-n).join('\n') || '(empty)';
+  } catch {
+    return '(could not read the schedule log)';
+  }
+}
+
+/**
+ * Deliver a fire result: real connection for the project (renders + persists) wins over the
+ * log file. The target's answer is sent through the connection's real ws.send, which is the
+ * intercepted one from connectionLifecycle.js — that is what persists the bubble into the
+ * session's NDJSON history, exactly like a normal typed answer.
+ */
+function deliverResult(schedule, text) {
+  for (const [ws, ctx] of state.connectionRegistry) {
+    if (ctx.activeProjectId === schedule.projectId && ctx.currentSessionId && ws.readyState === 1) {
+      ws.send(JSON.stringify({ type: 'answer', data: text }));
+      return 'connected session';
+    }
+  }
+  appendScheduleLog(`${schedule.projectName || schedule.projectId} — "${schedule.command}": ${text}`);
+  return 'schedule log';
+}
+
+/**
+ * Run one schedule fire. Marks the schedule fired immediately (before the async work) so
+ * the tick can never double-fire while a task waits in the queue; the actual run goes
+ * through taskQueue to stay off the chat-turn path.
+ */
+export function fireSchedule(schedule) {
+  markFired(schedule.id);
+  enqueueTask(schedule.projectId, `schedule:${schedule.intentId}`, () => runScheduled(schedule));
+}
+
+async function runScheduled(schedule) {
+  const project = state.activeProjectsCache.find((p) => p.id === schedule.projectId);
+  if (!project) {
+    appendScheduleLog(`${schedule.projectName || schedule.projectId}: skipped — project no longer scanned. Remove the schedule with \`remove schedule ${schedule.id}\`.`);
+    return;
+  }
+  const projectIndex = state.activeProjectsCache.findIndex((p) => p.id === schedule.projectId);
+
+  let matchResult;
+  try {
+    matchResult = await matchInput(schedule.command, project, projectIndex, { model: null });
+  } catch (err) {
+    appendScheduleLog(`${project.name}: match failed — ${err.message}`);
+    return;
+  }
+
+  const intentId = matchResult.builtin || null;
+  if (!intentId || !isReadOnlyIntent(intentId)) {
+    // Drift guard: same check as schedule creation, at fire time. Never run anything the
+    // creation-time gate would have rejected — a changed embedding/learned-intent set could
+    // send the phrase somewhere mutating after the schedule was created.
+    appendScheduleLog(`${project.name}: skipped fire — "${schedule.command}" no longer resolves to a read-only intent (${readOnlySummary()}).`);
+    return;
+  }
+
+  // Fake ws: builtin handlers only ever call ws.send({type:'answer'|'error_output'|...})
+  // and read ws.readyState — collect everything instead of streaming to nobody.
+  let output = '';
+  const fakeWs = {
+    readyState: 1,
+    send: (data) => {
+      try {
+        const parsed = JSON.parse(typeof data === 'string' ? data : data.toString());
+        if ((parsed.type === 'answer' || parsed.type === 'error_output' || parsed.type === 'warning') && parsed.data) {
+          const text = typeof parsed.data === 'string' ? parsed.data : JSON.stringify(parsed.data);
+          output += output ? `\n\n${text}` : text;
+        }
+      } catch {
+        // unparseable — nothing to collect
+      }
+    },
+  };
+  const context = {
+    activeProjectId: project.id,
+    currentSessionId: null,
+    workspaceProjectIds: [],
+    aiEnabled: false,
+    aiModel: null,
+    aiMode: 'default',
+    conversationHistory: [],
+    aiAbortController: null,
+    executeInFlight: false,
+    toolGrants: new Set(),
+  };
+
+  try {
+    await handleBuiltinIntent(fakeWs, intentId, schedule.command, project, context);
+  } catch (err) {
+    appendScheduleLog(`${project.name}: fire crashed — ${err.message}`);
+    return;
+  }
+
+  const text = `${scheduleHeader(schedule)}:\n\n${output || '(ran with no output)'}`;
+  deliverResult(schedule, text);
+}

@@ -107,6 +107,17 @@ const BATTERIES = [
     ],
   },
   {
+    name: 'PHASE1b (how_do_i guidance intent, 2026-08-10)',
+    items: [
+      ['how do i export this chat', 'BUILTIN=system.chit_chat.how_do_i'],
+      ['how do i schedule a command', 'BUILTIN=system.chit_chat.how_do_i'],
+      ['how do i change the theme', 'BUILTIN=system.chit_chat.how_do_i'],
+      ['how do i review my learning', 'BUILTIN=system.chit_chat.how_do_i'],
+      ['how do i install a pack', 'BUILTIN=system.chit_chat.how_do_i'],
+      ['how can i see the dashboard', 'BUILTIN=system.chit_chat.how_do_i'],
+    ],
+  },
+  {
     name: 'PHASE2 (git_fetch / ahead_behind / tag / checkpoint / recent_activity)',
     items: [
       ['git fetch', 'BUILTIN=git_fetch'],
