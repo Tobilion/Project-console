@@ -94,6 +94,10 @@ export function offerPortRetry({ ws, projectId, command, stdout, stderr, isDev, 
     command: retryCommand,
     trigger: command,
     createdAt: Date.now(),
+    // A dev-server retry is not a risky mutation — the opposite: it's the recovery path for a
+    // port conflict. connectionConfirm defaults every confirmed command to sandboxed when the
+    // Phase 3 setting is on; this is the explicit opt-out that keeps dev servers env-complete.
+    sandbox: false,
   });
   if (ws.readyState === 1) {
     ws.send(JSON.stringify({

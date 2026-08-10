@@ -46,7 +46,9 @@ export async function handleToolCall(ws, parsed, sessionContext) {
       const cp = await createCheckpoint(project.path, command);
       ws.send(JSON.stringify({ type: 'tool_start', data: `[GIT SAFETY] ${cp.message}\n` }));
     }
-    executeCommand(command, project.path, ws, project.id);
+    // Phase 3: risky direct tool calls are the frontend's own confirm-gated equivalent (the
+    // chip path) — flag them for the sandbox; non-risky ones stay env-complete.
+    executeCommand(command, project.path, ws, project.id, { sandboxed: !!risky });
     return;
   }
 

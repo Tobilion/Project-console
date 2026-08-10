@@ -24,6 +24,10 @@ const DEFAULT_PROFILE = {
   // Distinct from `name` being empty — a user can skip setup and keep no name set, and that
   // must not re-trigger the wizard on every reload.
   setupComplete: false,
+  // Phase 3 (2026-08-10): opt-in restricted context for confirmed risky commands (see
+  // executorSandbox.js). Default false by spec — never silently enabled; toggling this ON is
+  // an explicit user decision in the profile modal.
+  sandboxRiskyCommands: false,
 };
 
 // Only plain, trimmed strings up to a sane length — mirrors the conservative
@@ -49,12 +53,17 @@ function readProfile() {
       title: sanitizeField(p.title, DEFAULT_PROFILE.title),
       customRole: sanitizeField(p.customRole, DEFAULT_PROFILE.customRole),
       setupComplete: sanitizeBool(p.setupComplete, DEFAULT_PROFILE.setupComplete),
+      sandboxRiskyCommands: sanitizeBool(p.sandboxRiskyCommands, DEFAULT_PROFILE.sandboxRiskyCommands),
     };
   } catch {
     // Missing or corrupt file — serve defaults without touching disk.
     return { ...DEFAULT_PROFILE };
   }
 }
+
+// Exported for the executor's per-command check (executor.js only consults it when a caller
+// flags the command as risk-gated, so the profile file is not read on every normal run).
+export { readProfile };
 
 export function registerProfileRoutes(app) {
   app.get('/api/profile', (req, res) => {
@@ -69,6 +78,7 @@ export function registerProfileRoutes(app) {
       title: sanitizeField(body.title, current.title),
       customRole: sanitizeField(body.customRole, current.customRole),
       setupComplete: sanitizeBool(body.setupComplete, current.setupComplete),
+      sandboxRiskyCommands: sanitizeBool(body.sandboxRiskyCommands, current.sandboxRiskyCommands),
     };
     try {
       fs.mkdirSync(path.dirname(PROFILE_FILE), { recursive: true });

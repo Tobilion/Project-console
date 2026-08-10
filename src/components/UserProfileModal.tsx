@@ -17,6 +17,7 @@ export function UserProfileModal({ open, profile, onClose, onSave }: UserProfile
   const [name, setName] = useState(profile.name);
   const [title, setTitle] = useState(profile.title);
   const [customRole, setCustomRole] = useState(profile.customRole);
+  const [sandboxRiskyCommands, setSandboxRiskyCommands] = useState(profile.sandboxRiskyCommands);
 
   // Re-sync the draft whenever the modal opens or the profile changes externally.
   useEffect(() => {
@@ -24,6 +25,7 @@ export function UserProfileModal({ open, profile, onClose, onSave }: UserProfile
       setName(profile.name);
       setTitle(profile.title);
       setCustomRole(profile.customRole);
+      setSandboxRiskyCommands(profile.sandboxRiskyCommands);
     }
   }, [open, profile]);
 
@@ -32,7 +34,7 @@ export function UserProfileModal({ open, profile, onClose, onSave }: UserProfile
   const canSave = name.trim() && title.trim() && customRole.trim();
 
   const handleSave = () => {
-    onSave({ name: name.trim(), title: title.trim(), customRole: customRole.trim() });
+    onSave({ name: name.trim(), title: title.trim(), customRole: customRole.trim(), sandboxRiskyCommands });
     onClose();
   };
 
@@ -89,6 +91,28 @@ export function UserProfileModal({ open, profile, onClose, onSave }: UserProfile
             placeholder="e.g. Software Engineer"
             className="w-full bg-surface border border-border-soft rounded-lg px-3 py-2 text-sm text-fg focus:outline-none focus:border-[#3d6bff] transition-colors"
           />
+        </div>
+        <div className="flex items-start gap-3 pt-1">
+          <button
+            type="button"
+            role="switch"
+            aria-checked={sandboxRiskyCommands}
+            onClick={() => setSandboxRiskyCommands(!sandboxRiskyCommands)}
+            className={`relative shrink-0 mt-0.5 w-9 h-5 rounded-full transition-colors ${sandboxRiskyCommands ? 'bg-[#3d6bff]' : 'bg-panel border border-border-soft'}`}
+            title={sandboxRiskyCommands ? 'Sandboxed execution is on' : 'Sandboxed execution is off'}
+          >
+            <span
+              className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white transition-transform ${sandboxRiskyCommands ? 'translate-x-4' : ''}`}
+            />
+          </button>
+          <div>
+            <p className="text-sm text-fg">Sandbox risky commands</p>
+            <p className="text-[11px] text-fg-faint mt-0.5">
+              When on, confirmed risky commands run with an environment allowlist and a
+              project-restricted cwd (not a container — see the docs for exact guarantees).
+              Off by default.
+            </p>
+          </div>
         </div>
       </div>
 

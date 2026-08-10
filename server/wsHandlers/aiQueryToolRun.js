@@ -41,7 +41,9 @@ export async function runGatedExecuteCommand(ws, project, args) {
   // so the AI tool loop doesn't hang — the URL will have been sent as a server_url event
   // during stdout streaming. If the process exits before the timeout, we get the real result.
   const TIMEOUT_MS = 6000;
-  const cmdPromise = executeCommand(command, project.path, ws, project.id);
+  // Phase 3: only `risky: true` executeCommand calls are confirm-gated, so only those are
+  // flagged for the sandbox — plain `npm run dev` from AI mode must stay env-complete.
+  const cmdPromise = executeCommand(command, project.path, ws, project.id, { sandboxed: !!args.risky });
   const result = await Promise.race([
     cmdPromise,
     new Promise(resolve => setTimeout(() => resolve({ timeout: true }), TIMEOUT_MS))

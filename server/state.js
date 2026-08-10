@@ -38,7 +38,10 @@ export function withPortCollisionWarning(text, devUrl) {
   return `${text}\n\n⚠ Heads up — that's the same port Project Console itself is running on right now. If the page you land on looks like this console instead of the project, the project's dev server may not actually be reachable there; check its terminal output or change its configured port.`;
 }
 
-// token -> { projectId, command, trigger, createdAt }  (manual risky-trigger confirmations)
+// token -> { projectId, command, trigger, createdAt, fileOp?, stdinWrite?, sandbox? }
+// (manual risky-trigger confirmations). `sandbox` defaults to true at execution time
+// (connectionConfirm) when the Phase 3 setting is on — only explicitly non-risky executions
+// (the dev-server port-conflict retry, executorPorts.js) set `sandbox: false`.
 export const pendingConfirmations = new Map();
 
 // token -> { resolve, createdAt }  (AI-initiated writeFile/editFile/risky executeCommand confirmations)

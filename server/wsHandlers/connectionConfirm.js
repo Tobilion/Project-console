@@ -162,7 +162,11 @@ export async function handleConfirmResponse(ws, parsed) {
     ws.send(JSON.stringify({ type: 'start', data: `[GIT SAFETY] ${cp.message}\n` }));
   }
 
-  executeCommand(pending.command, project.path, ws, project.id);
+  // Phase 3 (2026-08-10): everything that reaches this point went through the confirm gate —
+  // config entries with risky: true, git mutations, guessed commands — so it runs sandboxed
+  // when the user opted in (see executor.js's opts.sandboxed). The one non-risky shape, the
+  // dev-server port-conflict retry, opts out explicitly with `sandbox: false` (executorPorts).
+  executeCommand(pending.command, project.path, ws, project.id, { sandboxed: pending.sandbox !== false });
 
   // Track the command in project memory
   const suggestion = trackCommand(project.path, pending.command);

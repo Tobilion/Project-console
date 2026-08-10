@@ -72,7 +72,8 @@ npm run lint    # tsc --noEmit
   `/api/processes/:projectId/log`, `/api/dashboard` with a 30s cache invalidated by a
   `volatileSignature()` over projects+runningProcesses+lastDevUrls), `profileRoutes.js`
   (`data/user-profile.json` — tracked by git, unlike gitignored conversations/near-misses/
-  telemetry/dev-urls)
+  telemetry/dev-urls; hosts the opt-in `sandboxRiskyCommands` Phase 3 setting, read per
+  sandbox-flagged execution via its exported `readProfile`)
 - `server/wsHandlers/` — `connection.js` is a ~14-line re-export shim; real logic lives in
    ten leaves (see Phase 11): `connectionLifecycle.js` (heartbeat, WS init + connect-time
    `ai_status` push so the client's AI toggle syncs to the fresh per-connection defaults after
@@ -457,6 +458,25 @@ collapsed header.
 - File tools cannot resolve outside the active project's directory. Server binds to
   `127.0.0.1` by default (`HOST=0.0.0.0` env var to change — it executes shell commands with
   no auth, so don't do that on an untrusted network).
+- **`sandboxRiskyCommands` (Phase 3, 2026-08-10)**: opt-in global setting (default `false`,
+  persisted in `data/user-profile.json` via `profileRoutes.js`, toggled in `UserProfileModal.tsx`).
+  When ON, commands that went through the confirm gate because they're `risky: true` /
+  `ALWAYS_CONFIRM_TOOLS` (confirmed trigger commands via `connectionConfirm`, AI/direct risky
+  `executeCommand`, and the AI `runTests` tool) spawn with the **restricted env from
+  `executorSandbox.js`**: environment allowlist (`SANDBOX_ENV_ALLOWLIST` — PATH/SystemRoot/
+  TEMP/USERPROFILE/HOME/APPDATA/LOCALAPPDATA/etc., deliberately generous so npm/git/python keep
+  working) + cwd pinned to the project + `CONSOLE_SANDBOXED=1` / `CONSOLE_SANDBOX_ROOT` markers,
+  and a `warning` notice is emitted so the user can see it took effect. Honest guarantees — this
+  is approach (a) from the spec, NOT a container: **no network isolation** (Windows has no
+  per-process network block without elevation/WFP), **no OS-level file-access boundary** (a
+  sandboxed `git push` still reaches GitHub; a sandboxed command can still read outside the
+  project — what it CAN'T do is read env-carried secrets or be told apart from a normal run).
+  The setting NEVER bypasses or weakens the confirm flow — it strictly applies after approval.
+  Excluded by design: `stopProcess` (killing a process must act on the host), the dev-server
+  port-conflict retry (`sandbox: false` on that one pending record in `executorPorts.js` —
+  dev servers must stay env-complete), non-risky commands, and trigger-mode `run_tests` (not
+  confirm-gated). Default path with the setting off is byte-identical to before — `opts.sandboxed`
+  only matters when both the caller flags the command AND the setting is on.
 - `git status --short` / checkpoint commits guard risky manual commands. Checkpoints use
   `git add -A && commit`; `deploy`/`push live` is checkpoint + `git push`.
 

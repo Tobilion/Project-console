@@ -3,6 +3,8 @@ import util from 'util';
 import { runningProcesses, stopTrackedProcess } from './executor.js';
 import { state } from './state.js';
 import { isProbeableUrl } from './urlSafety.js';
+import { buildSandboxEnv } from './executorSandbox.js';
+import { readProfile } from './routes/profileRoutes.js';
 
 // Process/test/probe tools for the AI tool layer (Phase 9 split, 2026-08-04 — extracted from
 // tools.js; consumed by tools.js's createProjectTools assembly). Factory-bound to one project,
@@ -84,7 +86,16 @@ export function createProcessTools({ project, root }) {
       return { success: true, data: 'No test setup detected for this project (no package.json test script, Cargo.toml, go.mod, or Python test marker).' };
     }
     try {
-      const { stdout, stderr } = await execAsync(command, { cwd: root, timeout: 90000, maxBuffer: 10 * 1024 * 1024, windowsHide: true });
+      // Phase 3: runTests is ALWAYS_CONFIRM_TOOLS — when the user opted into the sandbox,
+      // run the test suite with the allowlisted env (executorSandbox.js) as well.
+      const sandboxed = readProfile().sandboxRiskyCommands;
+      const { stdout, stderr } = await execAsync(command, {
+        cwd: root,
+        timeout: 90000,
+        maxBuffer: 10 * 1024 * 1024,
+        windowsHide: true,
+        env: sandboxed ? buildSandboxEnv(process.env, root) : undefined,
+      });
       return { success: true, data: { command, output: `${stdout || ''}${stderr ? `\n${stderr}` : ''}`.trim().slice(0, 20000) } };
     } catch (err) {
       const output = (err.stdout || '') + (err.stderr ? `\n${err.stderr}` : '');

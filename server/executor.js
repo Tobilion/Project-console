@@ -11,6 +11,8 @@ import { recordDevUrl, forgetDevUrl } from './devUrlStore.js';
 import { state } from './state.js';
 import { probeUrl } from './livenessProbe.js';
 import { summarizeCommandOutput } from './outputSummarizer.js';
+import { readProfile } from './routes/profileRoutes.js';
+import { buildSandboxEnv } from './executorSandbox.js';
 import {
   runningProcesses,
   processLogs,
@@ -75,10 +77,18 @@ function rewriteVenvPython(command, cwd) {
  *
  * For short-lived commands, behavior is unchanged: all output streams until
  * the process exits naturally.
+ *
+ * Phase 3 (2026-08-10): `opts.sandboxed` flags a command that went through the
+ * confirm gate as risky/always-confirm. When the user's profile has the opt-in
+ * `sandboxRiskyCommands` setting on, such commands spawn with the restricted
+ * environment from executorSandbox.js instead of inheriting the server's env.
+ * With the setting off (the default), the flag changes nothing — byte-identical
+ * to pre-Phase-3 behavior.
  */
-export function executeCommand(command, cwd, ws, projectId) {
+export function executeCommand(command, cwd, ws, projectId, opts = {}) {
   const finalCommand = rewriteVenvPython(command, cwd);
   const isDev = isDevServerCommand(finalCommand);
+  const sandboxed = !!opts.sandboxed && readProfile().sandboxRiskyCommands;
   let detached = false;
 
   const sendEvent = (type, data) => {
@@ -145,6 +155,9 @@ export function executeCommand(command, cwd, ws, projectId) {
     try {
       child = spawn(finalCommand, {
         cwd: cwd,
+        // Sandboxed runs get the allowlisted env (executorSandbox.js); everything else
+        // inherits the server's env exactly as before — undefined = inherit.
+        env: sandboxed ? buildSandboxEnv(process.env, cwd) : undefined,
         shell: true,
         // stdin used to be 'ignore', which meant an interactive "port already in use, run on
         // another one instead? (Y/n)" prompt (react-scripts/CRA) had no way to ever be answered
@@ -169,6 +182,13 @@ export function executeCommand(command, cwd, ws, projectId) {
     if (child.stdin) child.stdin.on('error', () => {});
 
     sendEvent('start', `Executing: ${finalCommand}\n`);
+
+    if (sandboxed) {
+      // Visible proof the restricted context took effect — the spec's "prove it" requirement:
+      // the env allowlist can be checked from any sandboxed run (e.g. `set` shows only the
+      // allowlisted variables plus the CONSOLE_SANDBOXED marker).
+      sendEvent('warning', 'Sandboxed execution active: environment allowlisted and cwd restricted to the project (see CLAUDE.md for exact guarantees — not a container).');
+    }
 
     // Register so user can stop the server later. Each command gets its own slot keyed by its
     // own pid; the per-project log buffer is only created once (concurrent processes share the

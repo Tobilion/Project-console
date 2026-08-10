@@ -9,6 +9,9 @@ export interface UserProfile {
   // distinct from `name` being empty, since a user can skip setup and keep no name set without
   // the wizard reappearing on every reload.
   setupComplete: boolean;
+  // Phase 3 (2026-08-10): opt-in restricted context for confirmed risky commands (server:
+  // executorSandbox.js). Default false; toggled from the UserProfileModal.
+  sandboxRiskyCommands: boolean;
 }
 
 // Neutral defaults, not a hardcoded person's name/title — matches server/routes/profileRoutes.js's
@@ -22,6 +25,7 @@ const DEFAULT_PROFILE: UserProfile = {
   title: '',
   customRole: '',
   setupComplete: false,
+  sandboxRiskyCommands: false,
 };
 
 /** Client state for the user profile persisted to the server (GET/POST /api/profile).
