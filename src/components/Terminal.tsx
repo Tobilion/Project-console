@@ -78,8 +78,8 @@ interface TerminalProps {
   onStopProcess?: (projectId: string) => void;
   dockExpanded?: boolean;
   onToggleDock?: () => void;
-  dockTab?: 'logs' | 'projects';
-  onSetDockTab?: (tab: 'logs' | 'projects') => void;
+  dockTab?: 'logs' | 'projects' | 'history';
+  onSetDockTab?: (tab: 'logs' | 'projects' | 'history') => void;
   projects?: Project[];
    knownDevUrls: string[];
    connected: boolean;
@@ -310,6 +310,8 @@ export const Terminal = ({ messages, onSendMessage, onSearch, onDeepResearch, ac
           dockTab={dockTab || 'logs'}
           onSetDockTab={onSetDockTab}
           projects={projects || []}
+          activeProjectId={activeProject?.id || null}
+          onSendMessage={onSendMessage}
         />
       </ErrorBoundary>
 

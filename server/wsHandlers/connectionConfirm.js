@@ -6,6 +6,7 @@ import { updateNearMiss } from '../nearMissLogger.js';
 import { updateTelemetryEntry } from '../intentTelemetry.js';
 import { retrainConfidenceModel } from '../confidenceModel.js';
 import { trackCommand, trackFileEdit } from '../projectMemory.js';
+import { appendAction, revertAction } from '../actionHistory.js';
 import { state, pendingConfirmations, pendingToolConfirmations } from '../state.js';
 import { pendingMemorySuggestions } from './connectionState.js';
 
@@ -143,6 +144,22 @@ export async function handleConfirmResponse(ws, parsed) {
     return;
   }
 
+  // Phase 4 (2026-08-10): confirmed `revert action <id>` (see connectionHistoryAdmin.js).
+  // Same safety shape as the fileOp branch — a checkpoint first, then the restore, which is
+  // performed by revertAction (never here) and meta-logged there as a 'revert' action.
+  if (pending.revert) {
+    const cp = await createCheckpoint(project.path, pending.trigger);
+    ws.send(JSON.stringify({ type: 'start', data: `[GIT SAFETY] ${cp.message}\n` }));
+    const result = await revertAction(project.path, pending.revert.actionId);
+    if (result.ok) {
+      ws.send(JSON.stringify({ type: 'answer', data: result.data }));
+    } else {
+      ws.send(JSON.stringify({ type: 'error_output', data: `${result.error}\n` }));
+    }
+    ws.send(JSON.stringify({ type: 'end' }));
+    return;
+  }
+
   if (isCommandBlocked(pending.command)) {
     ws.send(JSON.stringify({ type: 'error_output', data: `SAFETY BLOCK: Command "${pending.command}" is prohibited.\n` }));
     ws.send(JSON.stringify({ type: 'end' }));
@@ -167,6 +184,18 @@ export async function handleConfirmResponse(ws, parsed) {
   // when the user opted in (see executor.js's opts.sandboxed). The one non-risky shape, the
   // dev-server port-conflict retry, opts out explicitly with `sandbox: false` (executorPorts).
   executeCommand(pending.command, project.path, ws, project.id, { sandboxed: pending.sandbox !== false });
+
+  // Phase 4 (2026-08-10): log the confirmed action. The dev-server port-conflict retry is the
+  // only non-risky shape that reaches here and marks itself `sandbox: false` (executorPorts) —
+  // exactly the ones that shouldn't pollute the history. git commands are flagged so `revert
+  // action` can give them checkpoint-aware git advice instead of the generic answer.
+  if (pending.sandbox !== false) {
+    appendAction(project.path, {
+      type: /^git\s/i.test(pending.command.trim()) ? 'git' : 'command',
+      description: `Ran: ${pending.command}`,
+      command: pending.command,
+    });
+  }
 
   // Track the command in project memory
   const suggestion = trackCommand(project.path, pending.command);

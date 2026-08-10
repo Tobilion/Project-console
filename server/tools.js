@@ -1,6 +1,8 @@
 import path from 'path';
+import fs from 'fs/promises';
 import { createPluginToolFn } from './pluginTools.js';
 import { webSearch, deepResearch } from './webSearch.js';
+import { appendAction } from './actionHistory.js';
 import { isCommandAllowed, ALLOWED_COMMANDS } from './toolAllow.js';
 import {
   getPluginManifest,
@@ -64,13 +66,65 @@ export async function createProjectTools(project) {
   } = createFileTools({ project, root, resolveSafe });
   const { listProcesses, stopProcess, probeUrl, runTests } = createProcessTools({ project, root });
 
+  // Phase 4 (2026-08-10): transparent history wrapper around the four file-mutating tools.
+  // Every write/edit/insert/append from ANY caller (AI loop, direct tool calls, trigger-mode
+  // file ops) lands in the project's .console/action-history.jsonl with its pre-image inline,
+  // so `revert action <id>` can restore exactly that action's before-state. The wrapper is a
+  // pure passthrough: pre-read failures, logging failures and unsafe paths never change the
+  // tool's behavior or result.
+  const MUTATING_FILE_TOOLS = {
+    writeFile: { type: 'file_write', describe: (p, existed) => (existed ? `Overwrote ${p}` : `Created ${p}`) },
+    editFile: { type: 'file_edit', describe: (p) => `Edited ${p}` },
+    insertAtLine: { type: 'file_insert', describe: (p) => `Inserted into ${p}` },
+    appendToFile: { type: 'file_append', describe: (p) => `Appended to ${p}` },
+  };
+  const logFileAction = (toolName, relPath, existed, preContent) => {
+    const meta = MUTATING_FILE_TOOLS[toolName];
+    if (!meta || !relPath || typeof relPath !== 'string') return;
+    try {
+      appendAction(project.path, {
+        type: meta.type,
+        description: meta.describe(relPath, existed),
+        path: relPath,
+        existed,
+        preContent,
+      });
+    } catch {
+      // History logging never breaks the action that produced it.
+    }
+  };
+  const wrapMutatingTool = (toolName, toolFn) => {
+    if (typeof toolFn !== 'function') return toolFn;
+    return async (args) => {
+      const relPath = args?.path;
+      if (!relPath || typeof relPath !== 'string') return toolFn(args);
+      const abs = path.resolve(root, relPath);
+      if (abs !== root && !abs.startsWith(root + path.sep)) return toolFn(args);
+      let preContent = null;
+      let existed = false;
+      try {
+        const st = await fs.stat(abs);
+        if (st.size > 1_000_000) return toolFn(args); // too large for an inline pre-image — skip logging, keep behavior
+        preContent = await fs.readFile(abs, 'utf-8');
+        existed = true;
+      } catch {
+        // New file (or unreadable) — pre-image stays null, revert will delete instead.
+      }
+      const result = await toolFn(args);
+      if (result?.success) {
+        logFileAction(toolName, relPath, existed, preContent);
+      }
+      return result;
+    };
+  };
+
   const baseTools = {
     readFile,
-    writeFile,
-    editFile,
+    writeFile: wrapMutatingTool('writeFile', writeFile),
+    editFile: wrapMutatingTool('editFile', editFile),
     findFiles,
-    insertAtLine,
-    appendToFile,
+    insertAtLine: wrapMutatingTool('insertAtLine', insertAtLine),
+    appendToFile: wrapMutatingTool('appendToFile', appendToFile),
     searchCode,
     listFiles,
     getProjectInfo,

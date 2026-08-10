@@ -36,7 +36,7 @@ export function useConsoleProcessDock(
   // Phase 6 behavior) or the new Projects overview (every discovered project + whether/where
   // it's running). Tabs in the collapsed bar switch between them; selecting a process tab or
   // the running toggle switches back to 'logs'.
-  const [dockTab, setDockTab] = useState<'logs' | 'projects'>('logs');
+  const [dockTab, setDockTab] = useState<'logs' | 'projects' | 'history'>('logs');
 
   // Phase 6 (PASS 6.1): live view of runningProcesses for the dock. Prunes logs of dead
   // projects and keeps the selected tab valid (prefer the session's active project, fall back

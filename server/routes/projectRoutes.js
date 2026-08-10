@@ -9,6 +9,7 @@ import { state, projectsMutex } from '../state.js';
 import { broadcast } from '../wsServer.js';
 import { asyncHandler } from '../asyncHandler.js';
 import { projectChatLogPath } from '../sessionExport.js';
+import { listActions } from '../actionHistory.js';
 
 // A plain browser tab (not Electron/Tauri) can never receive an absolute host filesystem path
 // from <input type="file" webkitdirectory> — that's a deliberate File API restriction, not a
@@ -120,6 +121,14 @@ export function registerProjectRoutes(app, dirname) {
     project.codebaseIndex = idx;
     broadcast({ type: 'project_updated', data: project });
     res.json({ success: true, codebaseIndex: idx });
+  }));
+
+  // Phase 4: action history for the ProcessDock History tab (most-recent-first, capped).
+  app.get('/api/projects/:id/action-history', asyncHandler(async (req, res) => {
+    const project = state.activeProjectsCache.find((p) => p.id === req.params.id);
+    if (!project) return res.status(404).json({ error: 'Project not found' });
+    const limit = Math.min(Math.max(parseInt(req.query.limit ?? '30', 10) || 30, 1), 200);
+    res.json({ actions: listActions(project.path, { limit }) });
   }));
 
   // "Export whole project" (Phase 0): direct download of the project's existing

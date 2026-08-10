@@ -65,7 +65,8 @@ npm run lint    # tsc --noEmit
 - `server/mockProjects.js` — seeds fake projects on non-Windows sandboxes
 - `server/routes/` — `projectRoutes.js` (incl. `GET /api/projects/:id/chat-log` →
   `res.download` of the project's `.console/chat-log.md`; 404s for unknown project or missing
-  log), `sessionRoutes.js` (incl. `GET /api/sessions/:id/export?format=md|json` — the full
+  log, and `GET /api/projects/:id/action-history?limit=N` — Phase 4, see actionHistory.js),
+  `sessionRoutes.js` (incl. `GET /api/sessions/:id/export?format=md|json` — the full
   ring-buffer-uncapped NDJSON record, never the 200-message `getSession` cap; 404 for unknown
   session; explicit Content-Type; no temp files), `searchRoutes.js`,
   `monitoringRoutes.js` (`/api/metrics`, `/api/active-servers`, `/api/processes` +
@@ -75,7 +76,7 @@ npm run lint    # tsc --noEmit
   telemetry/dev-urls; hosts the opt-in `sandboxRiskyCommands` Phase 3 setting, read per
   sandbox-flagged execution via its exported `readProfile`)
 - `server/wsHandlers/` — `connection.js` is a ~14-line re-export shim; real logic lives in
-   ten leaves (see Phase 11): `connectionLifecycle.js` (heartbeat, WS init + connect-time
+   eleven leaves (see Phase 11): `connectionLifecycle.js` (heartbeat, WS init + connect-time
    `ai_status` push so the client's AI toggle syncs to the fresh per-connection defaults after
    a reconnect, the ws.send persistence interceptor with the command-output buffer), `connectionRoutes.js` (14 WS
    cases incl. `stop_process`/`did_you_mean_pick`/`approve_task`/`ai_toggle`/`ai_set_model`/
@@ -92,7 +93,11 @@ npm run lint    # tsc --noEmit
   (`DEV_URL_*` regexes — exported, used by builtinIntents/readmeRunParser; stop-server
   handling incl. bare "stop it" only when `runningProcesses.has(project.id)`),
   `connectionTelemetry.js`, `connectionAdminCommands.js`, `connectionInterceptors.js`
-  (pendingParam/pendingFollowUp/pendingDisambiguation/pendingMemorySuggestion), plus
+  (pendingParam/pendingFollowUp/pendingDisambiguation/pendingMemorySuggestion),
+  `connectionHistoryAdmin.js` (Phase 4: `show history`/`recent actions [n]`/`revert action
+  <id>` — file restores are confirm-gated via a `pendingConfirmations` entry of shape
+  `revert: {actionId}` (consumed in connectionConfirm.js); git/command/revert entries are
+  answer-only), plus
   `builtinIntents.js` (~45-line dispatcher over six per-domain leaf modules — see below),
   `matchedEntry.js` (config-entry dispatch incl. params/requires/followUp),
   `aiQuery.js` (tool loop: `aiQueryDetectors.js` narrating/fabrication detectors,
@@ -295,6 +300,25 @@ npm run lint    # tsc --noEmit
   `running_processes` — ignores the active project, searches `state.activeProjectsCache`).
   Uses the raw input as the embedding query rather than parsing out "which project did I ... in"
   wrapper phrasing.
+- `server/actionHistory.js` — Phase 4 (2026-08-10): per-project action log at
+  `.console/action-history.jsonl` (cap 2000 entries, trim-rewrite when bytes > 2000×220; ids are
+  `crypto.randomUUID().slice(0,8)`; corrupt lines skipped; dfmded by `ensureGitignored`).
+  `appendAction` writes entries with an inline `preContent` pre-image and `existed` flag; file
+  paths are validated safe by `isSafeRelativePath`. Recorded: the four file-mutating tools
+  (wrapped in `tools.js` via `wrapMutatingTool` — only on `result.success`, only when the path
+  resolves inside the project root, files over 1MB skipped so their pre-image never bloats the
+  log) and confirmed/risky commands (`connectionConfirm` for `pending.sandbox !== false` —
+  dev-server port retries are excluded deliberately — plus `aiQueryToolRun`/`connectionToolCall`
+  for risky `executeCommand`; type is `git` when the command starts with `git`). Checkpoints
+  themselves are NOT logged. `revertAction`: file entries restore `preContent` (deleting the
+  file when it did not exist before), git/command entries answer checkpoint-aware advice —
+  console checkpoints are COMMITS (`console-checkpoint:` prefix from gitSafety.js), so when
+  `git log -1 --pretty=%B` still shows that prefix the advice is `git reset --hard HEAD~1`,
+  otherwise `git revert <sha>` (push) / `git reset --soft HEAD~1` (commit) / generic manual
+  steps. REST: `GET /api/projects/:id/action-history?limit=N` (1-200, most-recent-first) in
+  projectRoutes.js; frontend History tab in ProcessDock renders it via `HistoryPanel.tsx`,
+  whose revert button goes through the normal chat flow (`revert action <id>`) — never a
+  bypass.
 - `server/schedules/` + `server/wsHandlers/connectionScheduleAdmin.js` — Phase 1 (autonomous
   triggers): per-project scheduled commands ("schedule every 10 minutes \"git status\"",
   "schedule daily at 09:30 X", "schedule on file save X", "schedule on git commit X") persisted
@@ -362,7 +386,8 @@ first-render state in a case handler. `App.tsx` is render-only. Components: `Ter
 `TerminalOutputBlock`/`StructuredJsonBlock`/`TerminalSearchOverlay`/`TerminalEmptyState`),
 `SidebarDrawer.tsx` (collapsible left rail, collapses to ~48px icon rail), `WelcomeScreen.tsx`
 (hero + BentoGrid + 4-step tour overlay, z-50), `Dashboard.tsx` (polls `/api/dashboard` 5s +
-immediate on `dashboard_update`), `ProcessDock.tsx` (logs + projects overview tabs),
+immediate on `dashboard_update`), `ProcessDock.tsx` (logs + projects overview tabs + Phase 4 History tab — API routes, see
+`actionHistory.js` — rendered by `HistoryPanel.tsx`, revert via the normal chat flow),
 `CommandDeck.tsx` (Ctrl+K palette; nothing bypasses the confirm flows), `AIAssistantInterface.tsx`
 (file upload, Search/Reason/Deep Research toggles; ↑/↓ navigates the same per-project history
 as the trigger input via `getHistory`, shared `pushHistory` in Terminal), `ui/ThemeToggle.tsx`,
@@ -694,6 +719,22 @@ time/date/calculate rows, 92/92).
   re-read the file. Truncation guard: `writeFile` re-reads and compares length after writes.
 - **Windows harness gotcha**: the phase2 smoke (python http.server) never exits on its own
   (orphaned child inherits stdio pipes) — run via Start-Process + timeout + force-kill.
+- **"append to X the text Y" routes to `system.chit_chat.deploy`, not `file_append`**
+  (pre-existing matcher quirk, confirmed 2026-08-10 via a matcher probe; the check-matcher
+  battery is unaffected because it tests canonical example phrasings). "add a line to X: ..." /
+  "append this text to X: ..." route correctly. Don't be surprised when append-shaped live
+  tests run `git push` instead — reach for the correctly-routing shapes above.
+- **Copying scratch harness scripts into the repo root stalls the server's WS pipeline**:
+  the in-process Vite dev server watches the repo root, so creating/deleting a test file
+  there triggers full client rebuilds that block the single-threaded server for 60-90s —
+  WS answers that took <100ms from `%TEMP%` look like 60s+ hangs from a repo-root copy.
+  Keep live-verification drivers outside the repo and resolve `ws` by absolute path
+  (`createRequire(import.meta.url)` + the repo's `node_modules/ws`).
+- **Harness waits should key on terminal message markers, not quiet windows**: confirmed
+  runs and direct tool calls terminate with an `end` WS message; a "no message for 700ms"
+  quiescence check can fire mid-turn (git checkpoint output legitimately gaps >700ms) and
+  miss the final answer. Wait for `end` explicitly; reserve quiet-windows for answer-only
+  turns that never send `end`.
 
 ## Conventions
 

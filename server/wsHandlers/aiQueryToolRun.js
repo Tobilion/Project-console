@@ -9,6 +9,7 @@ import { commandMatchesTemplate } from '../paramCommand.js';
 import { computeFileEditPreview } from '../diffPreview.js';
 import { validateToolCall, withFileLock, FILE_MUTATING_TOOLS } from '../aiGuardrails.js';
 import { scheduleVerification } from '../verifyHarness.js';
+import { appendAction } from '../actionHistory.js';
 
 // Phase 5 (PASS 5.4): the tool-call cap is env-overridable so heavy multi-step workflows don't
 // hit an artificial wall — defaults to 6, the original constant. Owned here since it bounds the
@@ -44,6 +45,17 @@ export async function runGatedExecuteCommand(ws, project, args) {
   // Phase 3: only `risky: true` executeCommand calls are confirm-gated, so only those are
   // flagged for the sandbox — plain `npm run dev` from AI mode must stay env-complete.
   const cmdPromise = executeCommand(command, project.path, ws, project.id, { sandboxed: !!args.risky });
+  // Phase 4 (2026-08-10): log risky AI-run commands. `risky: true` is exactly the set the
+  // console considers confirm-worthy (same flag that opts the run into the sandbox), so this
+  // is the AI-path equivalent of connectionConfirm's post-confirm logging — the command HAS
+  // run by now, regardless of the 6s race result.
+  if (args.risky && project?.path) {
+    appendAction(project.path, {
+      type: /^git\s/i.test(command.trim()) ? 'git' : 'command',
+      description: `Ran: ${command}`,
+      command,
+    });
+  }
   const result = await Promise.race([
     cmdPromise,
     new Promise(resolve => setTimeout(() => resolve({ timeout: true }), TIMEOUT_MS))

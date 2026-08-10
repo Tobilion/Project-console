@@ -9,6 +9,7 @@ import { executeCommand } from '../executor.js';
 import { computeFileEditPreview } from '../diffPreview.js';
 import { validateToolCall, withFileLock, FILE_MUTATING_TOOLS } from '../aiGuardrails.js';
 import { scheduleVerification } from '../verifyHarness.js';
+import { appendAction } from '../actionHistory.js';
 
 /** Direct tool invocation from the frontend (not via AI chat). Scoped to the client's active project. */
 export async function handleToolCall(ws, parsed, sessionContext) {
@@ -49,6 +50,15 @@ export async function handleToolCall(ws, parsed, sessionContext) {
     // Phase 3: risky direct tool calls are the frontend's own confirm-gated equivalent (the
     // chip path) — flag them for the sandbox; non-risky ones stay env-complete.
     executeCommand(command, project.path, ws, project.id, { sandboxed: !!risky });
+    // Phase 4 (2026-08-10): same logging rule as the AI path — risky direct commands are the
+    // confirm-worthy set, so they land in the action history.
+    if (risky) {
+      appendAction(project.path, {
+        type: /^git\s/i.test(command.trim()) ? 'git' : 'command',
+        description: `Ran: ${command}`,
+        command,
+      });
+    }
     return;
   }
 

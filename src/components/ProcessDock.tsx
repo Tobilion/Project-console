@@ -1,8 +1,9 @@
 import React, { useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Terminal as TerminalIcon, ChevronDown, ChevronUp, Square, LayoutGrid, FolderOpen } from 'lucide-react';
+import { Terminal as TerminalIcon, ChevronDown, ChevronUp, Square, LayoutGrid, FolderOpen, History as HistoryIcon } from 'lucide-react';
 import { shortCommand, portFromUrl } from '../utils/process';
 import { CopyButton } from './ui/CopyButton';
+import { HistoryPanel } from './HistoryPanel';
 
 export interface ProcessInfo {
   projectId: string;
@@ -20,9 +21,11 @@ interface ProcessDockProps {
   onStopProcess: (projectId: string) => void;
   expanded: boolean;
   onToggleExpanded: () => void;
-  dockTab?: 'logs' | 'projects';
-  onSetDockTab?: (tab: 'logs' | 'projects') => void;
+  dockTab?: 'logs' | 'projects' | 'history';
+  onSetDockTab?: (tab: 'logs' | 'projects' | 'history') => void;
   projects?: { id: string; name: string }[];
+  activeProjectId?: string | null;
+  onSendMessage?: (msg: string) => void;
 }
 
 /**
@@ -50,6 +53,8 @@ export function ProcessDock({
   dockTab = 'logs',
   onSetDockTab,
   projects = [],
+  activeProjectId = null,
+  onSendMessage,
 }: ProcessDockProps) {
   const lines = selectedProcessId ? (processLogs[selectedProcessId] || []) : [];
   const logText = lines.join('\n');
@@ -142,6 +147,12 @@ export function ProcessDock({
                       </div>
                     )}
                   </div>
+                ) : dockTab === 'history' ? (
+                  <HistoryPanel
+                    projects={projects}
+                    activeProjectId={activeProjectId}
+                    onSendMessage={onSendMessage || (() => {})}
+                  />
                 ) : (
                   <>
                     <div className="flex items-center justify-between px-4 pt-2">
@@ -199,6 +210,27 @@ export function ProcessDock({
             >
               <LayoutGrid size={12} className="text-[#00d4a3]" />
               <span>Projects</span>
+            </button>
+
+            <button
+              onClick={() => {
+                // Phase 4: same toggle behavior as Projects — re-clicking while active collapses.
+                if (expanded && dockTab === 'history') {
+                  onToggleExpanded();
+                  return;
+                }
+                onSetDockTab?.('history');
+                if (!expanded) onToggleExpanded();
+              }}
+              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] transition-colors flex-shrink-0 ${
+                expanded && dockTab === 'history'
+                  ? 'bg-panel text-fg-strong border border-border-soft'
+                  : 'text-fg-subtle hover:text-fg-strong hover:bg-panel'
+              }`}
+              title="Action history + revert (file writes, edits, confirmed commands)"
+            >
+              <HistoryIcon size={12} className="text-[#6366f1]" />
+              <span>History</span>
             </button>
 
             {processes.map((p) => {
