@@ -40,9 +40,10 @@ export function createProcessTools({ project, root }) {
    */
   async function stopProcess({ projectId } = {}) {
     const pid = projectId || project.id;
-    const stopped = stopTrackedProcess(pid);
+    const stopped = await stopTrackedProcess(pid);
     if (!stopped.ok) return { success: true, data: 'No running process for this project.' };
-    return { success: true, data: `Stopped \`${stopped.command}\`.` };
+    const headsup = stopped.warning ? ` Heads-up: ${stopped.warning}.` : '';
+    return { success: true, data: `Stopped \`${stopped.command}\`.${headsup}` };
   }
 
   /**

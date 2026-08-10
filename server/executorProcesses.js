@@ -5,6 +5,8 @@
 
 import { spawnSync } from 'child_process';
 import { forgetDevUrl } from './devUrlStore.js';
+import { state } from './state.js';
+import { probeUrl } from './livenessProbe.js';
 import { broadcast } from './wsServer.js';
 
 // Track running processes so they can be killed by the user
@@ -96,16 +98,73 @@ function killProcessTree(child) {
   } catch {}
 }
 
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/** Windows: command lines of processes still matching the given commands (whitespace-normalized,
+ *  case-insensitive). Used AFTER a stop to catch survivors taskkill missed because the tracked
+ *  child was the short-lived cmd wrapper while the real process runs on (the 2026-08-10 orphan
+ *  scenario). Best-effort: any PowerShell failure returns []. */
+function win32SurvivorsByCommandLine(commands) {
+  if (process.platform !== 'win32' || commands.length === 0) return [];
+  const targets = commands.map((c) => c.replace(/\s+/g, ' ').trim()).filter(Boolean);
+  if (targets.length === 0) return [];
+  const quoted = targets.map((t) => `'${t.replace(/'/g, "''")}'`).join(', ');
+  const script =
+    `$t = @(${quoted}); Get-CimInstance Win32_Process | ` +
+    `Where-Object { if ($_.CommandLine) { $t -contains (($_.CommandLine -replace '\\s+',' ').Trim()) } } | ` +
+    `ForEach-Object { $_.CommandLine }`;
+  try {
+    const res = spawnSync('powershell', ['-NoProfile', '-Command', script], {
+      windowsHide: true, encoding: 'utf8', timeout: 5000,
+    });
+    if (res.status !== 0 || !res.stdout) return [];
+    return res.stdout.split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
+  } catch {
+    return [];
+  }
+}
+
+/** Post-stop verification (requested live 2026-08-10: a user stopping a server must never be
+ *  left believing the site is down while a process survived). Reports only — never re-kills:
+ *  a same-command-line process may be the user's own manually started instance. Returns a
+ *  warning string or null.
+ */
+async function verifyProcessStopped(procs, devUrl) {
+  await sleep(500);
+  const warnings = [];
+  for (const proc of procs) {
+    try {
+      process.kill(proc.child.pid, 0);
+      warnings.push(`process ${proc.child.pid} is still alive`);
+    } catch {}
+  }
+  for (const cmdline of win32SurvivorsByCommandLine(procs.map((p) => p.command)).slice(0, 2)) {
+    warnings.push(`a process still appears to be running \`${cmdline}\``);
+  }
+  if (devUrl) {
+    try {
+      // Skip probing when the URL is the console's own port — that would be ourselves.
+      const port = new URL(devUrl).port || '80';
+      if (Number(port) !== state.serverPort) {
+        const probe = await probeUrl(devUrl, 1500);
+        if (probe.alive) warnings.push(`the site at **${devUrl}** is still responding`);
+      }
+    } catch {}
+  }
+  return warnings.length > 0 ? warnings.join('; ') : null;
+}
+
 /**
  * Single kill path for every caller that stops a tracked process — the "stop server" trigger
  * phrase (connection.js), the `stop_process` WS message (dock stop button), and the AI-mode
  * `stopProcess` tool. Was previously copy-pasted three times; all three now route here so the
  * cleanup (kill + map delete + log delete + lastDevUrls delete + both broadcasts) can never
- * drift. Stops every tracked process for the project — "stop server" is one user intent, and
- * a single-slot-style "stop just one" would silently leave siblings running. Returns
- * { ok: false } when nothing is tracked for that project.
+ *  drift. Stops every tracked process for the project — "stop server" is one user intent, and
+ *  a single-slot-style "stop just one" would silently leave siblings running. Returns
+ *  { ok: false } when nothing is tracked for that project, plus an optional `warning` when
+ *  post-stop verification found survivors (process still alive / site still responding).
  */
-export function stopTrackedProcess(projectId) {
+export async function stopTrackedProcess(projectId) {
   const procs = getTrackedProcesses(projectId);
   if (procs.length === 0) return { ok: false };
   const commands = [];
@@ -121,12 +180,14 @@ export function stopTrackedProcess(projectId) {
     }
     commands.push(proc.command);
   }
+  const devUrl = state.lastDevUrls.get(projectId) || null;
   runningProcesses.delete(projectId);
   processLogs.delete(projectId);
   forgetDevUrl(projectId);
   broadcast({ type: 'dashboard_update' });
   broadcast({ type: 'processes_update' });
-  return { ok: true, command: commands.join('` and `') };
+  const warning = await verifyProcessStopped(procs, devUrl);
+  return { ok: true, command: commands.join('` and `'), warning };
 }
 
 // Clean up on exit — kills tracked children before Node shuts down

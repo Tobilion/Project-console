@@ -46,7 +46,7 @@ async function routeMessage(ws, parsed, sessionContext) {
         // was only cleared by the child's own 'close' (which on Windows can lag or never fire
         // when the killed child is npm's shell wrapper). stopTrackedProcess is the same single
         // kill+cleanup+broadcast path "stop server" and the dock Stop button use.
-        const stopped = stopTrackedProcess(cancelProjectId);
+        const stopped = await stopTrackedProcess(cancelProjectId);
         if (stopped.ok) {
           didSomething = true;
           // executeCommand's own 'close' handler sends the final answer/end once the process
@@ -76,9 +76,10 @@ async function routeMessage(ws, parsed, sessionContext) {
       // Phase 6 (PASS 6.2): Processes-dock stop button. Same single kill path as the "stop
       // server" trigger phrase (stopTrackedProcess) — no new kill logic.
       const stopProjectId = parsed.payload?.projectId || sessionContext.activeProjectId;
-      const stopped = stopProjectId ? stopTrackedProcess(stopProjectId) : { ok: false };
+      const stopped = stopProjectId ? await stopTrackedProcess(stopProjectId) : { ok: false };
       if (stopped.ok) {
-        ws.send(JSON.stringify({ type: 'answer', data: `Stopped \`${stopped.command}\`.\n` }));
+        const headsup = stopped.warning ? `\n\nHeads-up: ${stopped.warning}.` : '';
+        ws.send(JSON.stringify({ type: 'answer', data: `Stopped \`${stopped.command}\`.${headsup}\n` }));
       } else {
         ws.send(JSON.stringify({ type: 'answer', data: 'No running process for that project.' }));
       }

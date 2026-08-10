@@ -29,9 +29,10 @@ export async function handleStopServer(ws, project, lowerInput) {
     /^(stop|kill|shutdown|end)\s+(the\s+)?(server|process|dev)/i.test(lowerInput) ||
     (hasTrackedProcess && /^(stop|kill|cancel)\s+it\.?$/i.test(lowerInput.trim()))
   ) {
-    const stopped = stopTrackedProcess(project.id);
+    const stopped = await stopTrackedProcess(project.id);
     if (stopped.ok) {
-      ws.send(JSON.stringify({ type: 'answer', data: `Stopped \`${stopped.command}\`.\n` }));
+      const headsup = stopped.warning ? `\n\nHeads-up: ${stopped.warning}.` : '';
+      ws.send(JSON.stringify({ type: 'answer', data: `Stopped \`${stopped.command}\`.${headsup}\n` }));
     } else {
       ws.send(JSON.stringify({ type: 'answer', data: `No running server for **${project.name}**.\n` }));
     }
