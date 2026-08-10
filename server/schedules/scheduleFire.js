@@ -14,7 +14,7 @@
 
 import fs from 'fs';
 import path from 'path';
-import { state } from '../state.js';
+import { state, connectionRegistry } from '../state.js';
 import { enqueueTask } from '../taskQueue.js';
 import { matchInput } from '../matcher.js';
 import { handleBuiltinIntent } from '../wsHandlers/builtinIntents.js';
@@ -64,8 +64,14 @@ export function readScheduleLog(n = 40) {
  * session's NDJSON history, exactly like a normal typed answer.
  */
 function deliverResult(schedule, text) {
-  for (const [ws, ctx] of state.connectionRegistry) {
-    if (ctx.activeProjectId === schedule.projectId && ctx.currentSessionId && ws.readyState === 1) {
+  // connectionRegistry is a NAMED export of state.js, not a state.* property — iterating the
+  // property was a live-found crash (2026-08-10 live pass) that made EVERY fire lose its
+  // output before it reached a session or the schedule log.
+  for (const [ws, ctx] of connectionRegistry) {
+    // Any live chat on the project counts (web chats are session-bound, CLI chats are not —
+    // the CLI sends sessionId null; persistence inside the interceptor stays gated on
+    // currentSessionId, so a session-less delivery renders without persisting).
+    if (ctx.activeProjectId === schedule.projectId && ws.readyState === 1) {
       ws.send(JSON.stringify({ type: 'answer', data: text }));
       return 'connected session';
     }

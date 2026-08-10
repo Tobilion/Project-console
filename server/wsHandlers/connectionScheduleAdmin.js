@@ -15,8 +15,10 @@ import { syncEventTriggerWatchers } from '../schedules/scheduler.js';
 import { readScheduleLog } from '../schedules/scheduleFire.js';
 
 // The interval phrase can span several words ("every 5 minutes"), so capture the longest
-// recognized prefix and treat the rest as the trigger command.
-const SCHEDULE_RE = /^(every\s+\d+\s*(?:minute|minutes|min|mins|hour|hours|hr|hrs)|daily\s+at\s+\d{1,2}:\d{2}|on\s+file\s+save|on\s+git\s+commit)\s+(.+)$/i;
+// recognized prefix and treat the rest as the trigger command. The optional "schedule "
+// prefix is required for the bare phrases too ("schedule on file save X" reads exactly like
+// "every ... X", just with an event interval instead of a time interval).
+const SCHEDULE_RE = /^(?:schedule\s+)?(every\s+\d+\s*(?:minute|minutes|min|mins|hour|hours|hr|hrs)|daily\s+at\s+\d{1,2}:\d{2}|on\s+file\s+save|on\s+git\s+commit)\s+(.+)$/i;
 
 export async function handleScheduleCommand(ws, project, lowerInput, input) {
   if (/^review\s+schedule\s*log$/.test(lowerInput)) {
@@ -55,11 +57,21 @@ export async function handleScheduleCommand(ws, project, lowerInput, input) {
 
   const scheduleMatch = lowerInput.match(SCHEDULE_RE);
   if (scheduleMatch) {
-    await createSchedule(ws, project, input, scheduleMatch[1], scheduleMatch[2].trim());
+    await createSchedule(ws, project, input, scheduleMatch[1], stripTriggerQuotes(scheduleMatch[2].trim()));
     return true;
   }
 
   return false;
+}
+
+// Users often wrap the trigger command in quotes ("schedule every 10 minutes "git status"") —
+// strip one matching outer pair so the matcher sees the bare command.
+function stripTriggerQuotes(command) {
+  const first = command[0];
+  if (command.length >= 2 && (first === '"' || first === "'") && command[command.length - 1] === first) {
+    return command.slice(1, -1).trim();
+  }
+  return command;
 }
 
 async function createSchedule(ws, project, rawInput, intervalPhrase, command) {
