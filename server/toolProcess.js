@@ -19,17 +19,15 @@ export function createProcessTools({ project, root }) {
    */
   async function listProcesses({ projectId } = {}) {
     const pid = projectId || project.id;
-    const proc = runningProcesses.get(pid);
-    if (!proc) return { success: true, data: [] };
-    const since = proc.child?.spawnTime ? new Date(proc.child.spawnTime).toISOString() : null;
+    const procs = [...(runningProcesses.get(pid)?.values() || [])];
     return {
       success: true,
-      data: [{
+      data: procs.map((proc) => ({
         projectId: pid,
         command: proc.command,
         url: state.lastDevUrls?.get(pid) || null,
-        runningSince: since,
-      }],
+        runningSince: proc.child?.spawnTime ? new Date(proc.child.spawnTime).toISOString() : null,
+      })),
     };
   }
 

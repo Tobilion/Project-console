@@ -30,13 +30,15 @@ export function registerMonitoringRoutes(app) {
   // child, and any detected dev-server URL.
   app.get('/api/active-servers', (req, res) => {
     const servers = [];
-    for (const [projectId, proc] of runningProcesses) {
-      servers.push({
-        projectId,
-        command: proc.command,
-        pid: proc.child?.pid || null,
-        url: state.lastDevUrls.get(projectId) || null,
-      });
+    for (const [projectId, slot] of runningProcesses) {
+      for (const proc of slot.values()) {
+        servers.push({
+          projectId,
+          command: proc.command,
+          pid: proc.child?.pid || null,
+          url: state.lastDevUrls.get(projectId) || null,
+        });
+      }
     }
     res.json(servers);
   });
@@ -46,14 +48,16 @@ export function registerMonitoringRoutes(app) {
   // fetches this on mount and refetches on every 'processes_update' WS event.
   app.get('/api/processes', (req, res) => {
     const processes = [];
-    for (const [projectId, proc] of runningProcesses) {
-      processes.push({
-        projectId,
-        command: proc.command,
-        pid: proc.child?.pid || null,
-        url: state.lastDevUrls.get(projectId) || null,
-        startedAt: proc.startedAt ? new Date(proc.startedAt).toISOString() : null,
-      });
+    for (const [projectId, slot] of runningProcesses) {
+      for (const proc of slot.values()) {
+        processes.push({
+          projectId,
+          command: proc.command,
+          pid: proc.child?.pid || null,
+          url: state.lastDevUrls.get(projectId) || null,
+          startedAt: proc.startedAt ? new Date(proc.startedAt).toISOString() : null,
+        });
+      }
     }
     res.json(processes);
   });
@@ -86,8 +90,10 @@ export function registerMonitoringRoutes(app) {
   function volatileSignature() {
     const parts = [];
     for (const project of state.activeProjectsCache) parts.push(`p:${project.id}`);
-    for (const [pid, proc] of runningProcesses) {
-      parts.push(`r:${pid}|${proc.command}|${proc.startedAt || ''}`);
+    for (const [pid, slot] of runningProcesses) {
+      for (const proc of slot.values()) {
+        parts.push(`r:${pid}|${proc.command}|${proc.startedAt || ''}`);
+      }
     }
     for (const [pid, url] of state.lastDevUrls) parts.push(`u:${pid}|${url}`);
     return parts.sort().join(';');
@@ -112,8 +118,8 @@ export function registerMonitoringRoutes(app) {
         runningCommand: null,
       };
 
-      const proc = runningProcesses.get(project.id);
-      if (proc) entry.runningCommand = proc.command;
+      const procs = [...(runningProcesses.get(project.id)?.values() || [])];
+      if (procs.length > 0) entry.runningCommand = procs.map((p) => p.command).join('; ');
 
       try {
         const gitDir = path.join(project.path, '.git');

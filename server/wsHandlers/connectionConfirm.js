@@ -40,9 +40,13 @@ export async function handleConfirmResponse(ws, parsed) {
   // Interactive port-conflict prompt from a still-running dev server (see executor.js's
   // PORT_PROMPT_RE detection) — there's no new command to run here, just a reply to write into
   // the already-spawned child's stdin. Handled before the near-miss/telemetry bookkeeping below
-  // since those fields don't apply to this pending-confirmation shape.
+  // since those fields don't apply to this pending-confirmation shape. The pending record's
+  // trigger is the spawned command, so the matching tracked entry is found by it — a project
+  // can have several processes running concurrently, and the reply must reach the one that's
+  // actually sitting at the prompt.
   if (pending.stdinWrite) {
-    const proc = runningProcesses.get(pending.projectId);
+    const proc = [...(runningProcesses.get(pending.projectId)?.values() || [])]
+      .find((p) => p.command === pending.trigger) || null;
     const reply = confirmed ? pending.stdinWrite.yes : pending.stdinWrite.no;
     if (proc?.child?.stdin?.writable) {
       // Re-arm the prompt-pending force-detach bound and allow a repeat prompt: executor's

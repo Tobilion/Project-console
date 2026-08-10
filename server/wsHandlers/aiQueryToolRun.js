@@ -46,7 +46,12 @@ export async function runGatedExecuteCommand(ws, project, args) {
   // Real PID of the tracked process (if it's still running after the race) — the model was
   // previously left to invent one ("Background process started (PID 9128)" was a guess in a
   // real NetPulse chat, and the user rightly had no way to verify). Only the truth is sent.
-  const trackedPid = project?.id ? runningProcesses.get(project.id)?.child?.pid ?? null : null;
+  // A project can track several processes at once, so prefer the entry whose command is the
+  // one this tool just ran; fall back to the newest when it already exited (the entry can
+  // outlive the child by the probe grace).
+  const procs = project?.id ? [...(runningProcesses.get(project.id)?.values() || [])] : [];
+  const tracked = procs.find((p) => p.command === command) || procs[procs.length - 1];
+  const trackedPid = tracked?.child?.pid ?? null;
   if (result?.timeout) {
     return {
       success: true,

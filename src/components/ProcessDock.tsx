@@ -61,7 +61,14 @@ export function ProcessDock({
     }
   }, [expanded, dockTab, lines.length]);
 
-  const runningByProject = new Map(processes.map(p => [p.projectId, p]));
+  // A project can track several processes at once (e.g. NetPulse's dashboard + watch loop).
+  // The overview shows one row per project — prefer the process that exposes a URL so the
+  // clickable link/port shown is the site, not the most recently started command.
+  const runningByProject = new Map<string, ProcessInfo>();
+  for (const p of processes) {
+    const prev = runningByProject.get(p.projectId);
+    if (!prev || (p.url && !prev.url)) runningByProject.set(p.projectId, p);
+  }
 
   return (
     <AnimatePresence initial={false}>
@@ -199,7 +206,7 @@ export function ProcessDock({
               const port = p.url ? portFromUrl(p.url) : null;
               return (
                 <div
-                  key={p.projectId}
+                  key={`${p.projectId}:${p.pid ?? p.command}`}
                   className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-mono transition-colors flex-shrink-0 ${
                     selected
                       ? 'bg-[#3d6bff]/20 border border-[#3d6bff]/40 text-[#3d6bff]'

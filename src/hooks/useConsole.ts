@@ -51,6 +51,7 @@ export function useConsole() {
   // handleToolConfirm's `!wsRef.current` check was always true and every Approve/
   // Reject/Cancel/Execute click silently no-op'd.
   const wsHandler = useWebSocket(handleWebSocketMessage, handleWsOpen);
+  const { connected } = wsHandler;
   const terminal = useTerminal(
     wsHandler.wsRef,
     projects.activeProject,
@@ -175,11 +176,22 @@ export function useConsole() {
     fetchProcesses: dock.fetchProcesses,
   };
 
-  // Replace useTerminal's handler so sends use the real wsRef (useTerminal holds a stale copy).
-  terminal.handleSendMessage = async (content: string) => {
+  // M21: useCallback so the `onSendMessage` identity passed to TerminalMessages (and the
+  // markdownComponents useMemo inside it) does not churn on every render — the old plain
+  // `terminal.handleSendMessage = fn` reassigned a new function each render, which rebuilt
+  // markdownComponents on every 16ms token frame and forced the whole thread to re-render.
+  const handleSendMessage = useCallback(async (content: string) => {
     if (!projects.activeProject || !wsHandler.wsRef.current) return;
     const open = await waitForSocketOpen(() => wsHandler.wsRef.current);
-    if (!open) return;
+    // M19: the input was already cleared by the time this runs, so a dropped message used to
+    // vanish silently — surface an error instead of swallowing it.
+    if (!open) {
+      sessions.setMessages(prev => [...prev, makeMessage(
+        'error',
+        'Could not send your message — the WebSocket is disconnected. Check the connection and try again.'
+      )]);
+      return;
+    }
     sessions.setMessages(prev => [...prev, makeMessage('user', content)]);
     // Only trigger mode needs this — AI mode already gets its own busy indicator from the
     // server's 'ai_start' event (see ai.setAiThinking below), and showing both at once would be
@@ -189,7 +201,9 @@ export function useConsole() {
       type: 'execute',
       payload: { projectId: projects.activeProject.id, input: content, sessionId: sessions.activeSessionId }
     }));
-  };
+  }, [projects.activeProject, wsHandler.wsRef, sessions.setMessages, sessions.activeSessionId, ai.aiEnabled, setCommandPending]);
+
+  terminal.handleSendMessage = handleSendMessage;
 
   useEffect(() => {
     projects.fetchProjects();
@@ -423,6 +437,7 @@ export function useConsole() {
     switchSession: handleSwitchSession,
     deleteSession: sessions.deleteSession,
     renameSession: sessions.renameSession,
-    handleSwitchToProject,
-  };
+     handleSwitchToProject,
+     connected,
+   };
 }

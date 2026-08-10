@@ -3,7 +3,11 @@ import React, { useState, useEffect, useRef } from 'react';
 const CHARS = '!<>-_\\\\/[]{}—=+*^?#________';
 
 export const TextScramble = ({ text, className = '' }: { text: string, className?: string }) => {
-  const [displayText, setDisplayText] = useState(text);
+  // displayText is a ReactNode array (not a markup string): scramble spans and literal chars
+  // are React children, so they're escaped. The previous dangerouslySetInnerHTML built a string
+  // from CHARS (which contains <>) — a profile name with markup could inject into the DOM
+  // (audit 2026-08-06, Phase 3: self-XSS via the header scramble).
+  const [displayText, setDisplayText] = useState<React.ReactNode[]>(() => text.split(''));
   const frameRef = useRef(0);
   const queueRef = useRef<{from: string, to: string, start: number, end: number, char?: string}[]>([]);
 
@@ -21,26 +25,27 @@ export const TextScramble = ({ text, className = '' }: { text: string, className
     queueRef.current = queue;
 
     const update = () => {
-      let output = '';
+      let nodes: React.ReactNode[] = [];
       let complete = 0;
       for (let i = 0, n = queueRef.current.length; i < n; i++) {
         let { from, to, start, end, char } = queueRef.current[i];
         if (frame >= end) {
           complete++;
-          output += to;
+          nodes.push(to);
         } else if (frame >= start) {
           if (!char || Math.random() < 0.28) {
             char = CHARS[Math.floor(Math.random() * CHARS.length)];
             queueRef.current[i].char = char;
           }
-          output += `<span class="text-fg-strong/30">${char}</span>`;
+          // className (not class) + JSX so char is escaped — part of the same self-XSS fix.
+          nodes.push(<span key={i} className="text-fg-strong/30">{char}</span>);
         } else {
-          output += from;
+          nodes.push(from);
         }
       }
-      setDisplayText(output);
+      setDisplayText(nodes);
       if (complete === queueRef.current.length) {
-        setDisplayText(text);
+        setDisplayText(text.split(''));
       } else {
         frame++;
         frameRef.current = requestAnimationFrame(update);
@@ -51,5 +56,9 @@ export const TextScramble = ({ text, className = '' }: { text: string, className
     return () => cancelAnimationFrame(frameRef.current);
   }, [text]);
 
-  return <span className={className} dangerouslySetInnerHTML={{ __html: displayText }} />;
+  return (
+    <span className={className}>
+      {displayText.map((node, i) => <React.Fragment key={i}>{node}</React.Fragment>)}
+    </span>
+  );
 };

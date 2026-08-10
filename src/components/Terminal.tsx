@@ -79,11 +79,12 @@ interface TerminalProps {
   dockTab?: 'logs' | 'projects';
   onSetDockTab?: (tab: 'logs' | 'projects') => void;
   projects?: Project[];
-  knownDevUrls: string[];
-}
+   knownDevUrls: string[];
+   connected: boolean;
+ }
 
 export const Terminal = ({ messages, onSendMessage, onSearch, onDeepResearch, activeProject, userName, pendingConfirm, onConfirm, pendingToolConfirm, onToolConfirm, onApproveTask, pendingMemorySuggestion, onMemorySuggestionRespond, aiEnabled, aiThinking, aiThinkingText, commandPending, onCancel, ollamaStatus, aiModel, aiMode, onAIToggle, onSetModel, onSetMode, toolHistory, showToolHistory, onToggleToolHistory, onRerunToolCall, onExportMarkdown, onExportJson, onDirectCommand, onDidYouMeanPick, workspaceProjects, addToWorkspace, removeFromWorkspace, clearWorkspace, onSwitchToProject, isFullscreen, onToggleFullscreen, processes, processLogs, 
-selectedProcessId, onSelectProcess, onStopProcess, dockExpanded, onToggleDock, dockTab, onSetDockTab, projects, knownDevUrls }: TerminalProps) => {
+ selectedProcessId, onSelectProcess, onStopProcess, dockExpanded, onToggleDock, dockTab, onSetDockTab, projects, knownDevUrls, connected }: TerminalProps) => {
   const [input, setInput] = useState('');
   const [showSearchOverlay, setShowSearchOverlay] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -247,21 +248,22 @@ selectedProcessId, onSelectProcess, onStopProcess, dockExpanded, onToggleDock, d
 
   return (
     <div className="flex flex-col h-full bg-overlay/80 backdrop-blur-md rounded-2xl border border-border-soft relative">
-      <TerminalHeader
-        activeProject={activeProject}
-        isFullscreen={isFullscreen}
-        onToggleFullscreen={onToggleFullscreen}
-        ollamaStatus={ollamaStatus}
-        workspaceProjects={workspaceProjects}
-        removeFromWorkspace={removeFromWorkspace}
-        clearWorkspace={clearWorkspace}
-        onExportMarkdown={onExportMarkdown}
-        onExportJson={onExportJson}
-        toolHistory={toolHistory}
-        showToolHistory={showToolHistory}
-        onToggleToolHistory={onToggleToolHistory}
-      />
-      
+       <TerminalHeader
+         activeProject={activeProject}
+         isFullscreen={isFullscreen}
+         onToggleFullscreen={onToggleFullscreen}
+         ollamaStatus={ollamaStatus}
+         workspaceProjects={workspaceProjects}
+         removeFromWorkspace={removeFromWorkspace}
+         clearWorkspace={clearWorkspace}
+         onExportMarkdown={onExportMarkdown}
+         onExportJson={onExportJson}
+         toolHistory={toolHistory}
+         showToolHistory={showToolHistory}
+         onToggleToolHistory={onToggleToolHistory}
+         connected={connected}
+       />
+
       <ErrorBoundary>
         <TerminalMessages
           messages={messages}
@@ -272,11 +274,11 @@ selectedProcessId, onSelectProcess, onStopProcess, dockExpanded, onToggleDock, d
           onSwitchToProject={onSwitchToProject}
           aiMode={aiMode}
           endRef={endRef}
-          aiThinking={aiThinking}
-          aiThinkingText={aiThinkingText}
-          commandPending={commandPending}
-          onCancel={onCancel}
-          pendingConfirm={pendingConfirm}
+         aiThinking={aiThinking}
+         aiThinkingText={aiThinkingText}
+         commandPending={commandPending}
+         onCancel={onCancel}
+         pendingConfirm={pendingConfirm}
           onConfirm={onConfirm}
           pendingToolConfirm={pendingToolConfirm}
           onToolConfirm={onToolConfirm}
@@ -315,9 +317,10 @@ selectedProcessId, onSelectProcess, onStopProcess, dockExpanded, onToggleDock, d
         isBlocked={isBlocked}
         activeProject={activeProject}
         ollamaStatus={ollamaStatus}
-        aiModel={aiModel}
-        aiMode={aiMode}
-        onAIToggle={onAIToggle}
+         aiModel={aiModel}
+         aiMode={aiMode}
+         connected={connected}
+         onAIToggle={onAIToggle}
         onSetModel={onSetModel}
         onSetMode={onSetMode}
         chatPrompt={chatPrompt}

@@ -114,6 +114,11 @@ export function useAI(sendWS: (data: object) => void, setMessages: React.Dispatc
         'system',
         `AI Assistant activated — using ${source === 'cloud' ? 'Ollama Cloud' : 'local'} model: ${activeModel}. Switch between local and cloud anytime via the model picker.`
       )]);
+    } catch (err: any) {
+      // sendMessage now throws when the socket isn't OPEN — without a catch this became an
+      // unhandled rejection and a silent no-op (the toggle stayed busy, the banner lied), per
+      // M18. Surface a concrete reason instead of vanishing.
+      setMessages(prev => [...prev, makeMessage('error', `Could not toggle AI mode: ${err.message}`)]);
     } finally {
       toggleBusyRef.current = false;
     }

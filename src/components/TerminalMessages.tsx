@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useEffect, useCallback } from 'react';
+import React, { useMemo, useRef, useEffect, useCallback, ErrorInfo, ReactNode } from 'react';
 import { TerminalMessage, PendingToolConfirm, PendingMemorySuggestion } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
 import ReactMarkdown from 'react-markdown';
@@ -7,6 +7,41 @@ import { OutputBlock } from './TerminalOutputBlock';
 import { StructuredJsonBlock } from './StructuredJsonBlock';
 import { TerminalConfirmCards } from './TerminalConfirmCards';
 import { TerminalEmptyState } from './TerminalEmptyState';
+
+/** M23: a message-level boundary (local, NOT the app's shared ErrorBoundary) so a single
+ *  malformed message renders inline in the thread instead of unmounting the whole messages
+ *  area. resetKeys is keyed on the message id so that deleting/refreshing a bad message clears
+ *  the error and re-renders the real row. */
+class RowErrorBoundary extends React.Component<
+  { children: ReactNode; resetKeys?: ReactNode[]; fallback: ReactNode },
+  { error: Error | null }
+> {
+  constructor(props: { children: ReactNode; resetKeys?: ReactNode[]; fallback: ReactNode }) {
+    super(props);
+    this.state = { error: null };
+  }
+  static getDerivedStateFromError(error: Error) {
+    return { error };
+  }
+  componentDidCatch(error: Error, info: ErrorInfo) {
+    // eslint-disable-next-line no-console
+    console.error('Message row render error (M23):', error, info.componentStack);
+  }
+  componentDidUpdate(prev: { resetKeys?: ReactNode[] }) {
+    if (
+      this.state.error &&
+      this.props.resetKeys &&
+      JSON.stringify(prev.resetKeys) !== JSON.stringify(this.props.resetKeys)
+    ) {
+      this.setState({ error: null });
+    }
+  }
+  handleReset = () => this.setState({ error: null });
+  render() {
+    if (this.state.error) return this.props.fallback;
+    return this.props.children;
+  }
+}
 
 /** The server appends a performance note to the end of streamed AI replies (see
  * server/ollama.js chatStream): `\n\n_(2.0s, 9 tok/s)_`. Strip it from the rendered
@@ -58,9 +93,148 @@ interface TerminalMessagesProps {
   knownDevUrls: string[];
 }
 
+/** One chat row's *content* (bubble / output block / suggestion chips), extracted into a memoized
+ *  component so a 16ms token update only re-renders the row whose message object changed (M21).
+ *  The motion.div wrapper AnimatePresence tracks stays inline in the parent map — its key/props
+ *  don't change for unchanged rows, so React skips it and this memo skips the expensive ReactMarkdown
+ *  parse entirely. The custom comparator also short-circuits on stable refs (markdownComponents,
+ *  handlers) so an AI-mode stream only touches the live row. */
+const MessageRowContent = React.memo(function MessageRowContent({
+  msg, isBlocked, onSendMessage, onDirectCommand, onSwitchToProject, aiMode,
+  knownDevUrls, markdownComponents, onDidYouMeanPick,
+}: {
+  msg: TerminalMessage;
+  isBlocked: boolean;
+  onSendMessage: (m: string) => void;
+  onDirectCommand?: (c: string) => void;
+  onSwitchToProject?: (p: string) => void;
+  aiMode: string;
+  knownDevUrls: string[];
+  markdownComponents: any;
+  onDidYouMeanPick?: (intent: string) => void;
+}) {
+  if (msg.type === 'output') {
+    return <OutputBlock content={msg.content} autoExpand={msg.autoExpand} />;
+  }
+  const tel = splitTelemetry(msg.content);
+  const linkUrl = msg.type !== 'user' ? extractUrl(tel.body) : null;
+  // Only real dev-server sites get the chip — the server_url/processes sources in
+  // knownDevUrls are the console's ground truth for "this is the site link" (an
+  // Ollama error message used to qualify just because it contained an http URL).
+  const isKnownDevUrl = !!linkUrl && knownDevUrls.some(u =>
+    u.replace(/\/$/, '').toLowerCase() === linkUrl.replace(/\/$/, '').toLowerCase()
+  );
+  return (
+    <div
+      className={`max-w-[85%] rounded-2xl px-5 py-3 ${
+        msg.type === 'user'
+          ? 'bg-[#3d6bff] text-white rounded-br-none'
+          : msg.type === 'error'
+          ? 'bg-red-500/10 border border-red-500/20 text-red-400 rounded-bl-none font-mono text-sm'
+          : msg.type === 'warning'
+          ? 'bg-amber-500/10 border border-amber-500/30 text-amber-400 rounded-bl-none'
+          : 'bg-panel border border-border-soft text-fg rounded-bl-none'
+      }`}
+    >
+      {msg.type === 'warning' ? (
+        <div className="flex items-start gap-2">
+          <AlertTriangle size={14} className="flex-shrink-0 mt-0.5" />
+          <div className="whitespace-pre-wrap text-sm leading-relaxed">{msg.content}</div>
+        </div>
+      ) : msg.type === 'user' || !msg.isMarkdown ? (
+        <div className="whitespace-pre-wrap text-sm leading-relaxed">{tel.body}</div>
+      ) : (
+        <>
+          <div className="prose prose-sm max-w-none prose-pre:bg-scrim prose-pre:border prose-pre:border-border-soft prose-pre:p-0 prose-p:leading-relaxed prose-a:text-accent prose-a:underline">
+            <ReactMarkdown components={markdownComponents}>{tel.body}</ReactMarkdown>
+          </div>
+          {tel.meta && (
+            <div className="mt-2 text-xs font-mono text-fg-dim">{tel.meta}</div>
+          )}
+        </>
+      )}
+
+      {isKnownDevUrl && (
+        <a
+          href={linkUrl!}
+          target="_blank"
+          rel="noreferrer"
+          title={linkUrl!}
+          className="mt-3 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[#00d4a3]/10 border border-[#00d4a3]/30 text-xs text-[#00d4a3] hover:bg-[#00d4a3]/20 transition-colors"
+        >
+          Click here to open the site
+          <ExternalLink size={11} />
+        </a>
+      )}
+
+      {msg.suggestions && msg.suggestions.length > 0 && (
+        <div className="mt-4 pt-4 border-t border-border-soft">
+          <p className="text-xs text-fg-dim mb-2">SUGGESTIONS:</p>
+          <div className="flex flex-wrap gap-2">
+            {msg.suggestions.map((sug, idx) => (
+              <button
+                key={idx}
+                onClick={() => {
+                  if (!isBlocked) {
+                    if (onDirectCommand && /^(npm|npx|python|node|git)\s/.test(sug)) {
+                      onDirectCommand(sug);
+                    } else {
+                      onSendMessage(sug);
+                    }
+                  }
+                }}
+                className="px-3 py-1 rounded-full bg-panel hover:bg-panel-strong border border-border-soft text-xs text-[#00d4a3] transition-colors"
+              >
+                {sug}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {msg.didYouMean && (onDidYouMeanPick as any) && (
+        <div className="mt-3 pt-3 border-t border-border-soft">
+          <p className="text-xs text-fg-dim mb-2">DID YOU MEAN:</p>
+          <div className="flex flex-wrap gap-2">
+            <button
+              onClick={() => {
+                if (!isBlocked) (onDidYouMeanPick as any)(msg.didYouMean!.intent);
+              }}
+              className="px-3 py-1 rounded-full bg-panel hover:bg-panel-strong border border-border-soft text-xs text-[#00d4a3] transition-colors"
+            >
+              {msg.didYouMean.label || msg.didYouMean.intent}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {msg.switchProjectAction && onSwitchToProject && (
+        <div className="mt-3 pt-3 border-t border-red-500/20">
+          <button
+            onClick={() => onSwitchToProject(msg.switchProjectAction!.projectId)}
+            className="px-3 py-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-xs text-red-300 transition-colors"
+          >
+            Switch to "{msg.switchProjectAction.projectName}"
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}, (prev, next) => (
+  prev.msg === next.msg
+  && prev.markdownComponents === next.markdownComponents
+  && prev.isBlocked === next.isBlocked
+  && prev.knownDevUrls === next.knownDevUrls
+  && prev.onSendMessage === next.onSendMessage
+  && prev.onDirectCommand === next.onDirectCommand
+  && prev.onSwitchToProject === next.onSwitchToProject
+  && prev.aiMode === next.aiMode
+  && (prev as any).onDidYouMeanPick === (next as any).onDidYouMeanPick
+));
+
 /** The scrollable message thread: chat bubbles (markdown/JSON/output), inline confirm
- *  cards, the scroll anchor, and the AI/trigger-mode busy indicators. */
-export function TerminalMessages({
+ * cards, the scroll anchor, and the AI/trigger-mode busy indicators. */
+const TerminalMessagesComponent = ({
   messages,
   centerCol,
   isBlocked,
@@ -84,7 +258,7 @@ export function TerminalMessages({
   emptyStateActions,
   onDidYouMeanPick,
   knownDevUrls,
-}: TerminalMessagesProps) {
+}: TerminalMessagesProps) => {
   // Custom markdown components for structured JSON blocks
   const markdownComponents = useMemo(() => ({
     code({ className, children, ...props }: any) {
@@ -99,8 +273,8 @@ export function TerminalMessages({
 
   // Auto-scroll to the newest message ONLY while the user is already at (or near) the bottom
   // of the thread — scrolling up to re-read something must not be yanked back down by new
-  // output (audit 2026-08-06, Phase 3). The container owns both the scroll events and the
-  // anchor, so this lives here instead of Terminal.tsx.
+  // output (M6/M22). The container owns both the scroll events and the anchor, so this lives
+  // here instead of Terminal.tsx.
   const containerRef = useRef<HTMLDivElement>(null);
   const atBottomRef = useRef(true);
   const handleContainerScroll = useCallback(() => {
@@ -110,7 +284,12 @@ export function TerminalMessages({
   }, []);
   useEffect(() => {
     if (atBottomRef.current) {
-      endRef.current?.scrollIntoView({ behavior: 'smooth' });
+      // M22: during an active AI token stream the server pushes a new `messages` array
+      // reference per token (wsStreamingCases appends via prev.map), so this effect re-fires
+      // every ~16ms. With `behavior: 'smooth'` that produces visible scroll-jank; jump
+      // instantly (`auto`) only while streaming, and keep the smooth, pleasant scroll for
+      // the natural cadence of discrete user/system/error message arrivals.
+      endRef.current?.scrollIntoView({ behavior: aiThinking ? 'auto' : 'smooth' });
     }
   }, [messages, pendingConfirm, pendingToolConfirm, pendingMemorySuggestion, endRef]);
 
@@ -123,130 +302,43 @@ export function TerminalMessages({
       ) : (
       <div className={`${centerCol} space-y-3`}>
       <AnimatePresence initial={false}>
-        {messages.map((msg, i) => {
-          if (msg.type === 'output') {
-            return (
-              <motion.div
-                key={msg.id || i}
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="flex flex-col items-start max-w-[85%]"
-              >
-                <OutputBlock content={msg.content} autoExpand={msg.autoExpand} />
-              </motion.div>
-            );
-          }
-          const tel = splitTelemetry(msg.content);
-          const linkUrl = msg.type !== 'user' ? extractUrl(tel.body) : null;
-          // Only real dev-server sites get the chip — the server_url/processes sources in
-          // knownDevUrls are the console's ground truth for "this is the site link" (an
-          // Ollama error message used to qualify just because it contained an http URL).
-          const isKnownDevUrl = !!linkUrl && knownDevUrls.some(u =>
-            u.replace(/\/$/, '').toLowerCase() === linkUrl.replace(/\/$/, '').toLowerCase()
-          );
-          return (
-          <motion.div
+      {messages.map((msg, i) => {
+        const rowClass = msg.type === 'output'
+          ? 'flex flex-col items-start max-w-[85%]'
+          : `flex flex-col ${msg.type === 'user' ? 'items-end' : 'items-start'}`;
+        return (
+          // M23: boundary per row (not whole-thread) so a single bad render is contained.
+          <RowErrorBoundary
             key={msg.id || i}
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            className={`flex flex-col ${msg.type === 'user' ? 'items-end' : 'items-start'}`}
+            resetKeys={[msg.id || i]}
+            fallback={
+              <div
+                className={`${rowClass} px-3 py-2 text-xs text-red-400/80 bg-red-500/5 border border-red-500/20 rounded-lg`}
+              >
+                <AlertTriangle size={12} className="inline-block mr-1" />
+                Couldn't render this message — malformed or removed.
+              </div>
+            }
           >
-            <div
-              className={`max-w-[85%] rounded-2xl px-5 py-3 ${
-                msg.type === 'user' 
-                  ? 'bg-[#3d6bff] text-white rounded-br-none' 
-                  : msg.type === 'error'
-                  ? 'bg-red-500/10 border border-red-500/20 text-red-400 rounded-bl-none font-mono text-sm'
-                  : msg.type === 'warning'
-                  ? 'bg-amber-500/10 border border-amber-500/30 text-amber-400 rounded-bl-none'
-                  : 'bg-panel border border-border-soft text-fg rounded-bl-none'
-              }`}
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className={rowClass}
             >
-              {msg.type === 'warning' ? (
-                 <div className="flex items-start gap-2">
-                   <AlertTriangle size={14} className="flex-shrink-0 mt-0.5" />
-                   <div className="whitespace-pre-wrap text-sm leading-relaxed">{msg.content}</div>
-                 </div>
-              ) : msg.type === 'user' || !msg.isMarkdown ? (
-                 <div className="whitespace-pre-wrap text-sm leading-relaxed">{tel.body}</div>
-              ) : (
-                 <>
-                   <div className="prose prose-sm max-w-none prose-pre:bg-scrim prose-pre:border prose-pre:border-border-soft prose-pre:p-0 prose-p:leading-relaxed prose-a:text-accent prose-a:underline">
-                     <ReactMarkdown components={markdownComponents}>{tel.body}</ReactMarkdown>
-                   </div>
-                   {tel.meta && (
-                     <div className="mt-2 text-xs font-mono text-fg-dim">{tel.meta}</div>
-                   )}
-                </>
-               )}
-               
-               {isKnownDevUrl && (
-                 <a
-                   href={linkUrl}
-                   target="_blank"
-                   rel="noreferrer"
-                   title={linkUrl}
-                   className="mt-3 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[#00d4a3]/10 border border-[#00d4a3]/30 text-xs text-[#00d4a3] hover:bg-[#00d4a3]/20 transition-colors"
-                 >
-                   Click here to open the site
-                   <ExternalLink size={11} />
-                 </a>
-               )}
-              
-              {msg.suggestions && msg.suggestions.length > 0 && (
-                <div className="mt-4 pt-4 border-t border-border-soft">
-                  <p className="text-xs text-fg-dim mb-2">SUGGESTIONS:</p>
-                  <div className="flex flex-wrap gap-2">
-                    {msg.suggestions.map((sug, idx) => (
-                      <button
-                        key={idx}
-                        onClick={() => {
-                          if (!isBlocked) {
-                            if (onDirectCommand && /^(npm|npx|python|node|git)\s/.test(sug)) {
-                              onDirectCommand(sug);
-                            } else {
-                              onSendMessage(sug);
-                            }
-                          }
-                        }}
-                        className="px-3 py-1 rounded-full bg-panel hover:bg-panel-strong border border-border-soft text-xs text-[#00d4a3] transition-colors"
-                      >
-                        {sug}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {msg.didYouMean && onDidYouMeanPick && (
-                <div className="mt-3 pt-3 border-t border-border-soft">
-                  <p className="text-xs text-fg-dim mb-2">DID YOU MEAN:</p>
-                  <div className="flex flex-wrap gap-2">
-                    <button
-                      onClick={() => {
-                        if (!isBlocked) onDidYouMeanPick(msg.didYouMean!.intent);
-                      }}
-                      className="px-3 py-1 rounded-full bg-panel hover:bg-panel-strong border border-border-soft text-xs text-[#00d4a3] transition-colors"
-                    >
-                      {msg.didYouMean.label || msg.didYouMean.intent}
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {msg.switchProjectAction && onSwitchToProject && (
-                <div className="mt-3 pt-3 border-t border-red-500/20">
-                  <button
-                    onClick={() => onSwitchToProject(msg.switchProjectAction!.projectId)}
-                    className="px-3 py-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-xs text-red-300 transition-colors"
-                  >
-                    Switch to "{msg.switchProjectAction.projectName}"
-                  </button>
-                </div>
-              )}
-            </div>
+              <MessageRowContent
+                msg={msg}
+                isBlocked={isBlocked}
+                onSendMessage={onSendMessage}
+                onDirectCommand={onDirectCommand}
+                onSwitchToProject={onSwitchToProject}
+                onDidYouMeanPick={onDidYouMeanPick}
+                aiMode={aiMode}
+                knownDevUrls={knownDevUrls}
+                markdownComponents={markdownComponents}
+              />
             </motion.div>
-          );
+          </RowErrorBoundary>
+        );
         })}
       </AnimatePresence>
 
@@ -272,8 +364,7 @@ export function TerminalMessages({
           <div className="flex items-center gap-3 text-teal-400/60 text-xs">
             <Loader2 size={14} className="animate-spin" />
             AI is thinking...
-            {/* Requested directly (2026-07-29) after a query ran 5+ minutes with no way to stop
-                it — CPU-only Ollama inference has no upper bound on its own. */}
+            {/* M16: a live cancel affordance exists while any turn is in flight. */}
             {onCancel && (
               <button
                 onClick={onCancel}
@@ -284,12 +375,10 @@ export function TerminalMessages({
               </button>
             )}
           </div>
-          {/* Requested directly (2026-07-30) — the server already separates a reasoning
-              model's internal deliberation (Ollama's `message.thinking`) from its real answer
-              and streams the former as its own 'thinking' event; previously the spinner above
-              was the only signal anything was happening, with no visibility into what the
-              model was actually doing. Capped height + scroll so a long reasoning trace doesn't
-              push the input bar off-screen; only rendered once there's actually text to show. */}
+          {/* The server separates a reasoning model's internal deliberation (Ollama's `message.thinking`)
+              from its real answer and streams the former as its own 'thinking' event; previously the
+              spinner above was the only signal anything was happening. Capped height + scroll so a long
+              reasoning trace doesn't push the input bar off-screen; only rendered once there's text. */}
           {aiThinkingText && (
             <div className="max-h-24 overflow-y-auto text-teal-400/40 text-xs font-mono italic whitespace-pre-wrap pl-6 border-l border-teal-400/20">
               {aiThinkingText}
@@ -320,4 +409,6 @@ export function TerminalMessages({
       )}
     </div>
   );
-}
+};
+
+export const TerminalMessages = React.memo(TerminalMessagesComponent);

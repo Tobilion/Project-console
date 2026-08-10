@@ -132,14 +132,18 @@ npm run lint    # tsc --noEmit
   always excluded) + `scanProjectServers` (probe only when asked, never in the background)
 - `server/diffPreview.js` — pure LCS line diff + `simulateEditContent()` for file-edit
   confirm cards; never blocks confirmation, null on any failure, skips >400-line files
-- `server/executor.js` — ~164-line orchestrator (`executeCommand` + venv rewrite) over
+- `server/executor.js` — ~164-line orchestrator (`executeCommand` + venv rewrite; refuses only
+  a literal duplicate of an already-tracked command, everything else runs concurrently) over
   leaves: `executorOutput.js` (ANSI/URL regexes, `collapseLfCrlfWarnings`, `createBufferedSender`
   150ms coalescing; stderr batches may reroute to a `warning` WS channel),
   `executorPorts.js` (PORT_PROMPT_RE interactive-port detection → stdinWrite confirm flow;
-  `extractBusyPort`/`buildPortRetryCommand` EADDRINUSE retry), `executorProcesses.js`
-  (`runningProcesses` + `processLogs` LineRingBuffer 2000-line cap, `stopTrackedProcess` —
-  the single kill+cleanup path: SIGTERM + map/log/URL cleanup + `dashboard_update` +
-  `processes_update` broadcasts; `process.on('exit'/'SIGTERM')` cleanup),
+  `extractBusyPort`/`buildPortRetryCommand` EADDRINUSE retry),   `executorProcesses.js`
+  (`runningProcesses` is MULTI-SLOT per project — `Map<projectId, Map<pid, entry>>` since the
+  2026-08-10 NetPulse serve+watch fix, so several commands can run concurrently and each owns
+  its own slot; `processLogs` LineRingBuffer 2000-line cap is per-project shared; `stopTrackedProcess`
+  — the single kill+cleanup path: SIGTERM on EVERY tracked process for the project + map/log/URL
+  cleanup + `dashboard_update` + `processes_update` broadcasts; `removeTrackedProcess` deletes one
+  pid and cleans the project key when its slot empties; `process.on('exit'/'SIGTERM')` cleanup),
   `executorDevServer.js` (`isDevServerCommand`, `buildDetachMessage`). Tuning knobs are
   exported named constants (`DEV_URL_DETACH_GRACE_MS`, `DEV_SERVER_FORCE_DETACH_MS`,
   `LONG_RUNNING_FORCE_DETACH_MS`, `STDOUT_SUMMARY_CAP`, `STDERR_SUMMARY_CAP`); likewise
@@ -449,9 +453,10 @@ CONTROL/PHASE1-3/BASICS/MATCHDAY/TRAPS/MUST_NOT_STEAL/GARBAGE (+ open-family row
   overwrote `memoryStore.js` and the server failed to start (`8e10090` fixed it).
 - **Executor**: spawn needs `windowsHide: true` (consoleless parents otherwise flash a cmd
   window per command). Force-detach timer is UNCONDITIONAL (10s dev-server-shaped, 20s
-  otherwise) and cleared on close/error/detach; on `close`, only delete the
-  `runningProcesses` entry when the process was never detached (the Windows npm wrapper can
-  close before the real server stops — "stop server" deletes the entry itself when it kills).
+  otherwise) and cleared on close/error/detach; on `close`, only delete the process's OWN
+  `runningProcesses` slot when the process was never detached (the Windows npm wrapper can
+  close before the real server stops — "stop server" deletes the entry itself when it kills;
+  sibling processes of the same project keep their slots).
   `processes_update`/`dashboard_update` broadcast on every process start/URL/close/error.
 - **Cancellation**: `cancel` routes through `stopTrackedProcess()` (SIGTERM + map/log/URL
   cleanup + broadcasts) — never a raw `child.kill()` with no cleanup. The AI query's

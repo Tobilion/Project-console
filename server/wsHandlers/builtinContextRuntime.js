@@ -15,12 +15,13 @@ export const contextRuntimeHandlers = {
     // "what is the link" pre-check in connection.js happening to catch the phrasing. Reads the
     // same runningProcesses + lastDevUrls the pre-check reports — read-only, immediate, and the
     // port-collision heads-up is applied the same way the pre-check applies it.
-    const proc = runningProcesses.get(project.id);
+    const procs = [...(runningProcesses.get(project.id)?.values() || [])];
     const url = state.lastDevUrls.get(project.id);
-    if (proc) {
-      let msg = `**[${project.name}]** has \`${proc.command}\` running right now.`;
+    if (procs.length > 0) {
+      const cmdText = procs.map((p) => `\`${p.command}\``).join(' and ');
+      let msg = `**[${project.name}]** has ${cmdText} running right now.`;
       if (url) msg += `\n\nOpen it at **${url}** — or say "what is the link" to see it again.`;
-      else msg += `\n\nThe process is tracked but no local URL was detected yet — it may still be starting up, or it doesn't expose an HTTP server.`;
+      else msg += `\n\nThe processes are tracked but no local URL was detected yet — it may still be starting up, or it doesn't expose an HTTP server.`;
       ws.send(JSON.stringify({ type: 'answer', data: withPortCollisionWarning(msg, url) }));
     } else if (url) {
       // Not console-tracked (started outside the console or before a restart) but we have a
@@ -77,10 +78,12 @@ export const contextRuntimeHandlers = {
   'project.context.running_processes'(ws, _action, _input, _project) {
     // Phase 3 (2026-08-03): GLOBAL list across ALL projects from runningProcesses + lastDevUrls.
     const procs = [];
-    for (const [pid, info] of runningProcesses) {
+    for (const [pid, slot] of runningProcesses) {
       const proj = state.activeProjectsCache.find((p) => p.id === pid);
       const url = state.lastDevUrls.get(pid);
-      procs.push({ project: proj?.name || pid, command: info.command, url, runningSince: info.startedAt });
+      for (const info of slot.values()) {
+        procs.push({ project: proj?.name || pid, command: info.command, url, runningSince: info.startedAt });
+      }
     }
     if (procs.length === 0) {
       ws.send(JSON.stringify({ type: 'answer', data: `Nothing running across all projects. Say "run the site" in a project to start one.` }));

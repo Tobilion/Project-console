@@ -31,10 +31,12 @@ export const fileNpmHandlers = {
         // Same duplicate-dev-server guard as run_project — see that handler's comment for the
         // real transcript this fixes. Only applies to dev-server-shaped script names; anything
         // else (test, build, lint, the project's own custom scripts) always re-runs freely.
-        // Matches only when the tracked process IS this script (same reasoning as run_project:
+        // Matches only when a tracked process IS this script (same reasoning as run_project:
         // a project running a backend on 4400 must still be able to start vite on 3001).
-        const tracked = ['dev', 'start', 'serve'].includes(scriptName) ? runningProcesses.get(project.id) : null;
         const expected = scriptName === 'dev' ? 'npm run dev' : scriptName === 'start' ? 'npm start' : 'npm run serve';
+        const tracked = ['dev', 'start', 'serve'].includes(scriptName)
+          ? [...(runningProcesses.get(project.id)?.values() || [])].find((p) => p.command && p.command.trim() === expected)
+          : null;
         if (tracked && tracked.command && tracked.command.trim() === expected) {
           const url = state.lastDevUrls.get(project.id);
           ws.send(JSON.stringify({
@@ -236,9 +238,10 @@ export const fileNpmHandlers = {
     // Exchange runs two independent servers (vite on 3001 AND a tsx backend on 4400), so "run
     // the site" must still start `dev` while `server` is tracked; the guard exists to stop
     // duplicate instances of one script, not to freeze the whole project.
-    const tracked = runningProcesses.get(project.id);
     const targetScript = scripts.dev ? 'dev' : scripts.start ? 'start' : scripts.serve ? 'serve' : null;
     const targetCommand = targetScript === 'dev' ? 'npm run dev' : targetScript === 'start' ? 'npm start' : targetScript === 'serve' ? 'npm run serve' : null;
+    const tracked = [...(runningProcesses.get(project.id)?.values() || [])]
+      .find((p) => p.command && p.command.trim() === targetCommand) || null;
     if (tracked && targetCommand && tracked.command && tracked.command.trim() === targetCommand) {
       const url = state.lastDevUrls.get(project.id);
       ws.send(JSON.stringify({

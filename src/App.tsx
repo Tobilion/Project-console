@@ -54,9 +54,9 @@ function App() {
     handleDirectCommand, activeServers, knownDevUrls, dashboardUpdateSignal,
     workspaceProjects, addToWorkspace, removeFromWorkspace, clearWorkspace,
     processes, processLogs, selectedProcessId, setSelectedProcessId,
-    dockExpanded, setDockExpanded, dockTab, setDockTab, handleStopProcess,
-    handleDidYouMeanPick,
-  } = useConsole();
+     dockExpanded, setDockExpanded, dockTab, setDockTab, handleStopProcess,
+     handleDidYouMeanPick, connected,
+   } = useConsole();
 
   // `showDirectoryPicker()` opens Chromium's actual native "Select Folder" dialog — distinct
   // from the file-upload chooser that `<input type="file" webkitdirectory>` shows (same picker
@@ -257,8 +257,9 @@ function App() {
               onSetDockTab={setDockTab}
               projects={projects}
               knownDevUrls={knownDevUrls}
-              userName={profile.name}
-            />
+               userName={profile.name}
+               connected={connected}
+             />
             )}
           </div>
         </div>

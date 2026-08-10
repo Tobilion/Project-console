@@ -243,8 +243,11 @@ const processesUpdateCase: WsCaseHandler = (ctx) => {
 
 const learningSuggestionCase: WsCaseHandler = (ctx, payload) => {
   const id = makeId();
-  const { suggestions } = payload.data;
-  if (suggestions.length === 0) {
+  // payload.data can be absent or non-conformant; the old destructure threw and was swallowed
+  // by the bare catch {} in useWebSocket's onmessage — leaving the feature dead with no signal
+  // (audit 2026-08-06, Phase 3).
+  const suggestions = payload?.data?.suggestions;
+  if (!Array.isArray(suggestions) || suggestions.length === 0) {
     ctx.sessions.setMessages(prev => [...prev, { id, type: 'bot', content: 'No learning suggestions yet — keep using the console and check back later!' }]);
   } else {
     const formatted = suggestions.map((s: any) =>

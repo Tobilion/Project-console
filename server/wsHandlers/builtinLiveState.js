@@ -45,11 +45,11 @@ export async function buildLiveStateLine(project) {
     parts.push(`${n} project${n === 1 ? '' : 's'} indexed`);
   } catch {}
   try {
-    const proc = runningProcesses.get(project.id);
+    const procs = [...(runningProcesses.get(project.id)?.values() || [])];
     devUrl = state.lastDevUrls.get(project.id);
-    if (proc || devUrl) {
+    if (procs.length > 0 || devUrl) {
       let line = 'Running:';
-      if (proc) line += ` \`${proc.command}\``;
+      if (procs.length > 0) line += ` ${procs.map((p) => `\`${p.command}\``).join(' and ')}`;
       if (devUrl) line += ` @ ${devUrl}`;
       parts.push(line);
     }

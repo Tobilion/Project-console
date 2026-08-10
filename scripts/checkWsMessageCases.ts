@@ -249,6 +249,8 @@ async function main() {
   check('learning_suggestion empty', last(c.state).content.includes('No learning suggestions yet'));
   dispatch(c.ctx, 'learning_suggestion', { data: { suggestions: [{ intent: 'x', confidence: 'high', count: 5, accepted: 4, rejected: 1, phrases: ['a', 'b'] }] } });
   check('learning_suggestion formatted + chips', last(c.state).content.includes('### Learning Suggestions') && last(c.state).suggestions?.[0] === 'approve 1');
+  dispatch(c.ctx, 'learning_suggestion', {});
+  check('learning_suggestion malformed (no suggestions) does not throw', last(c.state).content.includes('No learning suggestions yet'));
 
   // --- streaming trio ---
   c = makeFakeCtx();

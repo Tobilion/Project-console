@@ -17,6 +17,8 @@ import {
   LineRingBuffer,
   MAX_LOG_LINES,
   getProcessLog,
+  getTrackedProcesses,
+  removeTrackedProcess,
   stopTrackedProcess,
 } from './executorProcesses.js';
 import { ANSI_RE, URL_PATTERN, collapseLfCrlfWarnings, createBufferedSender } from './executorOutput.js';
@@ -84,17 +86,22 @@ export function executeCommand(command, cwd, ws, projectId) {
     }
   };
 
-  // runningProcesses is single-slot per project, and executeCommand is reachable with no
-  // duplicate guard from npm_build/npm_install, the typed-command bypass and every confirmed
-  // command — overwriting a live entry used to orphan the previous process from every cleanup
-  // path (the short build then deleted the entry on close, leaving a real dev server untracked
-  // and unkillable; audit 2026-08-06, Phase 2). Refuse instead, mirroring the run_project
-  // duplicate guard's message shape.
-  const existing = projectId ? runningProcesses.get(projectId) : null;
+  // runningProcesses is multi-slot (one entry per running command), and executeCommand is
+  // reachable with no duplicate guard from npm_build/npm_install, the typed-command bypass and
+  // every confirmed command. Overwriting a live entry used to orphan the previous process from
+  // every cleanup path (the short build then deleted the entry on close, leaving a real dev
+  // server untracked and unkillable; audit 2026-08-06, Phase 2). Each command now owns its own
+  // slot and only deletes itself on close, so different commands can run concurrently (the
+  // NetPulse config's serve + watch pair is designed to coexist). The one thing still refused
+  // is a literal duplicate of a command that is already tracked — restarting a dev server is a
+  // stop-then-start gesture, and two identical watch loops would both report the same thing.
+  const existing = projectId
+    ? getTrackedProcesses(projectId).find((p) => p.command === finalCommand)
+    : null;
   if (existing?.child && existing.child.exitCode === null && existing.child.signalCode === null) {
-    sendEvent('answer', `**[${projectId}]** already has \`${existing.command}\` running — say "stop server" first if you want to run another command for this project.`);
+    sendEvent('answer', `**[${projectId}]** already has \`${existing.command}\` running — say "stop server" first if you want to restart it.`);
     sendEvent('end', '');
-    return Promise.resolve({ success: false, error: 'a process is already running for this project' });
+    return Promise.resolve({ success: false, error: 'a process with the same command is already running for this project' });
   }
 
   return new Promise((resolve) => {
@@ -162,10 +169,17 @@ export function executeCommand(command, cwd, ws, projectId) {
 
     sendEvent('start', `Executing: ${finalCommand}\n`);
 
-    // Register so user can stop the server later
+    // Register so user can stop the server later. Each command gets its own slot keyed by its
+    // own pid; the per-project log buffer is only created once (concurrent processes share the
+    // interleaved tail rather than wiping each other's).
     if (projectId) {
-      runningProcesses.set(projectId, trackedEntry);
-      processLogs.set(projectId, new LineRingBuffer(MAX_LOG_LINES));
+      let slot = runningProcesses.get(projectId);
+      if (!slot) {
+        slot = new Map();
+        runningProcesses.set(projectId, slot);
+      }
+      slot.set(child.pid, trackedEntry);
+      if (!processLogs.has(projectId)) processLogs.set(projectId, new LineRingBuffer(MAX_LOG_LINES));
       broadcast({ type: 'dashboard_update' });
       broadcast({ type: 'processes_update' });
     }
@@ -281,10 +295,13 @@ export function executeCommand(command, cwd, ws, projectId) {
       // still very much alive. Once detached, "stop server" (connection.js) is the only code
       // that should ever remove this entry.
       if (!detached) {
-        runningProcesses.delete(projectId);
-        processLogs.delete(projectId);
-        broadcast({ type: 'dashboard_update' });
-        broadcast({ type: 'processes_update' });
+        // Delete only this command's own slot — sibling processes of the same project keep
+        // their tracking, so a short build exiting next to a dev server can't orphan it.
+        const removed = removeTrackedProcess(projectId, child.pid);
+        if (removed) {
+          broadcast({ type: 'dashboard_update' });
+          broadcast({ type: 'processes_update' });
+        }
         stdoutSender.flush();
         stderrSender.flush();
         // Requested explicitly (2026-07-29, in response to the LF/CRLF flood): don't just stream
@@ -324,24 +341,29 @@ export function executeCommand(command, cwd, ws, projectId) {
       setTimeout(async () => {
         const probe = await probeUrl(lastUrl, DETACHED_EXIT_PROBE_TIMEOUT_MS);
         if (probe.alive) return; // real server still serving (wrapper-close-early case)
-        const existed = runningProcesses.delete(projectId);
-        processLogs.delete(projectId);
-        forgetDevUrl(projectId);
-        if (existed) {
+        const removed = removeTrackedProcess(projectId, child.pid);
+        if (removed) {
+          // The recorded URL can belong to a sibling process still running (serve + watch) —
+          // only forget it when this project no longer has anything tracked.
+          if (!runningProcesses.has(projectId)) forgetDevUrl(projectId);
           broadcast({ type: 'dashboard_update' });
           broadcast({ type: 'processes_update' });
+          console.log(`[Executor] Detached process for ${projectId} exited and its server is down — tracked entry cleaned up.`);
         }
-        console.log(`[Executor] Detached process for ${projectId} exited and its server is down — tracked entry cleaned up.`);
       }, DETACHED_EXIT_PROBE_DELAY_MS);
     });
 
     child.on('error', (err) => {
       if (trackedEntry.detachTimer) clearTimeout(trackedEntry.detachTimer);
       if (trackedEntry.forceDetachTimer) clearTimeout(trackedEntry.forceDetachTimer);
-      runningProcesses.delete(projectId);
-      processLogs.delete(projectId);
-      broadcast({ type: 'dashboard_update' });
-      broadcast({ type: 'processes_update' });
+      // Spawn may have failed before the entry was registered — removeTrackedProcess is a
+      // no-op then, and there is nothing to broadcast.
+      const removed = removeTrackedProcess(projectId, child.pid);
+      if (removed) {
+        if (!runningProcesses.has(projectId)) forgetDevUrl(projectId);
+        broadcast({ type: 'dashboard_update' });
+        broadcast({ type: 'processes_update' });
+      }
       sendEvent('error_output', `Failed to start process: ${err.message}`);
       sendEvent('end', `\nProcess failed.`);
       resolve({ success: false, error: err.message });

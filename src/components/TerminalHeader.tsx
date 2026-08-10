@@ -10,12 +10,13 @@ interface TerminalHeaderProps {
   workspaceProjects: Project[];
   removeFromWorkspace: (projectId: string) => void;
   clearWorkspace: () => void;
-  onExportMarkdown: () => void;
-  onExportJson: () => void;
-  toolHistory: ToolCallEntry[];
-  showToolHistory: boolean;
-  onToggleToolHistory: () => void;
-}
+   onExportMarkdown: () => void;
+   onExportJson: () => void;
+   toolHistory: ToolCallEntry[];
+   showToolHistory: boolean;
+   onToggleToolHistory: () => void;
+   connected: boolean;
+ }
 
 /** The terminal's top bar: connection badge, fullscreen toggle, workspace chips,
  *  export buttons, tool-call-history toggle, and the ⚙ session menu. */
@@ -31,8 +32,9 @@ export function TerminalHeader({
   onExportJson,
   toolHistory,
   showToolHistory,
-  onToggleToolHistory,
-}: TerminalHeaderProps) {
+   onToggleToolHistory,
+   connected,
+ }: TerminalHeaderProps) {
   const [showSessionMenu, setShowSessionMenu] = useState(false);
   return (
     <div className="flex items-center gap-3 px-6 py-4 border-b border-border-soft bg-panel flex-wrap">
@@ -40,6 +42,12 @@ export function TerminalHeader({
       <span className="text-sm text-fg-muted flex-1">
         {activeProject ? `Connected: ${activeProject.name}` : 'No Project Selected'}
       </span>
+      {!connected && (
+        <span className="flex-shrink-0 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-500/10 border border-amber-500/30 text-xs text-amber-400">
+          <span className="w-1.5 h-1.5 rounded-full bg-amber-400 inline-block animate-pulse" />
+          Reconnecting…
+        </span>
+      )}
       {onToggleFullscreen && (
         <button onClick={onToggleFullscreen} className="p-1.5 text-fg-dim hover:text-fg-strong transition-colors flex-shrink-0" title={isFullscreen ? 'Exit fullscreen' : 'Fullscreen chat'}>
           {isFullscreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />}

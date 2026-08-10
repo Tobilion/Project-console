@@ -27,23 +27,25 @@ interface TerminalInputProps {
   onSetMode: (mode: string) => void;
   chatPrompt: string;
   input: string;
-  onInputChange: (value: string) => void;
-  onInputKeyDown: (e: React.KeyboardEvent<HTMLInputElement>) => void;
-  onSubmit: (e: React.FormEvent) => void;
-  inputRef: React.RefObject<HTMLInputElement | null>;
-  onAISend: (text: string) => void;
-  onSearch?: (query: string) => void;
-  onDeepResearch?: (query: string) => void;
-  getHistory: () => string[];
-}
+   onInputChange: (value: string) => void;
+   onInputKeyDown: (e: React.KeyboardEvent<HTMLInputElement>) => void;
+   onSubmit: (e: React.FormEvent) => void;
+   inputRef: React.RefObject<HTMLInputElement | null>;
+   onAISend: (text: string) => void;
+   onSearch?: (query: string) => void;
+   onDeepResearch?: (query: string) => void;
+   getHistory: () => string[];
+   connected: boolean;
+ }
 
 /** Bottom cluster of the terminal column: the AI toggle/model/mode bar and the input row
  *  (AIAssistantInterface when AI is on, the plain command form otherwise). Pure presentation —
  *  all state and handlers stay in Terminal.tsx. */
 export function TerminalInput({
   centerCol, aiEnabled, aiThinking, commandPending, isBlocked, activeProject, ollamaStatus,
-  aiModel, aiMode, onAIToggle, onSetModel, onSetMode, chatPrompt, input, onInputChange,
+  aiModel, aiMode, onAIToggle, onSetModel, onSetMode, chatPrompt, input,   onInputChange,
   onInputKeyDown, onSubmit, inputRef, onAISend, onSearch, onDeepResearch, getHistory,
+  connected,
 }: TerminalInputProps) {
   return (
     <>
@@ -92,7 +94,7 @@ export function TerminalInput({
 
       {aiEnabled ? (
         <div className={`${centerCol} p-3 bg-panel border-t border-border-soft`}>
-          <AIAssistantInterface onSend={onAISend} onSearch={(q) => { onSearch?.(q); }} onDeepResearch={(q) => { onDeepResearch?.(q); }} disabled={!activeProject || aiThinking || isBlocked} placeholder={isBlocked ? 'Resolve the pending confirmation first (Esc to cancel)...' : aiThinking ? 'AI is thinking...' : chatPrompt} getHistory={getHistory} />
+           <AIAssistantInterface onSend={onAISend} onSearch={(q) => { onSearch?.(q); }} onDeepResearch={(q) => { onDeepResearch?.(q); }} disabled={!activeProject || aiThinking || isBlocked || !connected} placeholder={isBlocked ? 'Resolve the pending confirmation first (Esc to cancel)...' : aiThinking ? 'AI is thinking...' : !connected ? 'Reconnecting…' : chatPrompt} getHistory={getHistory} />
         </div>
       ) : (
         <form onSubmit={onSubmit} className={`${centerCol} p-4 bg-panel border-t border-border-soft`}>
@@ -103,14 +105,14 @@ export function TerminalInput({
               value={input}
               onChange={(e) => { onInputChange(e.target.value); }}
               onKeyDown={onInputKeyDown}
-              disabled={!activeProject || aiThinking || commandPending}
-              placeholder={!activeProject ? "Select a project to start..." : aiThinking ? "AI is thinking..." : commandPending ? "Running..." : chatPrompt}
+              disabled={!activeProject || aiThinking || commandPending || !connected}
+              placeholder={!activeProject ? "Select a project to start..." : aiThinking ? "AI is thinking..." : commandPending ? "Running..." : !connected ? "Reconnecting…" : chatPrompt}
               className="w-full bg-surface border border-border-soft rounded-xl py-3 pl-4 pr-12 text-fg text-sm focus:outline-none focus:border-[#3d6bff] transition-colors disabled:opacity-50"
             />
             <button
               type="submit"
-              disabled={!input.trim() || !activeProject || aiThinking || commandPending || isBlocked}
-              title={isBlocked ? 'Resolve the pending confirmation first (Esc to cancel)' : undefined}
+               disabled={!input.trim() || !activeProject || aiThinking || commandPending || isBlocked || !connected}
+               title={!connected ? 'WebSocket disconnected — reconnecting…' : isBlocked ? 'Resolve the pending confirmation first (Esc to cancel)' : undefined}
               className="absolute right-2 p-2 text-fg-subtle hover:text-[#00d4a3] disabled:opacity-50 transition-colors"
             >
               <Send size={18} />
