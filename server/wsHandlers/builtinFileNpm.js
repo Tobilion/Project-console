@@ -33,7 +33,10 @@ export const fileNpmHandlers = {
     // site/app/server nouns are excluded from the capture: "run the site on port 3010" must
     // NOT read "site" as a script name — it falls through to the run-the-site branch below
     // (Phase 5, confirmed live: the port-request phrase dead-ended on "No script called site").
-    const runMatch = input.match(/(?:run|execute)\s+(?:the\s+)?["']?((?!site|app|server|project|live|it|thing|something|program|application\b)\w+(?:-\w+)*)["']?/i);
+    // The (?!the\b) guard after the optional "the" stops the engine from backtracking and
+    // starting the capture ON "the" ("run the site ..." captured "the" -> "No script called
+    // the", confirmed live 2026-08-11).
+    const runMatch = input.match(/(?:run|execute)\s+(?:the\s+)?["']?(?!the\b)((?!(?:site|app|server|project|live|it|thing|something|program|application)\b)\w+(?:-\w+)*)["']?/i);
     if (runMatch) {
       const scriptName = runMatch[1];
       if (scripts[scriptName]) {

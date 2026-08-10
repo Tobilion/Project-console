@@ -745,13 +745,24 @@ time/date/calculate rows, 92/92).
   requested port. With a requested port it confirms first — parity with the config-entry
   path (the same phrase confirms when the project's own dev-script entry wins the match);
   without a port it runs immediately, matching plain "run the site". "stop the server" is
-  immediate by design (handleStopServer kills only tracked processes).
+  immediate by design (handleStopServer kills only tracked processes). The capture later
+  gained a `(?!the\b)` guard after the optional "the": the original regex let the capture
+  start ON "the", so "run the site on port 3010" dead-ended on "No script called **the**"
+  (found live 2026-08-11 via the liveness driver) — with the guard it correctly falls to
+  the site branch and confirms with the requested port.
 - **Dashboard project modal** (Dashboard.tsx): expanded project card gained Run / Stop
   buttons (normal chat flow, never a bypass) and an embedded `HistoryPanel`.
 - **Live-site truth**: `recordDevUrl`/`loadDevUrls` refuse URLs on the console's own port
   (a project can never own that port). `/api/dashboard` also drops stale colliding stored
   URLs (reported live: Matchday Exchange stayed "live" at :3001 after the console took that
-  port). The console's own project entry shows as live at `http://127.0.0.1:<serverPort>`.
+  port). On cache build it now additionally probes the recorded URL (1200ms) and drops +
+  forgets it when nothing answers — that covers stale persisted URLs with no tracked
+  process (the Matchday :3001 case, which no executor close-handler ever fires for);
+  tracked-server out-of-band deaths were already handled by the executor's delayed
+  detached-exit probe. Console-self detection compares `path.resolve(project.path)` to the
+  console root with case-folded, separator-normalized equality on win32 (a raw `===` fails
+  when the two paths differ only in casing). Verified live 2026-08-11: console self shows
+  at `http://127.0.0.1:<serverPort>`, Matchday drop + persistence clean, 8/8 driver checks.
 - **Harness gotchas (2026-08-10)**: copying scratch driver scripts into the repo root
   triggers Vite rebuilds that stall the WS pipeline 60-90s — keep live-test drivers in
   `%TEMP%` and resolve `ws` via `createRequire` with an absolute path. A killed harness

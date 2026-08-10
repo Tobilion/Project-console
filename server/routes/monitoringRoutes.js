@@ -5,6 +5,7 @@ import { metrics } from '../metrics.js';
 import { runningProcesses, getProcessLog } from '../executor.js';
 import { state } from '../state.js';
 import { forgetDevUrl } from '../devUrlStore.js';
+import { probeUrl } from '../livenessProbe.js';
 
 /** Runs a git command in the given directory with a timeout, returning { stdout, stderr }. */
 function runGit(cwd, args, timeoutMs = 5000) {
@@ -109,6 +110,17 @@ export function registerMonitoringRoutes(app) {
 
     const results = [];
     const consoleRoot = path.resolve(process.cwd());
+    // Windows path strings are case-insensitive and often typed differently than the scan
+    // records them (start.bat launches from "Desktop\project-console", discovery records
+    // "Desktop\Projects\Project console") — a raw `===` on path.resolve output made the
+    // console's own project entry fail the self-detection below and never show as live
+    // (reported live 2026-08-10). Compare normalized, case-folded paths on win32.
+    const isConsolePath = (projectPath) => {
+      const norm = (p) => path.resolve(p).replace(/\\/g, '/');
+      const a = norm(projectPath);
+      const b = norm(consoleRoot);
+      return process.platform === 'win32' ? a.toLowerCase() === b.toLowerCase() : a === b;
+    };
     for (const project of state.activeProjectsCache) {
       const rawDevUrl = state.lastDevUrls.get(project.id) || null;
       // A stored URL on the console's own port is the console, not this project's server —
@@ -123,10 +135,24 @@ export function registerMonitoringRoutes(app) {
           forgetDevUrl(project.id);
         }
       } catch { devUrl = rawDevUrl; }
+      // A stored URL that no longer answers is dead — drop it so "live" stays honest
+      // (reported live 2026-08-10: Matchday Exchange stayed "live" on a stale :3001 with
+      // nothing listening). On-demand probe with a short bound; the dashboard's 30s cache
+      // keeps the cost amortized. Only stored URLs are probed — the console-self URL is
+      // assigned below and never enters lastDevUrls (recordDevUrl refuses that port).
+      if (devUrl) {
+        try {
+          const probe = await probeUrl(devUrl, 1200);
+          if (!probe.alive) {
+            devUrl = null;
+            forgetDevUrl(project.id);
+          }
+        } catch { /* keep the URL if the probe itself failed — a stale link is better than a wrong truth */ }
+      }
       // The console itself is a live server — its own frontend answers on state.serverPort.
       // A project whose root IS this repository gets the console URL so it shows up as live
       // in the dashboard and its "Open site" action works.
-      if (!devUrl && path.resolve(project.path) === consoleRoot) {
+      if (!devUrl && isConsolePath(project.path)) {
         devUrl = `http://127.0.0.1:${state.serverPort}`;
       }
       const entry = {
