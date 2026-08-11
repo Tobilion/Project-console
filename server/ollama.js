@@ -4,6 +4,12 @@ import fs from 'fs';
 // Allow user to point at a remote Ollama server via env var
 const OLLAMA_HOST = process.env.OLLAMA_HOST || 'http://localhost:11434';
 
+// Phase 8 (2026-08-11): exported for the health-check admin command so it can probe the same
+// daemon the chat path talks to, rather than hardcoding a second default.
+export function getOllamaHost() {
+  return OLLAMA_HOST;
+}
+
 // Context window sent to Ollama per request.
 const NUM_CTX = parseInt(process.env.OLLAMA_NUM_CTX, 10) || 16384;
 

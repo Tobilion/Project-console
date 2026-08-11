@@ -13,6 +13,7 @@ import { handleDistillationCommand, handleMemoryReview, handleLearningCommand } 
 import { handlePackCommand, handlePendingPackInstallReply } from './connectionPackAdmin.js';
 import { handleScheduleCommand } from './connectionScheduleAdmin.js';
 import { handleNotifyCommand } from './connectionNotifyAdmin.js';
+import { handleHealthCheck } from './connectionHealthCheck.js';
 import { handleHistoryCommand } from './connectionHistoryAdmin.js';
 import { handleStopServer, handleDevUrl } from './connectionDevServer.js';
 import { handleMatchingPipeline } from './connectionMatching.js';
@@ -134,6 +135,7 @@ async function handleExecuteBody(ws, parsed, sessionContext) {
   if (await handlePackCommand(ws, project, lowerInput, input, sessionContext)) return;
   if (await handleScheduleCommand(ws, project, lowerInput, input)) return;
   if (await handleNotifyCommand(ws, project, lowerInput, input)) return;
+  if (await handleHealthCheck(ws, lowerInput)) return;
   if (await handleHistoryCommand(ws, project, lowerInput, input)) return;
   if (await handleStopServer(ws, project, lowerInput)) return;
   if (await handleDevUrl(ws, project, lowerInput)) return;
