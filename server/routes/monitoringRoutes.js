@@ -123,6 +123,14 @@ export function registerMonitoringRoutes(app) {
     };
     for (const project of state.activeProjectsCache) {
       const rawDevUrl = state.lastDevUrls.get(project.id) || null;
+      const procs = [...(runningProcesses.get(project.id)?.values() || [])];
+      // `running` is the dashboard's live-truth flag: true when a tracked process exists, the
+      // recorded dev URL answered the probe below, or the entry IS the console (it is serving
+      // the very request being answered — reported live 2026-08-11: the console's own card and
+      // NetPulse showed "process not currently running" in the Live Sites tab because that tab
+      // keyed off runningCommand only, and neither has a tracked process in this console).
+      let running = procs.length > 0;
+      let probeConfirmedAlive = false;
       // A stored URL on the console's own port is the console, not this project's server —
       // the console took that port over (or held it all along); drop it and forget it so the
       // stale entry can't keep "showing live" (confirmed live 2026-08-10: Matchday Exchange
@@ -143,7 +151,9 @@ export function registerMonitoringRoutes(app) {
       if (devUrl) {
         try {
           const probe = await probeUrl(devUrl, 1200);
-          if (!probe.alive) {
+          if (probe.alive) {
+            probeConfirmedAlive = true;
+          } else {
             devUrl = null;
             forgetDevUrl(project.id);
           }
@@ -152,9 +162,11 @@ export function registerMonitoringRoutes(app) {
       // The console itself is a live server — its own frontend answers on state.serverPort.
       // A project whose root IS this repository gets the console URL so it shows up as live
       // in the dashboard and its "Open site" action works.
-      if (!devUrl && isConsolePath(project.path)) {
+      const isConsoleSelf = isConsolePath(project.path);
+      if (!devUrl && isConsoleSelf) {
         devUrl = `http://127.0.0.1:${state.serverPort}`;
       }
+      running = running || probeConfirmedAlive || (isConsoleSelf && Boolean(devUrl));
       const entry = {
         id: project.id,
         name: project.name,
@@ -162,6 +174,7 @@ export function registerMonitoringRoutes(app) {
         uncommitted: [],
         recentCommits: [],
         devUrl,
+        running,
         runningCommand: null,
         isGitRepo: false,
         // Dashboard QoL expansion (2026-08-10, requested directly — a project card's push
@@ -173,7 +186,6 @@ export function registerMonitoringRoutes(app) {
         hasUpstream: false,
       };
 
-      const procs = [...(runningProcesses.get(project.id)?.values() || [])];
       if (procs.length > 0) entry.runningCommand = procs.map((p) => p.command).join('; ');
 
       try {

@@ -13,6 +13,7 @@ interface DashboardEntry {
   uncommitted: string[];
   recentCommits: string[];
   devUrl: string | null;
+  running: boolean;
   runningCommand: string | null;
   isGitRepo: boolean;
   aheadCount: number;
@@ -68,7 +69,7 @@ export const Dashboard = ({ onClose, refreshSignal = 0, projects, onSelectProjec
       : entries;
     return [...filtered].sort((a, b) => {
       const score = (e: DashboardEntry) =>
-        (e.uncommitted.length > 0 || e.aheadCount > 0 ? 2 : 0) + (e.runningCommand || e.devUrl ? 1 : 0);
+        (e.uncommitted.length > 0 || e.aheadCount > 0 ? 2 : 0) + (e.running || e.devUrl ? 1 : 0);
       return score(b) - score(a);
     });
   }, [entries, filter]);
@@ -204,11 +205,15 @@ export const Dashboard = ({ onClose, refreshSignal = 0, projects, onSelectProjec
                 className="bg-panel rounded-xl border border-border-soft p-4 flex items-center justify-between gap-4"
               >
                 <div className="flex items-center gap-3 min-w-0">
-                  <span className={`w-2 h-2 rounded-full flex-shrink-0 ${entry.runningCommand ? 'bg-green-400 animate-pulse' : 'bg-fg-dim'}`} />
+                  {/* Live truth comes from the server's probe at dashboard-build time (entry.running),
+                      NOT runningCommand — there'd otherwise always be tracked-process absence for the
+                      console's own card and for servers started outside this console (reported live
+                      2026-08-11: both showed "process not currently running" while answering). */}
+                  <span className={`w-2 h-2 rounded-full flex-shrink-0 ${entry.running ? 'bg-green-400 animate-pulse' : 'bg-fg-dim'}`} />
                   <div className="min-w-0">
                     <div className="text-sm font-bold text-fg-strong truncate">{entry.name}</div>
                     <div className="text-[10px] text-fg-dim">
-                      {entry.runningCommand ? 'live now' : 'recorded — process not currently running'}
+                      {entry.running ? 'live now' : 'recorded — not currently answering'}
                     </div>
                   </div>
                 </div>
