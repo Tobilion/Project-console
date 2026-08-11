@@ -6,6 +6,7 @@
 
 import fs from 'fs';
 import path from 'path';
+import { writeFileAtomicSync } from '../atomicWrite.js';
 
 const NOTIFY_FILE = path.join(process.cwd(), 'data', 'notifications.json');
 
@@ -19,7 +20,7 @@ let saveTimer = null;
 function persist() {
   try {
     fs.mkdirSync(path.dirname(NOTIFY_FILE), { recursive: true });
-    fs.writeFileSync(NOTIFY_FILE, JSON.stringify(rules, null, 2));
+    writeFileAtomicSync(NOTIFY_FILE, JSON.stringify(rules, null, 2));
   } catch {
     // best-effort only — a failed persist means rules survive until next restart
   }

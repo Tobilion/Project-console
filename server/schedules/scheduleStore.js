@@ -6,6 +6,7 @@
 
 import fs from 'fs';
 import path from 'path';
+import { writeFileAtomicSync } from '../atomicWrite.js';
 
 const SCHEDULES_FILE = path.join(process.cwd(), 'data', 'schedules.json');
 
@@ -16,7 +17,7 @@ let idCounter = 0;
 function persist() {
   try {
     fs.mkdirSync(path.dirname(SCHEDULES_FILE), { recursive: true });
-    fs.writeFileSync(SCHEDULES_FILE, JSON.stringify({ schedules }, null, 2));
+    writeFileAtomicSync(SCHEDULES_FILE, JSON.stringify({ schedules }, null, 2));
   } catch {
     // best-effort only — a failed persist means schedules survive until next restart
   }

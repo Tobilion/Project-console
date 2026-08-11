@@ -16,6 +16,7 @@ import crypto from 'crypto';
 import util from 'util';
 import { exec } from 'child_process';
 import { ensureGitignored } from './sessionMigration.js';
+import { writeFileAtomicSync } from './atomicWrite.js';
 
 const execAsync = util.promisify(exec);
 
@@ -68,7 +69,7 @@ export function appendAction(projectPath, entry) {
     if (fs.statSync(file).size > MAX_ACTIONS * AVG_LINE_BYTES) {
       const lines = fs.readFileSync(file, 'utf-8').split('\n').filter(Boolean);
       if (lines.length > MAX_ACTIONS) {
-        fs.writeFileSync(file, lines.slice(-MAX_ACTIONS).join('\n') + '\n', 'utf-8');
+        writeFileAtomicSync(file, lines.slice(-MAX_ACTIONS).join('\n') + '\n');
       }
     }
   } catch {

@@ -142,6 +142,28 @@ class SemanticMatcher {
     return true;
   }
 
+  /**
+   * Refresh the embedding vectors for one intent after its examples grew at runtime (the
+   * learning engine's applySuggestions). initialize() embeds every INTENTS example once and
+   * nothing told the embedding stage about learned phrases — Fuse got rebuilt immediately
+   * but the cosine scan kept scoring against stale vectors until restart. Individual phrase
+   * embedding failures are skipped: Fuse still covers the phrase, so a single bad embed must
+   * not sink the batch.
+   */
+  async addLearnedExamples(intent, phrases) {
+    if (!this.extractor || !phrases || phrases.length === 0 || !this.intentVectors) return;
+    const vectors = this.intentVectors[intent] || [];
+    for (const phrase of phrases) {
+      try {
+        const result = await this.extractor(phrase, { pooling: 'mean', normalize: true });
+        vectors.push(result.data);
+      } catch {
+        // skip — see method doc
+      }
+    }
+    this.intentVectors[intent] = vectors;
+  }
+
   /** Compute diff between last known state and current projects, returning only added/changed entries. */
   _computeProjectDiff(projects) {
     const diff = computeProjectDiff(projects, this.lastProjectIntents);

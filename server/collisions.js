@@ -18,6 +18,7 @@ import fs from 'fs';
 import path from 'path';
 import { semanticMatcher } from './semanticMatcher.js';
 import { notify } from './notify.js';
+import { writeFileAtomicSync } from './atomicWrite.js';
 
 const COLLISIONS_FILE = path.join(process.cwd(), 'data', 'collisions.json');
 
@@ -47,7 +48,9 @@ function loadBaseline() {
 function persistBaseline(collisions, updatedAt) {
   try {
     fs.mkdirSync(path.dirname(COLLISIONS_FILE), { recursive: true });
-    fs.writeFileSync(COLLISIONS_FILE, JSON.stringify({ baseline: collisions, updatedAt }, null, 2));
+    // Atomic: a torn baseline file would silently read back as "first boot" and re-fire every
+    // known collision as new on the next start.
+    writeFileAtomicSync(COLLISIONS_FILE, JSON.stringify({ baseline: collisions, updatedAt }, null, 2));
   } catch {
     // best-effort — a failed persist means the next boot reports the same collisions again
   }

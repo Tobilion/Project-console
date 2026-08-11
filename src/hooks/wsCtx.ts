@@ -64,5 +64,13 @@ export interface WsCtx {
 
 export type WsCaseHandler = (ctx: WsCtx, payload: any) => void;
 
-/** Per-message id, matching the original handleWebSocketMessage's `id` generation. */
-export const makeId = () => Date.now().toString() + Math.random().toString();
+/**
+ * Per-message id, matching the original handleWebSocketMessage's `id` generation. Uses
+ * crypto.randomUUID when available (127.0.0.1 is a secure context) — the timestamp+random
+ * scheme stays as the fallback for any host served without one.
+ */
+export const makeId = () => {
+  const g = globalThis as { crypto?: { randomUUID?: () => string } };
+  if (g.crypto?.randomUUID) return g.crypto.randomUUID();
+  return Date.now().toString() + Math.random().toString();
+};

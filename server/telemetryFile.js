@@ -4,6 +4,7 @@
 // which is what closes the intentTelemetry <-> confidenceModel import cycle.
 import fs from 'fs';
 import path from 'path';
+import { writeFileAtomicSync } from './atomicWrite.js';
 
 export const TELEMETRY_DIR = path.join(process.cwd(), 'data', 'telemetry');
 
@@ -60,7 +61,7 @@ export function updateTelemetryEntry(projectId, id, updates) {
       break;
     }
   }
-  if (changed) fs.writeFileSync(fp, lines.map((l) => JSON.stringify(l)).join('\n') + '\n');
+  if (changed) writeFileAtomicSync(fp, lines.map((l) => JSON.stringify(l)).join('\n') + '\n');
 }
 
 // Delete a project's telemetry log.

@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import { writeFileAtomicSync } from './atomicWrite.js';
 
 // Phase 8 (2026-08-11): runtime-overridable tuning constants. The named exports in the
 // consumer modules (FUSE_THRESHOLD, DEBOUNCE_MS, ...) remain the documented DEFAULTS — this
@@ -62,7 +63,7 @@ function sanitize(raw) {
 function persist() {
   try {
     fs.mkdirSync(path.dirname(TUNING_FILE), { recursive: true });
-    fs.writeFileSync(TUNING_FILE, JSON.stringify(overrides, null, 2));
+    writeFileAtomicSync(TUNING_FILE, JSON.stringify(overrides, null, 2));
   } catch {
     // best-effort only — same convention as devUrlStore.js
   }

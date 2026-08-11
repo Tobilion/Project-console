@@ -228,9 +228,11 @@ npm run lint    # tsc --noEmit
   classifier is always rebuilt fresh on startup (a dead `model.nlp` write once caused Vite
   full reloads — do not reintroduce)
 - `server/learningEngine.js` (+ `nearMissIntentMap.js`) — near-miss → suggestion generation;
-  `applySuggestions()` also calls `nlpEngine.addLearnedPhrase()` (fire-and-forget) and
-  persists via `learnedIntents.js` (`data/learned-intents.json`, merged into INTENTS before
-  `semanticMatcher.initialize()`)
+  `applySuggestions()` also calls `nlpEngine.addLearnedPhrase()` (fire-and-forget) and refreshes
+  the embedding stage via `semanticMatcher.addLearnedExamples()` (fire-and-forget — the cosine
+  scan used to score learned phrases against stale startup vectors until restart; confirmed
+  2026-08-11) and persists via `learnedIntents.js` (`data/learned-intents.json`, merged into
+  INTENTS before `semanticMatcher.initialize()`)
  - `server/distillation.js` — AI-exchange analysis → config suggestions (no `file_pattern`
    type anymore; pending records pruned after 30 days). Analyzes a completed exchange
    (`analyzeAIExchange`, called from aiQuery.js) and pairs the user's input phrasing to the
@@ -377,8 +379,15 @@ npm run lint    # tsc --noEmit
   boot (after semanticMatcher is ready + notify rules loaded) it computes `findIntentCollisions()`
   (matcherCollisions.js, 0.9 threshold), diffs against the persisted `data/collisions.json`
   baseline (gitignored), fires the opt-in `collision-found` notification for new pairs, and
-  persists the new baseline. Fire-and-forget, never blocks boot. The on-demand `check
-  collisions` command (connectionTelemetry.js) is unchanged.
+  persists the new baseline (atomic write). Fire-and-forget, never blocks boot. The on-demand
+  `check collisions` command (connectionTelemetry.js) is unchanged.
+- **Atomic durable-state writes (2026-08-11)**: every gitignored runtime-state file that a torn
+  write would silently reset on next boot uses `writeFileAtomicSync` (atomicWrite.js): telemetry
+  thresholds/model files, distillation + near-miss logs (updateNearMiss rewrite), action-history
+  trim rewrite, schedules.json, tuning.json, auto-start.json, notifications.json, collisions.json
+  baseline, session meta files. Appends (telemetry/near-miss/action-history NDJSON lines,
+  dev-urls/schedule/auto-start logs) stay plain appendFileSync — a torn append loses one line,
+  never the whole file.
 - `server/aiDockHints.js` — Phase 8 follow-up (2026-08-11): AI-dock bootstrap hints. Single
   consumer: builtinChitChat's `needs_ai_mode` handler appends a concrete AI-dock instruction
   (`aiDockInstruction(input)`) — a curated rephrase for create/fix/explain-shaped asks, the

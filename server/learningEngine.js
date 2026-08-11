@@ -107,6 +107,12 @@ export function applySuggestions(suggestionIds, projectId) {
   // Rebuild the Fuse.js index so new phrases are immediately matchable
   if (added.length > 0) {
     semanticMatcher._rebuildFuseIndex();
+    // Same refresh, for the embedding stage: intentVectors only holds the startup embeds, so
+    // learned phrases scored as if they never existed until a restart. Fire-and-forget — the
+    // extraction calls are async and the next user message matches against fresh vectors.
+    for (const a of added) {
+      semanticMatcher.addLearnedExamples(a.intent, [a.phrase]).catch(() => {});
+    }
     // Persist to disk so this survives a server restart (INTENTS is shared across every
     // project in memory, but was never written back — this is what makes learning "stick").
     persistLearnedPhrases(added);

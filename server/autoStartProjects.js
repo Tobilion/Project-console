@@ -34,6 +34,7 @@ import { matchInput } from './matcher.js';
 import { handleBuiltinIntent } from './wsHandlers/builtinIntents.js';
 import { handleMatchedEntry } from './wsHandlers/matchedEntry.js';
 import { candidateDevUrls, probeUrl } from './livenessProbe.js';
+import { writeFileAtomicSync } from './atomicWrite.js';
 
 const AUTO_START_FILE = path.join(process.cwd(), 'data', 'auto-start.json');
 const AUTO_START_LOG_FILE = path.join(process.cwd(), 'data', 'auto-start-log.md');
@@ -52,7 +53,7 @@ let saveTimer = null;
 function persist() {
   try {
     fs.mkdirSync(path.dirname(AUTO_START_FILE), { recursive: true });
-    fs.writeFileSync(AUTO_START_FILE, JSON.stringify(autoStart, null, 2));
+    writeFileAtomicSync(AUTO_START_FILE, JSON.stringify(autoStart, null, 2));
   } catch {
     // best-effort — a failed persist means the config survives until the next restart
   }

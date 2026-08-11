@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
+import { writeFileAtomicSync } from './atomicWrite.js';
 
 const NEAR_MISS_DIR = path.join(process.cwd(), 'data', 'near-misses');
 
@@ -54,7 +55,7 @@ export function updateNearMiss(projectId, id, updates) {
       }
     } catch {}
   }
-  fs.writeFileSync(filePath, lines.join('\n') + '\n');
+  writeFileAtomicSync(filePath, lines.join('\n') + '\n');
 }
 
 /** Read all near-miss entries for a project. */
