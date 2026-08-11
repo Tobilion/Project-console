@@ -2,7 +2,7 @@ import fs from 'fs/promises';
 import path from 'path';
 import { indexProject } from './codebaseIndexer.js';
 import { deriveScriptEntriesForProject, mergeAutoEntries } from './scriptEntries.js';
-import { sanitizeChatReplies, isContextFilename, readProjectContextDocs, commandEntriesFromDocs, isRecognizableByCodeAlone, buildFallbackConfig } from './projectScanHelpers.js';
+import { sanitizeChatReplies, isContextFilename, readProjectContextDocs, commandEntriesFromDocs, isRecognizableByCodeAlone, buildFallbackConfig, detectWorkspaceType } from './projectScanHelpers.js';
 import { getCommandDir } from './commandDir.js';
 import { scanSingleProject } from './projectScanSingle.js';
 
@@ -137,6 +137,7 @@ export async function discoverProjects(baseDir) {
             name: config?.projectName || entry.name,
             path: projectPath,
             config: config || { projectName: entry.name, entries: [] },
+            workspaceType: detectWorkspaceType(config, codebaseIndex),
             contextFiles: contextFiles,
             parsedKnowledge,
             codebaseIndex

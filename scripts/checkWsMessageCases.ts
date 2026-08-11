@@ -8,9 +8,18 @@
  * side effect (messages, terminal/AI/workspace setters, stream refs, dock hooks), and each
  * assertion checks the exact behavior moved out of useConsole.ts's handleWebSocketMessage.
  * Run after ANY edit to the case modules or the WsCtx shape.
+ *
+ * Also enforces CLI parity (Phase 0): every key in WS_CORE_CASES must have a `case` entry in
+ * server/cli-client.js's switch — rendered or an explicit no-op — so a new WS message type can
+ * never silently vanish in the second renderer of the same protocol.
  */
-import { WS_MESSAGE_CASES } from '../src/hooks/wsMessageCases';
+import { readFileSync } from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import { WS_CORE_CASES, WS_MESSAGE_CASES } from '../src/hooks/wsMessageCases';
 import type { WsCtx } from '../src/hooks/wsCtx';
+
+const BASE = path.join(path.dirname(fileURLToPath(import.meta.url)), '..') + path.sep;
 
 let passed = 0;
 let failed = 0;
@@ -112,6 +121,18 @@ async function main() {
     'update_available',
   ];
   for (const t of ALL_TYPES) check(`case registered: ${t}`, typeof WS_MESSAGE_CASES[t] === 'function');
+
+  // --- CLI parity (Phase 0) ---
+  // cli-client.js can't be imported (it executes main() and pulls in cowsay/boxen/figlet), so
+  // parse its switch labels from source. A WS_CORE_CASES key with no `case 'x':` in the CLI —
+  // rendered or explicit no-op — is a message the CLI silently drops. cli-client.js uses single
+  // quotes exclusively; fallthrough groupings like `case 'a': case 'b': break;` match too.
+  const cliSource = readFileSync(BASE + 'server/cli-client.js', 'utf8');
+  const cliCases = new Set<string>();
+  for (const m of cliSource.matchAll(/\bcase\s+'([^']+)'\s*:/g)) cliCases.add(m[1]);
+  for (const key of Object.keys(WS_CORE_CASES)) {
+    check(`CLI has a case for WS type: ${key}`, cliCases.has(key));
+  }
 
   // --- answer ---
   let c = makeFakeCtx();

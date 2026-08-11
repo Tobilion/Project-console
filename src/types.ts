@@ -45,6 +45,9 @@ export interface Project {
   name: string;
   path: string;
   config: ProjectConfig;
+  /** Phase 1 workspace classification ('dev' | 'general') — see server/projectScanHelpers.js.
+   *  Defaults to 'dev' when absent (pre-feature cached projects). */
+  workspaceType?: 'dev' | 'general';
   contextFiles?: ContextFile[];
   parsedKnowledge?: ParsedKnowledge;
   codebaseIndex?: CodebaseIndex | null;

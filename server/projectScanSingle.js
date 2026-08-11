@@ -2,7 +2,7 @@ import fs from 'fs/promises';
 import path from 'path';
 import { indexProject } from './codebaseIndexer.js';
 import { deriveScriptEntriesForProject, mergeAutoEntries } from './scriptEntries.js';
-import { sanitizeChatReplies, readProjectContextDocs, commandEntriesFromDocs, isRecognizableByCodeAlone, buildFallbackConfig } from './projectScanHelpers.js';
+import { sanitizeChatReplies, readProjectContextDocs, commandEntriesFromDocs, isRecognizableByCodeAlone, buildFallbackConfig, detectWorkspaceType } from './projectScanHelpers.js';
 
 /**
  * Reads a single project folder's console.config.json (validated) + context docs, merges
@@ -52,6 +52,7 @@ export async function scanSingleProject(folderName, projectPath) {
       name: config?.projectName || folderName,
       path: projectPath,
       config: config || { projectName: folderName, entries: [] },
+      workspaceType: detectWorkspaceType(config, codebaseIndex),
       contextFiles,
       parsedKnowledge,
       codebaseIndex

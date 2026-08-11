@@ -10,6 +10,7 @@ interface DashboardEntry {
   id: string;
   name: string;
   path: string;
+  workspaceType?: 'dev' | 'general';
   uncommitted: string[];
   recentCommits: string[];
   devUrl: string | null;
@@ -24,19 +25,29 @@ interface DashboardProps {
   onClose: () => void;
   refreshSignal?: number;
   projects: Project[];
+  /** Phase 1: fallback mode for entries the server hasn't classified yet (pre-feature cache).
+   *  Per-card rendering is driven by the entry's OWN workspaceType — the server persists the
+   *  switch in console.config.json, so each card reflects its project's real mode. */
+  workspaceMode?: 'dev' | 'general';
   onSelectProject: (p: Project) => Promise<void> | void;
   onSendMessage: (content: string) => Promise<void> | void;
 }
 
 type DashboardTab = 'projects' | 'live';
 
-export const Dashboard = ({ onClose, refreshSignal = 0, projects, onSelectProject, onSendMessage }: DashboardProps) => {
+export const Dashboard = ({ onClose, refreshSignal = 0, projects, workspaceMode = 'dev', onSelectProject, onSendMessage }: DashboardProps) => {
   const [entries, setEntries] = useState<DashboardEntry[]>([]);
   const [tab, setTab] = useState<DashboardTab>('projects');
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [filter, setFilter] = useState('');
   const [refreshing, setRefreshing] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+
+  // Phase 1: a card in general mode hides git/npm/dev-server panels and actions behind a
+  // placeholder — file tools/notes/reminders cards arrive in later phases (the roadmap
+  // explicitly says not to invent fake data for them yet). Fallback to the dashboard-level
+  // mode only when the server hasn't classified the entry (stale cache from before Phase 1).
+  const entryMode = (e: DashboardEntry) => e.workspaceType ?? workspaceMode;
 
   const fetchDashboard = useCallback(async () => {
     const data = await apiFetchJson<DashboardEntry[]>('/api/dashboard');
@@ -231,7 +242,9 @@ export const Dashboard = ({ onClose, refreshSignal = 0, projects, onSelectProjec
           )
         ) : (
         <>
-        {filteredEntries.map((entry, i) => (
+        {filteredEntries.map((entry, i) => {
+          const isGeneral = entryMode(entry) === 'general';
+          return (
           <motion.div
             key={entry.id}
             initial={{ opacity: 0, y: 10 }}
@@ -249,6 +262,8 @@ export const Dashboard = ({ onClose, refreshSignal = 0, projects, onSelectProjec
                  </span>
               </div>
               <div className="flex items-center gap-2 flex-shrink-0">
+                {!isGeneral && (
+                <>
                 {entry.uncommitted.length > 0 && (
                   <span className="flex items-center gap-1 text-[10px] text-yellow-400 bg-yellow-400/10 px-1.5 py-0.5 rounded">
                     <FileWarning size={12} />
@@ -273,9 +288,17 @@ export const Dashboard = ({ onClose, refreshSignal = 0, projects, onSelectProjec
                     live
                   </span>
                 )}
+                </>
+                )}
               </div>
             </div>
 
+            {isGeneral ? (
+              <div className="text-xs text-fg-dim border border-dashed border-border-soft rounded-lg px-3 py-4">
+                <span className="text-fg-muted">General workspace</span> — file tools, notes, and
+                reminders arrive in later phases. Open it in chat to browse or edit files.
+              </div>
+            ) : (
             <div className="grid grid-cols-12 gap-3 text-xs">
               <div className="col-span-3">
                 <span className="text-[10px] tracking-wider uppercase text-fg-dim font-bold">Uncommitted</span>
@@ -336,7 +359,7 @@ export const Dashboard = ({ onClose, refreshSignal = 0, projects, onSelectProjec
                 </div>
               </div>
             </div>
-
+            )}
             <AnimatePresence>
               {expandedId === entry.id && (
                 <motion.div
@@ -356,7 +379,7 @@ export const Dashboard = ({ onClose, refreshSignal = 0, projects, onSelectProjec
                       <MessageSquare size={12} />
                       Open in chat
                     </button>
-                    {!entry.runningCommand && (
+                    {!isGeneral && !entry.runningCommand && (
                       <button
                         onClick={() => handleRun(entry)}
                         className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg bg-teal-500/10 hover:bg-teal-500/20 text-[#00d4a3] border border-teal-500/20 transition-colors"
@@ -365,7 +388,7 @@ export const Dashboard = ({ onClose, refreshSignal = 0, projects, onSelectProjec
                         Run
                       </button>
                     )}
-                    {(entry.runningCommand || entry.devUrl) && (
+                    {!isGeneral && (entry.runningCommand || entry.devUrl) && (
                       <button
                         onClick={() => handleStop(entry)}
                         className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 transition-colors"
@@ -374,7 +397,7 @@ export const Dashboard = ({ onClose, refreshSignal = 0, projects, onSelectProjec
                         Stop
                       </button>
                     )}
-                    {needsPush(entry) && (
+                    {!isGeneral && needsPush(entry) && (
                       <button
                         onClick={() => handlePush(entry)}
                         className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg bg-accent/10 hover:bg-accent/20 text-accent border border-accent/20 transition-colors"
@@ -383,7 +406,7 @@ export const Dashboard = ({ onClose, refreshSignal = 0, projects, onSelectProjec
                         {entry.uncommitted.length > 0 ? 'Commit & push' : 'Push'}
                       </button>
                     )}
-                    {entry.devUrl && (
+                    {!isGeneral && entry.devUrl && (
                       <a
                         href={entry.devUrl}
                         target="_blank"
@@ -416,8 +439,8 @@ export const Dashboard = ({ onClose, refreshSignal = 0, projects, onSelectProjec
               )}
             </AnimatePresence>
           </motion.div>
-        ))}
-
+          );
+        })}
         {entries.length === 0 && (
           <div className="text-sm text-fg-dim italic text-center py-12">
             No projects loaded — scan a directory to get started.

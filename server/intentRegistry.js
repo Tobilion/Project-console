@@ -108,6 +108,46 @@ export const BUILTIN_INTENTS = new Set([
   'project.code.search',
 ]);
 
+// Phase 1 workspaceType filtering (UPGRADE-ROADMAP.md, 2026-08-11): builtin intents that make
+// no sense in a 'general' (non-code) workspace. Per the roadmap this is a SUGGESTION-ONLY
+// signal — `intentWorkspaceEligible()` gates help text, did-you-mean, the command palette, and
+// fallback suggestion chips, never `matchInput()` dispatch itself. A dev command typed in a
+// mis-classified 'general' project must still run exactly as before, so this set is deliberately
+// narrow: everything git-shaped (the deploy intent is checkpoint + git push, so it counts),
+// the npm install/build/run family, test running, diagnostics, and semantic code search. File
+// CRUD, open_* actions, and project.context.* stay eligible everywhere — a notes folder can
+// still want "find file X" or "what's in this project". Derivation is kept explicit rather than
+// regex-driven so an intent added later never gets silently filtered (or silently unfiltered).
+// Exported so the committed harness (checkHandlerCoverage.js) can assert the tag list never
+// names an intent that left BUILTIN_INTENTS — a stale tag would silently stop filtering.
+export const WORKSPACE_DEV_ONLY_INTENTS = new Set([
+  'git_push', 'git_commit', 'git_commit_push', 'git_add', 'git_init', 'git_ignore_add',
+  'git_rm_cached', 'git_remote_add', 'git_remote_info', 'git_log', 'git_branch',
+  'git_checkout', 'git_pull', 'git_fetch', 'git_ahead_behind', 'git_tag', 'git_diff',
+  'git_stash', 'git_stash_pop', 'git_stash_list', 'git_branch_create', 'git_branch_cleanup',
+  'git_stash_summary', 'git_diff_summary', 'git_pr_ready_check', 'system.chit_chat.git_status',
+  'system.chit_chat.deploy', 'run_project', 'run_tests', 'project.knowledge.how_to_run',
+  'project.workflow.checkpoint', 'npm_install', 'npm_build', 'npm_run', 'project.code.search',
+  'project.diagnostics.dead_code', 'project.diagnostics.circular_imports',
+  'project.diagnostics.type_check', 'project.diagnostics.env_check',
+  'project.diagnostics.log_errors', 'project.diagnostics.test_coverage_report',
+  'project.diagnostics.bundle_size_analysis',
+]);
+
+export function isDevOnlyIntent(intent) {
+  return WORKSPACE_DEV_ONLY_INTENTS.has(intent);
+}
+
+/**
+ * Whether a builtin intent may be SUGGESTED for a project of the given workspaceType.
+ * 'general' hides dev-only intents; 'dev' and any other value show everything (the fallback
+ * keeps behavior identical for callers that don't pass a workspaceType at all).
+ */
+export function intentWorkspaceEligible(intent, workspaceType) {
+  if (workspaceType === 'general') return !isDevOnlyIntent(intent);
+  return true;
+}
+
 // Exported via matcher.js so localRouter.js's allowed-intent list is always drawn from exactly
 // the same set that gates dispatch — a router result naming an intent outside this set could
 // never be executed, so there's no reason for the two lists to risk drifting apart.

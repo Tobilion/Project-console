@@ -14,6 +14,22 @@ import { ThemeToggle } from './components/ui/ThemeToggle';
 import { UserProfileModal } from './components/UserProfileModal';
 import { FirstRunSetup } from './components/FirstRunSetup';
 
+// Phase 1 per-project workspace tab persistence — key + helpers live next to the component
+// that owns them (same convention as the pinned-projects rail's inline localStorage usage in
+// SidebarDrawer). A plain JSON map of projectId -> 'dev' | 'general'; malformed/stale entries
+// are ignored and simply re-derived from the project's server-side workspaceType.
+const WORKSPACE_TAB_KEY = 'console.workspaceTabByProject';
+function readWorkspaceTabs(): Record<string, 'dev' | 'general'> {
+  try {
+    const raw = localStorage.getItem(WORKSPACE_TAB_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) return parsed;
+    }
+  } catch {}
+  return {};
+}
+
 function App() {
   const folderInputRef = useRef<HTMLInputElement>(null);
   // Requested directly — the chat panel always shared the screen with the sessions sidebar and
@@ -24,6 +40,13 @@ function App() {
   const [sidebarCollapsed, setSidebarCollapsed] = React.useState(false);
   const [deckOpen, setDeckOpen] = React.useState(false);
   const [profileOpen, setProfileOpen] = React.useState(false);
+  // Phase 1 workspaceType (UPGRADE-ROADMAP.md, 2026-08-11): per-project Developer/General
+  // tab. Restored from localStorage per project (same inline-localStorage style as the pinned
+  // projects rail in SidebarDrawer — deliberately NOT global, a user may keep both kinds of
+  // workspace open across sessions), falling back to the server's scan-time classification,
+  // then 'dev'. The restore effect keys on the active project's id/workspaceType, so switching
+  // tabs never re-triggers it.
+  const [workspaceTab, setWorkspaceTab] = React.useState<'dev' | 'general'>('dev');
   const { profile, updateProfile, getFormattedName, loaded: profileLoaded } = useUserProfile();
   // Gate on `loaded` too, not just `!profile.setupComplete` — the hook's DEFAULT_PROFILE (used
   // before the /api/profile fetch resolves) also has setupComplete: false, so without this the
@@ -62,8 +85,31 @@ function App() {
     processes, processLogs, selectedProcessId, setSelectedProcessId,
      dockExpanded, setDockExpanded, dockTab, setDockTab, handleStopProcess,
      handleDidYouMeanPick, connected,
-    updateNotice, onDismissUpdate,
+     updateNotice, onDismissUpdate,
    } = useConsole();
+
+  // Phase 1: restore the active project's last-selected tab. Runs only when the active
+  // project changes (never on a tab switch — that path writes, it doesn't read back).
+  useEffect(() => {
+    const tabs = readWorkspaceTabs();
+    const saved = activeProject?.id ? tabs[activeProject.id] : undefined;
+    setWorkspaceTab(saved ?? activeProject?.workspaceType ?? 'dev');
+  }, [activeProject?.id, activeProject?.workspaceType]);
+
+  const handleWorkspaceTabChange = (mode: 'dev' | 'general') => {
+    setWorkspaceTab(mode);
+    if (!activeProject?.id) return;
+    const tabs = readWorkspaceTabs();
+    tabs[activeProject.id] = mode;
+    try {
+      localStorage.setItem(WORKSPACE_TAB_KEY, JSON.stringify(tabs));
+    } catch {}
+    // Sync the server so its suggestion/help filtering matches immediately — the same
+    // pre-matcher admin command as typing "switch to developer mode" in chat (which is also
+    // what the CLI users type; it shows up as a normal message in the terminal, and the
+    // server's answer confirms the change).
+    handleSendMessage(mode === 'dev' ? 'switch to developer mode' : 'switch to general mode');
+  };
 
   // `showDirectoryPicker()` opens Chromium's actual native "Select Folder" dialog — distinct
   // from the file-upload chooser that `<input type="file" webkitdirectory>` shows (same picker
@@ -125,6 +171,24 @@ function App() {
           )}
         </div>
         <div className="flex items-center gap-2 ml-auto flex-shrink-0">
+          {activeProject && (
+            <div className="flex items-center gap-1 bg-scrim-faint rounded-lg p-0.5 border border-border-soft">
+              <button
+                onClick={() => handleWorkspaceTabChange('dev')}
+                className={`px-2.5 py-1 text-xs rounded-md transition-colors ${workspaceTab === 'dev' ? 'bg-panel-strong text-fg-strong' : 'text-fg-dim hover:text-fg-muted'}`}
+                title="Developer workspace — git/npm/run/diagnostics suggestions"
+              >
+                Developer
+              </button>
+              <button
+                onClick={() => handleWorkspaceTabChange('general')}
+                className={`px-2.5 py-1 text-xs rounded-md transition-colors ${workspaceTab === 'general' ? 'bg-panel-strong text-fg-strong' : 'text-fg-dim hover:text-fg-muted'}`}
+                title="General workspace — file tools/notes/reminders (later phases)"
+              >
+                General
+              </button>
+            </div>
+          )}
           {activeServers.length > 0 && (
             <span className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-green-400 bg-green-500/10 rounded-lg border border-green-500/20 whitespace-nowrap flex-shrink-0">
               <span className="w-1.5 h-1.5 rounded-full bg-green-400 inline-block animate-pulse" />
@@ -182,6 +246,7 @@ function App() {
               onClose={() => setShowDashboard(false)}
               refreshSignal={dashboardUpdateSignal}
               projects={projects}
+              workspaceMode={workspaceTab}
               onSelectProject={handleSelectProject}
               onSendMessage={handleSendMessage}
             />

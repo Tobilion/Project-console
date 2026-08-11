@@ -5,7 +5,7 @@
  */
 import { semanticMatcher } from './semanticMatcher.js';
 import { logMatch } from './intentTelemetry.js';
-import { BUILTIN_INTENTS } from './intentRegistry.js';
+import { BUILTIN_INTENTS, intentWorkspaceEligible } from './intentRegistry.js';
 import { PURE_CHITCHAT_INTENTS, looksLikeRealRequest } from './intentTrust.js';
 
 export function tryLookupEntry(projects, projectIndex, entryIndex, input) {
@@ -34,8 +34,17 @@ export function captureTelemetry(projectId, input, telemetry) {
 
 const FALLBACK_SUGGESTIONS = ['help', 'overview', 'what are the commands', 'project structure', 'git status', 'monitoring'];
 
-export function getFallbackSuggestions(input) {
-  const fuzzy = semanticMatcher.getSuggestions(input, 5);
+/**
+ * `project` is optional and used only for Phase 1 workspaceType filtering: in a 'general'
+ * workspace, dev-only base-intent phrases (git/npm/run/diagnostics) are dropped from the
+ * fuzzy suggestions; the canned FALLBACK_SUGGESTIONS fallback stays untouched so a totally
+ * unrecognized input still offers the same list as before in every workspace type.
+ */
+export function getFallbackSuggestions(input, project = null) {
+  const isExcluded = project?.workspaceType === 'general'
+    ? (intent) => !intentWorkspaceEligible(intent, project.workspaceType)
+    : null;
+  const fuzzy = semanticMatcher.getSuggestions(input, 5, isExcluded);
   return fuzzy.length > 0 ? fuzzy : FALLBACK_SUGGESTIONS;
 }
 
@@ -45,14 +54,16 @@ export function getFallbackSuggestions(input) {
  * alongside the canned fallback chips. Never a blocking question, and never a
  * pure-chitchat intent for an input that looks like a real request (same trap as the
  * PURE_CHITCHAT_INTENTS guard above). Returns { intent, confidence } or null.
+ * `project` gates dev-only intents out of 'general' workspaces' did-you-mean chips (Phase 1).
  */
-export async function computeDidYouMean(input) {
+export async function computeDidYouMean(input, project = null) {
   try {
     const nearest = await semanticMatcher.nearestIntent(input);
     if (
       nearest &&
       nearest.confidence >= 0.45 &&
       BUILTIN_INTENTS.has(nearest.intent) &&
+      intentWorkspaceEligible(nearest.intent, project?.workspaceType) &&
       !(looksLikeRealRequest(input) && PURE_CHITCHAT_INTENTS.has(nearest.intent))
     ) {
       return { intent: nearest.intent, confidence: nearest.confidence };

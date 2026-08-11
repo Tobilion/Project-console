@@ -148,7 +148,8 @@ npm run lint    # tsc --noEmit
   JS/TS/TSX signatures — promoted to a real dependency — regex for Go/Rust/Java/Ruby/PHP/C#/
   Python; imports + reverse "used by" index; Express/Flask/FastAPI/Django route extraction),
   `codebaseDetection.js` (detectLanguages — skips unmapped extensions, no fabricated entries;
-  detectFrameworks; findEntryPoints across the whole tree; detectSubPackages for monorepos),
+  detectFrameworks — incl. Angular (`angular.json`/`ng.json`) and Flutter/Dart (`pubspec.yaml`),
+  task 0c; findEntryPoints across the whole tree; detectSubPackages for monorepos),
   `codebaseScans.js` (findTodos/findBiggestFiles/findRecentActivity — on-demand, capped,
   NOT cached in the index), `codebaseGraph.js` (Phase 1, Part 1.1: AST symbol records via
   `extractSymbols` in codebaseParsers.js feed a per-file symbol index + used-by reference
@@ -162,7 +163,10 @@ npm run lint    # tsc --noEmit
   package.json; code-only fallback via `isRecognizableByCodeAlone()` (`REAL_CODE_EXTS`,
   key config files, or a real `.git` dir) with a synthesized fallback config; `discoverProjects`
   checks whether the baseDir is itself a single project root before descending; chatReplies
-  sanitized at scan time (invalid values dropped with console.warn, never crash)
+  sanitized at scan time (invalid values dropped with console.warn, never crash);
+  `detectWorkspaceType` (Phase 1 roadmap, 2026-08-11) attaches the 'dev'|'general'
+  classification — console.config.json `workspaceType` override wins, else
+  `isRecognizableByCodeAlone()` decides — to every project object in both scan paths
 - `server/scriptEntries.js` — auto-derives command entries from package.json scripts
   (tagged `auto: true`, hand-authored wins on collision, `requires: ['node_modules']` attached)
 - `server/readmeRunParser.js` — documented run-command extraction (`matchCommandLine`/
@@ -210,7 +214,8 @@ npm run lint    # tsc --noEmit
   not inline literals.
 - `server/matcher.js` — ~253-line orchestrator; leaves: `intentRegistry.js` (`BUILTIN_INTENTS`
   — the dispatch gate that has silently killed intents 6+ times; `CONFIG_RUN_ENTRY_FLOOR` 0.55,
-  `OPEN_PROJECT_RE`, `ROUTER_REPO_MAP_CHARS` 1200, `describeIntent`), `intentTrust.js`
+  `OPEN_PROJECT_RE`, `ROUTER_REPO_MAP_CHARS` 1200, `describeIntent`; plus the Phase 1
+  suggestion-filter tags `WORKSPACE_DEV_ONLY_INTENTS`/`intentWorkspaceEligible`), `intentTrust.js`
   (`PURE_CHITCHAT_INTENTS`, `KNOWLEDGE_INTENTS_NEVER_ABOUT_A_FILE`, `looksLikeRealRequest`,
   `isTrustworthyChitChat`, `isTrustworthyKnowledgeIntent`), `matchHelpers.js`
   (tryLookupEntry/captureTelemetry/getFallbackSuggestions/computeDidYouMean)
@@ -476,14 +481,20 @@ npm run lint    # tsc --noEmit
   branch, not just PATH resolution, so a framework CLI needs to be here even when it also
   resolves on PATH), `commandDir.js`
   (2026-08-11, wrapper-project fix: `getCommandDir`/`getCommandDirScripts` — effective
-  command-execution directory. Narrow rule: project ROOT with no runnable package.json
-  scripts (and not a workspace root) + exactly ONE direct subdirectory carrying a
-  package.json with scripts → that sub-package is the command dir (one-level fs probe —
-  the codebase index can't answer this: detectSubPackages only reports >=2 manifest dirs).
+  command-execution directory. Narrow rule: project ROOT with no app-launching package.json
+  script (exact keys start/serve/dev/run — lint/format-only scripts DON'T count, task 0c:
+  a root package.json that only holds placeholder/lint scripts must not block wrapper
+  detection, and then the single sub-package must carry a real launcher script to win) and
+  not a workspace root + exactly ONE direct subdirectory carrying a package.json with
+  scripts → that sub-package is the command dir (one-level fs probe — the codebase index
+  can't answer this: detectSubPackages only reports >=2 manifest dirs). Root launcher and
+  workspaces stay absolute vetoes; true monorepos (2+ sub-packages) return null.
   Consumers: builtinFileNpm (scripts + execute cwd), connectionExecute (typed commands),
   connectionToolCall (chip/executeCommand cwd), toolProcess (runTests), projectScanContainer
   (adopts the sub-package's README/CLAUDE.md into contextFiles at scan time so README
-  run-command discovery + overview Q&A work for wrapper projects). `runCommandPatterns.js`
+  run-command discovery + overview Q&A work for wrapper projects). `builtinRunSuggestions`
+  hedges its "static site (no build step)" guess when `idx.subPackages.length > 1` and the
+  rule couldn't resolve one ("this looks like it might have a nested app..."). `runCommandPatterns.js`
   gained the `ng serve/build/test` pattern (the README parser never recognized Angular CLI
   commands)
 
@@ -768,6 +779,13 @@ time/date/calculate rows, 92/92).
   `src/hooks/wsMessageCases.ts`/`wsStreamingCases.ts`; extend `scripts/checkWsMessageCases.ts`
   when the type has user-visible behavior. `useConsole.ts`'s router reads cases via ctxRef —
   never capture first-render state inside a case handler.
+- **CLI parity for WS message types (Phase 0, enforced)**: `server/cli-client.js` is a second
+  renderer of the same WS protocol, and message types it doesn't handle used to fall through
+  `default` and vanish with zero signal (`warning`, `server_url`, `update_available` were all
+  silently dropped). `checkWsMessageCases.ts` now FAILS when a key exists in `WS_CORE_CASES`
+  without a corresponding `case` in cli-client.js's switch — rendered or an explicit
+  commented no-op both satisfy it. Any new WS type added to the web case table needs its CLI
+  case in the same change.
 - **Modularization rule**: when splitting/moving module exports, check EVERY external
   importer of that module (lint/tsc doesn't check export names) — a projectMemory split once
   overwrote `memoryStore.js` and the server failed to start (`8e10090` fixed it).
@@ -826,9 +844,10 @@ time/date/calculate rows, 92/92).
   "run the calculation" (routes to system.chit_chat.calculate on this machine's local data;
   reproduced identically on clean HEAD with the how_do_i work stashed, 91/92 — not a
   regression of this change); check-handlers 30/30 (baseline 29/29 + 1 how_do_i dispatch row);
-  check-tools 145/145;
-  check-indexer 85/85 (+14 SYMBOLS & GRAPH rows for the Phase 1.1 codebase-graph work);   check-ws-cases 84/84 (baseline +4 rows for the Phase 3 aiQueryInFlight
-  lifecycle fix; +1 drift row from later WS-case additions). check-docs 46/46 (catalog entries
+  check-tools 149/149;
+  check-indexer 85/85 (+14 SYMBOLS & GRAPH rows for the Phase 1.1 codebase-graph work);   check-ws-cases 115/115 (measured baseline 88/88 — the documented 84 was stale by +4
+  later additions — +27 Phase 0 CLI-parity rows: every WS_CORE_CASES key now requires a `case`
+  in cli-client.js's switch). check-docs 46/46 (catalog entries
   mirrored in README's command-reference table — `server/scripts/checkDocsSync.js`, run via
   `npm run check-docs`, wired into CI). check-handlers 36/36 (baseline +1 Phase 7 code.search
   row); check-indexer 94/94 (baseline +9 Phase 7 CODE-INDEX chunker/store rows, incl. the
@@ -1019,6 +1038,51 @@ time/date/calculate rows, 92/92).
   CI) FAILs when a catalog entry's command/keywords have no row in README's command
   reference table, and WARNS on unmapped README rows. Keep the README table and
   consoleCommandDocs.js in sync when adding catalog entries.
+
+## Phase 1 (UPGRADE-ROADMAP, 2026-08-11) — workspaceType foundation + Developer/General tab switcher (all live)
+
+- **`workspaceType` ('dev' | 'general') per project**: `detectWorkspaceType(config,
+  codebaseIndex)` in projectScanHelpers.js. console.config.json `workspaceType` override
+  always wins (invalid value dropped with a warning, same scan-time sanitize pattern as
+  chatReplies); otherwise the folder is 'dev' when `isRecognizableByCodeAlone()` passes —
+  real code, a known key config file, or a real .git dir — else 'general'. Attached to every
+  project object in projectScanSingle.js / projectScanContainer.js; rides through
+  /api/projects + project_updated/projects_updated WS payloads + /api/dashboard entries
+  (monitoringRoutes.js) automatically via `activeProjectsCache`.
+- **Suggestion-only filtering, never a matching gate**: `WORKSPACE_DEV_ONLY_INTENTS`
+  (intentRegistry.js — explicit list: git family incl. `system.chit_chat.git_status` and
+  `deploy` (checkpoint+push), run_project/run_tests/how_to_run/checkpoint, npm_install/
+  build/run, diagnostics.*, code.search) + `intentWorkspaceEligible(intent, workspaceType)`.
+  In a 'general' workspace those intents are hidden from SUGGESTION surfaces only — help
+  text (builtinHelp.js trigger lines), did-you-mean chips (matcher.js closeSecond +
+  computeDidYouMean), fallback chips (getFallbackSuggestions → searchFuseSuggestions
+  exclusion; project-config items, `isProject`, are never filtered). `matchInput()` dispatch,
+  collision disambiguation, and the router's allowed list never consult workspaceType — a
+  dev command typed in a mis-classified 'general' project still runs exactly as before.
+- **Admin commands** (connectionModeAdmin.js, pre-matcher tier in connectionExecute.js,
+  same pattern as notify/pack): `switch to developer mode` / `switch to general mode`
+  writes the console.config.json override (atomic write, creates the file when missing),
+  updates the in-memory project, broadcasts `project_updated`, answers; `what mode am I in`
+  reports the effective mode. No new intents or WS message types — CLI parity for free.
+- **Tab switcher** (App.tsx header, only when a project is active): Developer/General,
+  restores the active project's last tab from localStorage key
+  `console.workspaceTabByProject` (per-project JSON map, same inline-localStorage style as
+  the pinned-projects rail — deliberately not global), falling back to the server's
+  workspaceType, then 'dev'. Clicking a tab persists it AND sends the matching
+  "switch to X mode" command through the normal chat flow (server suggestion filtering
+  matches immediately; the user message + server answer appear in the terminal).
+- **Dashboard cards**: render per-card by the entry's own workspaceType — a 'general'
+  project card hides the uncommitted/recent-commits/status panels and Run/Stop/Push/Open
+  site actions behind a "later phases" placeholder (no fake data invented); Open in chat /
+  Copy path / history stay. `workspaceMode` prop on Dashboard is only the fallback for
+  entries the server hasn't classified yet (stale pre-feature cache).
+- **Harness rows**: checkHandlerCoverage.js gained workspace-eligibility unit asserts, a
+  dev-only-tag sync guard (every tag must still be in BUILTIN_INTENTS), detectWorkspaceType
+  unit asserts, and a mode-command smoke against a real os.tmpdir() temp project (the
+  handler WRITES console.config.json — the C:/tmp/nowhere fixture must never receive files).
+  Verified live 2026-08-11: container scan (package.json → 'dev', plain folder with
+  console.config.json → 'general'), override persists across rescan, single-folder scan
+  path, 58/58 check-handlers, 115/115 check-ws-cases, lint clean.
 
 ## Conventions
 

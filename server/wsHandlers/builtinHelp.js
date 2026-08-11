@@ -7,8 +7,18 @@
 export function buildHelpMessage(project, sessionContext) {
   const lines = [`### What you can ask in [${project.name}]`];
 
-  lines.push(
-    `\n**Trigger mode (works with AI off — instant, no model needed):**`,
+  // Phase 1 workspaceType (UPGRADE-ROADMAP.md, 2026-08-11): in a 'general' (non-code)
+  // workspace the dev-shaped trigger lines below are hidden from help — the user said
+  // "help" in a notes/docs folder and shouldn't be offered git push. Matching is never
+  // gated on this (a dev command typed in 'general' still runs); it only filters what's
+  // advertised. The list itself stays exhaustive for 'dev' workspaces.
+  const isGeneral = project.workspaceType === 'general';
+  const devOnlyMarkers = [
+    '"run tests"', '"git status"', '"deploy"', '"push live"', '"attach the github link',
+    '"run the site"', '"run the project"', '"where is the link"', '"link?"',
+    '"stop server"', '"kill server"', '"npx serve ."', '"python -m http.server"',
+  ];
+  const triggerLines = [
     `  - "overview" / "describe" — what this project is`,
     `  - "tech stack" — languages & frameworks in use`,
     `  - "project structure" / "show me the folders" — directory tree`,
@@ -32,6 +42,12 @@ export function buildHelpMessage(project, sessionContext) {
     `  - "explain more" — deeper detail on whatever you just asked about`,
     `  - "undo" — reverts the last risky command via git`,
     `  - "clear" — wipes this chat window`,
+  ];
+  lines.push(
+    `\n**Trigger mode (works with AI off — instant, no model needed):**`,
+    ...(isGeneral
+      ? triggerLines.filter((l) => !devOnlyMarkers.some((m) => l.includes(m)))
+      : triggerLines),
   );
 
   const commands = [];

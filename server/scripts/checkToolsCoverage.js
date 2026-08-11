@@ -196,6 +196,21 @@ try {
   await fs.writeFile(path.join(wrapperRoot, 'lib', 'package.json'), JSON.stringify({ scripts: { build: 'x' } }));
   const monoProj = { path: wrapperRoot, codebaseIndex: { keyFiles: {} } };
   eq('commandDir two subs null', await cmdDir.getCommandDir(monoProj), null);
+  // Task 0c (2026-08-11): the root ALSO has its own package.json — placeholder/lint-only scripts
+  // must not disqualify the wrapper rule when exactly one sub-package carries a real launcher.
+  const ambigRoot = path.join(FIXTURE_ROOT, 'wrapper-ambig');
+  await fs.mkdir(path.join(ambigRoot, 'app'), { recursive: true });
+  await fs.writeFile(path.join(ambigRoot, 'app', 'package.json'), JSON.stringify({ scripts: { dev: 'ng serve', start: 'ng serve' } }));
+  const ambigLintProj = { path: ambigRoot, codebaseIndex: { keyFiles: { 'package.json': '{"scripts":{"lint":"eslint ."}}' } } };
+  eq('commandDir ambig-root resolves to sub', await cmdDir.getCommandDir(ambigLintProj), 'app');
+  eq('commandDir ambig-root scripts', await cmdDir.getCommandDirScripts(ambigLintProj), { dev: 'ng serve', start: 'ng serve' });
+  const ambigLauncherProj = { path: ambigRoot, codebaseIndex: { keyFiles: { 'package.json': '{"scripts":{"start":"ng serve"}}' } } };
+  eq('commandDir root launcher wins', await cmdDir.getCommandDir(ambigLauncherProj), null);
+  const noLaunchRoot = path.join(FIXTURE_ROOT, 'wrapper-nolaunch');
+  await fs.mkdir(path.join(noLaunchRoot, 'pkg'), { recursive: true });
+  await fs.writeFile(path.join(noLaunchRoot, 'pkg', 'package.json'), JSON.stringify({ scripts: { build: 'tsc' } }));
+  const noLaunchProj = { path: noLaunchRoot, codebaseIndex: { keyFiles: { 'package.json': '{"scripts":{"lint":"eslint ."}}' } } };
+  eq('commandDir non-launcher root + sub no-launcher null', await cmdDir.getCommandDir(noLaunchProj), null);
 
   console.log('\n=== GATE (resolveToolGate matrix) ===');
   const grants = new Set([toolGate.toolGrantKey(proj, 'insertAtLine')]);

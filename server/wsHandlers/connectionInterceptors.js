@@ -114,7 +114,7 @@ export async function handlePendingDisambiguationReply(ws, project, projectId, i
   if (REJECT_RE.test(lower)) {
     ws.send(JSON.stringify({
       type: 'answer',
-      data: `No problem — here are some other things I can try:\n_Suggestions: ${getFallbackSuggestions(input).join(', ')}_\n`,
+      data: `No problem — here are some other things I can try:\n_Suggestions: ${getFallbackSuggestions(input, project).join(', ')}_\n`,
     }));
     ws.send(JSON.stringify({ type: 'end' }));
     return true;

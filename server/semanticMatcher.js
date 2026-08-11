@@ -322,10 +322,12 @@ class SemanticMatcher {
 
   /**
    * Best-effort "did you mean" suggestions for when match() comes back empty — delegates to
-   * the Fuse.js search in matcherFuse.js (Phase 3 decomposition).
+   * the Fuse.js search in matcherFuse.js (Phase 3 decomposition). `isExcluded` is the Phase 1
+   * workspaceType filter (drop dev-only base-intent phrases in 'general' workspaces); null
+   * means no filtering, keeping every existing caller's behavior identical.
    */
-  getSuggestions(input, limit = getTuning('SUGGESTION_DEFAULT_LIMIT', SUGGESTION_DEFAULT_LIMIT)) {
-    return searchFuseSuggestions(this.fuseIndex, input, limit);
+  getSuggestions(input, limit = getTuning('SUGGESTION_DEFAULT_LIMIT', SUGGESTION_DEFAULT_LIMIT), isExcluded = null) {
+    return searchFuseSuggestions(this.fuseIndex, input, limit, isExcluded);
   }
 
   /**

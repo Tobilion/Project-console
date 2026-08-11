@@ -16,7 +16,7 @@ import { getEffectiveThreshold } from './intentTelemetry.js';
 import { metrics } from './metrics.js';
 import { routeViaLocalModel } from './localRouter.js';
 import { formatRepoMap } from './codebaseIndexer.js';
-import { BUILTIN_INTENTS, CONFIG_RUN_ENTRY_FLOOR, OPEN_PROJECT_RE, ROUTER_REPO_MAP_CHARS } from './intentRegistry.js';
+import { BUILTIN_INTENTS, CONFIG_RUN_ENTRY_FLOOR, OPEN_PROJECT_RE, ROUTER_REPO_MAP_CHARS, intentWorkspaceEligible } from './intentRegistry.js';
 import { PURE_CHITCHAT_INTENTS, isTrustworthyChitChat, isTrustworthyKnowledgeIntent, looksLikeRealRequest } from './intentTrust.js';
 import { tryLookupEntry, captureTelemetry, getFallbackSuggestions, computeDidYouMean } from './matchHelpers.js';
 
@@ -157,9 +157,12 @@ export async function matchInput(input, project, projectIndex, options = {}) {
         metrics.event({ type: 'match_result', input: input.slice(0, 80), outcome: 'semantic_builtin', duration: Date.now() - t0 });
         // Requested directly (2026-08-04): a near-tie (margin 0.03-0.10) that isn't ambiguous
         // enough to block on (that's the collision question above) surfaces as a non-blocking
-        // "did you mean" chip on the answer. Same dispatchability + trust guards as the winner.
+        // "did you mean" chip on the answer. Same dispatchability + trust guards as the winner,
+        // plus the Phase 1 workspaceType gate so a 'general' workspace never suggests a
+        // dev-only intent. Matching itself is unaffected — this only hides the chip.
         const closeSecond = semanticResult.closeSecond &&
           BUILTIN_INTENTS.has(semanticResult.closeSecond.intent) &&
+          intentWorkspaceEligible(semanticResult.closeSecond.intent, project?.workspaceType) &&
           isTrustworthyChitChat(semanticResult.closeSecond.intent, input) &&
           isTrustworthyKnowledgeIntent(semanticResult.closeSecond.intent, input)
           ? { intent: semanticResult.closeSecond.intent, confidence: semanticResult.closeSecond.confidence }
@@ -256,7 +259,7 @@ export async function matchInput(input, project, projectIndex, options = {}) {
 
   let didYouMean = null;
   try {
-    didYouMean = await computeDidYouMean(input);
+    didYouMean = await computeDidYouMean(input, project);
   } catch {
     didYouMean = null;
   }
@@ -264,7 +267,7 @@ export async function matchInput(input, project, projectIndex, options = {}) {
   return {
     match: null,
     builtin: null,
-    suggestions: getFallbackSuggestions(input),
+    suggestions: getFallbackSuggestions(input, project),
     telemetryId,
     didYouMean,
   };

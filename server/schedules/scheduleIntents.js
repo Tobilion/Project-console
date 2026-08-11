@@ -1,6 +1,9 @@
 // Read-only intent allowlist for Phase 1 scheduled triggers. A schedule runs UNSUPERVISED —
 // there is no human at the other end to answer a confirm prompt — so only intents that can
-// never mutate anything, spawn a process, or write a file may be scheduled. Anything
+// never mutate anything or write a file may be scheduled. Note: project.diagnostics.* is
+// allowed by prefix and its type_check intent spawns a bounded, read-only `tsc --noEmit`
+// (capped by taskQueue's concurrency limit) — so "no spawned process at all" is not the
+// guarantee here; "no mutation, no file writes, no confirm-gated actions" is. Anything
 // confirm-gated or mutating (git push/commit, file writes, any command execution, deploy,
 // etc.) is rejected at schedule-creation time with a clear error, and re-checked at fire
 // time as a drift guard (see scheduleFire.js).

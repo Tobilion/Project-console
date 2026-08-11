@@ -33,6 +33,25 @@ export function isRecognizableByCodeAlone(codebaseIndex) {
   return codebaseIndex.hasRealCode || hasAnyKeyFile || codebaseIndex.hasGit;
 }
 
+// WorkspaceType classification (Phase 1 of UPGRADE-ROADMAP.md, 2026-08-11): 'dev' | 'general',
+// with 'general' as a deliberately loose bucket for doc/notes/asset folders that aren't code
+// repos. The console.config.json `workspaceType` override always wins over the heuristic; an
+// invalid value is dropped with a warning (same scan-time sanitize-then-ignore pattern as
+// chatReplies below), never a crash. This is a presentation/suggestion-filtering signal only —
+// matching never consults it, so a dev command typed in a mis-classified 'general' project
+// still runs exactly as before.
+const WORKSPACE_TYPES = new Set(['dev', 'general']);
+export function detectWorkspaceType(config, codebaseIndex) {
+  if (config && config.workspaceType !== undefined) {
+    if (WORKSPACE_TYPES.has(config.workspaceType)) return config.workspaceType;
+    console.warn(`[projectScanner] Ignoring invalid console.config.json "workspaceType" — expected "dev" or "general", got "${config.workspaceType}".`);
+    delete config.workspaceType;
+  }
+  // Same recognition rule the code-only discovery fallback uses: real code, a known key
+  // config file (package.json/Cargo.toml/etc.), or a real .git dir marks a folder 'dev'.
+  return isRecognizableByCodeAlone(codebaseIndex) ? 'dev' : 'general';
+}
+
 // `chatReplies` is an OPTIONAL console.config.json top-level key (Phase 4.5 chit-chat
 // intelligence): pools of reply strings per chit-chat intent ("greeting"/"status"/"gratitude"/
 // "farewell"/"ack") that REPLACE that intent's built-in canned replies for this project. It's

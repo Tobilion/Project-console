@@ -171,6 +171,7 @@ export function registerMonitoringRoutes(app) {
         id: project.id,
         name: project.name,
         path: project.path,
+        workspaceType: project.workspaceType || 'dev',
         uncommitted: [],
         recentCommits: [],
         devUrl,

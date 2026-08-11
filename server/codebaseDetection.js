@@ -72,6 +72,8 @@ export function detectFrameworks(keyFiles) {
   if (keyFiles['Gemfile']) found.add('Ruby/Bundler');
   if (keyFiles['cargo.toml']) found.add('Rust/Cargo');
   if (keyFiles['go.mod']) found.add('Go modules');
+  if (keyFiles['angular.json'] || keyFiles['ng.json']) found.add('Angular');
+  if (keyFiles['pubspec.yaml']) found.add('Flutter/Dart');
   if (keyFiles['pom.xml']) {
     found.add('Java/Maven');
     if (/spring-boot/i.test(keyFiles['pom.xml'])) found.add('Spring Boot');

@@ -426,6 +426,15 @@ async function main() {
         pendingOptions = [];
         if (msg.data) writeLine(`${C.red}${msg.data}${C.reset}`);
         break;
+      case 'warning':
+        // Informational notices (the LF/CRLF collapse summary, sandbox-mode confirmations,
+        // "process survived kill" heads-ups) — the web UI renders an amber banner, so this used
+        // to fall through to default and be silently dropped in the CLI. Same stale-chip guard
+        // as error_output: a warning starts a fresh read of the situation, not a pick from a
+        // dead turn.
+        pendingOptions = [];
+        if (msg.data) writeLine(`${C.yellow}${msg.data}${C.reset}\n`);
+        break;
       case 'output':
         if (msg.data) writeRaw(`${C.green}${msg.data}${C.reset}`);
         break;
@@ -518,6 +527,32 @@ async function main() {
         }
         break;
       }
+      case 'server_url':
+        // "This is the project's dev-server site" — the web UI renders a clickable chip; the
+        // CLI has nothing to click, so print the URL plainly.
+        if (msg.data) writeLine(`${C.green}Site running at: ${msg.data}${C.reset}\n`);
+        break;
+      case 'update_available':
+        // One-shot newer-version notice (see updateChecker.js). Mirrors the web UI's
+        // malformed-payload guard: a partial object is ignored, never rendered.
+        if (msg.data?.current && msg.data?.latest) {
+          writeLine(`${C.yellow}Update available: v${msg.data.current} -> v${msg.data.latest} (run 'update console')${C.reset}\n`);
+        }
+        break;
+      // Deliberately-not-rendered CLI no-ops: each of these is handled meaningfully by the web
+      // UI but has no terminal equivalent, and every one used to fall through to `default` with
+      // zero signal that it was considered. CLI parity for new WS message types is enforced by
+      // scripts/checkWsMessageCases.ts — a key in WS_CORE_CASES without a `case` here (rendered
+      // OR this kind of explicit no-op) fails the harness.
+      case 'projects_updated': // project-list refresh — the CLI refetches on demand via 'projects'
+      case 'project_updated': break; // single-project update — same
+      case 'ai_status': break; // AI toggle state — a UI switch, not terminal info
+      case 'thinking': break; // reasoning-model trace — an italic panel in the web UI
+      case 'task_granted': break; // "approved" acknowledgement — the CLI already saw the y/N prompt
+      case 'workspace_updated': break; // workspace-project set — UI-only (SidebarDrawer)
+      case 'copy_to_clipboard': break; // browser clipboard write — no browser here; the copy intent's own answer text is the CLI's confirmation
+      case 'dashboard_update': break; // dashboard refresh signal — no dashboard in the CLI
+      case 'processes_update': break; // dock refresh signal — no dock in the CLI
       default:
         break;
     }

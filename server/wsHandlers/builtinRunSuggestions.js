@@ -1,6 +1,7 @@
 import { state } from '../state.js';
 import { semanticMatcher } from '../semanticMatcher.js';
 import { findDocumentedRunCommands } from '../readmeRunParser.js';
+import { getCommandDir } from '../commandDir.js';
 
 /**
  * Confirmed live 2026-07-30 (Matchday Exchange transcript): "run its server" and "run .bat" both
@@ -200,7 +201,16 @@ export async function projectTypeSuggestions(ws, project, input, scripts) {
       suggestions.push('python main.py', 'python app.py');
     }
   } else if (hasIndexHtml && !scriptNames.length) {
-    ws.send(JSON.stringify({ type: 'answer', data: `This is a **static site** (no build step). Click a suggestion to serve it locally:` }));
+    // Hedge when the structure genuinely looks like a wrapper/monorepo (root package.json +
+    // sub-packages, so detectSubPackages saw more than one manifest dir) but the command-dir
+    // rule (commandDir.js) couldn't resolve one — a confident guess is wrong more often than
+    // not there. Confirmed live 2026-08-11: a SAM SYSTEM wrapper whose root package.json held
+    // only placeholder scripts answered "This is a static site (no build step)" while the real
+    // app sat one level down in sam_system.
+    const wrapperAmbiguity = idx.subPackages?.length > 1 && !(await getCommandDir(project));
+    ws.send(JSON.stringify({ type: 'answer', data: wrapperAmbiguity
+      ? `This looks like it might have a nested app — trying to figure out the right one. The options below still serve a plain static site:`
+      : `This is a **static site** (no build step). Click a suggestion to serve it locally:` }));
     suggestions.push('npx serve .', 'python -m http.server 8080');
   } else if (isJs) {
     ws.send(JSON.stringify({ type: 'answer', data: `JavaScript project with no npm scripts. Try:` }));

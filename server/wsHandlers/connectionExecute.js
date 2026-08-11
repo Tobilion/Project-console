@@ -21,6 +21,7 @@ import { handleAutoStartCommand } from './connectionAutoStartAdmin.js';
 import { handleUpdateCommand } from './connectionUpdateAdmin.js';
 import { handleHistoryCommand } from './connectionHistoryAdmin.js';
 import { handleStopServer, handleDevUrl } from './connectionDevServer.js';
+import { handleModeCommand } from './connectionModeAdmin.js';
 import { handleMatchingPipeline } from './connectionMatching.js';
 
 // Pure positive acknowledgments that never carry a request — short-circuited out of the AI
@@ -154,6 +155,7 @@ async function handleExecuteBody(ws, parsed, sessionContext) {
   if (await handleHistoryCommand(ws, project, lowerInput, input)) return;
   if (await handleStopServer(ws, project, lowerInput)) return;
   if (await handleDevUrl(ws, project, lowerInput)) return;
+  if (await handleModeCommand(ws, project, lowerInput)) return;
   if (await handlePendingMemorySuggestionReply(ws, project, lowerInput)) return;
   if (await handleLearningCommand(ws, project, lowerInput)) return;
 

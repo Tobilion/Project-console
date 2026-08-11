@@ -17,7 +17,11 @@ const KEY_FILES = ['package.json', 'composer.json', 'cargo.toml', 'go.mod',
   // Java/JVM build files — previously missing entirely, so a Maven/Gradle project's keyFiles
   // was always empty and detectFrameworks()/the trigger-mode run-command guesser (see
   // builtinIntents.js) had nothing to detect a Java project from besides bare .java file count.
-  'pom.xml', 'build.gradle', 'build.gradle.kts'];
+  'pom.xml', 'build.gradle', 'build.gradle.kts',
+  // Angular/Flutter config files (2026-08-11, task 0c): read as key files so detectFrameworks
+  // identifies Angular/Flutter even when package.json is a placeholder or lives in a wrapper
+  // sub-package — feeds the overview/tech-stack answers and the run-command guess.
+  'angular.json', 'ng.json', 'pubspec.yaml'];
 
 // Widened from a JS/Python-only list — a project written in Go, Rust, Java, Ruby, PHP, or C#
 // with none of these present used to have zero recognized "entry point", which fed directly

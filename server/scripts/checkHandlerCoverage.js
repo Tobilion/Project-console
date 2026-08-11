@@ -21,6 +21,8 @@
  */
 import { fileURLToPath, pathToFileURL } from 'url';
 import path from 'path';
+import fs from 'fs';
+import os from 'os';
 
 const PROBE = process.argv.includes('--probe');
 // Derived from this script's own location, not hardcoded to one machine/username (audit
@@ -36,7 +38,9 @@ const { projectContextHandlers } = await import(pathToFileURL(base + 'wsHandlers
 const { projectActionHandlers } = await import(pathToFileURL(base + 'wsHandlers/builtinProjectActions.js').href);
 const { normalizeGithubPageUrl } = await import(pathToFileURL(base + 'wsHandlers/builtinProjectActions.js').href);
 const { diagnosticsHandlers } = await import(pathToFileURL(base + 'wsHandlers/builtinDiagnostics.js').href);
-const { BUILTIN_INTENTS } = await import(pathToFileURL(base + 'intentRegistry.js').href);
+const { BUILTIN_INTENTS, WORKSPACE_DEV_ONLY_INTENTS, intentWorkspaceEligible } = await import(pathToFileURL(base + 'intentRegistry.js').href);
+const { detectWorkspaceType } = await import(pathToFileURL(base + 'projectScanHelpers.js').href);
+const { handleModeCommand } = await import(pathToFileURL(base + 'wsHandlers/connectionModeAdmin.js').href);
 const { INTENTS } = await import(pathToFileURL(base + 'intentsData.js').href);
 const { state } = await import(pathToFileURL(base + 'state.js').href);
 
@@ -175,6 +179,57 @@ await handleBuiltinIntent(ws, 'project.code.search', 'where do we handle retries
 // this harness), so the code-search handler must answer the clean unavailable path — never
 // crash, never touch the fixture's non-existent project dir.
 eq('knowledge leaf: code.search answers unavailable without the embedding model', ws.sent.length === 1 && ws.sent[0].type === 'answer' && /embedding model/.test(ws.sent[0].data), true);
+
+// --- WORKSPACE TYPE (Phase 1, 2026-08-11) -------------------------------------
+// Eligibility is pure, so it's unit-assertable here. The key regression guard is the sync
+// check: the dev-only tag list must never name an intent that left BUILTIN_INTENTS — a stale
+// tag would silently stop filtering (same failure mode as a handlerless intent).
+eq('workspace: dev-only tag list stays inside BUILTIN_INTENTS', [...WORKSPACE_DEV_ONLY_INTENTS].filter((k) => !BUILTIN_INTENTS.has(k)), []);
+eq('workspace: general hides git_push from suggestions', intentWorkspaceEligible('git_push', 'general'), false);
+eq('workspace: dev shows git_push', intentWorkspaceEligible('git_push', 'dev'), true);
+eq('workspace: general hides code.search', intentWorkspaceEligible('project.code.search', 'general'), false);
+eq('workspace: general hides deploy (checkpoint+push)', intentWorkspaceEligible('system.chit_chat.deploy', 'general'), false);
+eq('workspace: general keeps chit-chat greeting', intentWorkspaceEligible('system.chit_chat.greeting', 'general'), true);
+eq('workspace: general keeps file CRUD', intentWorkspaceEligible('file_append', 'general'), true);
+eq('workspace: general keeps project actions', intentWorkspaceEligible('project.action.open_file', 'general'), true);
+eq('workspace: general keeps knowledge intents', intentWorkspaceEligible('project.knowledge.overview', 'general'), true);
+eq('workspace: no workspaceType -> everything eligible', intentWorkspaceEligible('git_push', undefined), true);
+
+const idxDev = { totalFiles: 3, hasRealCode: true, keyFiles: {}, hasGit: false };
+const idxGitOnly = { totalFiles: 1, hasRealCode: false, keyFiles: {}, hasGit: true };
+const idxEmpty = { totalFiles: 0, hasRealCode: false, keyFiles: {}, hasGit: false };
+eq('detect: code folder (hasRealCode) -> dev', detectWorkspaceType(null, idxDev), 'dev');
+eq('detect: git-only folder -> dev', detectWorkspaceType(null, idxGitOnly), 'dev');
+eq('detect: empty doc folder -> general', detectWorkspaceType(null, idxEmpty), 'general');
+eq('detect: override wins over heuristic', detectWorkspaceType({ workspaceType: 'general' }, idxDev), 'general');
+eq('detect: invalid override dropped, heuristic used', detectWorkspaceType({ workspaceType: 'prod' }, idxDev), 'dev');
+
+// The admin tier WRITES console.config.json, so it is exercised against a real temp dir (the
+// C:/tmp/nowhere fixture above must never receive files). broadcast() is a no-op here — the
+// harness's wss has no clients.
+const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'console-mode-'));
+const tmpProj = {
+  id: 'mode-p', name: 'ModeProj', path: tmpRoot, workspaceType: 'dev',
+  config: { projectName: 'ModeProj', entries: [] }, contextFiles: [],
+  parsedKnowledge: {}, codebaseIndex: { languages: [], keyFiles: {} },
+};
+sent.length = 0;
+const switched = await handleModeCommand(ws, tmpProj, 'switch to general mode');
+const written = JSON.parse(fs.readFileSync(path.join(tmpRoot, 'console.config.json'), 'utf-8'));
+eq('mode admin: switch to general mode consumed', switched, true);
+eq('mode admin: answer confirms the switch', ws.sent.length === 1 && ws.sent[0].type === 'answer' && ws.sent[0].data.includes('general mode'), true);
+eq('mode admin: console.config.json override persisted', written.workspaceType, 'general');
+eq('mode admin: in-memory project updated', tmpProj.workspaceType, 'general');
+sent.length = 0;
+const same = await handleModeCommand(ws, tmpProj, 'switch to general mode');
+eq('mode admin: re-switching to the same mode says already', same === true && ws.sent.length === 1 && ws.sent[0].data.includes('already'), true);
+sent.length = 0;
+const what = await handleModeCommand(ws, tmpProj, 'what mode am i in');
+eq('mode admin: what mode am i in answers', what === true && ws.sent.length === 1 && ws.sent[0].type === 'answer' && ws.sent[0].data.includes('general'), true);
+sent.length = 0;
+const notMode = await handleModeCommand(ws, tmpProj, 'run the tests');
+eq('mode admin: unrelated input not consumed', notMode === false && ws.sent.length === 0, true);
+fs.rmSync(tmpRoot, { recursive: true, force: true });
 
 console.log(`check-handlers: ${total} checks, ${failed} failed`);
 process.exit(failed ? 1 : 0);

@@ -273,7 +273,12 @@ const updateAvailableCase: WsCaseHandler = (ctx, payload) => {
   ctx.setUpdateNotice({ current: payload.data.current, latest: payload.data.latest });
 };
 
-const WS_CORE_CASES: Record<string, WsCaseHandler> = {
+/**
+ * The 27 core (non-streaming) cases. Exported separately from the full map because
+ * scripts/checkWsMessageCases.ts asserts CLI parity against exactly this set — a key here
+ * must have a `case` in server/cli-client.js's switch (rendered or explicit no-op).
+ */
+export const WS_CORE_CASES = {
   answer: answerCase,
   output: streamOutputCase,
   start: streamOutputCase,
@@ -301,7 +306,7 @@ const WS_CORE_CASES: Record<string, WsCaseHandler> = {
   processes_update: processesUpdateCase,
   learning_suggestion: learningSuggestionCase,
   update_available: updateAvailableCase,
-};
+} satisfies Record<string, WsCaseHandler>;
 
 /** Full dispatch map: core cases + the streaming trio (stream_start/token/stream_end). */
 export const WS_MESSAGE_CASES: Record<string, WsCaseHandler> = {
