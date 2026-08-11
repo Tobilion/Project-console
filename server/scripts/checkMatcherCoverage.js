@@ -235,6 +235,21 @@ const BATTERIES = [
     ],
   },
   {
+    // Phase 1.5 (2026-08-11): chat openers for the shared interactive tool panels. Phrase
+    // shapes are deliberately verb+noun only ("open/show" were rejected: "show me the tools"
+    // near-dups "show me the todos", and generic "show me the results" inputs drifted). "open
+    // the tools" also routes to the calculator opener (its panel is the first registered);
+    // PDF merge/compress work belongs to Phase 3 and must NOT drift here yet.
+    name: 'PHASE-1.5 (tool-panel openers: open calculator / open pdf tools)',
+    items: [
+      ['open calculator', 'BUILTIN=system.tools.open_calculator'],
+      ['open the calculator', 'BUILTIN=system.tools.open_calculator'],
+      ['open the tools', 'BUILTIN=system.tools.open_calculator'],
+      ['open pdf tools', 'BUILTIN=system.tools.open_pdf_tools'],
+      ['open the pdf tools', 'BUILTIN=system.tools.open_pdf_tools'],
+    ],
+  },
+  {
     // Stage-level dispatch coverage for matcher.js itself (Phase 7, 2026-08-04) — the
     // batteries above already route through matchInput(), but several branches had no
     // dedicated input: the stage-1b config-run-entry redirect positive path (winner
@@ -253,8 +268,12 @@ const BATTERIES = [
       ['start netpulse', 'ENTRY action=python main.py serve'],
       // Multi-intent with a config entry in the second half
       ['run the tests and watch network', 'MULTI[builtin=run_tests | entry=python main.py watch --interval {interval}]'],
-      // Trust guards: filename/quote-bearing chit-chat must not land on the chit-chat intent
-      ['thanks for the file report.pdf', 'FALLBACK(didYouMean=file_read)'],
+      // Trust guards: filename/quote-bearing chit-chat must not land on the chit-chat intent.
+      // Phase 1.5 (2026-08-11): the didYouMean target for the .pdf example moved from file_read
+      // to system.tools.open_pdf_tools — the new opener's phrases own the "pdf" token, and a
+      // pdf-named file suggesting the PDF-tools panel is the intended direction of the feature
+      // (the row still pins the guard itself: FALLBACK, never chit-chat).
+      ['thanks for the file report.pdf', 'FALLBACK(didYouMean=system.tools.open_pdf_tools)'],
       ['good job on fixing main.py', 'BUILTIN=file_find'],
       // didYouMean on no-match (input below floor but nearest >= 0.45)
       ['show me the status of everything', 'FALLBACK(didYouMean=system.chit_chat.status)'],

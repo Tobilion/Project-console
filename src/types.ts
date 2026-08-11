@@ -159,3 +159,14 @@ export interface ToolCallEntry {
   /** True if this tool call requires user approval (gated). */
   gated: boolean;
 }
+
+/** Phase 1.5: one entry of the interactive "Tools" registry, served by GET /api/tool-panels.
+ *  `icon` is a lucide icon name resolved client-side by ToolsPanel.tsx. */
+export interface ToolPanelDef {
+  id: string;
+  name: string;
+  description: string;
+  icon: string;
+  available: boolean;
+  chatHint: string;
+}

@@ -415,6 +415,12 @@ async function main() {
 
     switch (msg.type) {
       case 'answer':
+        // Phase 1.5 (UPGRADE-ROADMAP.md): web-UI tool panels (`openPanel` on the answer
+        // payload) are deliberately ignored here — PERMANENTLY. There is no terminal-native
+        // equivalent of a live button grid or a file-drop picker, and the numbered-option-list
+        // pattern is a worse fit for it than plain text. The same answer's `data` text is the
+        // CLI-usable half of the contract: panel opers (e.g. "open calculator") always phrase
+        // the chat command equivalent ("use 'calculate ...' directly"). Do not "fix" this.
         // A new answer starts a fresh turn (or continues one whose options already fired) —
         // stale options from a previous turn must not linger, or a later "1" could fire a pick
         // from a dead conversation (seen live: fallback suggestions from turn N still pending

@@ -39,6 +39,7 @@ const { projectActionHandlers } = await import(pathToFileURL(base + 'wsHandlers/
 const { normalizeGithubPageUrl } = await import(pathToFileURL(base + 'wsHandlers/builtinProjectActions.js').href);
 const { diagnosticsHandlers } = await import(pathToFileURL(base + 'wsHandlers/builtinDiagnostics.js').href);
 const { generalFileHandlers, performTidy, planDuplicateDeletes, performDuplicateDeletes, extractFindQuery } = await import(pathToFileURL(base + 'wsHandlers/builtinGeneralFiles.js').href);
+const { toolsHandlers } = await import(pathToFileURL(base + 'wsHandlers/builtinTools.js').href);
 const { revertAction, listActions } = await import(pathToFileURL(base + 'actionHistory.js').href);
 const { BUILTIN_INTENTS, WORKSPACE_DEV_ONLY_INTENTS, intentWorkspaceEligible } = await import(pathToFileURL(base + 'intentRegistry.js').href);
 const { detectWorkspaceType } = await import(pathToFileURL(base + 'projectScanHelpers.js').href);
@@ -57,7 +58,7 @@ function eq(label, got, expect) {
   else if (!ok) console.log(`  FAIL ${label}\n    expected: ${e}\n    got:      ${g}`);
 }
 
-const merged = { ...gitHandlers, ...chitChatHandlers, ...fileNpmHandlers, ...projectKnowledgeHandlers, ...projectContextHandlers, ...projectActionHandlers, ...diagnosticsHandlers, ...generalFileHandlers };
+const merged = { ...gitHandlers, ...chitChatHandlers, ...fileNpmHandlers, ...projectKnowledgeHandlers, ...projectContextHandlers, ...projectActionHandlers, ...diagnosticsHandlers, ...generalFileHandlers, ...toolsHandlers };
 const handlerKeys = Object.keys(merged).sort();
 const builtinKeys = [...BUILTIN_INTENTS].sort();
 const intentKeys = Object.keys(INTENTS).sort();
@@ -166,6 +167,18 @@ eq('chitchat leaf: how_do_i emits suggestion chips after the answer', ws.sent[1]
 sent.length = 0;
 await handleBuiltinIntent(ws, 'system.chit_chat.needs_ai_mode', 'make me a landing page', proj, {});
 eq('chitchat leaf: needs_ai_mode guidance names the AI dock with a concrete instruction', ws.sent.length === 1 && ws.sent[0].type === 'answer' && /AI dock/.test(ws.sent[0].data) && /write it for you/.test(ws.sent[0].data), true);
+
+// Phase 1.5 (2026-08-11): tool-panel openers. The answer must carry the additive `openPanel`
+// field on the SAME 'answer' payload (never a new WS type), stay plain-text-usable for the CLI,
+// and the calculator opener must attach chat-command chips after the answer.
+sent.length = 0;
+await handleBuiltinIntent(ws, 'system.tools.open_calculator', 'open calculator', proj, {});
+eq('tools leaf: open_calculator answers with openPanel on the answer payload', ws.sent.length === 2 && ws.sent[0].type === 'answer' && ws.sent[0].openPanel === 'calculator' && /calculate 15% of 80/.test(ws.sent[0].data), true);
+eq('tools leaf: open_calculator attaches chat-command chips', ws.sent[1].type === 'suggestions' && ws.sent[1].data.includes('calculate 15% of 80'), true);
+
+sent.length = 0;
+await handleBuiltinIntent(ws, 'system.tools.open_pdf_tools', 'open pdf tools', proj, {});
+eq('tools leaf: open_pdf_tools answers with openPanel + CLI-usable text', ws.sent.length === 1 && ws.sent[0].type === 'answer' && ws.sent[0].openPanel === 'pdf-tools' && /web-UI panel/.test(ws.sent[0].data), true);
 
 sent.length = 0;
 const unknown = await handleBuiltinIntent(ws, 'no_such_intent', 'x', proj, {});

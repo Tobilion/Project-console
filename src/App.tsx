@@ -5,11 +5,12 @@ import { SidebarDrawer } from './components/SidebarDrawer';
 import { Terminal } from './components/Terminal';
 import { WelcomeScreen } from './components/WelcomeScreen';
 import { Dashboard } from './components/Dashboard';
+import { ToolsPanel } from './components/ToolsPanel';
 import { CommandDeck } from './components/CommandDeck';
 import { useConsole } from './hooks/useConsole';
 import { useUserProfile } from './hooks/useUserProfile';
 import { getRandomGreeting } from './utils/greetings';
-import { Home, LayoutDashboard, Search, Settings, Loader2, X } from 'lucide-react';
+import { Home, LayoutDashboard, LayoutGrid, Search, Settings, Loader2, X } from 'lucide-react';
 import { ThemeToggle } from './components/ui/ThemeToggle';
 import { UserProfileModal } from './components/UserProfileModal';
 import { FirstRunSetup } from './components/FirstRunSetup';
@@ -22,6 +23,22 @@ const WORKSPACE_TAB_KEY = 'console.workspaceTabByProject';
 function readWorkspaceTabs(): Record<string, 'dev' | 'general'> {
   try {
     const raw = localStorage.getItem(WORKSPACE_TAB_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) return parsed;
+    }
+  } catch {}
+  return {};
+}
+
+// Phase 1.5 per-project last-open tool panel — same inline-localStorage style as the
+// workspace tab above. A plain JSON map of projectId -> tool panel id ('' = grid). Restored
+// into the Tools surface's selection when the project changes; the Tools view itself only
+// opens on an explicit gesture (header button or the chat's `openPanel` instruction).
+const TOOL_PANEL_KEY = 'console.toolPanelByProject';
+function readToolPanels(): Record<string, string> {
+  try {
+    const raw = localStorage.getItem(TOOL_PANEL_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
       if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) return parsed;
@@ -86,6 +103,8 @@ function App() {
      dockExpanded, setDockExpanded, dockTab, setDockTab, handleStopProcess,
      handleDidYouMeanPick, connected,
      updateNotice, onDismissUpdate,
+     toolsOpen, setToolsOpen, activeToolPanel, setActiveToolPanel,
+     toolPanels, fetchToolPanels,
    } = useConsole();
 
   // Phase 1: restore the active project's last-selected tab. Runs only when the active
@@ -109,6 +128,44 @@ function App() {
     // what the CLI users type; it shows up as a normal message in the terminal, and the
     // server's answer confirms the change).
     handleSendMessage(mode === 'dev' ? 'switch to developer mode' : 'switch to general mode');
+  };
+
+  // Phase 1.5: the Tools surface (shared interactive tool panels). Clicking a card opens that
+  // tool's dedicated panel in the same top-level view space Terminal/Dashboard use; the
+  // "back" button returns to the card grid ('' keeps the Tools view open, just unpicked).
+  // The per-project last-open panel persists via console.toolPanelByProject (restore effect
+  // below), mirroring Phase 1's workspace-tab persistence.
+  useEffect(() => {
+    const saved = activeProject?.id ? readToolPanels()[activeProject.id] : undefined;
+    setActiveToolPanel(saved ?? null);
+  }, [activeProject?.id]);
+
+  // The registry is fetched lazily the first time the Tools view opens — server-driven so a
+  // later phase can report per-tool availability without a client restructure.
+  useEffect(() => {
+    if (toolsOpen) fetchToolPanels();
+  }, [toolsOpen, fetchToolPanels]);
+
+  const handleOpenToolPanel = (id: string) => {
+    setActiveToolPanel(id === '' ? null : id);
+    setToolsOpen(true);
+    if (!activeProject?.id) return;
+    const panels = readToolPanels();
+    panels[activeProject.id] = id;
+    try {
+      localStorage.setItem(TOOL_PANEL_KEY, JSON.stringify(panels));
+    } catch {}
+  };
+
+  const handleCloseTools = () => {
+    setToolsOpen(false);
+    setActiveToolPanel(null);
+    if (!activeProject?.id) return;
+    const panels = readToolPanels();
+    panels[activeProject.id] = '';
+    try {
+      localStorage.setItem(TOOL_PANEL_KEY, JSON.stringify(panels));
+    } catch {}
   };
 
   // `showDirectoryPicker()` opens Chromium's actual native "Select Folder" dialog — distinct
@@ -202,15 +259,20 @@ function App() {
               :{window.location.port}
             </span>
           )}
-          <button onClick={() => { setShowDashboard(false); setChatFullscreen(false); setShowWelcome(true); }} className="p-2 text-fg-dim hover:text-fg-strong transition-colors" title="Home">
+          <button onClick={() => { setShowDashboard(false); setToolsOpen(false); setChatFullscreen(false); setShowWelcome(true); }} className="p-2 text-fg-dim hover:text-fg-strong transition-colors" title="Home">
             <Home size={18} />
           </button>
           <button onClick={() => setDeckOpen(v => !v)} className="p-2 text-fg-dim hover:text-fg-strong transition-colors" title="Command deck (Ctrl+K)">
             <Search size={18} />
           </button>
-          <button onClick={() => setShowDashboard(v => !v)} className={`p-2 transition-colors ${showDashboard ? 'text-accent' : 'text-fg-dim hover:text-fg-strong'}`} title="Dashboard">
+          <button onClick={() => { setToolsOpen(false); setShowDashboard(v => !v); }} className={`p-2 transition-colors ${showDashboard ? 'text-accent' : 'text-fg-dim hover:text-fg-strong'}`} title="Dashboard">
             <LayoutDashboard size={18} />
           </button>
+          {activeProject && workspaceTab === 'general' && (
+            <button onClick={() => { setShowDashboard(false); setToolsOpen(v => !v); }} className={`p-2 transition-colors ${toolsOpen ? 'text-accent' : 'text-fg-dim hover:text-fg-strong'}`} title="Interactive tools (General workspace)">
+              <LayoutGrid size={18} />
+            </button>
+          )}
           <button onClick={() => setProfileOpen(true)} className="p-2 text-fg-dim hover:text-fg-strong transition-colors" title="User profile">
             <Settings size={18} />
           </button>
@@ -239,8 +301,17 @@ function App() {
         </div>
       )}
 
-      <main className={`relative z-10 flex-1 min-h-0 overflow-hidden ${showDashboard ? '' : chatFullscreen ? 'block' : 'flex flex-col lg:flex-row gap-6'}`}>
-        {showDashboard ? (
+      <main className={`relative z-10 flex-1 min-h-0 overflow-hidden ${showDashboard || toolsOpen ? '' : chatFullscreen ? 'block' : 'flex flex-col lg:flex-row gap-6'}`}>
+        {toolsOpen ? (
+          <div className="h-full p-4">
+            <ToolsPanel
+              panels={toolPanels}
+              activePanel={activeToolPanel}
+              onOpenPanel={handleOpenToolPanel}
+              onClose={handleCloseTools}
+            />
+          </div>
+        ) : showDashboard ? (
           <div className="h-full p-4">
             <Dashboard
               onClose={() => setShowDashboard(false)}
@@ -365,8 +436,8 @@ function App() {
         onSelectProject={handleSelectProject}
         onDirectCommand={handleDirectCommand}
         onSendMessage={handleSendMessage}
-        onHome={() => { setShowDashboard(false); setChatFullscreen(false); setShowWelcome(true); }}
-        onToggleDashboard={() => setShowDashboard(v => !v)}
+        onHome={() => { setShowDashboard(false); setToolsOpen(false); setChatFullscreen(false); setShowWelcome(true); }}
+        onToggleDashboard={() => { setToolsOpen(false); setShowDashboard(v => !v); }}
         onNewChat={handleNewChat}
         sidebarCollapsed={sidebarCollapsed}
         onSetSidebarCollapsed={setSidebarCollapsed}

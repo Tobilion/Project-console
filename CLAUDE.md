@@ -347,6 +347,27 @@ npm run lint    # tsc --noEmit
   without journaling — `skippedJournal` counter in the answer). Caps: 20 result files,
   2000 hash-candidates, 50MB per hashed file, 100 moves per tidy, 12 preview lines.
   Eligible from every workspace type — deliberately NOT in WORKSPACE_DEV_ONLY_INTENTS.
+- `server/toolPanelRegistry.js` + `server/routes/toolPanelRoutes.js` — Phase 1.5 (2026-08-11,
+  shared interactive Tool Panel architecture): the server-driven interactive-tools registry
+  (`TOOL_PANELS`: calculator, pdf-tools — `getToolPanels()`/`getToolPanel()`, REST
+  `GET /api/tool-panels` mounted in server/index.js). Panels are placeholders today; later
+  phases (3: PDF, 5/6: calculator) fill them in. Wire contract: intent-data entries carry an
+  `opensPanel` tag (see `server/intents/toolPanelIntents.js`), and the opener handlers in
+  `server/wsHandlers/builtinTools.js` (`system.tools.open_calculator` /
+  `system.tools.open_pdf_tools`, registered in BUILTIN_INTENTS, NOT dev-only) send the normal
+  `answer` message with an ADDITIVE `openPanel` field — no new WS type, no protocol change.
+  The answer text is always CLI-usable (calculator handler also sends `suggestions` chips
+  ["calculate 15% of 80","calculate 340 / 4"]; PDF handler is plain text with no chips, and
+  its CLI-usable chat equivalents arrive in a later phase). `server/cli-client.js`'s `answer`
+  case permanently ignores `openPanel` — deliberate: the CLI is text-only, the comment in
+  that case documents the gap. preSemanticOverrides.js carries the `^run (the|this)?
+  calculation$` → system.chit_chat.calculate literal so the calculator opener's examples
+  can't steal the documented "run the calculation" drift.
+- Frontend: `src/components/ToolsPanel.tsx` (card grid → dedicated placeholder panel view with
+  a back button), `useConsole.ts` toolPanel state cluster (`toolsOpen`/`activeToolPanel`/
+  `toolPanels` + `fetchToolPanels`), `wsMessageCases.ts` answerCase reads `payload.openPanel`
+  and opens the panel, App.tsx Tools view (header Tools button only when a General-workspace
+  project is active) with per-project last-open persistence under `console.toolPanelByProject`.
 - `server/schedules/` + `server/wsHandlers/connectionScheduleAdmin.js` — Phase 1 (autonomous
   triggers): per-project scheduled commands ("schedule every 10 minutes \"git status\"",
   "schedule daily at 09:30 X", "schedule on file save X", "schedule on git commit X") persisted
@@ -890,7 +911,16 @@ time/date/calculate rows, 92/92).
   temp-dir tidy/dedupe/revert smoke and extractFindQuery unit rows); check-tools 154/154
   (baseline 149/149 + 5 typed-command natural-language-guard rows); check-matcher 170/171
   (baseline 152/153 + 18 GENERAL-FILES rows, same one PRE-EXISTING drift); check-intents
-  unchanged at 1/5/82 (the four new intents added no near-dups). Run the relevant battery after ANY edit to the corresponding module.
+  unchanged at 1/5/82 (the four new intents added no near-dups). Phase 1.5 (2026-08-11):
+  check-handlers 80/80 (baseline 77/77 + 3 TOOLS-LEAF rows — the openPanel-on-answer and
+  chips assertions); check-matcher 175/176 (baseline 170/171 + 5 PHASE-1.5 opener rows, same
+  one PRE-EXISTING drift — "run the calculation" still routes to system.chit_chat.calculate,
+  which the Phase 1.5 pre-semantic override re-pins after the calculator opener's examples
+  briefly stole it; the trust-guard row's didYouMean for the .pdf example moved from file_read
+  to open_pdf_tools, the intended direction — see the row comment); check-ws-cases 118/118
+  (baseline 115/115 + 3 answer-openPanel rows); check-intents unchanged at 1/5/82 (the two new
+  intents' "show me ..." shapes were trimmed during calibration because they near-dupped
+  "show me the todos" and stole generic "show me the results" inputs). Run the relevant battery after ANY edit to the corresponding module.
 - **editFile** tolerates whitespace differences (normalized line-range fallback) but not
   wrong wording; on total failure the error names both attempts and tells the caller to
   re-read the file. Truncation guard: `writeFile` re-reads and compares length after writes.
@@ -1119,6 +1149,24 @@ time/date/calculate rows, 92/92).
   Verified live 2026-08-11: container scan (package.json → 'dev', plain folder with
   console.config.json → 'general'), override persists across rescan, single-folder scan
   path, 58/58 check-handlers, 115/115 check-ws-cases, lint clean.
+
+## Phase 1.5 (UPGRADE-ROADMAP, 2026-08-11) — shared interactive Tool Panel architecture (all live)
+
+- **Design convention**: a Tool Panel is a dedicated web-UI view (card grid launcher → panel
+  view with a back button), and every panel also has a chat-native equivalent — the
+  `answer` text that opens a panel must stay CLI-usable, and chips may point at the chat
+  form. The wire contract is the additive `openPanel` field on the existing `answer` payload
+  (plus the `opensPanel` tag on intent data) — no new WS message type, so the CLI and the
+  web render the same protocol; the CLI deliberately ignores `openPanel` forever (text-only,
+  comment in cli-client.js's `answer` case documents the gap).
+- **Calibration lessons** (caught by check-matcher during the build): "show me <noun>" shapes
+  are corpus-collision bait — "show me the calculator" near-dupped "show me the todos" and
+  generic "show me the results" inputs drifted to project.context.structure. The two new
+  intents keep only verb+noun examples (open/launch/show+calculator/tools/pdf-tools), and a
+  pre-semantic override re-pins "run the calculation" → system.chit_chat.calculate.
+- **Panels are placeholders** until their phases: PDF Tools (Phase 3) and Calculator
+  (Phases 5/6) fill the registry entries in; the frontend renders a generic "coming in a
+  later update" placeholder panel for any `opensPanel` id it doesn't know yet.
 
 ## Phase 2 (UPGRADE-ROADMAP, 2026-08-11) — general-mode file tools (all live)
 

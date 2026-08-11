@@ -52,6 +52,8 @@ function makeFakeCtx() {
     fetchProcessCount: 0,
     clipText: '',
     updateNotice: null,
+    toolPanelOpen: false,
+    activeToolPanel: null,
     ws: { _streamId: null },
   };
   const tokenBuffer: { current: string } = { current: '' };
@@ -98,6 +100,10 @@ function makeFakeCtx() {
     addToolCall: (tool: string, args: any, result: any) => { state.toolCalls.push({ tool, args, result }); },
     fetchProcesses: () => { state.fetchProcessCount++; },
     setUpdateNotice: (v: any) => { state.updateNotice = typeof v === 'function' ? v(state.updateNotice) : v; },
+    toolPanel: {
+      setActiveToolPanel: (v: any) => { state.activeToolPanel = typeof v === 'function' ? v(state.activeToolPanel) : v; },
+      setToolsOpen: (v: any) => { state.toolPanelOpen = typeof v === 'function' ? v(state.toolPanelOpen) : v; },
+    },
   };
   return { ctx, state, tokenBuffer, flushTimer, streamHadTokenRef };
 }
@@ -141,6 +147,14 @@ async function main() {
   check('answer clears aiThinking', c.state.aiThinking === false);
   dispatch(c.ctx, 'answer', { data: '   ' });
   check('answer whitespace-only ignored', c.state.msgs.length === 1);
+
+  // --- answer + openPanel (Phase 1.5 tool-panel opener) ---
+  c = makeFakeCtx();
+  dispatch(c.ctx, 'answer', { data: 'open calculator note', openPanel: 'calculator' });
+  check('answer with openPanel switches the Tools view to that panel', c.state.toolPanelOpen === true && c.state.activeToolPanel === 'calculator');
+  check('answer with openPanel still appends the plain-text bubble', last(c.state).type === 'bot' && last(c.state).content === 'open calculator note');
+  dispatch(c.ctx, 'answer', { data: 'plain' });
+  check('answer without openPanel leaves Tools view untouched', c.state.toolPanelOpen === true && c.state.activeToolPanel === 'calculator');
 
   // --- output/start/end stream ---
   c = makeFakeCtx();

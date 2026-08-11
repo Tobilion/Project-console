@@ -110,6 +110,11 @@ export const BUILTIN_INTENTS = new Set([
   // Not in WORKSPACE_DEV_ONLY_INTENTS — they're usable from every workspace type, per the
   // roadmap's "tag general but don't hard-gate" rule.
   'general.files.find', 'general.files.tidy', 'general.files.duplicates', 'general.files.duplicates_delete',
+  // Phase 1.5 (UPGRADE-ROADMAP.md, 2026-08-11): chat openers for the shared interactive tool
+  // panels (builtinTools.js). Their INTENTS data carries the `opensPanel` wire-contract tag;
+  // the handler echoes it back as an `openPanel` field on the answer payload. Also not dev-only
+  // — the Tools surface is reachable from the General tab by design.
+  'system.tools.open_calculator', 'system.tools.open_pdf_tools',
 ]);
 
 // Phase 1 workspaceType filtering (UPGRADE-ROADMAP.md, 2026-08-11): builtin intents that make

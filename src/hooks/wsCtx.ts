@@ -60,6 +60,15 @@ export interface WsCtx {
   /** Phase 5: a newer published version of the console exists — drives the dismissible
    *  update banner in App.tsx (server sends 'update_available' at most once per boot). */
   setUpdateNotice: React.Dispatch<React.SetStateAction<{ current: string; latest: string } | null>>;
+  /** Phase 1.5: the Tools surface (shared interactive tool panels). The server's `answer`
+   *  payload can carry an additive `openPanel` field ('calculator' | 'pdf-tools' | ...) to
+   *  switch the web client to that panel — setActiveToolPanel records which panel, setToolsOpen
+   *  swaps the top-level view to the Tools surface. The CLI never sees either (deliberate,
+   *  permanent web/CLI capability gap — see cli-client.js's 'answer' case comment). */
+  toolPanel: {
+    setActiveToolPanel: React.Dispatch<React.SetStateAction<string | null>>;
+    setToolsOpen: React.Dispatch<React.SetStateAction<boolean>>;
+  };
 }
 
 export type WsCaseHandler = (ctx: WsCtx, payload: any) => void;

@@ -90,6 +90,14 @@ export const PRE_SEMANTIC_OVERRIDES = [
   // run the dev server on that port. Deliberately narrow: requires the literal serve verb
   // AND the site noun, optional port suffix only.
   { intent: 'npm_run', pattern: /^serve\s+the\s+site(?:\s+(?:on|at|using)\s+port\s+\d{2,5})?$/i },
+  // Phase 1.5 (2026-08-11, probe-verified with real embeddings): "run the calculation"
+  // previously drifted onto system.chit_chat.calculate on this machine (documented in
+  // CLAUDE.md as pre-existing) — the new open_calculator opener's examples ("open the
+  // calculator") share the "calculat" root so tightly that the input began routing there
+  // instead, silently moving a documented drift target. "run the calculation" IS a
+  // calculation request, never a request to open the calculator panel — literal override
+  // restores the baseline. Deliberately the exact literal shape, nothing looser.
+  { intent: 'system.chit_chat.calculate', pattern: /^run\s+(?:the\s+|this\s+)?calculation$/i },
 ];
 
 /**

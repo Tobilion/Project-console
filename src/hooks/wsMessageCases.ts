@@ -17,6 +17,14 @@ const answerCase: WsCaseHandler = (ctx, payload) => {
   ctx.ai.setAiThinking(false);
   if (!payload.data?.trim()) return;
   ctx.sessions.setMessages(prev => [...prev, { id, type: 'bot', content: payload.data, isMarkdown: true, timestamp: Date.now() }]);
+  // Phase 1.5: an additive `openPanel` field on the answer payload switches the web client
+  // to a shared interactive tool panel (e.g. "open calculator" -> 'calculator'). This is
+  // deliberate web-only surface — the CLI ignores `openPanel` permanently (see the explicit
+  // comment in server/cli-client.js's 'answer' case) and reuses the same data text.
+  if (payload.openPanel) {
+    ctx.toolPanel.setActiveToolPanel(payload.openPanel);
+    ctx.toolPanel.setToolsOpen(true);
+  }
 };
 
 const streamOutputCase: WsCaseHandler = (ctx, payload) => {

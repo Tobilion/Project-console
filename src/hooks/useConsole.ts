@@ -1,5 +1,5 @@
 import { useEffect, useRef, useCallback, useState } from 'react';
-import type { TerminalMessage, ToolCallEntry, Project } from '../types';
+import type { TerminalMessage, ToolCallEntry, Project, ToolPanelDef } from '../types';
 import { useProjects } from './useProjects';
 import { useSessions } from './useSessions';
 import { useWebSocket } from './useWebSocket';
@@ -98,6 +98,21 @@ export function useConsole() {
   const [updateNotice, setUpdateNotice] = useState<{ current: string; latest: string } | null>(null);
   const handleDismissUpdate = useCallback(() => setUpdateNotice(null), []);
 
+  // Phase 1.5 (UPGRADE-ROADMAP.md, 2026-08-11): the Tools surface (shared interactive tool
+  // panels). `toolsOpen` swaps the top-level view to the Tools panel, `activeToolPanel`
+  // records which registered tool's panel is open — both are settable from the WS layer
+  // (the server's `answer` payload can carry an additive `openPanel` field) so typing
+  // "open calculator" in chat lands in exactly the same panel state as clicking the card.
+  // The registry itself is fetched from GET /api/tool-panels (server-driven so per-tool
+  // availability can be reported later without a client restructure).
+  const [toolsOpen, setToolsOpen] = useState(false);
+  const [activeToolPanel, setActiveToolPanel] = useState<string | null>(null);
+  const [toolPanels, setToolPanels] = useState<ToolPanelDef[]>([]);
+  const fetchToolPanels = useCallback(async () => {
+    const data = await apiFetchJson<{ panels: ToolPanelDef[] }>('/api/tool-panels');
+    if (data?.panels) setToolPanels(data.panels);
+  }, []);
+
   const fetchActiveServers = useCallback(async () => {
     const data = await apiFetchJson<Array<{ projectId: string; command: string; pid: number | null; url: string | null }>>('/api/active-servers');
     if (data) {
@@ -180,6 +195,7 @@ export function useConsole() {
     addToolCall: toolHistory.addToolCall,
     fetchProcesses: dock.fetchProcesses,
     setUpdateNotice,
+    toolPanel: { setActiveToolPanel, setToolsOpen },
   };
 
   // M21: useCallback so the `onSendMessage` identity passed to TerminalMessages (and the
@@ -449,5 +465,11 @@ export function useConsole() {
     connected,
     updateNotice,
     onDismissUpdate: handleDismissUpdate,
+    toolsOpen,
+    setToolsOpen,
+    activeToolPanel,
+    setActiveToolPanel,
+    toolPanels,
+    fetchToolPanels,
   };
 }
