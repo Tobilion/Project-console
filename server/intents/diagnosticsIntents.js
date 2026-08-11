@@ -63,4 +63,26 @@ export const DIAGNOSTICS_INTENTS = {
       'check the running process for errors', 'look for errors in the logs',
     ],
   },
+  // Phase 8 (2026-08-11): the two diagnostics long-deferred in the intent-taxonomy pass — now
+  // that the codebase-infra exists, both are read-only artifact analyzers (no linter/bundler
+  // ever runs): coverage parses existing lcov/summary reports, bundle size walks existing build
+  // output. Both answer "no artifact found" cleanly instead of implying the data exists.
+  'project.diagnostics.test_coverage_report': {
+    examples: [
+      'what is my test coverage', 'check test coverage', 'show test coverage',
+      'how covered are my tests', 'test coverage report', 'coverage report',
+      'do i have good test coverage', 'how much of my code is covered by tests',
+      'how well are my tests covering the code', 'are my tests covering everything',
+      'test coverage percentage', 'check my coverage numbers',
+    ],
+  },
+  'project.diagnostics.bundle_size_analysis': {
+    examples: [
+      'analyze bundle size', 'bundle size report', 'how big is my bundle',
+      'check the bundle size', 'bundle analysis', 'how large is the production bundle',
+      'what is my bundle size', 'bundle size check', 'analyze the production build',
+      'how big is the built output', 'analyze the build output',
+      'is my bundle too big',
+    ],
+  },
 };

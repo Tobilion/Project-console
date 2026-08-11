@@ -141,6 +141,14 @@ await handleBuiltinIntent(ws, 'project.diagnostics.dead_code', 'find dead code',
 eq('diagnostics leaf: dead_code answers (no symbol index on fixture)', ws.sent.length === 1 && ws.sent[0].type === 'answer' && /no symbol index/i.test(ws.sent[0].data), true);
 
 sent.length = 0;
+await handleBuiltinIntent(ws, 'project.diagnostics.test_coverage_report', 'what is my test coverage', proj, {});
+eq('diagnostics leaf: coverage answers no-artifact (fixture has none)', ws.sent.length === 1 && ws.sent[0].type === 'answer' && /No coverage report/i.test(ws.sent[0].data), true);
+
+sent.length = 0;
+await handleBuiltinIntent(ws, 'project.diagnostics.bundle_size_analysis', 'analyze bundle size', proj, {});
+eq('diagnostics leaf: bundle answers no-output (fixture has none)', ws.sent.length === 1 && ws.sent[0].type === 'answer' && /No build output/i.test(ws.sent[0].data), true);
+
+sent.length = 0;
 await handleBuiltinIntent(ws, 'git_branch_cleanup', 'clean up merged branches', proj, {});
 eq('git leaf: branch_cleanup on non-git project answers no-repo', ws.sent.length === 1 && ws.sent[0].type === 'answer' && (ws.sent[0].data.includes('not a git repository') || ws.sent[0].data.includes("isn't a git repository")), true);
 

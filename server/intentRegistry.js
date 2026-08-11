@@ -97,6 +97,8 @@ export const BUILTIN_INTENTS = new Set([
   'project.diagnostics.dead_code', 'project.diagnostics.circular_imports',
   'project.diagnostics.type_check', 'project.diagnostics.env_check',
   'project.diagnostics.log_errors', 'system.knowledge.cross_project_search',
+  // Phase 8 (2026-08-11): coverage + bundle-size artifact analyzers (builtinDiagnostics.js).
+  'project.diagnostics.test_coverage_report', 'project.diagnostics.bundle_size_analysis',
 ]);
 
 // Exported via matcher.js so localRouter.js's allowed-intent list is always drawn from exactly

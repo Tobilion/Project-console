@@ -9,6 +9,8 @@ const DEAD_CODE_MAX_LISTED = 25;
 const CIRCULAR_MAX_LISTED = 10;
 const LOG_ERROR_RE = /\b(error|exception|traceback|failed|fatal)\b/i;
 const LOG_MAX_LISTED = 20;
+const COVERAGE_MAX_LISTED = 10;
+const BUNDLE_MAX_LISTED = 8;
 
 function normPath(p) {
   return String(p).split(/[\\/]/).join('/');
@@ -206,6 +208,138 @@ export const diagnosticsHandlers = {
       if (errorLines.length > shown.length) msg += `\n\n(${errorLines.length} error-shaped line(s) total, showing the most recent ${shown.length}.)`;
       ws.send(JSON.stringify({ type: 'answer', data: msg }));
     }
+    return true;
+  },
+
+  // Phase 8 (2026-08-11): test-coverage report from EXISTING artifacts only — the handlers
+  // never run a test/coverage command (read-only diagnostics like the rest of this module).
+  'project.diagnostics.test_coverage_report': async (ws, action, input, project) => {
+    const LCOV_PATHS = ['coverage/lcov.info', '.coverage/lcov.info', 'lcov.info'];
+    const SUMMARY_PATHS = ['coverage/coverage-summary.json', 'coverage/coverage-final.json'];
+
+    // lcov.info record shape: SF <path>, LF <lines found>, LH <lines hit>, BRF/BRH optional.
+    function parseLcov(text) {
+      const files = [];
+      let cur = null;
+      for (const rawLine of text.split('\n')) {
+        const line = rawLine.trim();
+        if (line === 'end_of_record') {
+          if (cur?.sf && typeof cur.lf === 'number' && typeof cur.lh === 'number') files.push(cur);
+          cur = null;
+        } else if (line.startsWith('SF:')) {
+          cur = { sf: line.slice(3), lf: 0, lh: 0 };
+        } else if (cur && line.startsWith('LF:')) {
+          cur.lf = parseInt(line.slice(3), 10) || 0;
+        } else if (cur && line.startsWith('LH:')) {
+          cur.lh = parseInt(line.slice(3), 10) || 0;
+        }
+      }
+      return files;
+    }
+
+    // coverage-summary.json / coverage-final.json shape: { [file]: { lines: { total, covered } } }
+    function parseSummary(obj) {
+      const files = [];
+      for (const [file, data] of Object.entries(obj || {})) {
+        if (file === 'total' || !data?.lines) continue;
+        const total = data.lines.total || 0;
+        const covered = data.lines.covered || 0;
+        files.push({ sf: file, lf: total, lh: covered });
+      }
+      return files;
+    }
+
+    let files = [];
+    let source = null;
+    for (const p of LCOV_PATHS) {
+      try {
+        files = parseLcov(await fs.readFile(path.join(project.path, p), 'utf-8'));
+        if (files.length > 0) { source = p; break; }
+      } catch { /* try next candidate */ }
+    }
+    if (!source) {
+      for (const p of SUMMARY_PATHS) {
+        try {
+          files = parseSummary(JSON.parse(await fs.readFile(path.join(project.path, p), 'utf-8')));
+          if (files.length > 0) { source = p; break; }
+        } catch { /* try next candidate */ }
+      }
+    }
+    if (!source) {
+      ws.send(JSON.stringify({ type: 'answer', data: `No coverage report found in **[${project.name}]** — looked for \`coverage/lcov.info\`, \`coverage/coverage-summary.json\` and \`coverage-final.json\`. Run your test runner with coverage output first (e.g. \`npm test -- --coverage\`), then ask again.` }));
+      return true;
+    }
+
+    const withLines = files.filter((f) => f.lf > 0);
+    const totalFound = withLines.reduce((s, f) => s + f.lf, 0);
+    const totalHit = withLines.reduce((s, f) => s + f.lh, 0);
+    const pct = (n) => (n > 0 ? `${(n * 100).toFixed(1)}%` : '0%');
+    let msg = `### Test coverage — [${project.name}]\n\nOverall: **${pct(totalHit / totalFound)}** (${totalHit}/${totalFound} lines) — from \`${source}\`\n`;
+    if (withLines.length > 0) {
+      const worst = [...withLines].sort((a, b) => (a.lh / a.lf) - (b.lh / b.lf)).slice(0, COVERAGE_MAX_LISTED);
+      msg += `\nLowest-covered files:\n`;
+      msg += worst.map((f) => `- ${pct(f.lh / f.lf)} \`${f.sf}\` (${f.lh}/${f.lf})`).join('\n');
+      if (withLines.length > worst.length) msg += `\n- …and ${withLines.length - worst.length} more files`;
+    }
+    msg += `\n\n(Based on existing coverage artifacts — nothing was run.)`;
+    ws.send(JSON.stringify({ type: 'answer', data: msg }));
+    return true;
+  },
+
+  // Phase 8 (2026-08-11): bundle-size analysis from EXISTING build output — walks the common
+  // output dirs and lists the largest assets + a total. Never triggers a build; a project with
+  // no build output gets a clean "build first" answer instead of a guess.
+  'project.diagnostics.bundle_size_analysis': async (ws, action, input, project) => {
+    const BUNDLE_DIRS = ['dist', 'build', 'out', 'public/build', 'web-build'];
+    const BUNDLE_EXTS = new Set(['.js', '.cjs', '.mjs', '.css']);
+    const BUNDLE_MAX_DEPTH = 6;
+    const BUNDLE_MAX_FILES = 5000;
+
+    const assets = [];
+    let visited = 0;
+
+    async function walk(dir, depth) {
+      if (depth > BUNDLE_MAX_DEPTH || visited > BUNDLE_MAX_FILES) return;
+      let entries;
+      try {
+        entries = await fs.readdir(dir, { withFileTypes: true });
+      } catch {
+        return; // dir missing/unreadable — treat as empty
+      }
+      for (const entry of entries) {
+        if (visited > BUNDLE_MAX_FILES) return;
+        const full = path.join(dir, entry.name);
+        if (entry.isDirectory()) {
+          if (entry.name === 'node_modules' || entry.name.startsWith('.')) continue;
+          await walk(full, depth + 1);
+        } else if (entry.isFile()) {
+          visited++;
+          if (BUNDLE_EXTS.has(path.extname(entry.name).toLowerCase())) {
+            try {
+              const stat = await fs.stat(full);
+              assets.push({ name: path.relative(project.path, full).split(/[\\/]/).join('/'), size: stat.size });
+            } catch { /* raced deletion — skip */ }
+          }
+        }
+      }
+    }
+
+    for (const d of BUNDLE_DIRS) {
+      await walk(path.join(project.path, d), 1);
+    }
+    if (assets.length === 0) {
+      ws.send(JSON.stringify({ type: 'answer', data: `No build output found in **[${project.name}]** (looked in ${BUNDLE_DIRS.join(', ')}). Build the app first, then ask again — this analyzes existing artifacts only, it never runs a build.` }));
+      return true;
+    }
+
+    const total = assets.reduce((s, a) => s + a.size, 0);
+    const fmt = (n) => (n > 1048576 ? `${(n / 1048576).toFixed(2)} MB` : `${(n / 1024).toFixed(1)} KB`);
+    const largest = [...assets].sort((a, b) => b.size - a.size).slice(0, BUNDLE_MAX_LISTED);
+    let msg = `### Bundle size — [${project.name}]\n\n**${fmt(total)} total** across ${assets.length} asset(s) in ${BUNDLE_DIRS.join(', ')}.\n\nLargest assets:\n`;
+    msg += largest.map((a) => `- ${fmt(a.size)} \`${a.name}\``).join('\n');
+    if (assets.length > largest.length) msg += `\n- …and ${assets.length - largest.length} more`;
+    msg += `\n\n(Existing build output only — nothing was built or executed.)`;
+    ws.send(JSON.stringify({ type: 'answer', data: msg }));
     return true;
   },
 };
