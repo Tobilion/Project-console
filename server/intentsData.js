@@ -13,6 +13,7 @@ import { MISC_INTENTS } from './intents/miscIntents.js';
 import { DIAGNOSTICS_INTENTS } from './intents/diagnosticsIntents.js';
 import { GENERAL_FILE_INTENTS } from './intents/generalFileIntents.js';
 import { TOOL_PANEL_INTENTS } from './intents/toolPanelIntents.js';
+import { PDF_INTENTS } from './intents/pdfIntents.js';
 
 export const INTENTS = {
   ...CHIT_CHAT_INTENTS,
@@ -24,4 +25,5 @@ export const INTENTS = {
   ...DIAGNOSTICS_INTENTS,
   ...GENERAL_FILE_INTENTS,
   ...TOOL_PANEL_INTENTS,
+  ...PDF_INTENTS,
 };

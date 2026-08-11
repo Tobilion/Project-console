@@ -98,6 +98,20 @@ export const PRE_SEMANTIC_OVERRIDES = [
   // calculation request, never a request to open the calculator panel — literal override
   // restores the baseline. Deliberately the exact literal shape, nothing looser.
   { intent: 'system.chit_chat.calculate', pattern: /^run\s+(?:the\s+|this\s+)?calculation$/i },
+  // Phase 3 (2026-08-11, probe-verified live): "merge alpha.pdf and beta.pdf into
+  // combined.pdf" routed to system.chit_chat.deploy — the git/deploy example clusters own
+  // every "merge ... into ..." shape and the .pdf filenames carry no embedding weight
+  // against them. A pdf operation verb + a pdf mention (.pdf extension, the word pdf, or
+  // pdf file(s)) is unambiguous in this app's domain — git never names pdf files, and the
+  // PDF toolkit is the only consumer of these shapes. Verb-to-intent mapping: merge/combine/
+  // join → pdf.merge; split → pdf.split; extract with page(s) → pdf.extract_pages, with
+  // text → pdf.extract_text; watermark/stamp → pdf.watermark. Lookaheads keep each rule
+  // anchored on both the verb AND the pdf mention, in any order.
+  { intent: 'pdf.merge', pattern: /\b(?:merge|combine|join)\b(?=[\s\S]*\b(?:pdfs?|pdf\s+files?|[\w.-]+\.pdf)\b)/i },
+  { intent: 'pdf.split', pattern: /\bsplit\b(?=[\s\S]*\b(?:pdfs?|pdf\s+files?|[\w.-]+\.pdf)\b)/i },
+  { intent: 'pdf.extract_pages', pattern: /\bextract\b(?=[\s\S]*\b(?:pdfs?|pdf\s+files?|[\w.-]+\.pdf)\b)(?=[\s\S]*\bpages?\b)/i },
+  { intent: 'pdf.extract_text', pattern: /\bextract\b(?=[\s\S]*\b(?:pdfs?|pdf\s+files?|[\w.-]+\.pdf)\b)(?=[\s\S]*\btext\b)/i },
+  { intent: 'pdf.watermark', pattern: /\b(?:watermark|stamp)\b(?=[\s\S]*\b(?:pdfs?|pdf\s+files?|[\w.-]+\.pdf)\b)/i },
 ];
 
 /**

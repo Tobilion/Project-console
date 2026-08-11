@@ -15,10 +15,10 @@ export const TOOL_PANELS = [
   {
     id: 'pdf-tools',
     name: 'PDF Tools',
-    description: 'Merge, split, compress and convert PDFs by dropping files',
+    description: 'Merge, split, extract text or pages, and watermark PDFs',
     icon: 'file-text',
     available: true,
-    chatHint: 'none yet — the PDF trigger commands land in a later update',
+    chatHint: 'merge these pdfs into combined.pdf',
   },
 ];
 

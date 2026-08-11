@@ -71,6 +71,8 @@ async function buildFixtures() {
   await fs.writeFile(path.join(app, 'src', 'lib', 'util.js'),
     'export function greet(name) {}\nfunction helper() {}\n');
   await fs.writeFile(path.join(app, 'src', 'big.py'), 'x'.repeat(5000));
+  await fs.mkdir(path.join(app, 'docs'), { recursive: true });
+  await fs.writeFile(path.join(app, 'docs', 'guide.pdf'), 'fake-pdf-bytes');
   await fs.writeFile(path.join(app, 'node_modules', 'junk', 'junk.py'), '# TODO: must be ignored\n');
   await fs.writeFile(path.join(app, '.hidden', 'secret.py'), '# TODO: must be ignored too\n');
   await fs.writeFile(path.join(trunc, 'package.json'), JSON.stringify({ deps: { pad: 'x'.repeat(2600) } }));
@@ -179,6 +181,7 @@ try {
   eq('hasGit', appIdx.hasGit, true);
   eq('hasConfig', appIdx.hasConfig, true);
   eq('hasRealCode', appIdx.hasRealCode, true);
+  eq('documentCount counts pdfs only', appIdx.documentCount, 1);
   eq('hasCli', appIdx.hasCli, false);
   eq('hasTests', appIdx.hasTests, false);
   eq('languages', appIdx.languages, ['JavaScript (2 files)', 'JSON (1 files)', 'Python (1 files)']);
@@ -229,11 +232,11 @@ try {
   const recent = await scans.findRecentActivity(fixtures.app, 5);
   const sorted = recent.every((f, i) => i === 0 || recent[i - 1].mtime >= f.mtime);
   eq('recent desc order', sorted, true);
-  eq('recent cap', recent.length, 4);
+  eq('recent cap', recent.length, 5);
   eq('hasGitRepo true (fixture .git dir)', await scans.hasGitRepo(fixtures.app), true);
   eq('hasGitRepo false (no .git)', await scans.hasGitRepo(fixtures.trunc), false);
   const skippedDirs = appTree.filter((e) => e.type === 'dir').map((e) => norm(e.path));
-  eq('tree skips node_modules/.git/.hidden', skippedDirs, ['src', 'src/lib']);
+  eq('tree skips node_modules/.git/.hidden', skippedDirs, ['docs', 'src', 'src/lib']);
 
   console.log('\n=== CODE-INDEX (Phase 7 chunker + store, no embeddings) ===');
   const chunker = await import(pathToFileURL(base + 'codeIndex/codeIndexChunker.js').href);

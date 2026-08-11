@@ -49,6 +49,14 @@ const CODE_EXTS = new Set([
   '.js', '.jsx', '.ts', '.tsx', '.mjs', '.cjs', '.py',
   '.go', '.rs', '.java', '.rb', '.php', '.cs'
 ]);
+
+// Phase 3 (2026-08-11): document-file extensions that make a folder recognizable as a project
+// even with no code/config/docs at all — a PDF-only "general workspace" folder must be
+// discoverable for the PDF toolkit (merge/split/extract/watermark) to work on it. Kept to .pdf
+// only on purpose: the roadmap's document-toolkit phase owns the rest (docx/xlsx/...), and this
+// list doubles as the scanner's recognition signal — widening it widens project discovery too,
+// so it must stay deliberate. Not part of REAL_CODE_EXTS — document folders are never 'dev'.
+const DOCUMENT_EXTS = new Set(['.pdf']);
 const MAX_REPO_MAP_FILES = 150; // cap how many files get read/scanned per index pass
 const MAX_FILE_READ_BYTES = 20000; // don't regex-scan huge generated/bundled files in full
 const MAX_SIGNATURES_PER_FILE = 12;
@@ -208,5 +216,6 @@ export {
   JS_IMPORT_PATTERNS, PY_IMPORT_PATTERNS,
   MAX_ROUTES_PER_FILE, MAX_TOTAL_ROUTES, EXPRESS_ROUTE_RE, FLASK_ROUTE_RE, FASTAPI_ROUTE_RE, DJANGO_PATH_RE,
   REAL_CODE_EXTS, NPM_FRAMEWORK_MAP, PY_FRAMEWORK_MAP, MONOREPO_MANIFESTS,
+  DOCUMENT_EXTS,
   TODO_RE, MAX_TODO_FILES, MAX_TODO_RESULTS,
 };

@@ -40,9 +40,15 @@ const { normalizeGithubPageUrl } = await import(pathToFileURL(base + 'wsHandlers
 const { diagnosticsHandlers } = await import(pathToFileURL(base + 'wsHandlers/builtinDiagnostics.js').href);
 const { generalFileHandlers, performTidy, planDuplicateDeletes, performDuplicateDeletes, extractFindQuery } = await import(pathToFileURL(base + 'wsHandlers/builtinGeneralFiles.js').href);
 const { toolsHandlers } = await import(pathToFileURL(base + 'wsHandlers/builtinTools.js').href);
+const { pdfHandlers } = await import(pathToFileURL(base + 'wsHandlers/builtinPdfTools.js').href);
+const {
+  parsePdfNames, parsePdfOutput, parsePageSpec, extractWatermarkText,
+  resolvePdfInput, listPdfFiles, mergePdfs, extractPages, watermarkPdf,
+} = await import(pathToFileURL(base + 'pdfKit.js').href);
+const { PDFDocument } = await import('pdf-lib');
 const { revertAction, listActions } = await import(pathToFileURL(base + 'actionHistory.js').href);
 const { BUILTIN_INTENTS, WORKSPACE_DEV_ONLY_INTENTS, intentWorkspaceEligible } = await import(pathToFileURL(base + 'intentRegistry.js').href);
-const { detectWorkspaceType } = await import(pathToFileURL(base + 'projectScanHelpers.js').href);
+const { detectWorkspaceType, isRecognizableByCodeAlone } = await import(pathToFileURL(base + 'projectScanHelpers.js').href);
 const { handleModeCommand } = await import(pathToFileURL(base + 'wsHandlers/connectionModeAdmin.js').href);
 const { INTENTS } = await import(pathToFileURL(base + 'intentsData.js').href);
 const { state, pendingConfirmations } = await import(pathToFileURL(base + 'state.js').href);
@@ -58,7 +64,7 @@ function eq(label, got, expect) {
   else if (!ok) console.log(`  FAIL ${label}\n    expected: ${e}\n    got:      ${g}`);
 }
 
-const merged = { ...gitHandlers, ...chitChatHandlers, ...fileNpmHandlers, ...projectKnowledgeHandlers, ...projectContextHandlers, ...projectActionHandlers, ...diagnosticsHandlers, ...generalFileHandlers, ...toolsHandlers };
+const merged = { ...gitHandlers, ...chitChatHandlers, ...fileNpmHandlers, ...projectKnowledgeHandlers, ...projectContextHandlers, ...projectActionHandlers, ...diagnosticsHandlers, ...generalFileHandlers, ...toolsHandlers, ...pdfHandlers };
 const handlerKeys = Object.keys(merged).sort();
 const builtinKeys = [...BUILTIN_INTENTS].sort();
 const intentKeys = Object.keys(INTENTS).sort();
@@ -213,11 +219,19 @@ eq('workspace: no workspaceType -> everything eligible', intentWorkspaceEligible
 const idxDev = { totalFiles: 3, hasRealCode: true, keyFiles: {}, hasGit: false };
 const idxGitOnly = { totalFiles: 1, hasRealCode: false, keyFiles: {}, hasGit: true };
 const idxEmpty = { totalFiles: 0, hasRealCode: false, keyFiles: {}, hasGit: false };
+// Phase 3 (2026-08-11): document-only folders are recognizable (PDF toolkit) but classify
+// 'general', never 'dev'; a code folder carrying PDFs stays 'dev'.
+const idxPdfOnly = { totalFiles: 2, hasRealCode: false, keyFiles: {}, hasGit: false, documentCount: 2 };
+const idxCodePlusPdf = { totalFiles: 5, hasRealCode: true, keyFiles: {}, hasGit: false, documentCount: 2 };
 eq('detect: code folder (hasRealCode) -> dev', detectWorkspaceType(null, idxDev), 'dev');
 eq('detect: git-only folder -> dev', detectWorkspaceType(null, idxGitOnly), 'dev');
 eq('detect: empty doc folder -> general', detectWorkspaceType(null, idxEmpty), 'general');
 eq('detect: override wins over heuristic', detectWorkspaceType({ workspaceType: 'general' }, idxDev), 'general');
 eq('detect: invalid override dropped, heuristic used', detectWorkspaceType({ workspaceType: 'prod' }, idxDev), 'dev');
+eq('detect: pdf-only folder -> general (Phase 3)', detectWorkspaceType(null, idxPdfOnly), 'general');
+eq('detect: code + pdfs stays dev (Phase 3)', detectWorkspaceType(null, idxCodePlusPdf), 'dev');
+eq('detect: pdf-only folder is recognizable (Phase 3)', isRecognizableByCodeAlone(idxPdfOnly), true);
+eq('detect: junk-only folder still unrecognizable', isRecognizableByCodeAlone({ totalFiles: 2, hasRealCode: false, keyFiles: {}, hasGit: false }), false);
 
 // The admin tier WRITES console.config.json, so it is exercised against a real temp dir (the
 // C:/tmp/nowhere fixture above must never receive files). broadcast() is a no-op here — the
@@ -315,6 +329,62 @@ if (delPending) {
   eq('duplicates revert: deleted copy restored', restored.ok === true && fs.existsSync(path.join(gRoot, 'dup-b.txt')) && fs.readFileSync(path.join(gRoot, 'dup-b.txt'), 'utf-8') === 'same-content', true);
 }
 fs.rmSync(gRoot, { recursive: true, force: true });
+
+// --- PDF TOOLKIT (Phase 3, 2026-08-11) ---------------------------------------
+// Dispatch shapes against the C:/tmp/nowhere fixture (no PDFs exist there, so every answer is
+// deterministic and no files are ever touched): parameter-less intents open the panel with
+// the CLI-usable guide, named-but-missing files answer a clean error.
+sent.length = 0;
+await handleBuiltinIntent(ws, 'pdf.merge', 'merge these pdfs', proj, {});
+eq('pdf leaf: merge without names opens the panel + guide', ws.sent.length === 1 && ws.sent[0].type === 'answer' && ws.sent[0].openPanel === 'pdf-tools' && /merge these pdfs into combined\.pdf/.test(ws.sent[0].data), true);
+sent.length = 0;
+await handleBuiltinIntent(ws, 'pdf.extract_text', 'extract text from report.pdf', proj, {});
+eq('pdf leaf: extract_text with a missing file answers not-found', ws.sent.length === 1 && ws.sent[0].type === 'answer' && /Could not find/.test(ws.sent[0].data), true);
+sent.length = 0;
+await handleBuiltinIntent(ws, 'pdf.watermark', 'watermark the pdf with draft', proj, {});
+eq('pdf leaf: watermark without names opens the panel + guide', ws.sent.length === 1 && ws.sent[0].type === 'answer' && ws.sent[0].openPanel === 'pdf-tools' && /watermark/.test(ws.sent[0].data), true);
+
+// Parse-contract unit shapes (independent of the fs fixtures):
+eq('pdf parse: names exclude the output clause', parsePdfNames('merge a.pdf and b.pdf into c.pdf'), ['a.pdf', 'b.pdf']);
+eq('pdf parse: names from a bare merge', parsePdfNames('merge these pdfs'), []);
+eq('pdf parse: output captured', parsePdfOutput('merge a.pdf and b.pdf into combined.pdf'), 'combined.pdf');
+eq('pdf parse: no output -> null', parsePdfOutput('split report.pdf at page 5'), null);
+eq('pdf parse: per-page spec', parsePageSpec('split report.pdf into one file per page'), { kind: 'perPage' });
+eq('pdf parse: range spec', parsePageSpec('extract pages 2-5 from x.pdf'), { kind: 'range', from: 2, to: 5 });
+eq('pdf parse: at-page spec', parsePageSpec('split report.pdf at page 3'), { kind: 'at', page: 3 });
+eq('pdf parse: no page spec -> null', parsePageSpec('merge these pdfs'), null);
+eq('pdf parse: watermark text after with', extractWatermarkText('watermark report.pdf with confidential'), 'confidential');
+eq('pdf parse: watermark text strips the output clause first', extractWatermarkText('watermark report.pdf with draft into out.pdf'), 'draft');
+eq('pdf parse: watermark without with -> null', extractWatermarkText('watermark report.pdf'), null);
+
+// Behavior smoke against a real temp dir (same pattern as the general-file smoke): build real
+// PDFs with pdf-lib, run merge/extract/watermark through pdfKit, and revert the journaled
+// file_write entries so the created outputs are deleted.
+const pdfRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'console-pdf-'));
+async function makeTestPdf(name, pages) {
+  const doc = await PDFDocument.create();
+  for (let i = 0; i < pages; i++) doc.addPage([200, 200]);
+  fs.writeFileSync(path.join(pdfRoot, name), Buffer.from(await doc.save()));
+}
+await makeTestPdf('alpha.pdf', 2);
+await makeTestPdf('beta.pdf', 1);
+eq('pdf list: fixture PDFs listed sorted', listPdfFiles(pdfRoot).map((f) => f.name), ['alpha.pdf', 'beta.pdf']);
+eq('pdf resolve: exact name', resolvePdfInput(pdfRoot, 'alpha.pdf').name, 'alpha.pdf');
+eq('pdf resolve: stem match', resolvePdfInput(pdfRoot, 'alpha').name, 'alpha.pdf');
+eq('pdf resolve: unknown -> null', resolvePdfInput(pdfRoot, 'nope.pdf'), null);
+const pdfMerged = await mergePdfs(pdfRoot, ['alpha.pdf', 'beta.pdf'], 'combined.pdf');
+eq('pdf merge: output created with 3 pages', pdfMerged.ok === true && pdfMerged.pages === 3 && fs.existsSync(path.join(pdfRoot, 'combined.pdf')), true);
+const extracted = await extractPages(pdfRoot, 'alpha.pdf', 1, 1, 'excerpt.pdf');
+eq('pdf extract pages: single-page excerpt', extracted.ok === true && extracted.pages === 1 && fs.existsSync(path.join(pdfRoot, 'excerpt.pdf')), true);
+const wm = await watermarkPdf(pdfRoot, 'beta.pdf', 'confidential', 'beta-wm.pdf');
+eq('pdf watermark: output created', wm.ok === true && fs.existsSync(path.join(pdfRoot, 'beta-wm.pdf')), true);
+const noOverwrite = await mergePdfs(pdfRoot, ['alpha.pdf', 'beta.pdf'], 'combined.pdf');
+eq('pdf safety: existing output refused, never overwritten', noOverwrite.ok === false && /already exists/.test(noOverwrite.error), true);
+const createdActions = listActions(pdfRoot).filter((a) => a.type === 'file_write' && a.existed === false);
+eq('pdf journal: created files journaled as file_write existed:false', createdActions.length === 3, true);
+const revertOne = await revertAction(pdfRoot, createdActions[0].id);
+eq('pdf revert: revert deletes the created output', revertOne.ok === true && !fs.existsSync(path.join(pdfRoot, createdActions[0].path)), true);
+fs.rmSync(pdfRoot, { recursive: true, force: true });
 
 console.log(`check-handlers: ${total} checks, ${failed} failed`);
 process.exit(failed ? 1 : 0);

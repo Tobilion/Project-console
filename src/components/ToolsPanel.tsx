@@ -1,5 +1,6 @@
 import { Calculator, FileText, LayoutGrid, ArrowLeft } from 'lucide-react';
-import type { ToolPanelDef } from '../types';
+import type { ToolPanelDef, Project } from '../types';
+import { PdfToolsPanel } from './PdfToolsPanel';
 
 // Phase 1.5 (UPGRADE-ROADMAP.md, 2026-08-11): the shared interactive "Tools" surface — a
 // card-grid launcher (icon + name + one-line description per registered tool, served by
@@ -18,12 +19,33 @@ interface ToolsPanelProps {
   activePanel: string | null;
   onOpenPanel: (id: string) => void;
   onClose: () => void;
+  /** Active project for the tool panels that work on project files (PDF Tools). */
+  project: Project | null;
+  onSendMessage: (text: string) => void;
 }
 
-export function ToolsPanel({ panels, activePanel, onOpenPanel, onClose }: ToolsPanelProps) {
+export function ToolsPanel({ panels, activePanel, onOpenPanel, onClose, project, onSendMessage }: ToolsPanelProps) {
   const active = activePanel ? panels.find(p => p.id === activePanel) : null;
 
   if (active) {
+    if (active.id === 'pdf-tools') {
+      return (
+        <div className="h-full flex flex-col">
+          <div className="flex items-center gap-2 mb-3 shrink-0">
+            <button
+              onClick={() => onOpenPanel('')}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-fg-dim hover:text-fg-strong bg-scrim-faint rounded-lg border border-border-soft transition-colors"
+              title="Back to the tool grid"
+            >
+              <ArrowLeft size={14} /> Tools
+            </button>
+          </div>
+          <div className="flex-1 min-h-0">
+            <PdfToolsPanel project={project} onSendMessage={onSendMessage} />
+          </div>
+        </div>
+      );
+    }
     const Icon = ICONS[active.icon] || LayoutGrid;
     return (
       <div className="h-full overflow-y-auto p-4">

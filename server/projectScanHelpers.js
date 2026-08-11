@@ -30,7 +30,12 @@ import path from 'path';
 export function isRecognizableByCodeAlone(codebaseIndex) {
   if (!codebaseIndex || codebaseIndex.totalFiles === 0) return false;
   const hasAnyKeyFile = codebaseIndex.keyFiles && Object.keys(codebaseIndex.keyFiles).length > 0;
-  return codebaseIndex.hasRealCode || hasAnyKeyFile || codebaseIndex.hasGit;
+  // Phase 3 (2026-08-11): a folder holding only document files (DOCUMENT_EXTS — .pdf today) is
+  // recognizable too — a PDF-only general-workspace folder must be discoverable for the PDF
+  // toolkit. Deliberately separate from the code signals below: detectWorkspaceType() maps it to
+  // 'general', never 'dev'.
+  return codebaseIndex.hasRealCode || hasAnyKeyFile || codebaseIndex.hasGit
+    || (codebaseIndex.documentCount || 0) > 0;
 }
 
 // WorkspaceType classification (Phase 1 of UPGRADE-ROADMAP.md, 2026-08-11): 'dev' | 'general',
@@ -49,7 +54,15 @@ export function detectWorkspaceType(config, codebaseIndex) {
   }
   // Same recognition rule the code-only discovery fallback uses: real code, a known key
   // config file (package.json/Cargo.toml/etc.), or a real .git dir marks a folder 'dev'.
-  return isRecognizableByCodeAlone(codebaseIndex) ? 'dev' : 'general';
+  // Phase 3 (2026-08-11): document-only folders (PDFs) are recognizable for the PDF toolkit
+  // but are NOT dev — they classify 'general'. The distinction is explicit here (rather than
+  // delegating to isRecognizableByCodeAlone, which now includes documents) so a doc signal
+  // can never flip a folder to 'dev'.
+  const idx = codebaseIndex || {};
+  const hasCodeSignal = idx.hasRealCode
+    || (idx.keyFiles && Object.keys(idx.keyFiles).length > 0)
+    || idx.hasGit;
+  return hasCodeSignal ? 'dev' : 'general';
 }
 
 // `chatReplies` is an OPTIONAL console.config.json top-level key (Phase 4.5 chit-chat

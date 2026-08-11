@@ -389,6 +389,50 @@ const BATTERIES = [
       ['delete duplicates keep newest', 'BUILTIN=general.files.duplicates_delete'],
     ],
   },
+  {
+    // Phase 3 (2026-08-11): the .pdf-bearing merge/extract/watermark shapes are pinned by
+    // PRE_SEMANTIC_OVERRIDES (preSemanticOverrides.js) — "merge alpha.pdf and beta.pdf into
+    // combined.pdf" was confirmed live routing to system.chit_chat.deploy, whose example
+    // clusters own every "merge ... into ..." shape. The override makes these rows
+    // machine-independent; the no-pdf guard rows below stay embedding-driven by design.
+    name: 'PDF (Phase 3 PDF toolkit intents)',
+    items: [
+      // Merge family — every shape lands on pdf.merge, not git_add/deploy.
+      ['merge these pdfs into combined.pdf', 'BUILTIN=pdf.merge'],
+      ['merge a.pdf and b.pdf into merged.pdf', 'BUILTIN=pdf.merge'],
+      ['merge alpha.pdf and beta.pdf into combined.pdf', 'BUILTIN=pdf.merge'],
+      ['merge the pdf files into one file', 'BUILTIN=pdf.merge'],
+      ['merge pdfs', 'BUILTIN=pdf.merge'],
+      ['combine the pdfs', 'BUILTIN=pdf.merge'],
+      // Split family.
+      ['split this pdf into one file per page', 'BUILTIN=pdf.split'],
+      ['split report.pdf at page 5', 'BUILTIN=pdf.split'],
+      ['split the pdf at page 3', 'BUILTIN=pdf.split'],
+      ['split this pdf into single pages', 'BUILTIN=pdf.split'],
+      // Extract-text family — .pdf-suffixed and pdf-noun shapes only; ".py"-suffixed inputs
+      // stay away (verified: "extract text from main.py" routes to entry_point, not here).
+      ['extract text from report.pdf', 'BUILTIN=pdf.extract_text'],
+      ['extract the text from this pdf', 'BUILTIN=pdf.extract_text'],
+      ['pull the text out of this pdf', 'BUILTIN=pdf.extract_text'],
+      // Extract-pages family.
+      ['extract pages 2-5 from report.pdf into excerpt.pdf', 'BUILTIN=pdf.extract_pages'],
+      ['extract page 1 from the pdf into cover.pdf', 'BUILTIN=pdf.extract_pages'],
+      ['extract a range of pages from the pdf into range.pdf', 'BUILTIN=pdf.extract_pages'],
+      // Watermark family.
+      ['watermark report.pdf with confidential', 'BUILTIN=pdf.watermark'],
+      ['watermark the pdf with draft', 'BUILTIN=pdf.watermark'],
+      ['add a watermark to this pdf', 'BUILTIN=pdf.watermark'],
+      // Guards: non-PDF senses of the same verbs must not land on the toolkit (probe-verified
+      // 2026-08-11). Name-less pdf-verb inputs routing here is fine — the handlers only act on
+      // a resolved .pdf file and otherwise open the panel (Phase 1.5 convention).
+      ['merge this branch into main', 'BUILTIN=project.context.entry_point'],
+      ['merge my changes', 'BUILTIN=git_add'],
+      ['extract the zip file', 'BUILTIN=project.context.file_count'],
+      ['extract the archive', 'BUILTIN=project.context.structure'],
+      ['split the window', 'BUILTIN=project.context.structure'],
+      ['split the project into parts', 'BUILTIN=project.knowledge.architecture'],
+    ],
+  },
 ];
 
 await semanticMatcher.initialize();

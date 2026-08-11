@@ -350,24 +350,71 @@ npm run lint    # tsc --noEmit
 - `server/toolPanelRegistry.js` + `server/routes/toolPanelRoutes.js` — Phase 1.5 (2026-08-11,
   shared interactive Tool Panel architecture): the server-driven interactive-tools registry
   (`TOOL_PANELS`: calculator, pdf-tools — `getToolPanels()`/`getToolPanel()`, REST
-  `GET /api/tool-panels` mounted in server/index.js). Panels are placeholders today; later
-  phases (3: PDF, 5/6: calculator) fill them in. Wire contract: intent-data entries carry an
-  `opensPanel` tag (see `server/intents/toolPanelIntents.js`), and the opener handlers in
+  `GET /api/tool-panels` mounted in server/index.js). PDF Tools is a real panel since Phase 3
+  (see pdfKit.js entry below); Calculator is still a placeholder (Phase 6 fills it in). Wire
+  contract: intent-data entries carry an `opensPanel` tag (see
+  `server/intents/toolPanelIntents.js` + pdfIntents.js), and the opener handlers in
   `server/wsHandlers/builtinTools.js` (`system.tools.open_calculator` /
   `system.tools.open_pdf_tools`, registered in BUILTIN_INTENTS, NOT dev-only) send the normal
   `answer` message with an ADDITIVE `openPanel` field — no new WS type, no protocol change.
   The answer text is always CLI-usable (calculator handler also sends `suggestions` chips
-  ["calculate 15% of 80","calculate 340 / 4"]; PDF handler is plain text with no chips, and
-  its CLI-usable chat equivalents arrive in a later phase). `server/cli-client.js`'s `answer`
-  case permanently ignores `openPanel` — deliberate: the CLI is text-only, the comment in
-  that case documents the gap. preSemanticOverrides.js carries the `^run (the|this)?
+  ["calculate 15% of 80","calculate 340 / 4"]; the pdf.* handlers send the operation GUIDE
+  text with openPanel when the input lacks parameters, so typing "merge pdfs" lands in the
+  panel while "merge a.pdf and b.pdf into c.pdf" executes in chat). `server/cli-client.js`'s
+  `answer` case permanently ignores `openPanel` — deliberate: the CLI is text-only, the
+  comment in that case documents the gap. preSemanticOverrides.js carries the `^run (the|this)?
   calculation$` → system.chit_chat.calculate literal so the calculator opener's examples
-  can't steal the documented "run the calculation" drift.
-- Frontend: `src/components/ToolsPanel.tsx` (card grid → dedicated placeholder panel view with
-  a back button), `useConsole.ts` toolPanel state cluster (`toolsOpen`/`activeToolPanel`/
+  can't steal the documented "run the calculation" drift, plus the pdf-verb + pdf-mention
+  rules below.
+- Frontend: `src/components/ToolsPanel.tsx` (card grid → dedicated panel view with a back
+  button — renders `PdfToolsPanel` for 'pdf-tools', placeholder for anything else),
+  `useConsole.ts` toolPanel state cluster (`toolsOpen`/`activeToolPanel`/
   `toolPanels` + `fetchToolPanels`), `wsMessageCases.ts` answerCase reads `payload.openPanel`
   and opens the panel, App.tsx Tools view (header Tools button only when a General-workspace
   project is active) with per-project last-open persistence under `console.toolPanelByProject`.
+- `server/pdfKit.js` + `server/routes/pdfRoutes.js` + `server/wsHandlers/builtinPdfTools.js` +
+  `server/intents/pdfIntents.js` — Phase 3 (2026-08-11, PDF toolkit, all live): the pure
+  operations core (pdf-lib for build/split/watermark, pdf-parse v2 for text — both real
+  dependencies added 2026-08-11), the chat-side trigger handlers (five intents:
+  `pdf.merge`/`pdf.split`/`pdf.extract_text`/`pdf.extract_pages`/`pdf.watermark`, all tagged
+  `opensPanel: 'pdf-tools'`, NOT in WORKSPACE_DEV_ONLY_INTENTS), and the REST surface for the
+  panel (`GET /api/projects/:id/pdf-files` — project-relative .pdf list; `GET
+  /api/projects/:id/file?path=` — project-scoped download/view via the same
+  createResolveSafe escape rejection the file tools use; `POST /api/projects/:id/reveal` —
+  OS "show in folder"). Safety: extract_text is read-only and answers immediately; every
+  write op goes through the standard confirm flow (pendingConfirmations `pdfOp` record,
+  consumed in connectionConfirm.js — checkpoint first, then the pdfKit.js op) and journals
+  each created file via appendAction as `file_write` with `existed: false`, so `revert
+  action <id>` deletes it. Output files are NEVER overwritten (refuseExistingOutput — a
+  binary pre-image can't be journaled, so an overwrite would be unrevertable); the refusal
+  is an `answer` (same channel as the handler's own refusals, verified live). Caps:
+  MAX_PDF_FILES 200, MAX_MERGE_INPUTS 10, MAX_PDF_BYTES 150MB, MAX_TOTAL_PAGES 2000, preview
+  cap 4000 chars. `parsePdfNames`/`parsePdfOutput`/`parsePageSpec`/`extractWatermarkText`/
+  `resolvePdfInput` (stem match ≥4 chars) are pure and covered by checkHandlerCoverage
+  unit rows. The interactive panel (`src/components/PdfToolsPanel.tsx`) is a thin
+  file-picking layer ONLY: every Run button composes the exact trigger-command line the chat
+  already understands and sends it through the normal WS path — confirm cards, answers and
+  journaling stay in the terminal as the single source of truth (same contract as
+  Dashboard's Run/Stop buttons). Panel features: project PDF list with per-file download +
+  reveal, merge multi-select chips + output name, split mode radios (per page / around page
+  N), extract-text, page-range extract with optional output name, watermark text. Output
+  names are sanitized client-side (path separators / shell-hostile chars stripped).
+- Phase 3 scanner recognition: `codebaseData.js` gained `DOCUMENT_EXTS` (`.pdf` only,
+  deliberately — it doubles as a project-discovery signal and must stay narrow) →
+  codebaseIndexer counts `documentCount` → `isRecognizableByCodeAlone` includes
+  document-only folders (a PDF-only folder pasted as the scan target must resolve to itself
+  via the container scan's `hasRootPdf` check in projectScanContainer.js, not to zero
+  projects) — but `detectWorkspaceType` deliberately does NOT count documents as a 'dev'
+  signal, so a PDF-only folder classifies 'general', never 'dev'. Confirmed live: fixture
+  with alpha.pdf/beta.pdf/notes.txt → single project, workspaceType 'general'.
+- Phase 3 matcher guard: preSemanticOverrides.js carries five literal rules — a pdf
+  operation verb (merge/combine/join, split, extract, watermark/stamp) PLUS a pdf mention
+  (.pdf extension, the word pdf, or "pdf file(s)"), lookahead-anchored in either order, maps
+  extract+pages → extract_pages and extract+text → extract_text. Confirmed live 2026-08-11:
+  "merge alpha.pdf and beta.pdf into combined.pdf" routed to system.chit_chat.deploy (the
+  git/deploy clusters own every "merge ... into ..." shape) before the override; now pinned.
+  Non-pdf senses of the same verbs are untouched (battery rows: "merge this branch into
+  main" → entry_point, "split the window" → structure, "extract the zip file" → file_count).
 - `server/schedules/` + `server/wsHandlers/connectionScheduleAdmin.js` — Phase 1 (autonomous
   triggers): per-project scheduled commands ("schedule every 10 minutes \"git status\"",
   "schedule daily at 09:30 X", "schedule on file save X", "schedule on git commit X") persisted
@@ -767,6 +814,11 @@ time/date/calculate rows, 92/92).
   behavior. Content-search phrases ("search my files for X") and tidying phrases must NOT
   drift into file_find / deploy; the typed-command guard in typedCommand.js protects them
   from `find.exe`/`sort.exe`/`where.exe` on Windows.
+- **pdf** (pdfIntents.js → builtinPdfTools.js, Phase 3, 2026-08-11): merge / split /
+  extract_text / extract_pages / watermark — see the pdfKit.js architecture entry for the
+  full behavior. .pdf-bearing operation shapes are pinned by pre-semantic overrides (the
+  git/deploy clusters own every "merge ... into ..." shape); bare verb-only inputs without
+  a pdf mention route by embedding and open the panel when under-specified.
 
 ## Self-learning (4 layers)
 
@@ -917,10 +969,21 @@ time/date/calculate rows, 92/92).
   one PRE-EXISTING drift — "run the calculation" still routes to system.chit_chat.calculate,
   which the Phase 1.5 pre-semantic override re-pins after the calculator opener's examples
   briefly stole it; the trust-guard row's didYouMean for the .pdf example moved from file_read
-  to open_pdf_tools, the intended direction — see the row comment); check-ws-cases 118/118
-  (baseline 115/115 + 3 answer-openPanel rows); check-intents unchanged at 1/5/82 (the two new
-  intents' "show me ..." shapes were trimmed during calibration because they near-dupped
-  "show me the todos" and stole generic "show me the results" inputs). Run the relevant battery after ANY edit to the corresponding module.
+   to open_pdf_tools, the intended direction — see the row comment); check-ws-cases 118/118
+   (baseline 115/115 + 3 answer-openPanel rows); check-intents unchanged at 1/5/82 (the two new
+   intents' "show me ..." shapes were trimmed during calibration because they near-dupped
+   "show me the todos" and stole generic "show me the results" inputs). Phase 3 (2026-08-11):
+   check-handlers 108/108 (baseline 80/80 + 28 PDF rows — the five pdf.* dispatch shapes, the
+   unit rows for parsePdfNames/parsePdfOutput/parsePageSpec/extractWatermarkText/resolvePdfInput,
+   and the documentCount/isRecognizableByCodeAlone/workspaceType-classification asserts);
+   check-matcher 200/201 (baseline 175/176 + 25 inputs: 20 PDF battery rows — the .pdf-bearing
+   merge/split/extract/watermark shapes now pinned by the Phase 3 pre-semantic overrides, so
+   they're machine-independent — + the live-confirmed "merge alpha.pdf and beta.pdf into
+   combined.pdf" row; same ONE PRE-EXISTING drift on "run the calculation"); check-indexer
+   95/95 (baseline 94/94 + 1 documentCount/DOCUMENT_EXTS row); check-intents unchanged at
+   1/5/82 (the five pdf intents added no near-dups); check-ws-cases 118/118 unchanged (no new
+   WS types — openPanel stays an additive answer field); check-tools 154/154 unchanged.
+   Run the relevant battery after ANY edit to the corresponding module.
 - **editFile** tolerates whitespace differences (normalized line-range fallback) but not
   wrong wording; on total failure the error names both attempts and tells the caller to
   re-read the file. Truncation guard: `writeFile` re-reads and compares length after writes.
@@ -1197,6 +1260,38 @@ time/date/calculate rows, 92/92).
   `revert_action` confirm, tidy confirm moves 7 files into Images/Documents (journaled as
   file_move), and revert moves the file back. Server cleanup verified — no orphan on the
   probe port.
+
+## Phase 3 (UPGRADE-ROADMAP, 2026-08-11) — PDF toolkit (all live)
+
+- **Five trigger intents + real interactive panel** — the backend half (pdfKit.js /
+  builtinPdfTools.js / pdfIntents.js) and the frontend half (PdfToolsPanel.tsx) are both
+  live; see the architecture entries above for the full behavior. Writes are
+  confirm-gated + journaled (`revert action <id>` deletes created files), outputs never
+  overwrite, extract_text is read-only.
+- **Panel contract**: PdfToolsPanel composes the exact chat trigger-command lines and sends
+  them through the normal WS path — confirm cards, answers and journaling live in the
+  terminal as the single source of truth, same contract as Dashboard's Run/Stop buttons.
+- **Scanner recognition**: `DOCUMENT_EXTS` (`.pdf` only) → `documentCount` →
+  `isRecognizableByCodeAlone` recognizes document-only folders, and the container scan's
+  `hasRootPdf` makes a PDF-only folder resolve to itself as a single project — while
+  `detectWorkspaceType` deliberately keeps classifying it 'general', never 'dev'.
+- **Matcher guard**: the five pdf-verb + pdf-mention pre-semantic overrides pin every
+  .pdf-bearing operation shape (live-confirmed: "merge alpha.pdf and beta.pdf into
+  combined.pdf" was routing to system.chit_chat.deploy). Non-pdf senses of the same verbs
+  stay embedding-driven.
+- **Harness rows**: check-handlers 108/108 (+28), check-matcher 200/201 (+25, same one
+  pre-existing drift), check-indexer 95/95 (+1), check-ws-cases/check-tools unchanged (no
+  new WS types), check-intents unchanged at 1/5/82.
+- **Verified live 2026-08-11** (PORT=3032, temp fixture with real pdf-lib-generated PDFs,
+  pdf-parse-extractable text): 16/16 driver checks — pdf-only folder scans as one project
+  classified 'general'; merge/extract-pages/watermark/split all confirm then execute;
+  extract-text answers a preview without confirming; a second merge against the existing
+  output is refused with an answer ("already exists") and never overwrites; created files
+  are journaled as file_write/existed:false (combined.pdf included); /api/projects/:id/
+  pdf-files lists only PDFs; /file?path= serves with the right content-type and rejects
+  `..` escapes. The panel's exact composed command shapes are the same inputs the driver
+  exercised. Browser-click verification of the panel (drag/drop, in-panel confirm) still
+  needs one manual pass on a live page.
 
 ## Conventions
 

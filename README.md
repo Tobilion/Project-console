@@ -31,12 +31,22 @@
 - A **Tools** button (visible when a general-mode project is active) opens a card grid of interactive tools — Calculator and PDF Tools today, more later. Clicking a card opens that tool's dedicated panel in the same space the chat/dashboard use; no modal stacks.
 - Tools are chat-addressable too: typing `open calculator` or `open pdf tools` lands you in the same panel state as clicking the card. The chat reply stays plain text (the CLI is deliberately text-only — from a terminal, these commands answer with a short note and the equivalent chat phrasings).
 - Panels are server-driven (registry + `GET /api/tool-panels`), so a tool can later report availability (e.g. "PDF Tools disabled — missing dependency") without a frontend change.
+- The PDF Tools panel is fully interactive: project PDF list with download/"show in folder", merge with multi-select + output name, split (per page / around a page), extract text, page-range extract, and watermark — every Run button composes the same trigger command chat uses, so confirmation, checkpointing, history and `revert action <id>` all work identically from either surface.
 
 ### General-mode file tools
 
 - **`find files matching X` / `search for X in my files`** — filename + content search across the active folder (plain substring scan, no AI or embedding model required). Read-only, runs immediately.
 - **`tidy this folder` / `organize this folder by type`** — moves loose root files into category folders (Images/Documents/Spreadsheets/Archives/...), by date, or both. Shows the full move plan first, asks for confirmation, checkpoints, and journals every move so `revert action <id>` undoes it.
 - **`find duplicate files` / `find duplicates in this folder`** — hash-based duplicate groups with wasted-space estimate. Read-only; a separate confirm-gated `delete duplicates, keep newest` does the deletion (journaled, revertible).
+
+### PDF toolkit
+
+- **`merge these pdfs into combined.pdf`** — merges several PDFs into one new file (never overwrites an existing output).
+- **`split report.pdf into one file per page`** / **`split report.pdf at page 5`** — one file per page, or two parts around a page.
+- **`extract text from report.pdf`** — read-only text extraction with a preview, no confirmation needed.
+- **`extract pages 2-5 from report.pdf into excerpt.pdf`** — copies a page range into a new file.
+- **`watermark report.pdf with confidential`** — stamps text across every page of a copy.
+- Every operation that writes a file confirms first, checkpoints, and journals the created file so `revert action <id>` deletes it. PDF-only folders are auto-recognized as projects (classified *general*, not dev) so the toolkit works on them out of the box. Typing a bare operation name (e.g. `merge pdfs`) opens the interactive PDF Tools panel.
 
 ### AI assistant (opt-in)
 
@@ -275,6 +285,11 @@ App-global identity (name/title/custom role) edited from the ⚙ Settings modal;
 | `find files matching X` / `search for X in my files` | Filename + content search across the active folder (general folders, no AI needed) |
 | `tidy this folder` / `organize this folder by type` | Preview + confirmed move of loose files into type/date folders (journaled, revertible) |
 | `find duplicate files` / `delete duplicates, keep newest` | Hash-based duplicate detection (read-only) and the confirm-gated cleanup |
+| `merge these pdfs into combined.pdf` | Merge PDFs into one new file (confirm-gated, never overwrites, revertible) |
+| `split report.pdf into one file per page` / `split report.pdf at page 5` | Split a PDF per page or around a page (confirm-gated, revertible) |
+| `extract text from report.pdf` | Read-only text extraction with preview |
+| `extract pages 2-5 from report.pdf into excerpt.pdf` | Copy a page range into a new PDF (confirm-gated, revertible) |
+| `watermark report.pdf with confidential` | Stamp text across a copy of a PDF (confirm-gated, revertible) |
 | `undo` / `revert that` | Restore the last change (git checkpoint or file journal) |
 | `type the command directly` | Allowlisted command lines (git push, npm run ...) run as-is |
 | `npx local-project-console init` | Bootstrap a console.config.json for a project |

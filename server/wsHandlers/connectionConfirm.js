@@ -8,6 +8,7 @@ import { retrainConfidenceModel } from '../confidenceModel.js';
 import { trackCommand, trackFileEdit } from '../projectMemory.js';
 import { appendAction, revertAction } from '../actionHistory.js';
 import { performTidy, performDuplicateDeletes } from './builtinGeneralFiles.js';
+import { mergePdfs, splitPdf, extractPages, watermarkPdf } from '../pdfKit.js';
 import { state, pendingConfirmations, pendingToolConfirmations } from '../state.js';
 import { pendingMemorySuggestions } from './connectionState.js';
 
@@ -186,6 +187,54 @@ export async function handleConfirmResponse(ws, parsed) {
       ws.send(JSON.stringify({ type: 'answer', data: `Done — ${result.deleted ?? result.moved} file(s) ${op.kind === 'tidy' ? 'moved' : 'deleted'}${note}. Undo with \`revert action <id>\` or "show history".` }));
     } else {
       ws.send(JSON.stringify({ type: 'error_output', data: `${result.error}\n` }));
+    }
+    ws.send(JSON.stringify({ type: 'end' }));
+    return;
+  }
+
+  // Phase 3 (UPGRADE-ROADMAP.md, 2026-08-11): confirmed PDF toolkit operations (merge/split/
+  // extract-pages/watermark from builtinPdfTools.js). Same safety shape as the branches above
+  // — no shell command, plain sandboxed pdf-lib calls whose journaling happens inside
+  // pdfKit.js, so the shell allow/block checks are skipped exactly like generalFileOp.
+  if (pending.pdfOp) {
+    const op = pending.pdfOp;
+    const cp = await createCheckpoint(project.path, pending.trigger);
+    ws.send(JSON.stringify({ type: 'start', data: `[GIT SAFETY] ${cp.message}\n` }));
+    let result;
+    try {
+      if (op.kind === 'merge') {
+        result = await mergePdfs(project.path, op.inputs, op.output);
+      } else if (op.kind === 'split') {
+        result = await splitPdf(project.path, op.input, op.spec);
+      } else if (op.kind === 'extract_pages') {
+        result = await extractPages(project.path, op.input, op.range.from, op.range.to, op.output);
+      } else if (op.kind === 'watermark') {
+        result = await watermarkPdf(project.path, op.input, op.text, op.output);
+      } else {
+        result = { ok: false, error: `Unknown PDF operation: ${op.kind}` };
+      }
+    } catch (err) {
+      result = { ok: false, error: err.message };
+    }
+    if (result.ok) {
+      const firstOutput = result.output || (result.outputs && result.outputs[0] && result.outputs[0].path);
+      const detail = op.kind === 'merge'
+        ? `${result.pages} page(s), ${Math.max(1, Math.round(result.bytes / 1024))}KB`
+        : op.kind === 'split'
+          ? result.outputs.map((o) => `${o.path} (${o.pages} page(s))`).join(', ')
+          : `${result.pages} page(s)`;
+      const link = firstOutput
+        ? `\n\nDownload: [${firstOutput}](/api/projects/${project.id}/file?path=${encodeURIComponent(firstOutput)})`
+        : '';
+      ws.send(JSON.stringify({
+        type: 'answer',
+        data: `Done — ${detail}. Undo with \`revert action <id>\` or "show history".${link}`,
+      }));
+    } else {
+      // Same answer channel as the pdf handler's own refusals ("Could not find these PDFs",
+      // "Merge needs at least two PDFs") — a refused output name is a normal refusal, not an
+      // execution error, and the frontend renders answers as readable bubbles.
+      ws.send(JSON.stringify({ type: 'answer', data: result.error }));
     }
     ws.send(JSON.stringify({ type: 'end' }));
     return;

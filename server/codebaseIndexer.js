@@ -13,7 +13,7 @@
 import fs from 'fs/promises';
 import fsSync from 'fs';
 import path from 'path';
-import { KEY_FILES, CODE_EXTS, MAX_REPO_MAP_FILES, MAX_FILE_READ_BYTES,
+import { KEY_FILES, CODE_EXTS, DOCUMENT_EXTS, MAX_REPO_MAP_FILES, MAX_FILE_READ_BYTES,
   MAX_TOTAL_ROUTES, MAX_IMPORTS_PER_FILE, MAX_REPO_MAP_TOTAL_CHARS,
   MAX_ENTRY_SNIPPETS, ENTRY_SNIPPET_CHARS } from './codebaseData.js';
 import { extractSignatures, extractImports, extractRoutes, extractSymbols, buildReverseImportIndex, pathParts } from './codebaseParsers.js';
@@ -215,6 +215,10 @@ export async function indexProject(projectPath) {
     hasConfig: !!(keyFiles['package.json'] || keyFiles['pyproject.toml'] || keyFiles['Cargo.toml']),
     hasGit: gitRepo,
     hasRealCode: hasRealCodeFiles(tree),
+    // Phase 3 (2026-08-11): document-file count (DOCUMENT_EXTS — .pdf today). Feeds
+    // isRecognizableByCodeAlone() so a doc-only folder is discoverable as a 'general' workspace
+    // project for the PDF toolkit; never a 'dev' signal.
+    documentCount: files.filter((f) => DOCUMENT_EXTS.has(path.extname(f).toLowerCase())).length,
   };
 }
 

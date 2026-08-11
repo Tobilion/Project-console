@@ -309,6 +309,8 @@ function App() {
               activePanel={activeToolPanel}
               onOpenPanel={handleOpenToolPanel}
               onClose={handleCloseTools}
+              project={activeProject}
+              onSendMessage={handleSendMessage}
             />
           </div>
         ) : showDashboard ? (

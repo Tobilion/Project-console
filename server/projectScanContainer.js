@@ -36,11 +36,16 @@ export async function discoverProjects(baseDir) {
     // fake "project". A plain container folder holding many separate projects essentially never
     // has its own package.json/README/config at its own root, so this is safe for the normal case
     // (the default `C:\Users\tobil\Desktop\Projects` scan directory has none of these).
+    // Phase 3 (2026-08-11): a root-level .pdf file is the same class of signal — a PDF-only
+    // folder pasted as the scan target must resolve to itself (the PDF toolkit's project), not
+    // to zero projects via the empty container path. Same accepted edge case as root package.json.
     const rootNames = new Set(entries.map((e) => e.name.toLowerCase()));
+    const hasRootPdf = entries.some((e) => e.isFile() && e.name.toLowerCase().endsWith('.pdf'));
     const looksLikeSingleProjectRoot =
       rootNames.has('console.config.json') ||
       [...rootNames].some(isContextFilename) ||
-      rootNames.has('package.json');
+      rootNames.has('package.json') ||
+      hasRootPdf;
     if (looksLikeSingleProjectRoot) {
       const folderName = path.basename(baseDir);
       const single = await scanSingleProject(folderName, baseDir);
