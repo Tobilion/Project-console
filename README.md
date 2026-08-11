@@ -20,6 +20,24 @@
 - **Multi-intent queries**: "show structure and run tests" is split on conjunctions and both intents are handled. Pronoun resolution uses the last 5 turns ("it", "the main file").
 - **"Open in..." actions**: open a project in VS Code, Cursor, the OS file explorer, a terminal, GitHub (from the origin remote), the live dev site, or a specific file — each with honest fallbacks when a CLI tool isn't installed.
 
+### Developer & General workspaces
+
+- Every scanned folder gets a `workspaceType` classification: **developer** (has code, a `package.json`, or a real `.git` dir) or **general** (a plain documents/files folder). The per-project tab switcher next to the chat header flips between the two, and an explicit `workspaceType` in `console.config.json` always wins over the heuristic.
+- The type only filters which commands are *suggested* — dev-shaped suggestions (git, run, diagnostics) stay hidden in a general folder, but typing a dev command there still works exactly as before. Never a hard gate.
+- `switch to developer mode` / `switch to general mode` / `what mode am I in` manage the mode from chat or the CLI; the last-used tab is remembered per project.
+
+### Tools panels (interactive web UI)
+
+- A **Tools** button (visible when a general-mode project is active) opens a card grid of interactive tools — Calculator and PDF Tools today, more later. Clicking a card opens that tool's dedicated panel in the same space the chat/dashboard use; no modal stacks.
+- Tools are chat-addressable too: typing `open calculator` or `open pdf tools` lands you in the same panel state as clicking the card. The chat reply stays plain text (the CLI is deliberately text-only — from a terminal, these commands answer with a short note and the equivalent chat phrasings).
+- Panels are server-driven (registry + `GET /api/tool-panels`), so a tool can later report availability (e.g. "PDF Tools disabled — missing dependency") without a frontend change.
+
+### General-mode file tools
+
+- **`find files matching X` / `search for X in my files`** — filename + content search across the active folder (plain substring scan, no AI or embedding model required). Read-only, runs immediately.
+- **`tidy this folder` / `organize this folder by type`** — moves loose root files into category folders (Images/Documents/Spreadsheets/Archives/...), by date, or both. Shows the full move plan first, asks for confirmation, checkpoints, and journals every move so `revert action <id>` undoes it.
+- **`find duplicate files` / `find duplicates in this folder`** — hash-based duplicate groups with wasted-space estimate. Read-only; a separate confirm-gated `delete duplicates, keep newest` does the deletion (journaled, revertible).
+
 ### AI assistant (opt-in)
 
 - **Opt-in by default off**: flipping the toggle sends every message in that session to an Ollama model. On toggle-on, the console checks connectivity and picks a sensible default model; you can always override it.
@@ -148,7 +166,7 @@ Double-click `start.bat` in the root folder — it installs dependencies if need
 
 ### Web UI
 
-The UI is dark-first with an additive light theme (sliding sun/moon pill in the header; follows your OS preference on first load, remembered in `localStorage`). The welcome screen includes a 4-step guided tour (Take the Tour button) covering project selection, AI mode, and key commands. The header shows the live dev-server count, and the Dashboard button opens a per-project status grid (uncommitted files, recent commits, dev URLs, running commands).
+The UI is dark-first with an additive light theme (sliding sun/moon pill in the header; follows your OS preference on first load, remembered in `localStorage`). The welcome screen includes a 4-step guided tour (Take the Tour button) covering project selection, AI mode, and key commands. The header shows the live dev-server count, and the Dashboard button opens a per-project status grid (uncommitted files, recent commits, dev URLs, running commands). With a non-dev folder active, a Developer/General tab switcher and a **Tools** button (interactive tool panels) appear next to the header.
 
 ### CLI chat (no browser)
 
@@ -254,6 +272,9 @@ App-global identity (name/title/custom role) edited from the ⚙ Settings modal;
 | `open in vs code` / `open in terminal` / `open in cursor` / `open in explorer` | Open the project in external tools |
 | `open main.py` / `open the config file` | Open a specific file |
 | `open the github page` | Open the project's GitHub repo page |
+| `find files matching X` / `search for X in my files` | Filename + content search across the active folder (general folders, no AI needed) |
+| `tidy this folder` / `organize this folder by type` | Preview + confirmed move of loose files into type/date folders (journaled, revertible) |
+| `find duplicate files` / `delete duplicates, keep newest` | Hash-based duplicate detection (read-only) and the confirm-gated cleanup |
 | `undo` / `revert that` | Restore the last change (git checkpoint or file journal) |
 | `type the command directly` | Allowlisted command lines (git push, npm run ...) run as-is |
 | `npx local-project-console init` | Bootstrap a console.config.json for a project |
@@ -291,6 +312,8 @@ App-global identity (name/title/custom role) edited from the ⚙ Settings modal;
 | Command | What it does |
 |---|---|
 | `help` / `what can you do` / `how do I <anything>` | Full command guide; how-do-I answers come from the command catalog with the exact phrase, the real shell command, and a suggestion chip |
+| `open calculator` / `open pdf tools` | Opens the interactive Tools panel (web UI); plain-text note + chat equivalents from the CLI |
+| `switch to developer mode` / `switch to general mode` / `what mode am I in` | Change/check a project's workspace type (persisted in console.config.json) |
 | `switch projects` / `change projects` | The project list in the left sidebar |
 | `dashboard` / `live sites` | The Dashboard tab: project overview + live-site status |
 | `the theme toggle in the top bar (sun/moon)` | Dark/light switch, persists per browser |
