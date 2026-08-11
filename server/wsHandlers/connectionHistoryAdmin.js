@@ -14,6 +14,7 @@ const TYPE_LABELS = {
   file_edit: 'EDIT',
   file_insert: 'INSERT',
   file_append: 'APPEND',
+  file_move: 'MOVE',
   command: 'CMD',
   git: 'GIT',
   revert: 'REVERT',

@@ -106,6 +106,10 @@ export const BUILTIN_INTENTS = new Set([
   // Phase 7 (2026-08-11): semantic code search over the persisted code-content index
   // (codeIndexSearch.js) — read-only retrieval with file:line citations.
   'project.code.search',
+  // Phase 2 (UPGRADE-ROADMAP.md, 2026-08-11): general-mode file tools (builtinGeneralFiles.js).
+  // Not in WORKSPACE_DEV_ONLY_INTENTS — they're usable from every workspace type, per the
+  // roadmap's "tag general but don't hard-gate" rule.
+  'general.files.find', 'general.files.tidy', 'general.files.duplicates', 'general.files.duplicates_delete',
 ]);
 
 // Phase 1 workspaceType filtering (UPGRADE-ROADMAP.md, 2026-08-11): builtin intents that make

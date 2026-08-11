@@ -7,6 +7,7 @@ import { updateTelemetryEntry } from '../intentTelemetry.js';
 import { retrainConfidenceModel } from '../confidenceModel.js';
 import { trackCommand, trackFileEdit } from '../projectMemory.js';
 import { appendAction, revertAction } from '../actionHistory.js';
+import { performTidy, performDuplicateDeletes } from './builtinGeneralFiles.js';
 import { state, pendingConfirmations, pendingToolConfirmations } from '../state.js';
 import { pendingMemorySuggestions } from './connectionState.js';
 
@@ -153,6 +154,36 @@ export async function handleConfirmResponse(ws, parsed) {
     const result = await revertAction(project.path, pending.revert.actionId);
     if (result.ok) {
       ws.send(JSON.stringify({ type: 'answer', data: result.data }));
+    } else {
+      ws.send(JSON.stringify({ type: 'error_output', data: `${result.error}\n` }));
+    }
+    ws.send(JSON.stringify({ type: 'end' }));
+    return;
+  }
+
+  // Phase 2 (UPGRADE-ROADMAP.md, 2026-08-11): confirmed general-file operations (tidy moves /
+  // duplicate deletes from builtinGeneralFiles.js). No shell command is involved — the moves/
+  // deletes are plain sandboxed fs calls journaled through appendAction, so this skips the
+  // shell allow/block checks exactly like the fileOp and revert branches above.
+  if (pending.generalFileOp) {
+    const op = pending.generalFileOp;
+    const cp = await createCheckpoint(project.path, pending.trigger);
+    ws.send(JSON.stringify({ type: 'start', data: `[GIT SAFETY] ${cp.message}\n` }));
+    let result;
+    if (op.kind === 'tidy') {
+      result = await performTidy(project.path, op.moves);
+    } else if (op.kind === 'duplicates_delete') {
+      result = await performDuplicateDeletes(project.path, op.files);
+    } else {
+      ws.send(JSON.stringify({ type: 'error_output', data: `Unknown file operation: ${op.kind}\n` }));
+      ws.send(JSON.stringify({ type: 'end' }));
+      return;
+    }
+    if (result.ok) {
+      const note = result.skippedJournal
+        ? ` (${result.skippedJournal} over the history pre-image size cap weren't logged for revert)`
+        : '';
+      ws.send(JSON.stringify({ type: 'answer', data: `Done — ${result.deleted ?? result.moved} file(s) ${op.kind === 'tidy' ? 'moved' : 'deleted'}${note}. Undo with \`revert action <id>\` or "show history".` }));
     } else {
       ws.send(JSON.stringify({ type: 'error_output', data: `${result.error}\n` }));
     }

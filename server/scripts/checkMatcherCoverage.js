@@ -341,6 +341,35 @@ const BATTERIES = [
       ['where is main.py', 'BUILTIN=file_find'],
     ],
   },
+  {
+    name: 'GENERAL-FILES (Phase 2 general-mode file tools)',
+    items: [
+      // Content-search shapes route to general.files.find — file_find is locate-by-name and
+      // must not steal them ("search my files for X" names content, not a file).
+      ['search my files for budget', 'BUILTIN=general.files.find'],
+      ['search for rent in my files', 'BUILTIN=general.files.find'],
+      ['find files matching invoice', 'BUILTIN=general.files.find'],
+      ['find files containing tax', 'BUILTIN=general.files.find'],
+      ['search all my files for expenses', 'BUILTIN=general.files.find'],
+      ['find files with the word meeting', 'BUILTIN=general.files.find'],
+      // Name-ish "find files named like X" also stays in general.files.find.
+      ['find files named like report', 'BUILTIN=general.files.find'],
+      // Guard: locate shapes stay with file_find.
+      ['where is main.py', 'BUILTIN=file_find'],
+      ['find the config file', 'BUILTIN=file_find'],
+      // Tidy family.
+      ['tidy this folder', 'BUILTIN=general.files.tidy'],
+      ['organize this folder by type', 'BUILTIN=general.files.tidy'],
+      ['organize my files by date', 'BUILTIN=general.files.tidy'],
+      ['sort these files by type', 'BUILTIN=general.files.tidy'],
+      // Duplicates: find vs delete must split cleanly.
+      ['find duplicate files', 'BUILTIN=general.files.duplicates'],
+      ['are there any duplicate files', 'BUILTIN=general.files.duplicates'],
+      ['delete duplicate files', 'BUILTIN=general.files.duplicates_delete'],
+      ['remove duplicates', 'BUILTIN=general.files.duplicates_delete'],
+      ['delete duplicates keep newest', 'BUILTIN=general.files.duplicates_delete'],
+    ],
+  },
 ];
 
 await semanticMatcher.initialize();

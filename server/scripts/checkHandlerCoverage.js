@@ -38,11 +38,13 @@ const { projectContextHandlers } = await import(pathToFileURL(base + 'wsHandlers
 const { projectActionHandlers } = await import(pathToFileURL(base + 'wsHandlers/builtinProjectActions.js').href);
 const { normalizeGithubPageUrl } = await import(pathToFileURL(base + 'wsHandlers/builtinProjectActions.js').href);
 const { diagnosticsHandlers } = await import(pathToFileURL(base + 'wsHandlers/builtinDiagnostics.js').href);
+const { generalFileHandlers, performTidy, planDuplicateDeletes, performDuplicateDeletes, extractFindQuery } = await import(pathToFileURL(base + 'wsHandlers/builtinGeneralFiles.js').href);
+const { revertAction, listActions } = await import(pathToFileURL(base + 'actionHistory.js').href);
 const { BUILTIN_INTENTS, WORKSPACE_DEV_ONLY_INTENTS, intentWorkspaceEligible } = await import(pathToFileURL(base + 'intentRegistry.js').href);
 const { detectWorkspaceType } = await import(pathToFileURL(base + 'projectScanHelpers.js').href);
 const { handleModeCommand } = await import(pathToFileURL(base + 'wsHandlers/connectionModeAdmin.js').href);
 const { INTENTS } = await import(pathToFileURL(base + 'intentsData.js').href);
-const { state } = await import(pathToFileURL(base + 'state.js').href);
+const { state, pendingConfirmations } = await import(pathToFileURL(base + 'state.js').href);
 
 let total = 0, failed = 0;
 function eq(label, got, expect) {
@@ -55,7 +57,7 @@ function eq(label, got, expect) {
   else if (!ok) console.log(`  FAIL ${label}\n    expected: ${e}\n    got:      ${g}`);
 }
 
-const merged = { ...gitHandlers, ...chitChatHandlers, ...fileNpmHandlers, ...projectKnowledgeHandlers, ...projectContextHandlers, ...projectActionHandlers, ...diagnosticsHandlers };
+const merged = { ...gitHandlers, ...chitChatHandlers, ...fileNpmHandlers, ...projectKnowledgeHandlers, ...projectContextHandlers, ...projectActionHandlers, ...diagnosticsHandlers, ...generalFileHandlers };
 const handlerKeys = Object.keys(merged).sort();
 const builtinKeys = [...BUILTIN_INTENTS].sort();
 const intentKeys = Object.keys(INTENTS).sort();
@@ -230,6 +232,76 @@ sent.length = 0;
 const notMode = await handleModeCommand(ws, tmpProj, 'run the tests');
 eq('mode admin: unrelated input not consumed', notMode === false && ws.sent.length === 0, true);
 fs.rmSync(tmpRoot, { recursive: true, force: true });
+
+// --- GENERAL FILE TOOLS (Phase 2, 2026-08-11) --------------------------------
+// Dispatch shapes against the C:/tmp/nowhere fixture (nonexistent dir — walkDir degrades to
+// [] there, so every answer is deterministic and no real files are ever touched):
+sent.length = 0;
+await handleBuiltinIntent(ws, 'general.files.find', 'search my files for budget', proj, {});
+eq('general files leaf: find answers no-hits on empty walk', ws.sent.length === 1 && ws.sent[0].type === 'answer' && /budget/.test(ws.sent[0].data), true);
+sent.length = 0;
+await handleBuiltinIntent(ws, 'general.files.tidy', 'tidy this folder', proj, {});
+eq('general files leaf: tidy on unreadable dir answers error, never confirms', ws.sent.length === 1 && ws.sent[0].type === 'answer' && /Could not read the folder/.test(ws.sent[0].data), true);
+sent.length = 0;
+await handleBuiltinIntent(ws, 'general.files.duplicates', 'find duplicate files', proj, {});
+eq('general files leaf: duplicates answers none on empty walk', ws.sent.length === 1 && ws.sent[0].type === 'answer' && /No duplicate files/.test(ws.sent[0].data), true);
+sent.length = 0;
+await handleBuiltinIntent(ws, 'general.files.duplicates_delete', 'delete duplicates keep newest', proj, {});
+eq('general files leaf: duplicates_delete answers none on empty walk', ws.sent.length === 1 && ws.sent[0].type === 'answer' && /nothing to delete/.test(ws.sent[0].data), true);
+
+// extractFindQuery unit shapes (the parse contract, independent of the fs fixtures):
+eq('find parse: search my files for budget -> content', extractFindQuery('search my files for budget'), { type: 'content', query: 'budget' });
+eq('find parse: find files matching invoice -> content', extractFindQuery('find files matching invoice'), { type: 'content', query: 'invoice' });
+eq('find parse: search for rent in my files -> content', extractFindQuery('search for rent in my files'), { type: 'content', query: 'rent' });
+eq('find parse: find files named like report -> name', extractFindQuery('find files named like report'), { type: 'name', query: 'report' });
+eq('find parse: unparseable input -> null', extractFindQuery('find my files'), null);
+
+// Behavior smoke against a real temp dir (like the mode-command smoke above): tidy moves +
+// actionHistory file_move journaling + revert moves it back; duplicates delete keeps the
+// newest and its revert restores the deleted copy. The confirm_prompt itself is emitted by the
+// handler; these assertions drive the perform* side directly (the same functions the confirm
+// branch in connectionConfirm.js calls).
+const gRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'console-genfiles-'));
+const gProj = {
+  id: 'genfiles', name: 'GenFiles', path: gRoot, workspaceType: 'general',
+  config: { projectName: 'GenFiles', entries: [] }, contextFiles: [],
+  parsedKnowledge: {}, codebaseIndex: { languages: [], keyFiles: {} },
+};
+fs.writeFileSync(path.join(gRoot, 'pic.jpg'), 'jpeg-bytes');
+fs.writeFileSync(path.join(gRoot, 'doc.pdf'), 'pdf-bytes');
+fs.writeFileSync(path.join(gRoot, 'notes.txt'), 'hello notes');
+
+sent.length = 0;
+await handleBuiltinIntent(ws, 'general.files.tidy', 'tidy this folder', gProj, {});
+eq('tidy: emits confirm_prompt with the move preview', ws.sent.length === 1 && ws.sent[0].type === 'confirm_prompt' && /pic\.jpg/.test(ws.sent[0].command), true);
+const tidyPending = [...pendingConfirmations.values()].find((p) => p.generalFileOp?.kind === 'tidy');
+eq('tidy: pending record carries the move plan', !!tidyPending && tidyPending.generalFileOp.moves.length === 3, true);
+if (tidyPending) {
+  const moved = await performTidy(gRoot, tidyPending.generalFileOp.moves);
+  eq('tidy perform: files moved into category folders', moved.ok === true && moved.moved === 3 && fs.existsSync(path.join(gRoot, 'Images', 'pic.jpg')) && fs.existsSync(path.join(gRoot, 'Documents', 'doc.pdf')) && fs.existsSync(path.join(gRoot, 'Documents', 'notes.txt')), true);
+  const moveAction = listActions(gRoot).find((a) => a.type === 'file_move' && a.from === 'pic.jpg');
+  eq('tidy perform: move journaled as file_move action', !!moveAction && moveAction.to === 'Images/pic.jpg', true);
+  const undone = await revertAction(gRoot, moveAction.id);
+  eq('tidy revert: file moved back to root', undone.ok === true && fs.existsSync(path.join(gRoot, 'pic.jpg')) && !fs.existsSync(path.join(gRoot, 'Images', 'pic.jpg')), true);
+}
+fs.writeFileSync(path.join(gRoot, 'dup-b.txt'), 'same-content');
+fs.writeFileSync(path.join(gRoot, 'dup-a.txt'), 'same-content');
+fs.writeFileSync(path.join(gRoot, 'unique.txt'), 'unique-content');
+const delPlan = await planDuplicateDeletes(gRoot);
+eq('duplicates: plan deletes only the older copy', delPlan.length === 1 && delPlan[0] === 'dup-b.txt', true);
+sent.length = 0;
+await handleBuiltinIntent(ws, 'general.files.duplicates_delete', 'delete duplicates keep newest', gProj, {});
+eq('duplicates_delete: emits confirm_prompt', ws.sent.length === 1 && ws.sent[0].type === 'confirm_prompt' && /dup-b\.txt/.test(ws.sent[0].command), true);
+const delPending = [...pendingConfirmations.values()].find((p) => p.generalFileOp?.kind === 'duplicates_delete');
+if (delPending) {
+  const res = await performDuplicateDeletes(gRoot, delPending.generalFileOp.files);
+  eq('duplicates perform: older copy deleted, newest kept', res.ok === true && res.deleted === 1 && !fs.existsSync(path.join(gRoot, 'dup-b.txt')) && fs.existsSync(path.join(gRoot, 'dup-a.txt')), true);
+  const delAction = listActions(gRoot).find((a) => a.description.includes('Deleted duplicate'));
+  eq('duplicates perform: deletion journaled with pre-image', !!delAction && delAction.existed === true && delAction.preContent === 'same-content', true);
+  const restored = await revertAction(gRoot, delAction.id);
+  eq('duplicates revert: deleted copy restored', restored.ok === true && fs.existsSync(path.join(gRoot, 'dup-b.txt')) && fs.readFileSync(path.join(gRoot, 'dup-b.txt'), 'utf-8') === 'same-content', true);
+}
+fs.rmSync(gRoot, { recursive: true, force: true });
 
 console.log(`check-handlers: ${total} checks, ${failed} failed`);
 process.exit(failed ? 1 : 0);

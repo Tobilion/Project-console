@@ -316,9 +316,11 @@ npm run lint    # tsc --noEmit
   resolves inside the project root, files over 1MB skipped so their pre-image never bloats the
   log) and confirmed/risky commands (`connectionConfirm` for `pending.sandbox !== false` —
   dev-server port retries are excluded deliberately — plus `aiQueryToolRun`/`connectionToolCall`
-  for risky `executeCommand`; type is `git` when the command starts with `git`). Checkpoints
+  for risky `executeCommand`; type is `git` when the command starts with `git`; Phase 2 adds
+  `file_move` for general.files tidy moves). Checkpoints
   themselves are NOT logged. `revertAction`: file entries restore `preContent` (deleting the
-  file when it did not exist before), git/command entries answer checkpoint-aware advice —
+  file when it did not exist before), `file_move` entries move the file back (refusing when
+  the original path is occupied or the moved file is gone), git/command entries answer checkpoint-aware advice —
   console checkpoints are COMMITS (`console-checkpoint:` prefix from gitSafety.js), so when
   `git log -1 --pretty=%B` still shows that prefix the advice is `git reset --hard HEAD~1`,
   otherwise `git revert <sha>` (push) / `git reset --soft HEAD~1` (commit) / generic manual
@@ -326,6 +328,25 @@ npm run lint    # tsc --noEmit
   projectRoutes.js; frontend History tab in ProcessDock renders it via `HistoryPanel.tsx`,
   whose revert button goes through the normal chat flow (`revert action <id>`) — never a
   bypass.
+- `server/wsHandlers/builtinGeneralFiles.js` — Phase 2 (general-mode file tools, 2026-08-11):
+  the `general.files.*` handler module for folders that are not dev projects. Four intents:
+  `general.files.find` (content + name search over the project tree, text-cap 20KB/file — see
+  `extractFindQuery`/`searchContents`), `general.files.tidy` (moves loose root files into
+  type-category folders Images/Documents/Spreadsheets/Presentations/Archives/Audio/Video, or
+  `YYYY/MM` by date, or `YYYY/<type>` combined — root files only, never re-moves files already
+  in one of its own folders, `planTidy`/`performTidy`), `general.files.duplicates`
+  (MD5-by-size duplicate groups, newest copy wins — `findDuplicates`), and
+  `general.files.duplicates_delete` (keep-newest deletion of the same groups —
+  `planDuplicateDeletes`/`performDuplicateDeletes`). The two mutating intents are
+  confirm-gated with triggers `general_files_tidy`/`general_files_duplicates_delete`
+  (pending record shape `{ generalFileOp: { kind, moves|files } }`, consumed in
+  connectionConfirm.js — checkpoint + `start` first, like every risky op) and journal every
+  move/delete through `appendAction` (`file_move` entries + `file_write` deletes with
+  `preContent`, so `revert action <id>` undoes either). Deletes keep pre-images only for
+  files ≤ 1MB (matches tools.js's `wrapMutatingTool` convention; larger files are deleted
+  without journaling — `skippedJournal` counter in the answer). Caps: 20 result files,
+  2000 hash-candidates, 50MB per hashed file, 100 moves per tidy, 12 preview lines.
+  Eligible from every workspace type — deliberately NOT in WORKSPACE_DEV_ONLY_INTENTS.
 - `server/schedules/` + `server/wsHandlers/connectionScheduleAdmin.js` — Phase 1 (autonomous
   triggers): per-project scheduled commands ("schedule every 10 minutes \"git status\"",
   "schedule daily at 09:30 X", "schedule on file save X", "schedule on git commit X") persisted
@@ -479,7 +500,12 @@ npm run lint    # tsc --noEmit
   `yarn`, `pnpm`, `bun`, `deno`, `cargo`, `go`, `mvn`, `gradle`, `dotnet`, `ruby`, `bundle`,
   `php`, `composer` — this list gates single-token typed commands and the env-prefix fallback
   branch, not just PATH resolution, so a framework CLI needs to be here even when it also
-  resolves on PATH), `commandDir.js`
+  resolves on PATH). Natural-language guard (Phase 2, 2026-08-11): `find`/`sort`/`where`
+  resolve to real Windows binaries, so a first token in that set followed only by plain words
+  ("find duplicate files", "sort these files by type") is rejected and reaches the matcher —
+  confirmed live by the Phase 2 WS driver, which caught `find.exe` erroring on the
+  duplicates intent's own example phrases; real command lines ("find . -name x",
+  "sort data.csv") still bypass (`NATURAL_LANG_FIRST_TOKENS` + `PLAIN_WORD_RE`), `commandDir.js`
   (2026-08-11, wrapper-project fix: `getCommandDir`/`getCommandDirScripts` — effective
   command-execution directory. Narrow rule: project ROOT with no app-launching package.json
   script (exact keys start/serve/dev/run — lint/format-only scripts DON'T count, task 0c:
@@ -715,6 +741,11 @@ time/date/calculate rows, 92/92).
   `vscode://file/` protocol fallback), open_in_cursor, open_in_explorer, open_in_terminal,
   open_github_page (normalizeGithubPageUrl), open_site, copy_path (copy_to_clipboard WS
   event), checkpoint, project_scan, project_list, file_create, etc.
+- **general.files** (generalFileIntents.js → builtinGeneralFiles.js, Phase 2, 2026-08-11):
+  find / tidy / duplicates / duplicates_delete — see the architecture entry for the full
+  behavior. Content-search phrases ("search my files for X") and tidying phrases must NOT
+  drift into file_find / deploy; the typed-command guard in typedCommand.js protects them
+  from `find.exe`/`sort.exe`/`where.exe` on Windows.
 
 ## Self-learning (4 layers)
 
@@ -854,7 +885,12 @@ time/date/calculate rows, 92/92).
   typed-array-as-object corruption regression); check-matcher 152/153 — 146 inputs + 7 NEW
   Phase 7 CODE-SEARCH rows, with the same ONE PRE-EXISTING drift on CONTROL's "run the
   calculation" (routes to system.chit_chat.calculate on this machine's local data; reproduced
-  identically on clean HEAD with the how_do_i work stashed — not a regression). Run the relevant battery after ANY edit to the corresponding module.
+  identically on clean HEAD with the how_do_i work stashed — not a regression). Phase 2
+  (2026-08-11): check-handlers 77/77 (baseline 58/58 + 19 GENERAL-FILES rows incl. the
+  temp-dir tidy/dedupe/revert smoke and extractFindQuery unit rows); check-tools 154/154
+  (baseline 149/149 + 5 typed-command natural-language-guard rows); check-matcher 170/171
+  (baseline 152/153 + 18 GENERAL-FILES rows, same one PRE-EXISTING drift); check-intents
+  unchanged at 1/5/82 (the four new intents added no near-dups). Run the relevant battery after ANY edit to the corresponding module.
 - **editFile** tolerates whitespace differences (normalized line-range fallback) but not
   wrong wording; on total failure the error names both attempts and tells the caller to
   re-read the file. Truncation guard: `writeFile` re-reads and compares length after writes.
@@ -1083,6 +1119,36 @@ time/date/calculate rows, 92/92).
   Verified live 2026-08-11: container scan (package.json → 'dev', plain folder with
   console.config.json → 'general'), override persists across rescan, single-folder scan
   path, 58/58 check-handlers, 115/115 check-ws-cases, lint clean.
+
+## Phase 2 (UPGRADE-ROADMAP, 2026-08-11) — general-mode file tools (all live)
+
+- **`general.files.find` / `tidy` / `duplicates` / `duplicates_delete`** — the general-mode
+  file workflow set (architecture entry above). Read-only find/duplicates run immediately;
+  tidy and duplicates_delete are confirm-gated (`general_files_tidy` /
+  `general_files_duplicates_delete` triggers) with checkpoint + `start` first, journaled
+  through `appendAction` (`file_move` moves, `file_write` deletes with preContent), and fully
+  undoable via `revert action <id>` (itself confirm-gated with trigger `revert_action`).
+- **Typed-command natural-language guard** (typedCommand.js): `find`/`sort`/`where` resolve
+  to real Windows binaries, so plain-word sentences starting with them now reach the matcher
+  instead of erroring in find.exe/sort.exe/where.exe (caught live by the Phase 2 WS driver on
+  the duplicates intent's own example phrase). Real command shapes with flags/paths/globs
+  still bypass. 5 new rows in checkToolsCoverage's TYPED battery.
+- **Not in WORKSPACE_DEV_ONLY_INTENTS**: these four intents are eligible from every
+  workspace type by design (files are files whether the folder is a dev project or not).
+- **Harness rows**: checkHandlerCoverage.js 19 new rows (dispatch shapes against the
+  read-only C:/tmp/nowhere fixture, extractFindQuery unit asserts, and a temp-dir smoke that
+  performs tidy → asserts the confirm `generalFileOp` pending record → performs the moves →
+  reverts the `file_move` action; same for duplicates plan/delete/revert with the older-copy
+  keep-newest assertion); checkMatcherCoverage.js 18 GENERAL-FILES rows (incl. guards keeping
+  "find the config file"/"where is main.py" on file_find); checkToolsCoverage.js 5
+  natural-language-guard rows. check-ws-cases unchanged (no new WS types).
+- **Verified live 2026-08-11** via the same temp-driver pattern as Phase 1 (PORT=3031,
+  fixture with plain text/binary/duplicate files): all 15 driver checks passed — content
+  find names the file, duplicates lists both copies, dedupe confirm asks then deletes only
+  the older copy (journaled with preContent), chat `revert action <id>` restores it after a
+  `revert_action` confirm, tidy confirm moves 7 files into Images/Documents (journaled as
+  file_move), and revert moves the file back. Server cleanup verified — no orphan on the
+  probe port.
 
 ## Conventions
 

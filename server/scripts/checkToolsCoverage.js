@@ -169,6 +169,13 @@ try {
   eq('typed prefix my rejected', typed.extractCommandLine('run my project'), null);
   eq('typed prefix execute the rejected', typed.extractCommandLine('execute the plan'), null);
   eq('typed prefix non-exec rejected', typed.extractCommandLine('run banana split'), null);
+  // Natural-language collision guard (Phase 2, 2026-08-11): find/sort/where resolve to real
+  // Windows binaries, so plain-word sentences starting with them must reach the matcher.
+  eq('typed sentence find rejected', typed.extractCommandLine('find duplicate files'), null);
+  eq('typed sentence sort rejected', typed.extractCommandLine('sort these files by type'), null);
+  eq('typed sentence where rejected', typed.extractCommandLine('where are my files'), null);
+  eq('typed find with glob still runs', typed.extractCommandLine('find . -name "*.js"'), 'find . -name "*.js"');
+  eq('typed sort with file arg still runs', typed.extractCommandLine('sort data.csv'), 'sort data.csv');
   const npmOnPath = typed.resolveExecutableOnPath('npm');
   eq('resolveExecutableOnPath npm', npmOnPath, true);
   if (npmOnPath) {

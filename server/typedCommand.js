@@ -83,6 +83,15 @@ const TRAILING_FILLER_RE = /\s+(?:please|pls|thanks|thank you|thx)[\s.,!;]*$/i;
 const TRAILING_PUNCT_RE = /[\s.,;!?]+$/;
 const WRAP_QUOTES_RE = /^(['"`])([\s\S]*)\1$/;
 
+// Natural-language collision guard (Phase 2, 2026-08-11): `find`, `sort` and `where` resolve
+// to real Windows binaries (find.exe/sort.exe/where.exe), so chat phrases like "find duplicate
+// files" or "sort these files by type" used to run those binaries with garbage arguments
+// instead of reaching their intents. A first token in this set followed only by plain words
+// (no flags, paths, globs, pipes, quotes) is a sentence, not a command — reject it so the
+// matcher decides. Real command lines ("find . -name x", "sort data.csv") keep working.
+const NATURAL_LANG_FIRST_TOKENS = new Set(['find', 'sort', 'where']);
+const PLAIN_WORD_RE = /^[a-z']+$/i;
+
 /**
  * Extracts a command line from typed chat input, or null when the input is not a command.
  *
@@ -93,6 +102,7 @@ const WRAP_QUOTES_RE = /^(['"`])([\s\S]*)\1$/;
  *  - exact form with 2+ tokens: first token must resolve on PATH, OR the whole line must
  *    pass the allowlist check (covers `PORT=3001 npm run dev` env-prefix forms)
  *  - exact form with 1 token: must be allowlisted (never execute "help"/"status")
+ *  - natural-language sentences (see NATURAL_LANG_FIRST_TOKENS) never bypass the matcher
  */
 export function extractCommandLine(input, projectRoot) {
   if (!input || typeof input !== 'string') return null;
@@ -117,6 +127,11 @@ export function extractCommandLine(input, projectRoot) {
   const tokens = line.split(/\s+/).filter(Boolean);
   if (tokens.length === 0) return null;
   const first = tokens[0];
+
+  if (NATURAL_LANG_FIRST_TOKENS.has(first.toLowerCase()) && tokens.length >= 2 &&
+      tokens.slice(1).every((t) => PLAIN_WORD_RE.test(t))) {
+    return null;
+  }
 
   if (fromPrefix) {
     if (DETERMINER_RE.test(first)) return null;

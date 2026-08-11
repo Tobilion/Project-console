@@ -29,6 +29,7 @@ const ACTION_TYPES = new Set([
   'file_edit',
   'file_insert',
   'file_append',
+  'file_move',
   'command',
   'git',
   'revert',
@@ -128,6 +129,37 @@ export async function revertAction(projectPath, id) {
 
   if (action.type === 'revert') {
     return { ok: true, answerOnly: true, data: `Action ${id} is itself a revert record — there is nothing to undo there.` };
+  }
+
+  // Phase 2 (2026-08-11): file moves (general-mode tidy) undo by moving the file back to its
+  // original path. Refuses when the destination is already occupied (never overwrite a live
+  // file to undo an old move) or the moved copy is gone.
+  if (action.type === 'file_move') {
+    if (!isSafeRelativePath(projectPath, action.from) || !isSafeRelativePath(projectPath, action.to)) {
+      return { error: `Action ${id} has an unsafe path — refusing to restore.` };
+    }
+    const fromAbs = path.resolve(projectPath, action.from);
+    const toAbs = path.resolve(projectPath, action.to);
+    try {
+      if (!fs.existsSync(toAbs)) {
+        return { error: `Action ${id} moved a file that no longer exists at ${action.to} — nothing to undo.` };
+      }
+      if (fs.existsSync(fromAbs)) {
+        return { error: `Action ${id} already has a file at ${action.from} — refusing to overwrite it.` };
+      }
+      fs.renameSync(toAbs, fromAbs);
+    } catch (err) {
+      return { error: `Restore failed: ${err.message}` };
+    }
+    appendAction(projectPath, {
+      type: 'revert',
+      description: `Reverted action ${id}: moved ${action.to} back to ${action.from}`,
+      path: action.from,
+    });
+    return {
+      ok: true,
+      data: `Moved ${action.to} back to ${action.from}.`,
+    };
   }
 
   if (action.type.startsWith('file_')) {
