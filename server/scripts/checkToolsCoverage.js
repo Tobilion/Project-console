@@ -54,6 +54,8 @@ const toolSandbox = await import(pathToFileURL(base + 'toolSandbox.js').href);
 const toolFileTools = await import(pathToFileURL(base + 'toolFileTools.js').href);
 const toolProcess = await import(pathToFileURL(base + 'toolProcess.js').href);
 const dangerous = await import(pathToFileURL(base + 'dangerousPatterns.js').href);
+const typed = await import(pathToFileURL(base + 'typedCommand.js').href);
+const cmdDir = await import(pathToFileURL(base + 'commandDir.js').href);
 const guardMod = await import(pathToFileURL(base + 'aiGuardrails.js').href);
 const verify = await import(pathToFileURL(base + 'verifyHarness.js').href);
 const distillation = await import(pathToFileURL(base + 'distillation.js').href);
@@ -157,6 +159,43 @@ try {
   eq('blocklist catches rm -rf /', dangerous.isCommandBlocked('rm -rf /'), true);
   eq('blocklist catches force-push main', dangerous.isCommandBlocked('git push --force origin main'), true);
   eq('blocklist leaves npm run dev alone', dangerous.isCommandBlocked('npm run dev'), false);
+
+  console.log('\n=== TYPED (extractCommandLine typed-command gate) ===');
+  eq('typed exact allowlisted', typed.extractCommandLine('npm run dev'), 'npm run dev');
+  eq('typed quoted', typed.extractCommandLine('"git status"'), 'git status');
+  eq('typed trailing please', typed.extractCommandLine('git status please'), 'git status');
+  eq('typed single-token not allowlisted', typed.extractCommandLine('status'), null);
+  eq('typed prefix determiner rejected', typed.extractCommandLine('run the site'), null);
+  eq('typed prefix my rejected', typed.extractCommandLine('run my project'), null);
+  eq('typed prefix execute the rejected', typed.extractCommandLine('execute the plan'), null);
+  eq('typed prefix non-exec rejected', typed.extractCommandLine('run banana split'), null);
+  const npmOnPath = typed.resolveExecutableOnPath('npm');
+  eq('resolveExecutableOnPath npm', npmOnPath, true);
+  if (npmOnPath) {
+    // PATH-resolution rows only run where npm is actually on PATH (any machine with node
+    // installed) — a machine without it must not fail the committed battery.
+    eq('typed prefix PATH exec', typed.extractCommandLine('run npm dev'), 'npm dev');
+    eq('typed exact PATH exec', typed.extractCommandLine('npm --version'), 'npm --version');
+  } else {
+    console.log('  (skipped PATH-resolution rows — npm not on PATH)');
+  }
+
+  console.log('\n=== COMMAND-DIR (wrapper sub-package rule) ===');
+  const wrapperRoot = path.join(FIXTURE_ROOT, 'wrapper');
+  await fs.mkdir(path.join(wrapperRoot, 'app'), { recursive: true });
+  await fs.writeFile(path.join(wrapperRoot, 'app', 'package.json'), JSON.stringify({ scripts: { dev: 'ng serve', start: 'ng serve' } }));
+  const wrapperProj = { path: wrapperRoot, codebaseIndex: { keyFiles: {} } };
+  eq('commandDir wrapper sub', await cmdDir.getCommandDir(wrapperProj), 'app');
+  eq('commandDir wrapper scripts', await cmdDir.getCommandDirScripts(wrapperProj), { dev: 'ng serve', start: 'ng serve' });
+  const normalProj = { path: proj, codebaseIndex: { keyFiles: { 'package.json': '{"scripts":{"test":"echo ok"}}' } } };
+  eq('commandDir normal null', await cmdDir.getCommandDir(normalProj), null);
+  eq('commandDir scripts normal null', await cmdDir.getCommandDirScripts(normalProj), null);
+  const workspaceProj = { path: wrapperRoot, codebaseIndex: { keyFiles: { 'package.json': '{"workspaces":["packages/*"]}' } } };
+  eq('commandDir workspace root null', await cmdDir.getCommandDir(workspaceProj), null);
+  await fs.mkdir(path.join(wrapperRoot, 'lib'), { recursive: true });
+  await fs.writeFile(path.join(wrapperRoot, 'lib', 'package.json'), JSON.stringify({ scripts: { build: 'x' } }));
+  const monoProj = { path: wrapperRoot, codebaseIndex: { keyFiles: {} } };
+  eq('commandDir two subs null', await cmdDir.getCommandDir(monoProj), null);
 
   console.log('\n=== GATE (resolveToolGate matrix) ===');
   const grants = new Set([toolGate.toolGrantKey(proj, 'insertAtLine')]);

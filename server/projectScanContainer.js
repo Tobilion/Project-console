@@ -3,6 +3,7 @@ import path from 'path';
 import { indexProject } from './codebaseIndexer.js';
 import { deriveScriptEntriesForProject, mergeAutoEntries } from './scriptEntries.js';
 import { sanitizeChatReplies, isContextFilename, readProjectContextDocs, commandEntriesFromDocs, isRecognizableByCodeAlone, buildFallbackConfig } from './projectScanHelpers.js';
+import { getCommandDir } from './commandDir.js';
 import { scanSingleProject } from './projectScanSingle.js';
 
 /**
@@ -97,6 +98,33 @@ export async function discoverProjects(baseDir) {
         // decide whether a doc-less, config-less, package.json-less folder should still be
         // recognized as a project.
         const codebaseIndex = await indexProject(projectPath);
+
+        // Wrapper projects (scriptless root + exactly one script-carrying sub-package — the
+        // SAM SYSTEM case: the real package.json/README sat in Projects\SAM SYSTEM\sam_system,
+        // so the root scan saw no docs and "run the site" fell back to the static-site branch).
+        // Adopt the sub-package's docs as this project's context docs so README run-command
+        // discovery, overview Q&A, and the doc-derived command entries work as if the
+        // sub-package were the root. Same wrapper rule commandDir.js uses for the execution
+        // cwd, so scan-time docs and run-time commands can't drift. Root docs, when present,
+        // always win — never merged over.
+        if (contextFiles.length === 0) {
+          const wrapperDir = await getCommandDir({ path: projectPath, codebaseIndex });
+          if (wrapperDir) {
+            const subDocs = await readProjectContextDocs(path.join(projectPath, wrapperDir));
+            if (subDocs) {
+              contextFiles.push(...subDocs.contextFiles);
+              for (const k of Object.keys(subDocs.parsedKnowledge)) {
+                if (subDocs.parsedKnowledge[k]) {
+                  parsedKnowledge[k] = parsedKnowledge[k]
+                    ? `${parsedKnowledge[k]}${parsedKnowledge[k].endsWith('\n') ? '' : '\n'}${subDocs.parsedKnowledge[k]}`
+                    : subDocs.parsedKnowledge[k];
+                }
+              }
+              if (!config) config = { projectName: entry.name, entries: [] };
+              config.entries.push(...commandEntriesFromDocs(entry.name, parsedKnowledge));
+            }
+          }
+        }
 
         if (!config && contextFiles.length === 0 && isRecognizableByCodeAlone(codebaseIndex)) {
           config = buildFallbackConfig(entry.name, codebaseIndex);

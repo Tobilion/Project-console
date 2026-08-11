@@ -10,6 +10,7 @@ import { computeFileEditPreview } from '../diffPreview.js';
 import { validateToolCall, withFileLock, FILE_MUTATING_TOOLS } from '../aiGuardrails.js';
 import { scheduleVerification } from '../verifyHarness.js';
 import { appendAction } from '../actionHistory.js';
+import { getCommandDir } from '../commandDir.js';
 
 /** Direct tool invocation from the frontend (not via AI chat). Scoped to the client's active project. */
 export async function handleToolCall(ws, parsed, sessionContext) {
@@ -48,8 +49,11 @@ export async function handleToolCall(ws, parsed, sessionContext) {
       ws.send(JSON.stringify({ type: 'tool_start', data: `[GIT SAFETY] ${cp.message}\n` }));
     }
     // Phase 3: risky direct tool calls are the frontend's own confirm-gated equivalent (the
-    // chip path) — flag them for the sandbox; non-risky ones stay env-complete.
-    executeCommand(command, project.path, ws, project.id, { sandboxed: !!risky });
+    // chip path) — flag them for the sandbox; non-risky ones stay env-complete. Runs in the
+    // effective command dir so wrapper projects (scriptless root + one sub-package) execute
+    // where the package.json actually lives — commandDir.js.
+    const sub = await getCommandDir(project);
+    executeCommand(command, sub ? path.join(project.path, sub) : project.path, ws, project.id, { sandboxed: !!risky });
     // Phase 4 (2026-08-10): same logging rule as the AI path — risky direct commands are the
     // confirm-worthy set, so they land in the action history.
     if (risky) {

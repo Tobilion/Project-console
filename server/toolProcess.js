@@ -5,6 +5,9 @@ import { state } from './state.js';
 import { isProbeableUrl } from './urlSafety.js';
 import { buildSandboxEnv } from './executorSandbox.js';
 import { readProfile } from './routes/profileRoutes.js';
+import fs from 'fs/promises';
+import path from 'path';
+import { getCommandDir } from './commandDir.js';
 
 // Process/test/probe tools for the AI tool layer (Phase 9 split, 2026-08-04 — extracted from
 // tools.js; consumed by tools.js's createProjectTools assembly). Factory-bound to one project,
@@ -81,7 +84,21 @@ export function createProcessTools({ project, root }) {
    * test suite can't wedge the model loop.
    */
   async function runTests() {
-    const command = findTestCommand(project);
+    // Wrapper projects (scriptless root + one sub-package) run tests inside the sub-package:
+    // root keyFiles has no package.json there, so first check the sub-package's own test
+    // script (the one package.json marker findTestCommand understands), then fall back to
+    // the root marker scan exactly as before. commandDir.js.
+    let command = null;
+    let runRoot = root;
+    const sub = await getCommandDir(project);
+    if (sub) {
+      runRoot = path.join(root, sub);
+      try {
+        const subPkg = JSON.parse(await fs.readFile(path.join(runRoot, 'package.json'), 'utf-8'));
+        if (subPkg.scripts && subPkg.scripts.test) command = 'npm test';
+      } catch {}
+    }
+    if (!command) command = findTestCommand(project);
     if (!command) {
       return { success: true, data: 'No test setup detected for this project (no package.json test script, Cargo.toml, go.mod, or Python test marker).' };
     }
@@ -90,11 +107,11 @@ export function createProcessTools({ project, root }) {
       // run the test suite with the allowlisted env (executorSandbox.js) as well.
       const sandboxed = readProfile().sandboxRiskyCommands;
       const { stdout, stderr } = await execAsync(command, {
-        cwd: root,
+        cwd: runRoot,
         timeout: 90000,
         maxBuffer: 10 * 1024 * 1024,
         windowsHide: true,
-        env: sandboxed ? buildSandboxEnv(process.env, root) : undefined,
+        env: sandboxed ? buildSandboxEnv(process.env, runRoot) : undefined,
       });
       return { success: true, data: { command, output: `${stdout || ''}${stderr ? `\n${stderr}` : ''}`.trim().slice(0, 20000) } };
     } catch (err) {

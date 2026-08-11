@@ -5,6 +5,15 @@ import { createProjectTools, findTestCommand } from '../tools.js';
 import { parseFileNameAndContent, parseFileNameOnly, queueFileOpConfirmation } from './builtinHelpers.js';
 import { projectTypeSuggestions, findMentionedScript } from './builtinRunSuggestions.js';
 import { extractRequestedPort, applyRequestedPort } from '../requestedPort.js';
+import path from 'path';
+import { getCommandDir, getCommandDirScripts } from '../commandDir.js';
+
+/** Absolute command-execution directory (project.path, or the single sub-package when the
+ *  root is a scriptless wrapper — see commandDir.js). */
+async function effectiveRunDir(project) {
+  const sub = await getCommandDir(project);
+  return sub ? path.join(project.path, sub) : project.path;
+}
 
 /**
  * npm/file/run handlers (Phase 10 step 4, extracted verbatim from builtinIntents.js).
@@ -12,19 +21,25 @@ import { extractRequestedPort, applyRequestedPort } from '../requestedPort.js';
  */
 export const fileNpmHandlers = {
   npm_install: async (ws, action, input, project, sessionContext) => {
-    executeCommand('npm install', project.path, ws, project.id);
+    const runDir = await effectiveRunDir(project);
+    executeCommand('npm install', runDir, ws, project.id);
     return true;
   },
 
   npm_build: async (ws, action, input, project, sessionContext) => {
-    executeCommand('npm run build', project.path, ws, project.id);
+    const runDir = await effectiveRunDir(project);
+    executeCommand('npm run build', runDir, ws, project.id);
     return true;
   },
 
   npm_run: async (ws, action, input, project, sessionContext) => {
-    // Load scripts from codebase index
+    // Effective command dir: wrapper projects (root package.json scriptless, exactly one
+    // sub-package) run npm against the sub-package — see commandDir.js. Normal projects
+    // fall back to the root package.json / project.path exactly as before.
+    const runDir = await effectiveRunDir(project);
     let scripts = {};
     try { scripts = JSON.parse(project.codebaseIndex?.keyFiles?.['package.json'] || '{}').scripts || {}; } catch {}
+    scripts = (await getCommandDirScripts(project)) || scripts;
     // "run the site on port 3010" — an explicit port overrides the script's default. When a
     // port is requested the duplicate-dev-server guard below is skipped: the user is
     // deliberately (re)starting on a different port, not re-spawning the same one (Phase 5).
@@ -57,7 +72,7 @@ export const fileNpmHandlers = {
           }));
           return true;
         }
-        executeCommand(applyRequestedPort(`npm run ${scriptName}`, requestedPort, { script: scripts[scriptName] }), project.path, ws, project.id);
+        executeCommand(applyRequestedPort(`npm run ${scriptName}`, requestedPort, { script: scripts[scriptName] }), runDir, ws, project.id);
       } else {
         ws.send(JSON.stringify({ type: 'answer', data: `No script called **\`${scriptName}\`** found in \`package.json\`.` }));
         await projectTypeSuggestions(ws, project, input, scripts);
@@ -67,21 +82,21 @@ export const fileNpmHandlers = {
     // "npm serve" / "npm start" shortcut — no "run" keyword
     const serveMatch = input.match(/\bnpm\s+serve\b/i);
     if (serveMatch && scripts.serve) {
-      executeCommand(applyRequestedPort('npm run serve', requestedPort, { script: scripts.serve }), project.path, ws, project.id);
+      executeCommand(applyRequestedPort('npm run serve', requestedPort, { script: scripts.serve }), runDir, ws, project.id);
       return true;
     }
     const startDirect = input.match(/\bnpm\s+start\b/i);
     if (startDirect && scripts.start) {
-      executeCommand(applyRequestedPort('npm start', requestedPort, { script: scripts.start }), project.path, ws, project.id);
+      executeCommand(applyRequestedPort('npm start', requestedPort, { script: scripts.start }), runDir, ws, project.id);
       return true;
     }
     // Try "start the dev server" / "start a live server" patterns
     const startMatch = input.match(/start\s+(?:the\s+|a\s+)?(?:live\s+)?(?:dev\s+)?(?:server|site|app)\b/i);
     if (startMatch) {
       if (scripts.dev) {
-        executeCommand(applyRequestedPort('npm run dev', requestedPort, { script: scripts.dev }), project.path, ws, project.id);
+        executeCommand(applyRequestedPort('npm run dev', requestedPort, { script: scripts.dev }), runDir, ws, project.id);
       } else if (scripts.start) {
-        executeCommand(applyRequestedPort('npm start', requestedPort, { script: scripts.start }), project.path, ws, project.id);
+        executeCommand(applyRequestedPort('npm start', requestedPort, { script: scripts.start }), runDir, ws, project.id);
       } else {
         ws.send(JSON.stringify({ type: 'answer', data: `No \`dev\` or \`start\` script found in \`package.json\`.` }));
         await projectTypeSuggestions(ws, project, input, scripts);
@@ -91,9 +106,9 @@ export const fileNpmHandlers = {
     // Try "start developing" / "start dev mode"
     if (/\bstart\s+developing\b|\bstart\s+dev\s+mode\b/i.test(input)) {
       if (scripts.dev) {
-        executeCommand(applyRequestedPort('npm run dev', requestedPort, { script: scripts.dev }), project.path, ws, project.id);
+        executeCommand(applyRequestedPort('npm run dev', requestedPort, { script: scripts.dev }), runDir, ws, project.id);
       } else if (scripts.start) {
-        executeCommand(applyRequestedPort('npm start', requestedPort, { script: scripts.start }), project.path, ws, project.id);
+        executeCommand(applyRequestedPort('npm start', requestedPort, { script: scripts.start }), runDir, ws, project.id);
       } else {
         await projectTypeSuggestions(ws, project, input, scripts);
       }
@@ -134,7 +149,7 @@ export const fileNpmHandlers = {
           trigger: 'run_server',
         }));
       } else {
-        executeCommand(command, project.path, ws, project.id);
+        executeCommand(command, runDir, ws, project.id);
       }
       return true;
     }
@@ -205,7 +220,8 @@ export const fileNpmHandlers = {
     // paths can never drift — see Phase 5 PASS 5.3.
     const testCommand = findTestCommand(project);
     if (testCommand) {
-      executeCommand(testCommand, project.path, ws, project.id);
+      const runDir = await effectiveRunDir(project);
+      executeCommand(testCommand, runDir, ws, project.id);
     } else {
       ws.send(JSON.stringify({ type: 'answer', data: `No test setup detected for **[${project.name}]** (no package.json test script, Cargo.toml, go.mod, or Python test marker). Say "tell me about the tests" to see what's here.` }));
     }
@@ -265,11 +281,13 @@ export const fileNpmHandlers = {
 
   run_project: async (ws, action, input, project, sessionContext) => {
     // Try to detect the project type and run appropriately
+    const runDir = await effectiveRunDir(project);
     const pkgJson = project.codebaseIndex?.keyFiles?.['package.json'];
     let scripts = {};
     if (pkgJson) {
       try { scripts = JSON.parse(pkgJson).scripts || {}; } catch {}
     }
+    scripts = (await getCommandDirScripts(project)) || scripts;
 
     // Prefer a script the user actually named ("run its server", "is the server running") over
     // the generic dev/start/serve default — see findMentionedScript's own comment for the real
@@ -277,7 +295,7 @@ export const fileNpmHandlers = {
     const requestedPort = extractRequestedPort(input);
     const mentioned = findMentionedScript(input, scripts);
     if (mentioned && !['dev', 'start', 'serve'].includes(mentioned)) {
-      executeCommand(applyRequestedPort(`npm run ${mentioned}`, requestedPort, { script: scripts[mentioned] }), project.path, ws, project.id);
+      executeCommand(applyRequestedPort(`npm run ${mentioned}`, requestedPort, { script: scripts[mentioned] }), runDir, ws, project.id);
       return true;
     }
 
@@ -308,11 +326,11 @@ export const fileNpmHandlers = {
 
     // Check for known dev/start scripts first
     if (scripts.dev) {
-      executeCommand(applyRequestedPort('npm run dev', requestedPort, { script: scripts.dev }), project.path, ws, project.id);
+      executeCommand(applyRequestedPort('npm run dev', requestedPort, { script: scripts.dev }), runDir, ws, project.id);
     } else if (scripts.start) {
-      executeCommand(applyRequestedPort('npm start', requestedPort, { script: scripts.start }), project.path, ws, project.id);
+      executeCommand(applyRequestedPort('npm start', requestedPort, { script: scripts.start }), runDir, ws, project.id);
     } else if (scripts.serve) {
-      executeCommand(applyRequestedPort('npm run serve', requestedPort, { script: scripts.serve }), project.path, ws, project.id);
+      executeCommand(applyRequestedPort('npm run serve', requestedPort, { script: scripts.serve }), runDir, ws, project.id);
     } else {
       await projectTypeSuggestions(ws, project, input, scripts);
     }

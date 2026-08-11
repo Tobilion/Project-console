@@ -3,7 +3,9 @@ import { state, pendingConfirmations } from '../state.js';
 import { appendMessage, getSession } from '../conversationStore.js';
 import { executeCommand } from '../executor.js';
 import { isCommandBlocked } from '../dangerousPatterns.js';
-import { isCommandAllowed } from '../tools.js';
+import path from 'path';
+import { extractCommandLine } from '../typedCommand.js';
+import { getCommandDir } from '../commandDir.js';
 import { handleAIQuery } from './aiQuery.js';
 import { guessCommand } from '../commandGuesser.js';
 import { logNearMiss } from '../nearMissLogger.js';
@@ -117,18 +119,24 @@ async function handleExecuteBody(ws, parsed, sessionContext) {
   // auto-generated suggestion chip, which takes a completely different path client-side
   // (`onDirectCommand` in Terminal.tsx, sent as an `execute_tool`/`executeCommand` WS message —
   // see `handleToolCall` below) that bypasses the matcher entirely. Typed input had no equivalent.
-  // Fixed by giving typed input the same bypass: if the whole message is already a well-formed,
-  // allowlisted command (`isCommandAllowed` — the same `ALLOWED_COMMANDS` check the chip path
-  // uses) and isn't blocked by `isCommandBlocked`'s dangerous-pattern check, run it directly
-  // instead of feeding it to the matcher at all. No new attack surface: this is the exact same
-  // allowlist + blocklist gate `handleToolCall`'s `executeCommand` tool already enforces on every
-  // chip click, just reachable from a typed message too. Deliberately does NOT try to be clever
-  // about partial/fuzzy command text ("run python main.py serve please") — only an exact,
-  // already-correct command line is auto-run; anything else still goes through the normal
-  // pipeline so "run the site" etc. keep working as intents.
-  const trimmedInput = input.trim();
-  if (isCommandAllowed(trimmedInput) && !isCommandBlocked(trimmedInput)) {
-    executeCommand(trimmedInput, project.path, ws, project.id);
+  // Typed commands run directly instead of feeding the matcher (2026-08-03 fix: typing
+  // "python main.py serve" went through the intent pipeline and lost to file_relations; the
+  // chip path bypassed it entirely, so typed input got the same bypass). The gate here is
+  // extractCommandLine (typedCommand.js): an exact well-formed command line runs immediately —
+  // first token allowlisted OR PATH-resolved, so any real executable works, including ones the
+  // matcher has no intent for ("ng serve" in a wrapper project). Natural prefixes ("run ng
+  // serve", "command - git status") are accepted; single tokens still require the allowlist so
+  // plain chat words never execute stray system binaries. Dangerous patterns are still blocked;
+  // anything else goes through the normal pipeline so "run the site" keeps working as an intent.
+  // Resolve the effective command directory (wrapper sub-package, e.g. SAM SYSTEM's
+  // `sam_system/`, or project.path itself) BEFORE extracting the command line — a locally
+  // installed CLI (node_modules/.bin/ng) lives inside that sub-package, not the wrapper root,
+  // so resolveExecutableOnPath needs the right directory to find it (2026-08-11 follow-up fix).
+  const sub = await getCommandDir(project);
+  const effectiveRoot = sub ? path.join(project.path, sub) : project.path;
+  const cmdLine = extractCommandLine(input, effectiveRoot);
+  if (cmdLine && !isCommandBlocked(cmdLine)) {
+    executeCommand(cmdLine, effectiveRoot, ws, project.id);
     return;
   }
 

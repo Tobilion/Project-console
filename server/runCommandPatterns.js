@@ -11,6 +11,7 @@ export const RUN_COMMAND_PATTERNS = [
   /\bmvn spring-boot:run\b/i, /\bmvn (?:compile\s+)?exec:java\b/i, /\bmvn (?:clean\s+)?package\b/i,
   /\.\/gradlew\s+(?:bootRun|run)\b/i, /\bgradlew\.bat\s+(?:bootRun|run)\b/i,
   /\bdotnet run\b/i, /\bdotnet watch run\b/i,
+  /\bng (?:serve|build|test|e2e|lint|run)\b/i,
   /\bbundle exec \S+(?:\s+\S+){0,3}/i, /\brails s(?:erver)?\b/i, /\brackup\b/i,
   /\bphp artisan serve\b/i, /\bphp -S\s+\S+/i,
   /\b[\w.:\\\/-]*python(?:3)?(?:\.exe)?\s+manage\.py\s+runserver\b/i, /\bflask run\b/i, /\buvicorn\s+\S+/i,

@@ -456,7 +456,36 @@ npm run lint    # tsc --noEmit
   (last-resort keyword fallback with word-boundary regex — `.env`-style keywords special-cased),
   `gitSafety.js` (createCheckpoint/performUndo/isGitRepo), `metrics.js`, `fileWatcher.js`,
   `mathEval.js` (safe shunting-yard evaluator for the `calculate` intent — `+ - * / ( )`
-  only, no eval/Function), `platformCommand.js`
+  only, no eval/Function), `platformCommand.js`,
+  `typedCommand.js` (2026-08-11, wrapper-project fix: `extractCommandLine` — the typed-input
+  bypass gate in connectionExecute.js. Exact well-formed command lines run directly: first
+  token allowlisted OR PATH-resolved (so any real executable works, including ones the
+  matcher has no intent for — "ng serve" in a wrapper project), natural prefixes
+  ("run ng serve", "command - git status"); single tokens still require the allowlist.
+  `resolveExecutableOnPath` caches by PATH. The strict ALLOWED_COMMANDS gate still governs
+  chips/AI tool calls — only typed input gets PATH resolution. Follow-up fix, same day:
+  `resolveExecutableOnPath(token, projectRoot)` now checks `<projectRoot>/node_modules/.bin/`
+  FIRST — a project's own devDependency CLI (e.g. Angular's `ng`, installed via plain
+  `npm install`, never global) is invisible to a system-PATH-only scan, which is what actually
+  broke "ng serve" on a live report even after `ng` was allowlisted. `connectionExecute.js`
+  resolves the effective command dir (`getCommandDir` — wrapper sub-package aware) BEFORE
+  calling `extractCommandLine` so the right `node_modules/.bin` gets checked. `ALLOWED_COMMANDS`
+  (`toolAllow.js`) also broadened beyond the original JS-centric list: `ng`, `flutter`, `dart`,
+  `yarn`, `pnpm`, `bun`, `deno`, `cargo`, `go`, `mvn`, `gradle`, `dotnet`, `ruby`, `bundle`,
+  `php`, `composer` — this list gates single-token typed commands and the env-prefix fallback
+  branch, not just PATH resolution, so a framework CLI needs to be here even when it also
+  resolves on PATH), `commandDir.js`
+  (2026-08-11, wrapper-project fix: `getCommandDir`/`getCommandDirScripts` — effective
+  command-execution directory. Narrow rule: project ROOT with no runnable package.json
+  scripts (and not a workspace root) + exactly ONE direct subdirectory carrying a
+  package.json with scripts → that sub-package is the command dir (one-level fs probe —
+  the codebase index can't answer this: detectSubPackages only reports >=2 manifest dirs).
+  Consumers: builtinFileNpm (scripts + execute cwd), connectionExecute (typed commands),
+  connectionToolCall (chip/executeCommand cwd), toolProcess (runTests), projectScanContainer
+  (adopts the sub-package's README/CLAUDE.md into contextFiles at scan time so README
+  run-command discovery + overview Q&A work for wrapper projects). `runCommandPatterns.js`
+  gained the `ng serve/build/test` pattern (the README parser never recognized Angular CLI
+  commands)
 
 Frontend (`src/`): `hooks/useConsole.ts` ~368-line orchestrator owning all state + WS/fetch
 handlers (WS message cases live in `hooks/wsMessageCases.ts` + `wsStreamingCases.ts`, state
@@ -797,7 +826,7 @@ time/date/calculate rows, 92/92).
   "run the calculation" (routes to system.chit_chat.calculate on this machine's local data;
   reproduced identically on clean HEAD with the how_do_i work stashed, 91/92 — not a
   regression of this change); check-handlers 30/30 (baseline 29/29 + 1 how_do_i dispatch row);
-  check-tools 128/128;
+  check-tools 145/145;
   check-indexer 85/85 (+14 SYMBOLS & GRAPH rows for the Phase 1.1 codebase-graph work);   check-ws-cases 84/84 (baseline +4 rows for the Phase 3 aiQueryInFlight
   lifecycle fix; +1 drift row from later WS-case additions). check-docs 46/46 (catalog entries
   mirrored in README's command-reference table — `server/scripts/checkDocsSync.js`, run via

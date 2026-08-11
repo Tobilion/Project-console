@@ -9,6 +9,15 @@ import path from 'path';
 export const ALLOWED_COMMANDS = [
   'npm', 'node', 'git', 'python', 'pip', 'python3', 'pip3',
   'npx', 'vite', 'tsc', 'tsx', 'eslint', 'prettier', 'jest', 'vitest',
+  // Broadened framework coverage (2026-08-11, reported directly — an Angular project's `ng
+  // serve` was rejected on a friend's machine even after the PATH-resolution typed-command fix,
+  // because `ng` wasn't in this allowlist either — see the isCommandAllowed(line) fallback in
+  // typedCommand.js's extractCommandLine, which single-token and env-prefixed commands still
+  // depend on). Covers the CLIs of the frameworks users actually run through this console day to
+  // day: Angular, Flutter/Dart, Rust, Go, JVM (Maven/Gradle wrapper-less form), .NET, Ruby, PHP,
+  // and the other JS package managers beyond npm.
+  'ng', 'flutter', 'dart', 'yarn', 'pnpm', 'bun', 'deno',
+  'cargo', 'go', 'mvn', 'gradle', 'dotnet', 'ruby', 'bundle', 'php', 'composer',
 ];
 
 export function isCommandAllowed(cmd) {

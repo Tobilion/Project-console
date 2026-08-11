@@ -298,6 +298,7 @@ App-global identity (name/title/custom role) edited from the ⚙ Settings modal;
 | `install pack <path-to-console.tools.json>` | Add custom tools from a local manifest — preview first, confirm to install |
 | `AI mode: "remember that ..."` | Save a durable cross-session fact to .console/memory.md |
 | `chat header download icon` | Export the session as Markdown/JSON/PDF; chat-log download from the session list |
+| `how do i publish this` / `how do i install this on someone else's system` | Publish-to-npm and cross-machine install steps (see "Publishing & installing on another machine" below) |
 
 ---
 
@@ -358,6 +359,42 @@ npm run build               # vite build + esbuild server bundle → dist/
 ```
 
 Cross-platform note: `start.bat` is Windows-only; on macOS/Linux run `npm run dev` directly. The server, sandboxed file tools, and safety blocklist are all `process.platform`-aware.
+
+---
+
+## Publishing & installing on another machine
+
+You can also just ask the console itself — "how do I publish this" or "how do I install this on
+someone else's system" answers from the command reference with the exact commands below.
+
+**Publishing a new version (from this repo):**
+
+```powershell
+npm login                    # once per machine, if you haven't already
+npm version patch            # or minor / major — bumps package.json and tags a commit
+npm publish
+```
+
+`package.json`'s `"files"` array controls what actually ships (`bin/`, `dist/`, `server/`,
+`README.md`, `LICENSE`) — `data/`, personal config, and anything gitignored never gets published.
+Run `npm run build` first if `dist/` isn't already up to date; `npm publish` ships whatever's on
+disk, not a fresh build.
+
+**Installing on someone else's machine (no clone required):**
+
+```powershell
+# Option A — install once, run anytime:
+npm install -g local-project-console
+local-project-console
+
+# Option B — no install, one-off run:
+npx local-project-console
+```
+
+Either way it opens the same setup flow as running from source: pick or type a folder to scan,
+and the first-run wizard walks through the rest. It needs Node 18+ and, for AI mode, a local
+[Ollama](https://ollama.com) install — everything else (the matcher, trigger-mode commands, git
+integration) works with zero setup.
 
 ---
 
