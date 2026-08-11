@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { UserProfile } from '../hooks/useUserProfile';
-import { Settings, X } from 'lucide-react';
+import { Settings, X, ChevronDown, ChevronRight } from 'lucide-react';
 import { ModalShell } from './ui/ModalShell';
+import { apiFetchJson } from '../utils/apiFetch';
 
 interface UserProfileModalProps {
   open: boolean;
@@ -10,14 +11,57 @@ interface UserProfileModalProps {
   onSave: (updates: Partial<UserProfile>) => void;
 }
 
-/** Gear-triggered profile editor: name / title / custom role, persisted via POST
- *  /api/profile. Same overlay pattern as the welcome tour (fixed backdrop + centered
- *  panel); Esc and backdrop-click close without saving. */
+interface TuningState {
+  defaults: Record<string, number>;
+  overrides: Record<string, number>;
+}
+
+// Label/unit hints for the tuning knobs — the keys themselves are the API contract, these
+// strings are display-only copy so a user isn't staring at bare constant names.
+const TUNING_GROUPS: { label: string; keys: { name: string; hint: string }[] }[] = [
+  {
+    label: 'Matching',
+    keys: [
+      { name: 'FUSE_THRESHOLD', hint: 'fuzzy match floor (0–1)' },
+      { name: 'FUSE_MIN_MATCH_CHAR_LENGTH', hint: 'min characters for a fuzzy hit' },
+      { name: 'INIT_WAIT_POLL_MS', hint: 'matcher startup poll interval, ms' },
+      { name: 'SUGGESTION_DEFAULT_LIMIT', hint: 'max "did you mean" suggestions' },
+      { name: 'COLLISION_DEFAULT_THRESHOLD', hint: 'intent-collision cosine floor (0–1)' },
+    ],
+  },
+  {
+    label: 'Executor',
+    keys: [
+      { name: 'DEV_URL_DETACH_GRACE_MS', hint: 'grace after a detected URL, ms' },
+      { name: 'DEV_SERVER_FORCE_DETACH_MS', hint: 'detach recognized dev servers after, ms' },
+      { name: 'LONG_RUNNING_FORCE_DETACH_MS', hint: 'detach other long commands after, ms' },
+      { name: 'STDOUT_SUMMARY_CAP', hint: 'stdout tail shown in results, chars' },
+      { name: 'STDERR_SUMMARY_CAP', hint: 'stderr tail shown in results, chars' },
+    ],
+  },
+  {
+    label: 'Type check',
+    keys: [{ name: 'DEBOUNCE_MS', hint: 'verification debounce after file edits, ms' }],
+  },
+];
+
+/** Gear-triggered profile editor: name / title / custom role + tuning knobs, persisted via
+ *  POST /api/profile and /api/tuning. Same overlay pattern as the welcome tour (fixed backdrop
+ *  + centered panel); Esc and backdrop-click close without saving. */
 export function UserProfileModal({ open, profile, onClose, onSave }: UserProfileModalProps) {
   const [name, setName] = useState(profile.name);
   const [title, setTitle] = useState(profile.title);
   const [customRole, setCustomRole] = useState(profile.customRole);
   const [sandboxRiskyCommands, setSandboxRiskyCommands] = useState(profile.sandboxRiskyCommands);
+
+  // Phase 8 (2026-08-11): runtime tuning-constant editor (server-side shadowing via
+  // data/tuning.json — see server/tuningStore.js). Loaded as overrides+defaults when the modal
+  // opens; the draft starts at defaults merged over overrides so every knob is visible, and
+  // Save posts only the values that differ from the factory default.
+  const [tuning, setTuning] = useState<TuningState | null>(null);
+  const [draft, setDraft] = useState<Record<string, string>>({});
+  const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [tuningSaved, setTuningSaved] = useState(false);
 
   // Re-sync the draft whenever the modal opens or the profile changes externally.
   useEffect(() => {
@@ -26,16 +70,63 @@ export function UserProfileModal({ open, profile, onClose, onSave }: UserProfile
       setTitle(profile.title);
       setCustomRole(profile.customRole);
       setSandboxRiskyCommands(profile.sandboxRiskyCommands);
+      setAdvancedOpen(false);
+      setTuningSaved(false);
+      apiFetchJson<TuningState>('/api/tuning').then((t) => {
+        if (!t) return;
+        setTuning(t);
+        const merged: Record<string, string> = {};
+        for (const [k, v] of Object.entries(t.defaults)) merged[k] = String(v);
+        for (const [k, v] of Object.entries(t.overrides)) merged[k] = String(v);
+        setDraft(merged);
+      });
     }
   }, [open, profile]);
-
-  // Esc-to-close now lives in ModalShell.
 
   const canSave = name.trim() && title.trim() && customRole.trim();
 
   const handleSave = () => {
     onSave({ name: name.trim(), title: title.trim(), customRole: customRole.trim(), sandboxRiskyCommands });
     onClose();
+  };
+
+  const handleSaveTuning = async () => {
+    if (!tuning) return;
+    const overrides: Record<string, number> = {};
+    for (const [k, def] of Object.entries(tuning.defaults)) {
+      const raw = (draft[k] ?? '').trim();
+      if (raw === '' || raw === String(def)) continue; // untouched → default, send nothing
+      const num = Number(raw);
+      if (Number.isFinite(num)) overrides[k] = num; // server re-validates bounds anyway
+    }
+    const res = await apiFetchJson<{ applied: Record<string, number>; defaults: Record<string, number>; overrides: Record<string, number> }>(
+      '/api/tuning',
+      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ overrides }) },
+    );
+    if (res) {
+      setTuning({ defaults: res.defaults, overrides: res.overrides });
+      const merged: Record<string, string> = {};
+      for (const [k, v] of Object.entries(res.defaults)) merged[k] = String(v);
+      for (const [k, v] of Object.entries(res.overrides)) merged[k] = String(v);
+      setDraft(merged);
+      setTuningSaved(true);
+      setTimeout(() => setTuningSaved(false), 2000);
+    }
+  };
+
+  const handleResetTuning = async () => {
+    const res = await apiFetchJson<{ defaults: Record<string, number>; overrides: Record<string, number> }>(
+      '/api/tuning',
+      { method: 'DELETE' },
+    );
+    if (res) {
+      setTuning({ defaults: res.defaults, overrides: res.overrides });
+      const merged: Record<string, string> = {};
+      for (const [k, v] of Object.entries(res.defaults)) merged[k] = String(v);
+      setDraft(merged);
+      setTuningSaved(true);
+      setTimeout(() => setTuningSaved(false), 2000);
+    }
   };
 
   return (
@@ -113,6 +204,62 @@ export function UserProfileModal({ open, profile, onClose, onSave }: UserProfile
               Off by default.
             </p>
           </div>
+        </div>
+
+        <div className="pt-1 border-t border-border-faint">
+          <button
+            type="button"
+            onClick={() => setAdvancedOpen(!advancedOpen)}
+            className="flex items-center gap-1.5 text-xs text-fg-dim hover:text-fg-strong transition-colors"
+          >
+            {advancedOpen ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+            Advanced tuning
+            {tuning && Object.keys(tuning.overrides).length > 0 && (
+              <span className="text-[10px] text-accent">({Object.keys(tuning.overrides).length} overridden)</span>
+            )}
+          </button>
+          {advancedOpen && tuning && (
+            <div className="mt-2 space-y-3">
+              {TUNING_GROUPS.map((group) => (
+                <div key={group.label}>
+                  <p className="text-[10px] tracking-[0.15em] uppercase text-fg-faint font-bold mb-1">{group.label}</p>
+                  <div className="space-y-1.5">
+                    {group.keys.map(({ name, hint }) => (
+                      <div key={name} className="flex items-center justify-between gap-3">
+                        <label className="text-[11px] text-fg-subtle flex-1 min-w-0" title={hint}>
+                          <span className="font-mono">{name}</span>
+                          <span className="block text-[10px] text-fg-faint truncate">{hint}</span>
+                        </label>
+                        <input
+                          type="number"
+                          value={draft[name] ?? ''}
+                          onChange={(e) => setDraft((d) => ({ ...d, [name]: e.target.value }))}
+                          className="w-24 bg-surface border border-border-soft rounded-md px-2 py-1 text-[11px] font-mono text-fg focus:outline-none focus:border-[#3d6bff] transition-colors text-right"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+              <div className="flex items-center gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={handleSaveTuning}
+                  className="px-3 py-1.5 text-[10px] font-bold tracking-wider uppercase rounded-lg bg-[#3d6bff]/15 text-[#3d6bff] hover:bg-[#3d6bff]/25 transition-colors"
+                >
+                  Apply tuning
+                </button>
+                <button
+                  type="button"
+                  onClick={handleResetTuning}
+                  className="px-3 py-1.5 text-[10px] font-bold tracking-wider uppercase rounded-lg bg-scrim-faint text-fg-dim hover:text-fg-strong border border-border-soft transition-colors"
+                >
+                  Reset all
+                </button>
+                {tuningSaved && <span className="text-[10px] text-green-400">Saved — affects the next match/run</span>}
+              </div>
+            </div>
+          )}
         </div>
       </div>
 

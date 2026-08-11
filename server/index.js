@@ -26,6 +26,8 @@ import { registerSessionRoutes } from './routes/sessionRoutes.js';
 import { registerSearchRoutes } from './routes/searchRoutes.js';
 import { registerMonitoringRoutes } from './routes/monitoringRoutes.js';
 import { registerProfileRoutes } from './routes/profileRoutes.js';
+import { registerTuningRoutes } from './routes/tuningRoutes.js';
+import { loadTuning } from './tuningStore.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -45,6 +47,10 @@ registerSessionRoutes(app);
 registerSearchRoutes(app);
 registerMonitoringRoutes(app);
 registerProfileRoutes(app);
+registerTuningRoutes(app);
+// Tuning overrides (data/tuning.json) must be in memory before any consumer reads a knob —
+// the first Fuse build happens during semanticMatcher.initialize() a few lines below.
+loadTuning();
 
 initWebSocketServer();
 

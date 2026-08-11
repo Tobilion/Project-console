@@ -2,6 +2,7 @@ import fs from 'fs/promises';
 import path from 'path';
 import { spawn } from 'child_process';
 import { isWindows } from './platformCommand.js';
+import { getTuning } from './tuningStore.js';
 
 /**
  * Background, non-blocking TypeScript type-check verification (Phase 1, Part 1.4). Whenever the
@@ -17,6 +18,8 @@ import { isWindows } from './platformCommand.js';
  *    Windows (`npx` alone fails with ENOENT via spawn without a shell).
  *  - Never throws to the caller.
  */
+// Phase 8 (2026-08-11): the exported value is the DEFAULT; tuningStore overrides shadow it
+// per schedule (see DEBOUNCE_MS below).
 export const DEBOUNCE_MS = 2000;
 export const HARNESS_TIMEOUT_MS = 60000;
 export const MAX_OUTPUT_LINES = 12;
@@ -76,7 +79,7 @@ export function scheduleVerification(root, log) {
         scheduleVerification(root, log);
       }
     });
-  }, DEBOUNCE_MS);
+  }, getTuning('DEBOUNCE_MS', DEBOUNCE_MS));
 }
 
 /** Cancels a pending debounce and clears the running flag (used by tests/shutdown). */

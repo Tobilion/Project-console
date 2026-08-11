@@ -27,6 +27,7 @@ import { ANSI_RE, URL_PATTERN, collapseLfCrlfWarnings, createBufferedSender } fr
 import { buildPortPromptConfirmation, offerPortRetry } from './executorPorts.js';
 import { isDevServerCommand, buildDetachMessage } from './executorDevServer.js';
 import { notify } from './notify.js';
+import { getTuning } from './tuningStore.js';
 
 // Re-exports so every external importer keeps using `../executor.js` unchanged:
 // monitoringRoutes (runningProcesses, getProcessLog), toolProcess (runningProcesses,
@@ -36,6 +37,8 @@ import { notify } from './notify.js';
 export { runningProcesses, processLogs, getProcessLog, stopTrackedProcess };
 
 // Tunable knobs (Phase 4: magic numbers standardized).
+// Phase 8 (2026-08-11): like semanticMatcher's knobs, these exports are the DEFAULTS;
+// data/tuning.json overrides (tuningStore.js) shadow them at each use site via getTuning.
 /** Grace after a dev-server URL appears before detaching, so trailing output can flush. */
 export const DEV_URL_DETACH_GRACE_MS = 500;
 /** Force-detach for recognized dev servers that never printed a URL. */
@@ -248,7 +251,7 @@ export function executeCommand(command, cwd, ws, projectId, opts = {}) {
         }
         // If this is a dev server command, detach after URL + short grace to show it
         if (isDev) {
-          trackedEntry.detachTimer = setTimeout(detach, DEV_URL_DETACH_GRACE_MS);
+          trackedEntry.detachTimer = setTimeout(detach, getTuning('DEV_URL_DETACH_GRACE_MS', DEV_URL_DETACH_GRACE_MS));
         }
       }
 
@@ -297,7 +300,7 @@ export function executeCommand(command, cwd, ws, projectId, opts = {}) {
     // process streaming into the chat indefinitely.
     trackedEntry.forceDetachTimer = setTimeout(() => {
       if (!detached) detach();
-    }, isDev ? DEV_SERVER_FORCE_DETACH_MS : LONG_RUNNING_FORCE_DETACH_MS);
+    }, isDev ? getTuning('DEV_SERVER_FORCE_DETACH_MS', DEV_SERVER_FORCE_DETACH_MS) : getTuning('LONG_RUNNING_FORCE_DETACH_MS', LONG_RUNNING_FORCE_DETACH_MS));
 
     child.on('close', (code) => {
       // Clear BOTH timers — the URL-grace detach timer used to survive a natural exit or a
@@ -344,8 +347,8 @@ export function executeCommand(command, cwd, ws, projectId, opts = {}) {
           success: code === 0,
           data: {
             code,
-            stdout: stdout.length > STDOUT_SUMMARY_CAP ? `...${stdout.slice(-STDOUT_SUMMARY_CAP)}` : stdout,
-            stderr: stderr.length > STDERR_SUMMARY_CAP ? `...${stderr.slice(-STDERR_SUMMARY_CAP)}` : stderr
+            stdout: stdout.length > getTuning('STDOUT_SUMMARY_CAP', STDOUT_SUMMARY_CAP) ? `...${stdout.slice(-getTuning('STDOUT_SUMMARY_CAP', STDOUT_SUMMARY_CAP))}` : stdout,
+            stderr: stderr.length > getTuning('STDERR_SUMMARY_CAP', STDERR_SUMMARY_CAP) ? `...${stderr.slice(-getTuning('STDERR_SUMMARY_CAP', STDERR_SUMMARY_CAP))}` : stderr
           }
         });
         return;

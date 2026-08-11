@@ -10,11 +10,15 @@ import { matchMultiParts } from './matcherMulti.js';
 import { computeIntentCollisions } from './matcherCollisions.js';
 import { computeProjectDiff } from './matcherProjectDiff.js';
 import { searchFuseSuggestions } from './matcherFuse.js';
+import { getTuning } from './tuningStore.js';
 
 // Tunable knobs (Phase 4: magic numbers standardized).
 // 0.4 was cutting off single-edit typos on short inputs (e.g. "hep" -> "help") before
 // they ever reached the code's own fuzzyFloor check below. 0.55 lets more near-misses
 // through to that second gate, which still filters on confidence per input length.
+// Phase 8 (2026-08-11): these exports are the DEFAULTS — the settings UI can shadow any of
+// them at runtime via data/tuning.json (tuningStore.js); each use site reads getTuning(
+// 'NAME', <this default>) so untouched knobs resolve here with zero behavior change.
 export const FUSE_THRESHOLD = 0.55;
 export const FUSE_MIN_MATCH_CHAR_LENGTH = 2;
 /** Poll interval while waiting for another caller's in-flight initialize(). */
@@ -48,7 +52,7 @@ class SemanticMatcher {
     if (this.ready) return;
     if (this.initializing) {
       while (!this.ready && !this.initError) {
-        await new Promise(r => setTimeout(r, INIT_WAIT_POLL_MS));
+        await new Promise(r => setTimeout(r, getTuning('INIT_WAIT_POLL_MS', INIT_WAIT_POLL_MS)));
       }
       if (this.initError) throw this.initError;
       return;
@@ -119,11 +123,23 @@ class SemanticMatcher {
     this.fuseIndex = new Fuse(fuseItems, {
       keys: ['text'],
       // Rationale for FUSE_THRESHOLD (0.55): see the constant declaration at the top of this file.
-      threshold: FUSE_THRESHOLD,
+      threshold: getTuning('FUSE_THRESHOLD', FUSE_THRESHOLD),
       includeScore: true,
-      minMatchCharLength: FUSE_MIN_MATCH_CHAR_LENGTH,
+      minMatchCharLength: getTuning('FUSE_MIN_MATCH_CHAR_LENGTH', FUSE_MIN_MATCH_CHAR_LENGTH),
       ignoreLocation: true,
     });
+  }
+
+  /**
+   * Rebuilds the Fuse index from current items with current tuning values. Returns false when
+   * the matcher isn't ready yet (nothing to rebuild) — a no-op then, not an error. Used by the
+   * tuning routes (tuningRoutes.js) so threshold changes apply to the next match without a
+   * restart; the intent vectors are unaffected by these knobs.
+   */
+  refreshFuseIndex() {
+    if (!this.ready) return false;
+    this._rebuildFuseIndex();
+    return true;
   }
 
   /** Compute diff between last known state and current projects, returning only added/changed entries. */
@@ -281,7 +297,7 @@ class SemanticMatcher {
    * Best-effort "did you mean" suggestions for when match() comes back empty — delegates to
    * the Fuse.js search in matcherFuse.js (Phase 3 decomposition).
    */
-  getSuggestions(input, limit = SUGGESTION_DEFAULT_LIMIT) {
+  getSuggestions(input, limit = getTuning('SUGGESTION_DEFAULT_LIMIT', SUGGESTION_DEFAULT_LIMIT)) {
     return searchFuseSuggestions(this.fuseIndex, input, limit);
   }
 
@@ -305,7 +321,7 @@ class SemanticMatcher {
    * similarity exceeds `threshold` — these intents may be hard for the model
    * to distinguish.
    */
-  findIntentCollisions(threshold = COLLISION_DEFAULT_THRESHOLD) {
+  findIntentCollisions(threshold = getTuning('COLLISION_DEFAULT_THRESHOLD', COLLISION_DEFAULT_THRESHOLD)) {
     return computeIntentCollisions(this.intentVectors, threshold);
   }
 }
