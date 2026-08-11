@@ -1,6 +1,6 @@
 import React from 'react';
 import { Project, ChatSession } from '../types';
-import { FolderSearch, Plus, MessageSquare, Trash2, Pencil, ChevronLeft, ChevronRight, Brain, FolderGit2 } from 'lucide-react';
+import { FolderSearch, Plus, MessageSquare, Trash2, Pencil, ChevronLeft, ChevronRight, Brain, FolderGit2, Star } from 'lucide-react';
 import { WorkspaceToggleButton } from './ui/WorkspaceToggleButton';
 
 interface SidebarDrawerProps {
@@ -42,6 +42,27 @@ export const SidebarDrawer = ({
   const [showAllChats, setShowAllChats] = React.useState(false);
   const [editingId, setEditingId] = React.useState<string | null>(null);
   const [draftTitle, setDraftTitle] = React.useState('');
+  // Phase 8 (2026-08-11): pinned/favorite projects — a browser-local preference (localStorage),
+  // deliberately not server state: pinning is pure UI ordering, same class as the sidebar's
+  // collapsed flag. Pinned projects render above the rest of the list.
+  const [pinned, setPinned] = React.useState<string[]>(() => {
+    try {
+      return JSON.parse(localStorage.getItem('console.pinnedProjects') || '[]');
+    } catch {
+      return [];
+    }
+  });
+  React.useEffect(() => {
+    try {
+      localStorage.setItem('console.pinnedProjects', JSON.stringify(pinned));
+    } catch {
+      // Storage unavailable (private mode etc.) — pinning just won't persist, nothing breaks.
+    }
+  }, [pinned]);
+
+  const togglePin = (projectId: string) => {
+    setPinned((prev) => (prev.includes(projectId) ? prev.filter((id) => id !== projectId) : [...prev, projectId]));
+  };
 
   // Commits the inline rename for the row currently being edited (only one at a time, so the
   // shared draftTitle always belongs to editingId's row).
@@ -181,7 +202,7 @@ export const SidebarDrawer = ({
         {projects.length === 0 ? (
           <div className="text-[11px] text-fg-dim italic px-2 py-2">No projects found. Try scanning a different path.</div>
         ) : (
-          projects.map(p => (
+          [...projects.filter((p) => pinned.includes(p.id)), ...projects.filter((p) => !pinned.includes(p.id))].map(p => (
             <div
               key={p.id}
               onClick={() => handleSelectProject(p)}
@@ -191,6 +212,13 @@ export const SidebarDrawer = ({
             >
               <FolderGit2 size={13} className="flex-shrink-0" />
                  <span className="truncate flex-1 min-w-0">{p.name}</span>
+                 <button
+                   onClick={(e) => { e.stopPropagation(); togglePin(p.id); }}
+                   className="opacity-0 group-hover:opacity-100 p-0.5 flex-shrink-0 text-fg-dim hover:text-yellow-400 transition-all"
+                   title={pinned.includes(p.id) ? 'Unpin project' : 'Pin project to the top'}
+                 >
+                   <Star size={11} className={pinned.includes(p.id) ? 'fill-yellow-400 text-yellow-400 opacity-100' : ''} />
+                 </button>
                  <WorkspaceToggleButton
                    inWorkspace={workspaceProjects.some(w => w.id === p.id)}
                    onAdd={() => addToWorkspace(p)}
