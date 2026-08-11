@@ -49,3 +49,19 @@ export function getEffectiveThreshold(intent) {
 export function getThresholdOverrides() {
   return { ...thresholdOverrides };
 }
+
+// Wholesale replace (Phase 6 workspace import): drop every current override and adopt the
+// given floors, clamped to [0, 1]. Non-numeric entries are dropped rather than fatal.
+export function replaceThresholdOverrides(floors) {
+  const clean = {};
+  if (floors && typeof floors === 'object') {
+    for (const [intent, floor] of Object.entries(floors)) {
+      if (typeof floor === 'number' && Number.isFinite(floor)) {
+        clean[intent] = Math.max(0, Math.min(1, floor));
+      }
+    }
+  }
+  thresholdOverrides = clean;
+  saveThresholdOverrides();
+  return clean;
+}

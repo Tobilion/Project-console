@@ -65,6 +65,18 @@ function readProfile() {
 // flags the command as risk-gated, so the profile file is not read on every normal run).
 export { readProfile };
 
+// Single write path for the profile — used by the POST route AND the Phase 6 workspace
+// import, so the import overwrites the file exactly the way a UI save would.
+export function writeProfile(profile) {
+  try {
+    fs.mkdirSync(path.dirname(PROFILE_FILE), { recursive: true });
+    fs.writeFileSync(PROFILE_FILE, JSON.stringify({ userProfile: profile }, null, 2), 'utf-8');
+    return null;
+  } catch (err) {
+    return err;
+  }
+}
+
 export function registerProfileRoutes(app) {
   app.get('/api/profile', (req, res) => {
     res.json({ userProfile: readProfile() });
@@ -80,12 +92,11 @@ export function registerProfileRoutes(app) {
       setupComplete: sanitizeBool(body.setupComplete, current.setupComplete),
       sandboxRiskyCommands: sanitizeBool(body.sandboxRiskyCommands, current.sandboxRiskyCommands),
     };
-    try {
-      fs.mkdirSync(path.dirname(PROFILE_FILE), { recursive: true });
-      fs.writeFileSync(PROFILE_FILE, JSON.stringify({ userProfile: updated }, null, 2), 'utf-8');
-      res.json({ userProfile: updated });
-    } catch (err) {
+    const err = writeProfile(updated);
+    if (err) {
       res.status(500).json({ error: `Failed to save profile: ${err.message}` });
+      return;
     }
+    res.json({ userProfile: updated });
   });
 }

@@ -11,6 +11,7 @@ import { handlePendingParamReply, handlePendingFollowUpReply, handlePendingDisam
 import { handleTelemetryCommand } from './connectionTelemetry.js';
 import { handleDistillationCommand, handleMemoryReview, handleLearningCommand } from './connectionAdminCommands.js';
 import { handlePackCommand, handlePendingPackInstallReply } from './connectionPackAdmin.js';
+import { handleWorkspaceCommand, handlePendingWorkspaceReply } from './connectionWorkspaceAdmin.js';
 import { handleScheduleCommand } from './connectionScheduleAdmin.js';
 import { handleNotifyCommand } from './connectionNotifyAdmin.js';
 import { handleHealthCheck } from './connectionHealthCheck.js';
@@ -106,6 +107,7 @@ async function handleExecuteBody(ws, parsed, sessionContext) {
   if (await handlePendingFollowUpReply(ws, project, projectId, input, sessionContext)) return;
   if (await handlePendingDisambiguationReply(ws, project, projectId, input, sessionContext)) return;
   if (await handlePendingPackInstallReply(ws, project, input.trim().toLowerCase(), sessionContext)) return;
+  if (await handlePendingWorkspaceReply(ws, project, input.trim().toLowerCase(), sessionContext)) return;
 
   // Confirmed live 2026-08-03 (NetPulse transcript, reported directly): typing a literal,
   // already-correct command (e.g. "python main.py serve") did NOT run it — it went through the
@@ -140,6 +142,7 @@ async function handleExecuteBody(ws, parsed, sessionContext) {
   if (await handleHealthCheck(ws, lowerInput)) return;
   if (await handleAutoStartCommand(ws, project, lowerInput)) return;
   if (await handleUpdateCommand(ws, project, lowerInput)) return;
+  if (await handleWorkspaceCommand(ws, project, lowerInput, input, sessionContext)) return;
   if (await handleHistoryCommand(ws, project, lowerInput, input)) return;
   if (await handleStopServer(ws, project, lowerInput)) return;
   if (await handleDevUrl(ws, project, lowerInput)) return;

@@ -386,9 +386,10 @@ npm run lint    # tsc --noEmit
 - `server/updateChecker.js` + `server/wsHandlers/connectionUpdateAdmin.js` — Phase 5 (2026-08-11):
   npm update awareness. `check for updates` / `update console` / `update the console` /
   `upgrade console` (pre-matcher admin tier, connectionExecute.js). `checkForUpdates()` fetches
-  the package.json from the npm registry (8s AbortSignal; null on ANY failure → offline machines
-  never see an error), compares against the bundled package.json version (`state.__consoleVersion`,
-  `state.packageJson`). `update console` re-checks when no data was cached and only asks for the
+  `https://registry.npmjs.org/<pkg>/latest` (4s AbortSignal; null on ANY failure → offline machines
+  never see an error), compares against the version in the package's OWN package.json (read via
+  `fileURLToPath` from the module dir — `process.cwd()` is wrong under `npx`, which runs with the
+  user's cwd). `update console` re-checks when no data was cached and only asks for the
   `npm install -g local-project-console` confirm when an update is actually available —
   otherwise it honestly answers "already on the latest version". `takeUpdateNotice()` is
   one-shot per boot: on WS connect (connectionLifecycle.js) the server pushes `update_available`
@@ -397,6 +398,24 @@ npm run lint    # tsc --noEmit
   per-page-session only, the server-side one-shot is what stops repeat pushes. No auto-update,
   no background npm write — the confirm runs through the same gated `confirm_prompt`/
   `stdinWrite` path as every risky command.
+- `server/workspaceTransfer.js` + `server/wsHandlers/connectionWorkspaceAdmin.js` +
+  `server/routes/workspaceRoutes.js` — Phase 6 (2026-08-11): portable workspace export/import,
+  the whole-setup counterpart to the pack installer. `export workspace` collects a core bundle
+  (profile via `writeProfile`/`readProfile` in profileRoutes.js, trained confidence model via
+  modelStore.js, tuning overrides via tuningStore.js, per-intent threshold overrides via
+  telemetryThresholds.js's `replaceThresholdOverrides` — each a real exported write path reused
+  by import), then asks WHICH projects' `.console/memory.md` + `console.tools.json` to include
+  (numbered opt-in list, never silent — `export workspace with projects 1 3` / `with all
+  projects` / `without projects`, consumed in the interceptor chain like the pack reply).
+  Bundle written to gitignored `data/workspace-exports/workspace-<yyyymmdd-hhmmss>.json` (v1,
+  50MB read cap, 5MB/2MB per-project file caps); the answer carries both the absolute path and
+  a markdown download link to `GET /api/workspace/export?file=<name>` (basename-validated, no
+  `?file` → newest bundle). `import workspace <path>` previews every section and what it
+  overwrites, then is a two-step confirm (`confirm import workspace` / `cancel import
+  workspace`, 5-min TTL on `sessionContext.pendingWorkspaceImport`, mirroring pendingPackInstall).
+  Section-granular apply: a corrupt section is skipped, never fatal; projects whose id isn't in
+  the scan cache are reported as skipped (rescan first). Deliberately local-file only — no
+  network, matching the offline-first design.
 - `server/codeIndex/` — Phase 7 (2026-08-11): persisted semantic code index. `codeIndexData.js` (constants: store at `<project>/.console/code-index.json`, file/chunk
   caps 4000/20000, 1MB file cap, ignore dirs), `codeIndexChunker.js` (pure chunking:
   symbol-anchored ranges via `extractSymbols()` start lines for AST-capable exts, fixed
@@ -785,6 +804,17 @@ time/date/calculate rows, 92/92).
 - **Windows harness gotcha**: the phase2 smoke (python http.server) never exits on its own
   (orphaned child inherits stdio pipes) — run via Start-Process + timeout + force-kill.
 
+## Phase 6 (2026-08-11) — portable workspace export/import (all live)
+
+- **`export workspace` / `import workspace <path>`** — full setup bundling (profile, trained
+  confidence model, tuning overrides, intent-threshold overrides + opt-in per-project
+  `.console/memory.md` and `console.tools.json`), written to gitignored
+  `data/workspace-exports/` with a markdown download link; import is preview-then-confirm and
+  never overwrites silently. Verified live 2026-08-11: 18-check round-trip (export → download →
+  mutate profile → cancel-import no-op → confirm-import restores → stale-phrase hint). Driver
+  gotchas: a crashed run poisons the next run's baseline (profile name), and wait-for-event
+  helpers must match only FRESH events, not the events array.
+
 ## Phase 5 (2026-08-10)
 
 - **Update checker** (2026-08-11): `check for updates` / `update console` admin commands +
@@ -792,6 +822,7 @@ time/date/calculate rows, 92/92).
   architecture entry for `server/updateChecker.js`. Confirmed live 2026-08-11: registry check
   returns 1.0.1/latest and both commands answer correctly; the confirm path only fires when
   an actual newer version exists (not testable against the live registry at 1.0.1).
+
 - **requestedPort.js** — "run the site on port 3010" / "serve the site on port 3040":
   `extractRequestedPort`/`applyRequestedPort`. Replaces an existing `--port`/`-p` flag;
   uses `npm run dev -- --port=N` for vite-shaped scripts (vite ignores PORT env); falls
