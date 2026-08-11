@@ -788,6 +788,50 @@ time/date/calculate rows, 92/92).
   miss the final answer. Wait for `end` explicitly; reserve quiet-windows for answer-only
   turns that never send `end`.
 
+## Phase 8 (2026-08-11) — backlog/QoL batch 1 (all live)
+
+- **Live Sites "process is not running" fixed**: `Dashboard.tsx` used to key the Live Sites
+  dot/label off `runningCommand` (a tracked-process flag), so console-self and servers the
+  user started outside the console showed the site as live but labeled "process is not
+  running". `/api/dashboard` entries now carry `running: boolean` = any tracked process
+  OR the stored-URL probe answered OR the project IS the console itself (serving the
+  request). Dashboard renders "live now" vs "recorded — not currently answering" from
+  `entry.running`; the sort score includes it. Recall the cache: 30s, invalidated by
+  `volatileSignature()`; probe is 1200ms at cache build.
+- **Runtime tuning overrides** (no reboot, no code edit): `server/tuningStore.js` +
+  `data/tuning.json` (gitignored) + `GET/POST/DELETE /api/tuning` (`tuningRoutes.js`)
+  override the exported knobs `FUSE_THRESHOLD`, `FUSE_MIN_MATCH_CHAR_LENGTH`,
+  `INIT_WAIT_POLL_MS`, `SUGGESTION_DEFAULT_LIMIT`, `COLLISION_DEFAULT_THRESHOLD`,
+  `DEV_URL_DETACH_GRACE_MS`, `DEV_SERVER_FORCE_DETACH_MS`, `LONG_RUNNING_FORCE_DETACH_MS`,
+  `STDOUT_SUMMARY_CAP`, `STDERR_SUMMARY_CAP` (executor.js), `DEBOUNCE_MS`
+  (verifyHarness.js), with BOUNDS validation (unknown keys/out-of-range rejected). Apply =
+  `semanticMatcher.refreshFuseIndex()` rebuilds the Fuse index when ready. UI: gear →
+  Advanced → "Tuning" groups in `UserProfileModal.tsx` (Apply posts only diffs from
+  default, Reset deletes the file). The source files' exported constants stay the
+  documented defaults — `getTuning(name, fallback)` is the read path everywhere.
+- **Health check command**: "health check" / "is my console healthy" (also "console
+  health", "how healthy is my console") → `connectionHealthCheck.js`: Ollama
+  `/api/version` reachability via `getOllamaHost()` (2s abort), embedding state
+  (`semanticMatcher.ready`/`initError`), free disk space on the `data/` drive (3s
+  PowerShell Get-PSDrive) and a zombie tracked-process scan (`process.kill(pid, 0)` —
+  EPERM means alive; best-effort on Windows, PID reuse caveat in the reply, ≤10 listed).
+  Read-only, dispatched from the same pre-matcher admin tier as notify/pack commands.
+- **Pinned projects**: sidebar rows get a star (hover reveal, yellow when pinned);
+  `localStorage['console.pinnedProjects']`; pinned rows float above the rest. No state
+  change elsewhere — same project list, same click actions.
+- **Diagnostics intents** (read-only, never run anything): `test_coverage_report` parses
+  `coverage/lcov.info` (SF/LF/LH records), `.coverage/lcov.info`, `lcov.info`, then
+  `coverage/coverage-summary.json|coverage-final.json` (per-file `lines.total/covered`):
+  overall % + worst 10 files; clean "no coverage report" answer otherwise.
+  `bundle_size_analysis` walks `dist/build/out/public/build/web-build` (depth ≤6, ≤5000
+  files) for .js/.cjs/.mjs/.css, largest 8 + total; clean "no build output" otherwise.
+  Both registered in `BUILTIN_INTENTS` + DISPATCH rows in checkHandlerCoverage, no
+  pre-semantic override (embedding handles them; confirmed on the harness fixtures).
+- **taskQueue global cap**: `MAX_TASK_CONCURRENCY = 3` on top of the per-project
+  single-flight rule — schedules firing across many projects can no longer saturate the
+  machine with parallel tsc/git runs. `pump()` scans all queues in Map insertion order,
+  re-pumps on every completion; `hasActiveTask`/`activeTaskLabel` semantics unchanged.
+
 ## Conventions
 
 - No file over ~400 lines; target ~150 for logic files (data registries may reach 150;
