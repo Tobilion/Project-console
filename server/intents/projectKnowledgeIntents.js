@@ -151,6 +151,38 @@ export const PROJECT_KNOWLEDGE_INTENTS = {
       'tell me how to run this', 'tell me how to set this up',
       'tell me the steps to get this running', 'give me the run instructions',
       'give me the setup instructions', 'give me the install steps',
+      // Phase 9 (2026-08-11, requested directly): site/server-flavored question shapes — these
+      // answer with the project's real documented run command + example phrasings, and must
+      // stay with how_to_run rather than the generic how_do_i catalog (which only knows the
+      // generic npm run dev answer).
+      'how to run the site', 'how do i run the site', 'how do you run the site',
+      'how to run the server', 'how do i run the server', 'how do you run the server',
+      'how to start the site', 'how do i start the site',
+      'how to start the server', 'how do i start the server',
+      'command to run the site', 'what is the command to run the site',
+      'command to run the server', 'what is the command to run the server',
+      'command to start the site', 'what is the command to start the site',
+      'how do i launch the site', 'how do i launch the app',
+      'how to serve the site', 'how do i serve the app',
+    ],
+  },
+  // Phase 7 (2026-08-11): semantic code search — "where do we handle X" answered from the
+  // persisted code-content index with real file:line citations (see codeIndexSearch.js).
+  // Deliberately uses open "where is/find" phrasings rather than command shapes so it never
+  // competes with file_find (which locates files by NAME) — this intent is about the code
+  // INSIDE files.
+  'project.code.search': {
+    examples: [
+      'where do we handle payments', 'where do we handle retries',
+      'where is the retry logic', 'where are the routes defined',
+      'find code about rate limiting', 'find code about caching',
+      'search the code for error handling', 'search the codebase for auth',
+      'where in the code is logging handled', 'where in the code do we validate input',
+      'which file handles the websocket connections', 'which file contains the api client',
+      'where is the api client', 'find the code that parses json',
+      'where do we call the database', 'where is the database code',
+      'find the implementation of the retry logic', 'search for the token refresh logic',
+      'where is the upload code', 'find code related to uploads', 'where is the upload handler',
     ],
   },
 };

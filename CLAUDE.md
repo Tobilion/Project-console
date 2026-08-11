@@ -358,7 +358,65 @@ npm run lint    # tsc --noEmit
   taskQueue completion listener — `setTaskCompletionListener` in taskQueue.js); `scheduleFire.js`
   notifies when a fire produced non-empty output; executor.js's detached-close handler notifies
   when a still-tracked process died and its URL stopped answering (deliberate stops delete
-  entries first in `stopTrackedProcess`, so they never fire).
+  entries first in `stopTrackedProcess`, so they never fire). Phase 8 follow-up (2026-08-11): the
+  event set gained `collision-found` (boot-time baseline drift, see `server/collisions.js`).
+- `server/autoStartProjects.js` + `server/wsHandlers/connectionAutoStartAdmin.js` — Phase 8
+  follow-up (2026-08-11): per-project auto-start. `auto-start this project [with "phrase"]` /
+  `auto-start <name>` / `disable auto-start` / `list auto-start` / `run auto-start now` /
+  `review auto-start` (pre-matcher admin tier, connectionExecute.js). Persisted to gitignored
+  `data/auto-start.json` (debounced), boot-run log at `data/auto-start-log.md`. `initAutoStart()`
+  runs from server/index.js AFTER the semantic matcher is ready (the stored phrase is re-matched
+  at boot): candidate dev URLs are probed first (an already-answering site skips the run — no
+  double-serve over a manual instance), the resolved intent must be launch-shaped
+  (`LAUNCH_INTENTS`: run_project/npm_run/run_tests) or a configured entry (drift guard — a
+  phrase that drifted onto git push never runs unattended), runs are staggered 20s apart through
+  taskQueue, and results go to the first live session of that project or the log. Confirm
+  prompts from risky entries are collected and expire via the pending TTL — boot-time runs never
+  auto-approve anything.
+- `server/collisions.js` — Phase 8 follow-up (2026-08-11): intent-collision baseline monitor. At
+  boot (after semanticMatcher is ready + notify rules loaded) it computes `findIntentCollisions()`
+  (matcherCollisions.js, 0.9 threshold), diffs against the persisted `data/collisions.json`
+  baseline (gitignored), fires the opt-in `collision-found` notification for new pairs, and
+  persists the new baseline. Fire-and-forget, never blocks boot. The on-demand `check
+  collisions` command (connectionTelemetry.js) is unchanged.
+- `server/aiDockHints.js` — Phase 8 follow-up (2026-08-11): AI-dock bootstrap hints. Single
+  consumer: builtinChitChat's `needs_ai_mode` handler appends a concrete AI-dock instruction
+  (`aiDockInstruction(input)`) — a curated rephrase for create/fix/explain-shaped asks, the
+  user's own words otherwise — instead of a dead-end "flip the toggle".
+- `server/updateChecker.js` + `server/wsHandlers/connectionUpdateAdmin.js` — Phase 5 (2026-08-11):
+  npm update awareness. `check for updates` / `update console` / `update the console` /
+  `upgrade console` (pre-matcher admin tier, connectionExecute.js). `checkForUpdates()` fetches
+  the package.json from the npm registry (8s AbortSignal; null on ANY failure → offline machines
+  never see an error), compares against the bundled package.json version (`state.__consoleVersion`,
+  `state.packageJson`). `update console` re-checks when no data was cached and only asks for the
+  `npm install -g local-project-console` confirm when an update is actually available —
+  otherwise it honestly answers "already on the latest version". `takeUpdateNotice()` is
+  one-shot per boot: on WS connect (connectionLifecycle.js) the server pushes `update_available`
+  (current/latest) at most once, and the frontend (wsMessageCases.js → `updateNotice` state →
+  App.tsx banner above the chat) renders a dismissible "Update available" strip; dismissing is
+  per-page-session only, the server-side one-shot is what stops repeat pushes. No auto-update,
+  no background npm write — the confirm runs through the same gated `confirm_prompt`/
+  `stdinWrite` path as every risky command.
+- `server/codeIndex/` — Phase 7 (2026-08-11): persisted semantic code index. `codeIndexData.js` (constants: store at `<project>/.console/code-index.json`, file/chunk
+  caps 4000/20000, 1MB file cap, ignore dirs), `codeIndexChunker.js` (pure chunking:
+  symbol-anchored ranges via `extractSymbols()` start lines for AST-capable exts, fixed
+  40-line/10-overlap windows for the rest, oversized bodies split at 2000 chars),
+  `codeIndexStore.js` (JSON store with per-file mtime manifest, atomic debounced writes that
+  CREATE `.console/` when missing, brute-force cosine search via `cosineSimilarity`; corrupt
+  chunk records — incl. typed-array-as-object vectors from a pre-fix save — reset the whole
+  store so `indexNeedsFullBuild` rebuilds instead of leaving a permanently empty index),
+  `codeIndexBuilder.js` (`buildProjectIndex` full walk + `updateFileInProjectIndex`
+  single-file updates, both always inside taskQueue; embeds via the SAME
+  `semanticMatcher.extractor` — `Array.from()` on the typed-array output is mandatory,
+  JSON.stringify otherwise serializes vectors as `{"0":...}` objects; lazy per-project
+  chokidar attach via `watchProjectCodeFiles` for incremental re-chunks, unlink drops
+  chunks), `codeIndexSearch.js` (`searchProjectCode` statuses: unavailable (no model) /
+  indexing (build queued or running — never blocks the WS turn) / ready with real file:line
+  citations). Intent `project.code.search` ("where do we handle X") in
+  builtinProjectKnowledge.js: first query on an unstored project answers "indexing..." and
+  the enqueued task posts the results out of band (same pattern as type_check, `ws.readyState
+  === 1` guard included). Retrieval-only by design — the answer says results are from the
+  index, not generated.
 - Misc leaves: `urlSafety.js` (isSafeExternalUrl/isProbeableUrl — SSRF guards; webSearch.js
   re-exports), `regexUtils.js`, `markdownUtils.js`, `webSearch.js` (DuckDuckGo, decodes
   `uddg` redirects, deep-research SSRF guard), `consoleCommandDocs.js` (reference catalog for
@@ -712,8 +770,15 @@ time/date/calculate rows, 92/92).
   reproduced identically on clean HEAD with the how_do_i work stashed, 91/92 — not a
   regression of this change); check-handlers 30/30 (baseline 29/29 + 1 how_do_i dispatch row);
   check-tools 128/128;
-  check-indexer 85/85 (+14 SYMBOLS & GRAPH rows for the Phase 1.1 codebase-graph work); check-ws-cases 84/84 (baseline +4 rows for the Phase 3 aiQueryInFlight
-  lifecycle fix; +1 drift row from later WS-case additions). Run the relevant battery after ANY edit to the corresponding module.
+  check-indexer 85/85 (+14 SYMBOLS & GRAPH rows for the Phase 1.1 codebase-graph work);   check-ws-cases 84/84 (baseline +4 rows for the Phase 3 aiQueryInFlight
+  lifecycle fix; +1 drift row from later WS-case additions). check-docs 46/46 (catalog entries
+  mirrored in README's command-reference table — `server/scripts/checkDocsSync.js`, run via
+  `npm run check-docs`, wired into CI). check-handlers 36/36 (baseline +1 Phase 7 code.search
+  row); check-indexer 94/94 (baseline +9 Phase 7 CODE-INDEX chunker/store rows, incl. the
+  typed-array-as-object corruption regression); check-matcher 152/153 — 146 inputs + 7 NEW
+  Phase 7 CODE-SEARCH rows, with the same ONE PRE-EXISTING drift on CONTROL's "run the
+  calculation" (routes to system.chit_chat.calculate on this machine's local data; reproduced
+  identically on clean HEAD with the how_do_i work stashed — not a regression). Run the relevant battery after ANY edit to the corresponding module.
 - **editFile** tolerates whitespace differences (normalized line-range fallback) but not
   wrong wording; on total failure the error names both attempts and tells the caller to
   re-read the file. Truncation guard: `writeFile` re-reads and compares length after writes.
@@ -722,6 +787,11 @@ time/date/calculate rows, 92/92).
 
 ## Phase 5 (2026-08-10)
 
+- **Update checker** (2026-08-11): `check for updates` / `update console` admin commands +
+  one-shot `update_available` push on WS connect → dismissible banner in App.tsx. See the
+  architecture entry for `server/updateChecker.js`. Confirmed live 2026-08-11: registry check
+  returns 1.0.1/latest and both commands answer correctly; the confirm path only fires when
+  an actual newer version exists (not testable against the live registry at 1.0.1).
 - **requestedPort.js** — "run the site on port 3010" / "serve the site on port 3040":
   `extractRequestedPort`/`applyRequestedPort`. Replaces an existing `--port`/`-p` flag;
   uses `npm run dev -- --port=N` for vite-shaped scripts (vite ignores PORT env); falls
@@ -831,6 +901,55 @@ time/date/calculate rows, 92/92).
   single-flight rule — schedules firing across many projects can no longer saturate the
   machine with parallel tsc/git runs. `pump()` scans all queues in Map insertion order,
   re-pumps on every completion; `hasActiveTask`/`activeTaskLabel` semantics unchanged.
+
+## Phase 7 (2026-08-11) — real semantic code index (all live)
+
+- **Persisted vector store per project** at `<project>/.console/code-index.json`
+  (`server/codeIndex/`, see the architecture entry): chunk records `{id, file, start, end,
+  text, vector}` + a per-file mtime manifest, brute-force cosine search (the project's
+  scale is a single user's local codebases — no database server, no new npm dependency).
+- **Chunking**: top-level symbol bodies (function/class) via the existing `extractSymbols()`
+  start lines for AST-capable extensions; fixed 40-line/10-overlap windows for regex-fallback
+  and non-JS/TS languages (regex fallback symbols report `line: 0` and cannot anchor);
+  oversized bodies split at 2000 chars.
+- **Same embedding model as the matcher** (`semanticMatcher.extractor`, no second model).
+  The extractor returns typed arrays — `Array.from()` before persisting, or JSON.stringify
+  writes `{"0":...}` objects that the load-side validation treats as corruption (found live
+  2026-08-11; regression row in check-indexer).
+- **Background-only builds**: full build + single-file updates always run through taskQueue
+  (never on a WS turn); lazy per-project watcher (`watchProjectCodeFiles`) attaches only to
+  indexed projects and re-chunks on change, drops on unlink.
+- **Intent `project.code.search`** ("where do we handle X"): first query on an unstored
+  project answers "indexing in the background" and the enqueued build posts file:line
+  results out of band; later queries hit the store directly. Retrieval-only — the answer
+  explicitly says results come from the index, not generation. Registered in BUILTIN_INTENTS
+  + projectKnowledgeIntents.js phrases + checkHandlerCoverage (unavailable-path row) +
+  checkMatcherCoverage (CODE-SEARCH battery, 7 rows incl. a "where is main.py" guard that
+  must stay with file_find). NOTE: "where is the task queue defined"-shaped phrasings can
+  still route to `project.context.entry_point` — the intent's phrase coverage is calibrated
+  around "where do we handle/find code about" shapes.
+- **Corruption resilience**: any dropped chunk record resets the whole store (files manifest
+  included) so `indexNeedsFullBuild` triggers a rebuild — never a permanent zero-chunk index
+  hiding behind a populated mtime manifest.
+
+## Phase 9 (2026-08-11) — how-do-I knowledge intent + question-shape routing (all live)
+
+- **`system.chit_chat.how_do_i`** (chitChatIntents.js): "how do i <feature>" guidance
+  answered from the `consoleCommandDocs.js` reference catalog — side-effect-free, no model
+  call. Catalog entries carry `shell` (the real command line) and `phrases` (the patterns
+  the entry answers), rendered as the exact phrase + the shell command in a code block +
+  a `suggestions` chip so the user can run it directly. `help` / `what can you do` /
+  `how do i <anything>` all land here.
+- **Question-shape pre-semantic override** (preSemanticOverrides.js, FIRST rule in the
+  list): any input matching `^(?:how\s+(?:to|do\s+(?:you|i|we))\s+|(?:what\s+is\s+the\s+)?command\s+to\s+)(?:push|commit|deploy|build|stop\s+the\s+server|open\s+in|show|make\s+a\s+checkpoint|see\s+(?:the\s+)?(?:dashboard|test\s+coverage|bundle)|switch\s+projects|change\s+the\s+theme|check\s+(?:git\s+status|the\s+console\s+health|collisions)|export|schedule|review|approve)` routes to
+  how_do_i. Must stay FIRST — the bare "deploy" override lower in the list would steal
+  "how do i deploy". Verb list deliberately excludes run/start/launch/serve/install/pull
+  so how_to_run / run_project keep their routes. check-matcher HOWTO battery carries 8
+  probe-verified question-shape rows.
+- **check-docs sync harness**: `server/scripts/checkDocsSync.js` (added to package.json +
+  CI) FAILs when a catalog entry's command/keywords have no row in README's command
+  reference table, and WARNS on unmapped README rows. Keep the README table and
+  consoleCommandDocs.js in sync when adding catalog entries.
 
 ## Conventions
 

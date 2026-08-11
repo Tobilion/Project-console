@@ -26,7 +26,8 @@
     "check-indexer": "node server/scripts/checkIndexerCoverage.js",
     "check-tools": "node server/scripts/checkToolsCoverage.js",
     "check-handlers": "node server/scripts/checkHandlerCoverage.js",
-    "check-ws-cases": "tsx scripts/checkWsMessageCases.ts"
+    "check-ws-cases": "tsx scripts/checkWsMessageCases.ts",
+    "check-docs": "node server/scripts/checkDocsSync.js"
   },
   "dependencies": {
     "@clack/prompts": "^1.7.0",

@@ -16,6 +16,7 @@
 - **Non-AI file operations**: "create a file called X with the text '...'", "append to X the text '...'", "read file X" — parsed with regex, gated behind the same confirm-before-write flow as any risky command.
 - **Parameterized commands**: a `console.config.json` command entry can declare `{placeholder}` params (e.g. `watch --interval {interval}`); the console asks for missing values in chat and substitutes them safely (shell metacharacters rejected regardless of the entry's own pattern). Entries can also declare `requires: [paths]` (checked before running, with setup guidance if missing) and a `followUp` field to ask a plain question before the command starts.
 - **"how do I run this"**: answers with every run command the project's docs mention (numbered, source-labelled) plus every exact `console.config.json` command entry. When asked to run something, command selection follows a trust order: config entries > `package.json` scripts > documented README/CLAUDE.md command > `Play *.bat` launcher > language-based guess. Site-flavored asks ("run the site") and server-flavored asks ("run the server") prefer whichever documented command actually serves the web app.
+- **"how do I <anything>" answers**: guidance questions ("how do you push to github", "command to see the dashboard") are answered from a built-in command catalog — each answer shows the chat phrasing, the real terminal command it runs, and clickable suggestion chips that run it for you. Question shapes ("how to ...", "command to ...", "what is the command to ...") are pinned to this answer before the matcher stage, so a question can never execute the thing it is asking about.
 - **Multi-intent queries**: "show structure and run tests" is split on conjunctions and both intents are handled. Pronoun resolution uses the last 5 turns ("it", "the main file").
 - **"Open in..." actions**: open a project in VS Code, Cursor, the OS file explorer, a terminal, GitHub (from the origin remote), the live dev site, or a specific file — each with honest fallbacks when a CLI tool isn't installed.
 
@@ -31,6 +32,14 @@
 - **Project context injection**: the AI's system prompt includes the project's main doc (CLAUDE.md/README, ~6000 chars), entry-point code snippets, a whole-project repo map (top-level exports/functions/classes per file, import/imported-by relationships), detected API routes, monorepo structure, and persistent memory for that project.
 - **Web search / deep research**: DuckDuckGo-based, no API key required (`GET /api/search?q=` and `GET /api/deep-research?q=`), SSRF-guarded.
 - **File-edit diff previews**: confirm cards for file edits show a before/after line diff so you see exactly what will change.
+- **AI-dock bootstrap hints**: open-ended requests typed while AI mode is off ("make me a landing page") get an answer that names the AI dock and suggests a concrete phrasing to use there — instead of a dead-end "flip the toggle".
+
+### Automation & notifications
+
+- **Scheduled & triggered commands**: per-project schedules ("schedule every 10 minutes \"git status\"", "schedule daily at 09:30 ...", "schedule on file save/git commit ...") fire through the same matching pipeline a typed message would use, restricted to read-only intents, with results delivered to the open chat or `data/schedule-log.md`. `list schedules` / `delete schedule 2` / `review schedule log` manage them.
+- **Notifications**: opt-in per-event alerts (`notify me when dev-server-crash` / `schedule-find` / `task-done` / new intent collisions) to the Windows desktop and/or webhooks (`webhook add <url>` — SSRF-guarded, no localhost). Everything is off until enabled; `list notifications` / `test notification` verify.
+- **Auto-start projects**: "auto-start this project" (or `auto-start <name>`) makes the console boot that project's dev server automatically on every start — the stored phrase is re-matched through the normal pipeline, skips when the site is already answering (no double-serve), staggers multiple projects, and reports into the open chat or `data/auto-start-log.md`. `run auto-start now` starts it immediately; `disable auto-start` / `list auto-start` manage it.
+- **Intent-collision baseline**: every boot compares intent-embedding overlaps against the previous boot's baseline and raises the opt-in "new intent collisions appear" notification for anything new — a drift alarm for the matching corpus. `check collisions` shows the current state on demand.
 
 ### Persistent memory
 
@@ -189,30 +198,86 @@ App-global identity (name/title/custom role) edited from the ⚙ Settings modal;
 
 ## Chat commands (reference)
 
+### Run & dev servers
+
 | Command | What it does |
 |---|---|
-| `run the site` / `run the project` | Detects project type, suggests the right run command |
-| `how do I run this` | Lists every documented + configured run command |
+| `run the site` / `run the project` / `start the site` | Detects project type, suggests the right run command |
+| `run the tests` / `run tests` | Finds and runs the project's test command (pytest, vitest, npm test, ...) |
+| `run the build` / `build the project` | Runs the project's build script (`npm run build`, ...) |
+| `run the site on port 3010` / `serve the app on port 3040` | Starts the dev server on a specific port |
+| `stop the server` / `kill the server` / `stop it` | Stops a running dev server |
 | `where is the link` / `link?` | Shows the running dev server URL |
-| `stop server` / `kill server` | Stops a running dev server |
 | `is the server running` | Probes recorded/candidate dev URLs (liveness) |
 | `scan for servers` | Live/dead table of every project's dev servers |
-| `check git status` / `git log` / `git diff` / etc. | Read-only git introspection |
-| `push this to github with comment "..."` | Checkpoint + commit + push |
-| `checkpoint my work` | Explicit save-point commit |
+| `show running processes` | Lists commands the console is tracking for this project |
+| `auto-start this project` / `auto-start <name>` | Dev server starts automatically at every console boot (skips when the site is already up) |
+| `disable auto-start` / `list auto-start` / `run auto-start now` / `review auto-start` | Manage and run the auto-start config |
+
+### Git
+
+| Command | What it does |
+|---|---|
+| `check git status` / `what changed` / `git log` / `git diff` | Read-only git introspection |
+| `push this to github with comment "..."` / `push my changes` / `deploy` | Checkpoint + commit + push |
+| `commit "fix the login bug"` | Commit without pushing — message in quotes |
+| `checkpoint my work` / `make a checkpoint` | Explicit save-point commit before risky moves |
+| `clean up stale branches` | Lists merged branches you can safely delete |
+| `git fetch` / `git pull` / `am i behind origin` / `list tags` / `git init` | More git actions (mutations confirm-gated) |
+
+### Files & editor
+
+| Command | What it does |
+|---|---|
 | `create a file called X with the text "..."` | Non-AI file create (confirm-gated) |
 | `find the config file` / `where is main.py` | Locate files in the project |
-| `open in vs code` / `open in terminal` / `open in cursor` | Open the project in external tools |
+| `open in vs code` / `open in terminal` / `open in cursor` / `open in explorer` | Open the project in external tools |
 | `open main.py` / `open the config file` | Open a specific file |
-| `review learning` | See near-miss suggestions |
-| `approve suggestions` | Promote suggested phrases into the matcher |
+| `open the github page` | Open the project's GitHub repo page |
+| `undo` / `revert that` | Restore the last change (git checkpoint or file journal) |
+| `type the command directly` | Allowlisted command lines (git push, npm run ...) run as-is |
+| `npx local-project-console init` | Bootstrap a console.config.json for a project |
+
+### Schedules, notifications & automation
+
+| Command | What it does |
+|---|---|
+| `schedule every 10 minutes "git status"` / `schedule daily at 09:30 "run the tests"` / `schedule on file save "npm run lint"` | Run a command on a timer or trigger (read-only, confirm-gated) |
+| `list schedules` / `show my schedules` | Shows the project's scheduled/triggered commands |
+| `delete schedule 2` / `remove schedule 1` | Removes a scheduled command by its list number |
+| `schedule log` | Shows the run history of scheduled commands |
+| `notify me when dev-server-crash` / `stop notifying me about ...` | Desktop/webhook alerts per event — all off until you opt in |
+| `webhook add <url>` / `webhook remove <url>` / `list notifications` / `test notification` | Webhook channels and verification |
+
+### Learning, diagnostics & introspection
+
+| Command | What it does |
+|---|---|
+| `review learning` / `check learning` | See near-miss suggestions |
+| `approve suggestions 1 3` | Promote suggested phrases into the matcher |
 | `telemetry review` / `telemetry stats` | Match statistics + learned-model status |
 | `threshold set <intent> <floor>` | Override an intent's confidence floor |
-| `check collisions` | Find overlapping intent embeddings |
-| `review distillations` / `apply all distillations` | Turn AI learnings into trigger-mode entries |
-| `review memory` | Usage patterns (frequent commands/files/questions) |
 | `telemetry clear` | Reset telemetry for the current project |
-| `help` / `what can you do` | Full command guide |
+| `check collisions` | Find overlapping intent embeddings (cosine >= 0.9) |
+| `review distillations` / `apply all distillations` | Turn AI learnings into trigger-mode entries |
+| `review memory` / `memory patterns` | Usage patterns (frequent commands/files/questions) |
+| `show history` / `recent actions` / `revert action 3f2a9c1d` | Recent file edits + confirmed commands; revert restores a file edit or advises the git undo |
+| `health check` / `is my console healthy` | Ollama reachability, embedding state, disk space, zombie tracked processes |
+| `what is my test coverage` / `analyze bundle size` | Reads existing coverage/build artifacts — never runs anything |
+| `what port are you running on` | The console's own port |
+
+### UI, settings & AI
+
+| Command | What it does |
+|---|---|
+| `help` / `what can you do` / `how do I <anything>` | Full command guide; how-do-I answers come from the command catalog with the exact phrase, the real shell command, and a suggestion chip |
+| `switch projects` / `change projects` | The project list in the left sidebar |
+| `dashboard` / `live sites` | The Dashboard tab: project overview + live-site status |
+| `the theme toggle in the top bar (sun/moon)` | Dark/light switch, persists per browser |
+| `the model picker in the AI popover` | Local Ollama + cloud models (`ollama pull <name>` for new ones) |
+| `install pack <path-to-console.tools.json>` | Add custom tools from a local manifest — preview first, confirm to install |
+| `AI mode: "remember that ..."` | Save a durable cross-session fact to .console/memory.md |
+| `chat header download icon` | Export the session as Markdown/JSON/PDF; chat-log download from the session list |
 
 ---
 

@@ -1,7 +1,9 @@
 {
   "userProfile": {
-    "name": "Tobi",
+    "name": "Jagz",
     "title": "Master",
-    "customRole": "Software Engineer"
+    "customRole": "Software Engineer",
+    "setupComplete": true,
+    "sandboxRiskyCommands": false
   }
 }

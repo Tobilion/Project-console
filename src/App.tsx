@@ -9,7 +9,7 @@ import { CommandDeck } from './components/CommandDeck';
 import { useConsole } from './hooks/useConsole';
 import { useUserProfile } from './hooks/useUserProfile';
 import { getRandomGreeting } from './utils/greetings';
-import { Home, LayoutDashboard, Search, Settings, Loader2 } from 'lucide-react';
+import { Home, LayoutDashboard, Search, Settings, Loader2, X } from 'lucide-react';
 import { ThemeToggle } from './components/ui/ThemeToggle';
 import { UserProfileModal } from './components/UserProfileModal';
 import { FirstRunSetup } from './components/FirstRunSetup';
@@ -62,6 +62,7 @@ function App() {
     processes, processLogs, selectedProcessId, setSelectedProcessId,
      dockExpanded, setDockExpanded, dockTab, setDockTab, handleStopProcess,
      handleDidYouMeanPick, connected,
+    updateNotice, onDismissUpdate,
    } = useConsole();
 
   // `showDirectoryPicker()` opens Chromium's actual native "Select Folder" dialog — distinct
@@ -161,6 +162,17 @@ function App() {
           directory=""
         />
       </header>
+      )}
+
+      {updateNotice && (
+        <div className="relative z-10 flex-shrink-0 mb-3 flex items-center gap-3 px-4 py-2 text-xs text-fg-strong bg-accent/10 border border-accent/20 rounded-lg">
+          <span>
+            Update available: <span className="font-mono">{updateNotice.current}</span> → <span className="font-mono">{updateNotice.latest}</span>. Type <span className="font-mono">"update console"</span> in chat to install it.
+          </span>
+          <button onClick={onDismissUpdate} className="ml-auto p-1 text-fg-dim hover:text-fg-strong transition-colors" title="Dismiss">
+            <X size={14} />
+          </button>
+        </div>
       )}
 
       <main className={`relative z-10 flex-1 min-h-0 overflow-hidden ${showDashboard ? '' : chatFullscreen ? 'block' : 'flex flex-col lg:flex-row gap-6'}`}>

@@ -262,6 +262,10 @@ export const CHIT_CHAT_INTENTS = {
   // route and fell to the generic fallback; the handler answers from the consoleCommandDocs.js
   // catalog. Examples deliberately exclude run/open/push/stop-shaped phrasings — those belong to
   // run_project/how_to_run/deploy/stop-server and must not be stolen.
+  // Phase 9 (2026-08-11): "how do you / how to / command to / what is the command to" shapes
+  // added per request — the consoleCommandDocs.js catalog now carries shell commands + example
+  // phrases, so "what is the command to push" answers with the command AND the phrases. Still
+  // no run/open/push/stop-ONLY shapes: those keep routing to the project-specific handlers.
   'system.chit_chat.how_do_i': {
     examples: [
       'how do i export this chat', 'how can i export this chat',
@@ -282,6 +286,24 @@ export const CHIT_CHAT_INTENTS = {
       'how can i change projects', 'how do i see the dashboard',
       'how can i see the dashboard', 'how do i view running processes',
       'how can i check running processes',
+      // Phase 9 question shapes (catalog answers carry command + phrases + run chip):
+      'how do you push to github', 'how to push to github',
+      'what is the command to push', 'command to push to github',
+      'how do you commit changes', 'how to commit changes',
+      'what is the command to commit', 'command to commit my changes',
+      'how do you check git status', 'how to check git status',
+      'what is the command to check git status',
+      'how do you open this in vs code', 'how to open this in vs code',
+      'what is the command to open in vs code',
+      'how do you run the tests', 'how to run the tests',
+      'what is the command to run the tests',
+      'how do you check the console health', 'how to check the console health',
+      'what is the command to check the console health',
+      'how do you export this chat', 'how to export this chat',
+      'what is the command to export this chat',
+      'how do you schedule a command', 'how to schedule a command',
+      'what is the command to schedule a command',
+      'how do you see the dashboard', 'what is the command to see the dashboard',
     ],
   },
   'system.chit_chat.needs_ai_mode': {

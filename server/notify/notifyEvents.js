@@ -19,6 +19,11 @@ export const NOTIFY_EVENTS = {
     description: 'a background task completes (success or failure) — e.g. the deferred type-check',
     alias: ['task done', 'background task', 'a task finishes', 'task finished'],
   },
+  'collision-found': {
+    label: 'new intent collisions appear',
+    description: 'a boot-time sweep finds intent-embedding overlaps that were not present on the previous boot (see collisions.js)',
+    alias: ['collision', 'intent collision', 'new collision', 'collisions appeared'],
+  },
 };
 
 export const NOTIFY_EVENT_KEYS = Object.keys(NOTIFY_EVENTS);

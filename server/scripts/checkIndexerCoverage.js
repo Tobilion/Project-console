@@ -234,6 +234,42 @@ try {
   eq('hasGitRepo false (no .git)', await scans.hasGitRepo(fixtures.trunc), false);
   const skippedDirs = appTree.filter((e) => e.type === 'dir').map((e) => norm(e.path));
   eq('tree skips node_modules/.git/.hidden', skippedDirs, ['src', 'src/lib']);
+
+  console.log('\n=== CODE-INDEX (Phase 7 chunker + store, no embeddings) ===');
+  const chunker = await import(pathToFileURL(base + 'codeIndex/codeIndexChunker.js').href);
+  const cStore = await import(pathToFileURL(base + 'codeIndex/codeIndexStore.js').href);
+  const jsContent = 'export const foo = 1;\n\nfunction bar() {}\n\nclass Baz {}\n';
+  const jsChunks = await chunker.chunkFile(jsContent, '.js', 'src/a.js');
+  eq('chunker JS symbol-anchored count', jsChunks.length, 3);
+  eq('chunker JS first chunk spans to next symbol', jsChunks[0].start === 1 && jsChunks[0].end === 2 && jsChunks[0].text.includes('foo'), true);
+  eq('chunker JS middle chunk spans between symbols', jsChunks[1].start === 3 && jsChunks[1].end === 4 && jsChunks[1].text.includes('bar'), true);
+  eq('chunker JS last chunk runs to EOF', jsChunks[2].start === 5 && jsChunks[2].end === 6 && jsChunks[2].text.includes('Baz'), true);
+  const pyChunks = await chunker.chunkFile('def run():\n    pass\n\n# done\n', '.py', 'src/b.py');
+  eq('chunker py fixed-window single chunk (file under window)', pyChunks.length === 1 && pyChunks[0].start === 1 && pyChunks[0].end === 5, true);
+  const big = await chunker.chunkFile('x'.repeat(4500), '.js', 'src/c.js');
+  eq('chunker oversized split into overlapping passes', big.length, 5);
+  const idxRoot = path.join(os.tmpdir(), 'console-codeindex-fixtures');
+  const idxDir = path.join(idxRoot, 'project');
+  await fs.mkdir(idxDir, { recursive: true });
+  const storePath = cStore._testHooks.storePath(idxDir);
+  await cStore.upsertChunks('ci-fixture', idxDir, 'src/a.js', 1234, [{ id: 'src/a.js:1', start: 1, end: 2, text: 'hello world' }], [[0.5, 0.25, -0.1]]);
+  await new Promise((r) => setTimeout(r, 700)); // let the debounced save land
+  cStore._testHooks.stores.delete('ci-fixture'); // force a reload from disk
+  const reloaded = await cStore.loadStore('ci-fixture', idxDir);
+  eq('store round-trips through JSON with plain-array vectors', reloaded.chunks.length === 1 && Array.isArray(reloaded.chunks[0].vector) && reloaded.chunks[0].vector[0] === 0.5, true);
+  const hits = await cStore.searchChunks('ci-fixture', idxDir, [0.6, 0.2, 0.0], 5);
+  eq('store search returns the matching chunk', hits.length === 1 && hits[0].file === 'src/a.js' && hits[0].start === 1, true);
+  // Regression (2026-08-11, live): the embedding extractor returns typed arrays, which
+  // JSON.stringify serializes as {"0":...} objects — a store written that way must load as a
+  // FRESH store (files wiped) so indexNeedsFullBuild triggers a rebuild, never a permanent
+  // zero-chunk index hiding behind a populated mtime manifest.
+  await fs.writeFile(storePath, JSON.stringify({
+    version: 1, files: { 'src/a.js': 1234 },
+    chunks: [{ id: 'src/a.js:1', file: 'src/a.js', start: 1, end: 2, text: 'x', vector: { '0': 0.1 } }],
+  }), 'utf-8');
+  const corrupt = await cStore.loadStore('ci-corrupt', idxDir);
+  eq('store with object-vector chunks loads fresh (rebuild path)', corrupt.chunks.length === 0 && Object.keys(corrupt.files).length === 0, true);
+  await fs.rm(idxRoot, { recursive: true, force: true });
 } finally {
   await fs.rm(FIXTURE_ROOT, { recursive: true, force: true });
   console.log('\nFixtures cleaned up.');

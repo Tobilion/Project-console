@@ -57,6 +57,9 @@ export interface WsCtx {
   appendProcessOutput: (text: string) => void;
   addToolCall: (tool: string, args: Record<string, any>, result: any) => void;
   fetchProcesses: () => void;
+  /** Phase 5: a newer published version of the console exists — drives the dismissible
+   *  update banner in App.tsx (server sends 'update_available' at most once per boot). */
+  setUpdateNotice: React.Dispatch<React.SetStateAction<{ current: string; latest: string } | null>>;
 }
 
 export type WsCaseHandler = (ctx: WsCtx, payload: any) => void;

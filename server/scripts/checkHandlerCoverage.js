@@ -154,11 +154,27 @@ eq('git leaf: branch_cleanup on non-git project answers no-repo', ws.sent.length
 
 sent.length = 0;
 await handleBuiltinIntent(ws, 'system.chit_chat.how_do_i', 'how do i export this chat', proj, {});
-eq('chitchat leaf: how_do_i answers from the command catalog', ws.sent.length === 1 && ws.sent[0].type === 'answer' && /export/i.test(ws.sent[0].data) && /chat header download icon/.test(ws.sent[0].data), true);
+eq('chitchat leaf: how_do_i answers from the command catalog', ws.sent.length === 2 && ws.sent[0].type === 'answer' && /export/i.test(ws.sent[0].data) && /chat header download icon/.test(ws.sent[0].data), true);
+eq('chitchat leaf: how_do_i emits suggestion chips after the answer', ws.sent[1].type === 'suggestions' && ws.sent[1].data.includes('chat header download icon'), true);
+
+sent.length = 0;
+await handleBuiltinIntent(ws, 'system.chit_chat.needs_ai_mode', 'make me a landing page', proj, {});
+eq('chitchat leaf: needs_ai_mode guidance names the AI dock with a concrete instruction', ws.sent.length === 1 && ws.sent[0].type === 'answer' && /AI dock/.test(ws.sent[0].data) && /write it for you/.test(ws.sent[0].data), true);
 
 sent.length = 0;
 const unknown = await handleBuiltinIntent(ws, 'no_such_intent', 'x', proj, {});
 eq('unknown intent -> false, nothing sent', unknown === false && ws.sent.length === 0, true);
+
+sent.length = 0;
+await handleBuiltinIntent(ws, 'project.knowledge.how_to_run', 'how do i run this', proj, {});
+eq('knowledge leaf: how_to_run shows example phrasings (nothing documented on fixture)', ws.sent.length === 1 && ws.sent[0].type === 'answer' && /Try saying/.test(ws.sent[0].data), true);
+
+sent.length = 0;
+await handleBuiltinIntent(ws, 'project.code.search', 'where do we handle retries', proj, {});
+// Phase 7: the fixture has no embedding model loaded (semanticMatcher never initialized in
+// this harness), so the code-search handler must answer the clean unavailable path — never
+// crash, never touch the fixture's non-existent project dir.
+eq('knowledge leaf: code.search answers unavailable without the embedding model', ws.sent.length === 1 && ws.sent[0].type === 'answer' && /embedding model/.test(ws.sent[0].data), true);
 
 console.log(`check-handlers: ${total} checks, ${failed} failed`);
 process.exit(failed ? 1 : 0);

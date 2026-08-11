@@ -92,6 +92,11 @@ export function useConsole() {
   // True between the server's 'ai_start' and the AI turn's stream_end — gates autoExpand
   // on output blocks created by commands the AI ran (see streamOutputCase).
   const [aiQueryInFlight, setAiQueryInFlight] = useState(false);
+  // Phase 5: a newer published version of the console exists (server's once-per-boot
+  // 'update_available' message). Dismissed via handleDismissUpdate; reappears next boot if
+  // the new version still hasn't been installed.
+  const [updateNotice, setUpdateNotice] = useState<{ current: string; latest: string } | null>(null);
+  const handleDismissUpdate = useCallback(() => setUpdateNotice(null), []);
 
   const fetchActiveServers = useCallback(async () => {
     const data = await apiFetchJson<Array<{ projectId: string; command: string; pid: number | null; url: string | null }>>('/api/active-servers');
@@ -174,6 +179,7 @@ export function useConsole() {
     appendProcessOutput: dock.appendProcessOutput,
     addToolCall: toolHistory.addToolCall,
     fetchProcesses: dock.fetchProcesses,
+    setUpdateNotice,
   };
 
   // M21: useCallback so the `onSendMessage` identity passed to TerminalMessages (and the
@@ -439,7 +445,9 @@ export function useConsole() {
     switchSession: handleSwitchSession,
     deleteSession: sessions.deleteSession,
     renameSession: sessions.renameSession,
-     handleSwitchToProject,
-     connected,
-   };
+    handleSwitchToProject,
+    connected,
+    updateNotice,
+    onDismissUpdate: handleDismissUpdate,
+  };
 }

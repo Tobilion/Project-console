@@ -3,6 +3,7 @@ import { sweepExpiredConfirmations, pendingConfirmations, pendingToolConfirmatio
 import { appendMessage } from '../conversationStore.js';
 import { metrics } from '../metrics.js';
 import { routeMessage, sendAiStatus } from './connectionRoutes.js';
+import { takeUpdateNotice } from '../updateChecker.js';
 
 function heartbeat() {
   this.isAlive = true;
@@ -193,4 +194,13 @@ function onConnection(ws) {
    // Phase 3). Push the fresh state so the toggle syncs honestly; the reconnect-reset of the
    // busy indicators lives client-side in useWebSocket's onOpen instead.
    if (ws.readyState === 1) sendAiStatus(ws, sessionContext);
+
+   // Phase 5: the once-per-boot update banner — takeUpdateNotice returns the notice only on
+   // its first call after a successful boot-time check that found a newer version, so at
+   // most one connection ever receives it. Deliberately not persisted by the send interceptor
+   // above (no session record for a UI banner).
+   const updateNotice = takeUpdateNotice();
+   if (updateNotice && ws.readyState === 1) {
+     ws.send(JSON.stringify({ type: 'update_available', data: updateNotice }));
+   }
 }

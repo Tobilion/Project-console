@@ -82,7 +82,9 @@ const BATTERIES = [
       ['watch at interval of 5 minutes', 'ENTRY action=python main.py watch --interval {interval}'],
       ['run the network speed', 'ENTRY action=python main.py watch --interval {interval}'],
       ['run the tests', 'BUILTIN=run_tests'],
-      ['check git status', 'BUILTIN=system.chit_chat.git_status'],
+      // how_do_i's Phase 9 question-shape cluster ("how do you check git status" etc.) now sits
+      // within did-you-mean chip margin of the bare imperative — winner unchanged, chip added.
+      ['check git status', 'BUILTIN=system.chit_chat.git_status(closeSecond=system.chit_chat.how_do_i)'],
       ['help', 'BUILTIN=system.chit_chat.help'],
       ['overview', 'BUILTIN=project.knowledge.overview'],
       ['what is the link', 'BUILTIN=project.context.dev_server_status(closeSecond=project.action.open_site)'],
@@ -207,7 +209,9 @@ const BATTERIES = [
   {
     name: 'GARBAGE (must not land on a confident intent)',
     items: [
-      ['please to running the site for me today', 'FALLBACK(didYouMean=run_project)'],
+      // Still a fallback (no confident match) — only the chip target moved: how_to_run's Phase 9
+      // site question cluster now owns the nearest intent for run-site-garbled input.
+      ['please to running the site for me today', 'FALLBACK(didYouMean=project.knowledge.how_to_run)'],
       ['Call it jimmyjagz.md with tex :- "', 'FALLBACK'],
       ['gibberish qxzqwplk zzz', 'FALLBACK'],
       ['asdfghjkl', 'FALLBACK'],
@@ -254,6 +258,87 @@ const BATTERIES = [
       ['good job on fixing main.py', 'BUILTIN=file_find'],
       // didYouMean on no-match (input below floor but nearest >= 0.45)
       ['show me the status of everything', 'FALLBACK(didYouMean=system.chit_chat.status)'],
+    ],
+  },
+  {
+    // Phase 9 (2026-08-11, probe-calibrated with real embeddings): "how to / how do you /
+    // command to / what is the command to" question shapes route to the how_do_i catalog
+    // (which now answers with the real shell command + example phrases + a run chip), while
+    // site/server-flavored run questions route to how_to_run (project-specific commands).
+    // The guard rows pin the imperative launch family — after how_to_run gained
+    // site/server-shaped question examples, bare "run the site" drifted onto how_to_run and
+    // a PRE_SEMANTIC_OVERRIDE had to win it back for run_project (see preSemanticOverrides.js).
+    name: 'HOWTO (Phase 9 question shapes + imperative guards)',
+    items: [
+      ['how do you push to github', 'BUILTIN=system.chit_chat.how_do_i'],
+      ['how to push to github', 'BUILTIN=system.chit_chat.how_do_i'],
+      ['what is the command to push', 'BUILTIN=system.chit_chat.how_do_i'],
+      ['command to push to github', 'BUILTIN=system.chit_chat.how_do_i'],
+      ['how do you check git status', 'BUILTIN=system.chit_chat.how_do_i'],
+      ['how to check git status', 'BUILTIN=system.chit_chat.how_do_i'],
+      ['how do you open this in vs code', 'BUILTIN=system.chit_chat.how_do_i'],
+      ['how to open this in vs code', 'BUILTIN=system.chit_chat.how_do_i'],
+      ['what is the command to open in vs code', 'BUILTIN=system.chit_chat.how_do_i'],
+      ['how to run the tests', 'BUILTIN=system.chit_chat.how_do_i(closeSecond=project.context.tests)'],
+      ['what is the command to run the tests', 'BUILTIN=system.chit_chat.how_do_i'],
+      ['how do you check the console health', 'BUILTIN=system.chit_chat.how_do_i'],
+      ['command to check the console health', 'BUILTIN=system.chit_chat.how_do_i'],
+      ['how do you export this chat', 'BUILTIN=system.chit_chat.how_do_i'],
+      ['what is the command to export this chat', 'BUILTIN=system.chit_chat.how_do_i'],
+      ['how do you schedule a command', 'BUILTIN=system.chit_chat.how_do_i'],
+      ['what is the command to schedule a command', 'BUILTIN=system.chit_chat.how_do_i'],
+      ['how do you see the dashboard', 'BUILTIN=system.chit_chat.how_do_i'],
+      ['command to see the dashboard', 'BUILTIN=system.chit_chat.how_do_i'],
+      // Question-shape guard rows (probe-verified 2026-08-11): these all previously misfired onto
+      // EXECUTING intents (deploy/run_project/npm_build/status) because the "how to"/"command to"
+      // prefix carries no embedding weight — the PRE_SEMANTIC_OVERRIDES question rule above now
+      // catches them before the semantic stage. Answer-only, never execute.
+      ['how to push my changes', 'BUILTIN=system.chit_chat.how_do_i'],
+      ['how do you build the project', 'BUILTIN=system.chit_chat.how_do_i'],
+      ['command to stop the server', 'BUILTIN=system.chit_chat.how_do_i'],
+      ['how to open in vs code', 'BUILTIN=system.chit_chat.how_do_i'],
+      ['how do you show history', 'BUILTIN=system.chit_chat.how_do_i'],
+      ['how do you make a checkpoint', 'BUILTIN=system.chit_chat.how_do_i'],
+      ['command to see test coverage', 'BUILTIN=system.chit_chat.how_do_i'],
+      ['how to deploy the site', 'BUILTIN=system.chit_chat.how_do_i'],
+      ['how to run the site', 'BUILTIN=project.knowledge.how_to_run'],
+      ['how do i run the site', 'BUILTIN=project.knowledge.how_to_run'],
+      ['how do you run the server', 'BUILTIN=project.knowledge.how_to_run'],
+      ['how to start the site', 'BUILTIN=project.knowledge.how_to_run'],
+      ['command to run the site', 'BUILTIN=project.knowledge.how_to_run'],
+      ['what is the command to run the site', 'BUILTIN=project.knowledge.how_to_run'],
+      ['how do i launch the site', 'BUILTIN=project.knowledge.how_to_run'],
+      ['how to serve the site', 'BUILTIN=project.knowledge.how_to_run'],
+      // imperative guards: the launch family stays EXECUTING (run_project), never informational
+      ['run the site', 'BUILTIN=run_project'],
+      ['run this project', 'BUILTIN=run_project'],
+      ['run the project', 'BUILTIN=run_project'],
+      ['start the site', 'BUILTIN=run_project'],
+      ['start the app', 'BUILTIN=run_project'],
+      ['launch the site', 'BUILTIN=run_project'],
+      ['run the app', 'BUILTIN=run_project'],
+      ['run the site on port 3010', 'BUILTIN=npm_run'],
+      ['serve the site', 'BUILTIN=npm_run'],
+      ['serve the site on port 3040', 'BUILTIN=npm_run'],
+      ['run the tests', 'BUILTIN=run_tests'],
+      // The fixture's own "run tests" entry wins at 0.71 — a project-specific test command beats
+      // the generic builtin; without a matching entry this input routes to run_tests instead.
+      ['run api tests', 'ENTRY action=python -m pytest'],
+      ['run the numbers', 'BUILTIN=project.knowledge.commands'],
+    ],
+  },
+  {
+    name: 'CODE-SEARCH (Phase 7 semantic code search intent)',
+    items: [
+      ['where do we handle retries', 'BUILTIN=project.code.search'],
+      ['where is the retry logic', 'BUILTIN=project.code.search'],
+      ['find code about error handling', 'BUILTIN=project.code.search'],
+      ['search the codebase for auth', 'BUILTIN=project.code.search'],
+      ['which file handles the websocket connections', 'BUILTIN=project.code.search'],
+      ['where is the database code', 'BUILTIN=project.code.search'],
+      // Name-shaped "where is X" must NOT leave file_find (locates by file NAME, different
+      // contract — code.search is about code inside files).
+      ['where is main.py', 'BUILTIN=file_find'],
     ],
   },
 ];

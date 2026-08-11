@@ -3,6 +3,9 @@ import { state } from '../state.js';
 import { findDocumentedRunCommands } from '../readmeRunParser.js';
 import { enrichWithIndex } from './builtinHelpers.js';
 import { injectContext } from '../contextInjector.js';
+import { searchProjectCode, performSearch } from '../codeIndex/codeIndexSearch.js';
+import { buildProjectIndex } from '../codeIndex/codeIndexBuilder.js';
+import { enqueueTask } from '../taskQueue.js';
 
 /**
  * project.knowledge.* / project_scan / project_list / project.workflow.* — the knowledge and
@@ -83,7 +86,16 @@ export const projectKnowledgeHandlers = {
     if (!msg) {
       msg = `Nothing documented or detected about how to run this project. Try "run project" for a best-effort guess, or turn AI mode on.`;
     }
+    // Phase 9 (2026-08-11, requested directly): show how to ASK as well as what to RUN — the
+    // example phrasings teach the chat side, and a suggestion chip offers the best runnable
+    // command (config entries first — they're authored for this exact console — then the first
+    // documented command). Chip is a click, nothing auto-runs.
+    msg += `\n\n**Try saying:** "run the site", "start the server", "run the project"`;
     ws.send(JSON.stringify({ type: 'answer', data: msg }));
+    const bestChip = configured[0]?.action || documented[0]?.command;
+    if (bestChip) {
+      ws.send(JSON.stringify({ type: 'suggestions', data: [bestChip] }));
+    }
   },
 
   'project_scan'(ws) {
@@ -118,6 +130,45 @@ export const projectKnowledgeHandlers = {
     } else {
       ws.send(JSON.stringify({ type: 'error_output', data: (result.message || result.error || 'Checkpoint failed.') + '\n' }));
     }
+    return true;
+  },
+
+  async 'project.code.search'(ws, _action, input, project) {
+    // Phase 7 (2026-08-11): semantic code search over the persisted per-project code index
+    // (codeIndexSearch.js). Read-only retrieval — answers with real file:line citations, never
+    // fabricated code. A missing index kicks off a background build through taskQueue (never
+    // blocks the chat turn) and posts the results out of band, same shape as type_check.
+    const formatResults = (results, query) => {
+      if (results.length === 0) {
+        return `### Code search — [${project.name}]\n\nNo matching code found for "${query}". The index covers code files up to the per-project cap (${project.name}'s changes update automatically on save).`;
+      }
+      const lines = results.map((r, i) => {
+        const loc = `${r.filePath}:${r.startLine}${r.endLine && r.endLine !== r.startLine ? `-${r.endLine}` : ''}`;
+        return `${i + 1}. **${loc}**\n\n\`\`\`\n${r.snippet}\n\`\`\``;
+      });
+      return `### Code search — [${project.name}]\n\nFound ${results.length} match(es) for "${query}" (semantic search results retrieved from the code index, not generated):\n\n${lines.join('\n\n')}`;
+    };
+    const result = await searchProjectCode(project, input);
+    if (result.status === 'unavailable') {
+      ws.send(JSON.stringify({
+        type: 'answer',
+        data: `Semantic code search needs the embedding model, which failed to load this session — try again after a restart, or use "find code ..." name-based file search instead.`,
+      }));
+      return true;
+    }
+    if (result.status === 'indexing') {
+      ws.send(JSON.stringify({
+        type: 'answer',
+        data: `Indexing **[${project.name}]**'s code in the background (first search builds the index) — I'll post the file:line results here when ready.`,
+      }));
+      enqueueTask(project.id, 'code index build', async () => {
+        await buildProjectIndex(project);
+        const results = await performSearch(project, input);
+        if (ws.readyState === 1) ws.send(JSON.stringify({ type: 'answer', data: formatResults(results, input) }));
+      });
+      return true;
+    }
+    ws.send(JSON.stringify({ type: 'answer', data: formatResults(result.results, input) }));
     return true;
   },
 };

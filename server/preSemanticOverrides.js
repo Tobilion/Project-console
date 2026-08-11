@@ -12,6 +12,18 @@
  * pattern.test loop and telemetry shape are unchanged.
  */
 export const PRE_SEMANTIC_OVERRIDES = [
+  // Phase 9 (2026-08-11, probe-verified with real embeddings): question shapes are now known to
+  // misfire onto EXECUTING intents — "how to push my changes" landed on deploy (checkpoint +
+  // push), "command to stop the server" and "how to open in vs code" landed on run_project, and
+  // "how do you build the project" on npm_build. The "how to"/"command to" prefix carries almost
+  // no embedding weight, so the cosine is dominated by the action words, which belong to the
+  // action intents' phrase clusters. A question prefix + one of these corpus verbs is
+  // unambiguous — the user is asking HOW, and the how_do_i catalog answers with the command +
+  // example phrases + a suggestion chip; it never executes. Deliberately narrow: run/start/
+  // launch/serve verbs are excluded so "how to run the site" stays with the project-specific
+  // how_to_run interpretation, and the rule lives FIRST because the bare "deploy" override
+  // below would otherwise catch "how to deploy the site" and run a push.
+  { intent: 'system.chit_chat.how_do_i', pattern: /^(?:how\s+(?:to|do\s+(?:you|i|we))\s+|(?:what\s+is\s+the\s+)?command\s+to\s+)(?:push|commit|deploy|build|stop\s+the\s+server|open\s+in|show|make\s+a\s+checkpoint|see\s+(?:the\s+)?(?:dashboard|test\s+coverage|bundle)|switch\s+projects|change\s+the\s+theme|check\s+(?:git\s+status|the\s+console\s+health|collisions)|export|schedule|review|approve)/i },
   { intent: 'git_init', pattern: /\bgit\s+init\b|\b(initialize|init)\b.*\brepo(sitory)?\b|\b(initialize|init)\b.*\bgit\b/i },
   { intent: 'git_ignore_add', pattern: /\bgiti?gnore\b/i },
   { intent: 'system.chit_chat.deploy', pattern: /\bdeploy\b|\bpush\s+live\b/i },
@@ -51,7 +63,13 @@ export const PRE_SEMANTIC_OVERRIDES = [
   // anchored to the START (so "check the server status" / "is the server up" are untouched)
   // AND the noun to the END with an optional trailing "please" — "run api tests" / "run
   // server tests" must stay with run_tests, not be stolen by the run_project redirect.
-  { intent: 'run_project', pattern: /^(?:run|start|launch|boot|restart|spin\s+up)\s+(?:the\s+|its\s+|your\s+|my\s+)?(?:server|backend|api)\b(?:\s+please)?$/i },
+  // Phase 9 (2026-08-11, probe-verified TODAY with real embeddings): after how_to_run gained
+  // site/server-shaped QUESTION examples ("how to run the site", "command to run the server"),
+  // the bare imperatives "run the site" / "run the app" / "run the project" drifted onto
+  // how_to_run (informational) and stopped launching the dev server — the question cluster
+  // pulled the centroid. Same class of trap, same fix: a leading run-family verb + a
+  // site/app/project noun is an imperative launch, never a question — literal override wins.
+  { intent: 'run_project', pattern: /^(?:run|start|launch|boot|restart|spin\s+up)\s+(?:the\s+|its\s+|your\s+|my\s+|this\s+)?(?:server|backend|api|site|website|app|project)\b(?:\s+please)?$/i },
   // Phase 16 (2026-08-05, harness-verified with real embeddings): file-open requests collided
   // with pre-existing owners — file_read owns the "open file"/"open this file" seeds, and
   // file_find owns every name-bearing "find/where is the X file" shape (the filename dominates

@@ -53,3 +53,9 @@ CODE-REVIEW.md
 LOCAL_ROUTER_UPGRADE_PROMPT.md
 console-theme-redesign-prompt.md
 
+
+# Phase 7: per-project auto-start config + boot-run log (see autoStartProjects.js)
+data/auto-start.json
+data/auto-start-log.md
+# Phase 7: intent-collision baseline for the boot-time sweep (see collisions.js)
+data/collisions.json

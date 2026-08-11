@@ -46,8 +46,12 @@ export const CONFIG_RUN_ENTRY_FLOOR = 0.55;
 // project-level phrases, not command requests, so they're exempted from the stage-1b config-entry
 // redirect and always dispatch through generic run_project. Keep this narrow — the verified
 // redirect cases ("run the site and watch at interval of 5 minutes" 0.565, "run the network speed"
-// 0.721) all start with a run verb, never "open/launch ... project".
-export const OPEN_PROJECT_RE = /^(?:open|launch)\s+(?:the\s+|this\s+)?project$/i;
+// 0.721) all start with a run verb, never "open/launch ... project". Phase 9 (2026-08-11):
+// "run/start the project" hit the same trap (0.564 vs the same "test project" trigger after the
+// run-project override began routing it into the semantic stage) — run/start + the project noun
+// are equally unambiguous project-level phrases, so they're exempt the same way; the run-verb
+// redirect cases above all target site/speed nouns, which still redirect.
+export const OPEN_PROJECT_RE = /^(?:open|launch|run|start)\s+(?:the\s+|this\s+)?project$/i;
 
 // NOTE: file_append, file_read, and git_remote_add were previously missing from this set even
 // though builtinIntents.js has real handlers for all three, and git_remote_add's whole reason
@@ -99,6 +103,9 @@ export const BUILTIN_INTENTS = new Set([
   'project.diagnostics.log_errors', 'system.knowledge.cross_project_search',
   // Phase 8 (2026-08-11): coverage + bundle-size artifact analyzers (builtinDiagnostics.js).
   'project.diagnostics.test_coverage_report', 'project.diagnostics.bundle_size_analysis',
+  // Phase 7 (2026-08-11): semantic code search over the persisted code-content index
+  // (codeIndexSearch.js) — read-only retrieval with file:line citations.
+  'project.code.search',
 ]);
 
 // Exported via matcher.js so localRouter.js's allowed-intent list is always drawn from exactly

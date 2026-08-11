@@ -106,3 +106,39 @@ export function watchProjectChanges(project, onFsEvent) {
   });
   return watcher;
 }
+
+// Phase 7 (2026-08-11): per-project watcher for the semantic code index's incremental updates.
+// Same tree-wide shape and ignore list as watchProjectChanges, but the callback carries the
+// changed file's path so the index can re-chunk just that file instead of invalidating
+// wholesale. Attached lazily by codeIndexBuilder (only projects with an index get one). The
+// callback receives (relativePath, 'change' | 'unlink'); paths use platform separators.
+export function watchProjectCodeFiles(project, onFileChange) {
+  const watcher = chokidar.watch(project.path, {
+    ignoreInitial: true,
+    ignored: (p) => {
+      if (typeof p !== 'string') return false;
+      const n = p.split('\\').join('/');
+      if (n.includes('/node_modules/')) return true;
+      if (n.includes('/.console/')) return true;
+      if (n.includes('/.git/')) return true;
+      return false;
+    },
+  });
+  let debounceTimer = null;
+  const fire = (relPath, eventType) => {
+    clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(() => {
+      try {
+        onFileChange(relPath, eventType);
+      } catch (err) {
+        console.error(`[fileWatcher] code-index event failed for ${project.id}:`, err.message);
+      }
+    }, 1000);
+  };
+  watcher.on('change', (relPath) => fire(relPath, 'change'));
+  watcher.on('unlink', (relPath) => fire(relPath, 'unlink'));
+  watcher.on('error', (err) => {
+    console.error(`[fileWatcher] code-index watcher error (${project.id}):`, err.message);
+  });
+  return watcher;
+}

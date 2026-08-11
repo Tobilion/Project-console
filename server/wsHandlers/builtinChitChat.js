@@ -8,6 +8,7 @@ import { buildLiveStateLine, buildMemoryBlock } from './builtinLiveState.js';
 import { buildHelpMessage } from './builtinHelp.js';
 import { evaluateArithmetic, formatValue } from '../mathEval.js';
 import { lookupCommandDocs } from '../consoleCommandDocs.js';
+import { aiDockInstruction } from '../aiDockHints.js';
 
 /**
  * system.chit_chat.* handlers (Phase 10 step 3, extracted verbatim from builtinIntents.js).
@@ -111,12 +112,15 @@ export const chitChatHandlers = {
     // while AI mode is off previously scattered onto identity/structure/commands or the generic
     // fallback. The AI toggle is a frontend-only control, so this can only answer with guidance —
     // it must NOT try to flip the toggle itself (no such server-side path exists by design).
+    // Phase 7 (2026-08-11): the guidance now names the AI dock and gives a concrete phrasing
+    // to use there (see aiDockHints.js) instead of stopping at "flip the toggle".
+    const instruction = aiDockInstruction(input);
     ws.send(JSON.stringify({
       type: 'answer',
       data: pickRandom([
-        `That one needs AI mode — flip the AI toggle at the top of this chat (next to the model picker) and ask again. AI mode gives me read/write tools scoped to [${project.name}], so I can handle open-ended requests.`,
-        `This is trigger mode, which only handles the fixed built-in actions. Use the AI toggle in the header of this chat to switch AI mode on for requests like that, then re-ask.`,
-        `AI mode isn't on right now. Flip the AI switch in the chat header, then ask me again — with AI on I can work with files in [${project.name}] and answer open-ended questions.`,
+        `That one needs AI mode — flip the AI toggle at the top of this chat (next to the model picker) or open the AI dock, then ${instruction}. AI mode gives me read/write tools scoped to [${project.name}], so I can handle open-ended requests.`,
+        `This is trigger mode, which only handles the fixed built-in actions. Turn AI mode on (toggle in the chat header, or use the AI dock) and ${instruction}.`,
+        `AI mode isn't on right now. Flip the AI switch in the chat header or open the AI dock, then ${instruction} — with AI on I can work with files in [${project.name}] and answer open-ended questions.`,
       ]),
     }));
   },
@@ -199,6 +203,9 @@ export const chitChatHandlers = {
     // Phase 1 (2026-08-10): guidance answers from the consoleCommandDocs.js catalog —
     // deliberately no smartChitchatReply (the answer is deterministic reference text, no model
     // call needed even with AI mode on). Side-effect-free: never runs the referenced command.
+    // Phase 9 (2026-08-11): entries now carry the real `shell` command and example `phrases`;
+    // the answer renders both, and clickable suggestion chips let the user run it — chips are
+    // clicks, nothing auto-runs, so this stays side-effect-free.
     const matches = lookupCommandDocs(input);
     if (matches.length === 0) {
       ws.send(JSON.stringify({
@@ -207,11 +214,26 @@ export const chitChatHandlers = {
       }));
       return;
     }
-    const lines = matches.map((m, i) => `  ${i + 1}. **\`${m.command}\`** — ${m.explain}`);
+    const lines = matches.map((m, i) => {
+      let out = `  ${i + 1}. **\`${m.command}\`** — ${m.explain}`;
+      if (m.shell) out += `\n     - Command: \`${m.shell}\``;
+      if (m.phrases?.length) out += `\n     - Try saying: "${m.phrases.join('", "')}"`;
+      return out;
+    });
     ws.send(JSON.stringify({
       type: 'answer',
       data: `Here's how, for **[${project.name}]**:\n\n${lines.join('\n')}\n\nType "help" for the full command reference, or ask "how do i <thing>" about anything else.`,
     }));
+    // Suggestion chips: a runnable shell command for direct execution (npm/npx/python/node
+    // shapes — the frontend sends those through the direct-command path), otherwise the chat
+    // phrasing (routes through the normal matcher + confirm flows). Deduped, up to three.
+    const chips = [];
+    for (const m of matches) {
+      const chip = m.shell && /^(npm|npx|python|node)\s/.test(m.shell) ? m.shell : m.command;
+      if (!chips.includes(chip)) chips.push(chip);
+      if (chips.length === 3) break;
+    }
+    ws.send(JSON.stringify({ type: 'suggestions', data: chips }));
   },
 
   'system.chit_chat.yes_no': async (ws, action, input, project, sessionContext) => {

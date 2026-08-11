@@ -42,6 +42,7 @@ function makeFakeCtx() {
     toolCalls: [],
     fetchProcessCount: 0,
     clipText: '',
+    updateNotice: null,
     ws: { _streamId: null },
   };
   const tokenBuffer: { current: string } = { current: '' };
@@ -87,6 +88,7 @@ function makeFakeCtx() {
     appendProcessOutput: (text: string) => { state.appendedOutput.push(text); },
     addToolCall: (tool: string, args: any, result: any) => { state.toolCalls.push({ tool, args, result }); },
     fetchProcesses: () => { state.fetchProcessCount++; },
+    setUpdateNotice: (v: any) => { state.updateNotice = typeof v === 'function' ? v(state.updateNotice) : v; },
   };
   return { ctx, state, tokenBuffer, flushTimer, streamHadTokenRef };
 }
@@ -107,6 +109,7 @@ async function main() {
     'tool_confirm_prompt', 'task_granted', 'memory_suggestion', 'tool_result',
     'workspace_updated', 'server_url', 'copy_to_clipboard', 'dashboard_update',
     'processes_update', 'learning_suggestion', 'stream_start', 'token', 'stream_end',
+    'update_available',
   ];
   for (const t of ALL_TYPES) check(`case registered: ${t}`, typeof WS_MESSAGE_CASES[t] === 'function');
 
@@ -278,6 +281,14 @@ async function main() {
   dispatch(c.ctx, 'stream_end', {});
   check('stream_end empty -> fallback text', last(c.state).content === '(AI returned no response — try rephrasing your request.)');
   check('stream_end resets streamHadToken', c.streamHadTokenRef.current === false);
+
+  // --- update_available (Phase 5 banner) ---
+  c = makeFakeCtx();
+  dispatch(c.ctx, 'update_available', { data: { current: '1.0.1', latest: '1.0.2' } });
+  check('update_available sets banner state', c.state.updateNotice?.current === '1.0.1' && c.state.updateNotice?.latest === '1.0.2');
+  check('update_available never touches chat', c.state.msgs.length === 0);
+  dispatch(c.ctx, 'update_available', { data: { current: '1.0.2' } });
+  check('update_available malformed ignored', c.state.updateNotice?.latest === '1.0.2');
 
   // --- unknown type is a no-op ---
   c = makeFakeCtx();

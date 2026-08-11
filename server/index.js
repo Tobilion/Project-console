@@ -19,6 +19,9 @@ import { loadLearnedIntents } from './learnedIntents.js';
 import { loadDevUrls } from './devUrlStore.js';
 import { initScheduler } from './schedules/scheduler.js';
 import { initNotifications } from './notify.js';
+import { loadAutoStart, initAutoStart } from './autoStartProjects.js';
+import { checkCollisionBaseline } from './collisions.js';
+import { checkForUpdates } from './updateChecker.js';
 import { wss, broadcast } from './wsServer.js';
 import { initWebSocketServer } from './wsHandlers/connection.js';
 import { registerProjectRoutes } from './routes/projectRoutes.js';
@@ -119,6 +122,21 @@ async function init() {
   // Initialize semantic matcher (embedding + Fuse.js)
   await semanticMatcher.initialize().catch((err) => console.error('SemanticMatcher init failed:', err.message));
   semanticMatcher.addProjectIntents(state.activeProjectsCache).catch(() => {});
+
+  // Phase 7: restore auto-start config and schedule boot-time runs (needs the matcher above
+  // for its launch-phrase re-match; loadAutoStart runs before any connection can configure).
+  loadAutoStart();
+  initAutoStart();
+
+  // Phase 7: baseline intent-collision sweep — fire-and-forget, never blocks boot. Alerts
+  // via the opt-in 'collision-found' notification event when new overlaps appeared since
+  // the previous boot (needs initNotifications' rules loaded above, hence its position).
+  checkCollisionBaseline().catch(() => {});
+
+  // Phase 5: bounded, non-blocking npm-registry version check — fire-and-forget, 4s timeout,
+  // silent on any failure (offline-first). The result feeds the once-per-boot update banner
+  // (takeUpdateNotice in connectionLifecycle.js) and the `check for updates` admin command.
+  checkForUpdates(false).catch(() => {});
 
   // Start file watcher for console.config.json changes
   try {

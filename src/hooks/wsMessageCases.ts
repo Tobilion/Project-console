@@ -265,6 +265,14 @@ const learningSuggestionCase: WsCaseHandler = (ctx, payload) => {
   }
 };
 
+const updateAvailableCase: WsCaseHandler = (ctx, payload) => {
+  // Phase 5: newer console version banner — pure UI state, no chat message. The server sends
+  // this at most once per boot (see takeUpdateNotice in updateChecker.js); a malformed payload
+  // is ignored so a partial object can never render a broken banner.
+  if (!payload.data?.current || !payload.data?.latest) return;
+  ctx.setUpdateNotice({ current: payload.data.current, latest: payload.data.latest });
+};
+
 const WS_CORE_CASES: Record<string, WsCaseHandler> = {
   answer: answerCase,
   output: streamOutputCase,
@@ -292,6 +300,7 @@ const WS_CORE_CASES: Record<string, WsCaseHandler> = {
   dashboard_update: dashboardUpdateCase,
   processes_update: processesUpdateCase,
   learning_suggestion: learningSuggestionCase,
+  update_available: updateAvailableCase,
 };
 
 /** Full dispatch map: core cases + the streaming trio (stream_start/token/stream_end). */

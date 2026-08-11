@@ -44,5 +44,8 @@ jobs:
       - name: Builtin-handler coverage
         run: npm run check-handlers
 
+      - name: Docs catalog sync (how_do_i catalog vs README reference)
+        run: npm run check-docs
+
       - name: WS message-case coverage
         run: npm run check-ws-cases
