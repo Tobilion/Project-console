@@ -1,5 +1,4 @@
 import { Mutex } from 'async-mutex';
-import { pipeline, env } from '@xenova/transformers';
 import Fuse from 'fuse.js';
 import { INTENTS } from './intentsData.js';
 import { broadcast } from './wsServer.js';
@@ -30,7 +29,10 @@ export const SUGGESTION_DEFAULT_LIMIT = 5;
 /** Default cosine threshold for flagging intent pairs that may be hard to distinguish. */
 export const COLLISION_DEFAULT_THRESHOLD = 0.9;
 
-env.cacheDir = './.cache/xenova';
+// @xenova/transformers is an OPTIONAL dependency (package.json): it pulls sharp, whose native
+// libvips download has failed installs on slow/restricted networks. The lazy import below means
+// a machine without the package just takes the initError path (fuzzy/NLP stages still work) —
+// a static top-level import would crash the whole server instead.
 
 class SemanticMatcher {
   constructor() {
@@ -60,6 +62,9 @@ class SemanticMatcher {
     this.initializing = true;
 
     try {
+      // Lazy load — see the note at the top of this file about why this is not a static import.
+      const { pipeline, env } = await import('@xenova/transformers');
+      env.cacheDir = './.cache/xenova';
       broadcast({ type: 'semantic_matcher_progress', data: { stage: 'downloading', percent: 0 } });
       console.log('[SemanticMatcher] Loading embedding model (first load downloads ~23MB)...');
       // A stalled HuggingFace download (an offline/proxied/rate-limited connection that

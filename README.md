@@ -100,6 +100,26 @@ npx local-project-console init
 npx local-project-console init C:\path\to\project
 ```
 
+#### Installation troubleshooting
+
+On slow or restricted networks, `npm install` can fail with a `sharp` / `libvips` download timeout:
+
+```
+npm error command failed
+npm error sharp: Downloading https://github.com/lovell/sharp-libvips/...
+npm error sharp: Installation error: Request timed out
+```
+
+This is a one-time native-binary download performed by `sharp` (a transitive dependency of the embedding package), not a problem with the console itself. Simply retry the install — it succeeds once the download completes.
+
+The embedding dependency is **optional**: if it fails to install, the console still installs and runs normally (matching falls back to the fuzzy/keyword/NLP stages, and `health check` reports the embedding state). To activate semantic matching later, run:
+
+```powershell
+npm i @xenova/transformers
+```
+
+Do **not** use `--ignore-scripts` to work around install failures — it would also skip the native build of `re2`, which the code-search tool needs, and silently break it.
+
 ### Local development
 
 ```powershell
