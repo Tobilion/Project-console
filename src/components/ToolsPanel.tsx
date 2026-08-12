@@ -41,9 +41,11 @@ interface ToolsPanelProps {
   /** Active project for the tool panels that work on project files (PDF Tools). */
   project: Project | null;
   onSendMessage: (text: string) => void;
+  /** Phase 16 audit: AI-mode state — the Documents panel's ask box only shows when AI is on. */
+  aiEnabled?: boolean;
 }
 
-export function ToolsPanel({ panels, activePanel, onOpenPanel, onClose, project, onSendMessage }: ToolsPanelProps) {
+export function ToolsPanel({ panels, activePanel, onOpenPanel, onClose, project, onSendMessage, aiEnabled }: ToolsPanelProps) {
   const active = activePanel ? panels.find(p => p.id === activePanel) : null;
 
   if (active) {
@@ -222,7 +224,7 @@ export function ToolsPanel({ panels, activePanel, onOpenPanel, onClose, project,
             </button>
           </div>
           <div className="flex-1 min-h-0">
-            <DocumentsPanel project={project} onSendMessage={onSendMessage} />
+            <DocumentsPanel project={project} onSendMessage={onSendMessage} aiEnabled={aiEnabled} />
           </div>
         </div>
       );

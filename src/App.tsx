@@ -374,6 +374,7 @@ function App() {
               onClose={handleCloseTools}
               project={activeProject ?? GENERAL_PROJECT}
               onSendMessage={handleSendMessage}
+              aiEnabled={aiEnabled}
             />
           </div>
         ) : showDashboard ? (

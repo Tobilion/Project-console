@@ -1,5 +1,5 @@
 import { useCallback, useState } from 'react';
-import { BookOpen, Search, FileText, File as FileIcon, StickyNote, RefreshCw } from 'lucide-react';
+import { BookOpen, Search, FileText, File as FileIcon, StickyNote, RefreshCw, Sparkles } from 'lucide-react';
 import { apiFetchJson } from '../utils/apiFetch';
 import { cn } from '../lib/utils';
 import type { Project } from '../types';
@@ -10,6 +10,10 @@ import type { Project } from '../types';
 // chat answer uses (GET /api/projects/:id/documents → searchProjectCode/performSearch) —
 // retrieval-only, with file citations. Index status (unavailable/indexing/ready) mirrors
 // project.code.search's states.
+//
+// Phase 16 audit: an AI-mode "ask" box (visible only when AI mode is on) posts to
+// /documents/ask — the server retrieves the top chunks and synthesizes an answer, which
+// renders ABOVE the raw chunk list (the citations are always visible underneath).
 
 interface DocResult {
   filePath: string;
@@ -22,6 +26,8 @@ interface DocResult {
 interface DocumentsPanelProps {
   project: Project | null;
   onSendMessage: (text: string) => void;
+  /** Phase 16 audit: gates the AI ask box — only shown when AI mode is on. */
+  aiEnabled?: boolean;
 }
 
 function fileIcon(path: string) {
@@ -32,12 +38,15 @@ function fileIcon(path: string) {
   return <FileIcon size={14} className="text-fg-dim shrink-0" />;
 }
 
-export function DocumentsPanel({ project, onSendMessage }: DocumentsPanelProps) {
+export function DocumentsPanel({ project, onSendMessage, aiEnabled }: DocumentsPanelProps) {
   const [query, setQuery] = useState('');
+  const [askQuery, setAskQuery] = useState('');
   const [results, setResults] = useState<DocResult[]>([]);
+  const [synthesis, setSynthesis] = useState<string | null>(null);
   const [status, setStatus] = useState<'idle' | 'indexing' | 'ready' | 'unavailable' | 'error'>('idle');
   const [searched, setSearched] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [asking, setAsking] = useState(false);
 
   const search = useCallback(async (q: string) => {
     if (!project?.id || !q.trim()) return;
@@ -53,6 +62,23 @@ export function DocumentsPanel({ project, onSendMessage }: DocumentsPanelProps) 
   }, [project?.id]);
 
   const runSearch = () => { search(query); };
+
+  // Phase 16 audit: AI ask — retrieval + synthesis from /documents/ask; the raw chunk list is
+  // always returned alongside the synthesis so citations stay visible (and are the fallback
+  // when the model is unreachable).
+  const runAsk = async () => {
+    if (!project?.id || !askQuery.trim()) return;
+    setAsking(true);
+    setSearched(true);
+    const data = await apiFetchJson<{ status: string; results: DocResult[]; synthesis: string | null }>(
+      `/api/projects/${encodeURIComponent(project.id)}/documents/ask?q=${encodeURIComponent(askQuery.trim())}`
+    );
+    setAsking(false);
+    if (!data) { setStatus('error'); return; }
+    setStatus(data.status as typeof status);
+    setResults(data.results || []);
+    setSynthesis(data.synthesis);
+  };
 
   const inputCls = 'text-xs bg-panel-strong border border-border-soft rounded-lg px-2.5 py-2 text-fg-strong focus:outline-none focus:border-accent/50';
 
@@ -91,6 +117,30 @@ export function DocumentsPanel({ project, onSendMessage }: DocumentsPanelProps) 
                 Search
               </button>
             </div>
+
+            {/* AI-mode ask box — only visible when AI mode is on */}
+            {aiEnabled && (
+              <div className="mb-3 rounded-xl border border-accent/30 bg-accent/5 p-3">
+                <div className="flex items-center gap-1.5 text-[11px] font-semibold text-accent mb-1.5 uppercase tracking-wider">
+                  <Sparkles size={12} /> Ask (AI mode on)
+                </div>
+                <div className="flex gap-2">
+                  <input
+                    value={askQuery}
+                    onChange={(e) => setAskQuery(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter') runAsk(); }}
+                    placeholder="Ask a question about these documents…"
+                    className={cn(inputCls, 'flex-1')}
+                  />
+                  <button onClick={runAsk} disabled={!askQuery.trim() || asking} className="text-xs font-medium rounded-lg px-3 py-2 bg-accent/90 text-white hover:bg-accent transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
+                    {asking ? 'Asking…' : 'Ask'}
+                  </button>
+                </div>
+                {synthesis && (
+                  <div className="mt-2 text-xs leading-relaxed text-fg-strong whitespace-pre-wrap">{synthesis}</div>
+                )}
+              </div>
+            )}
 
             {/* Index status */}
             {status === 'unavailable' && (
