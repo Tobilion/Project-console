@@ -44,6 +44,14 @@ export const TOOL_PANELS = [
     available: true,
     chatHint: 'note: buy milk',
   },
+  {
+    id: 'csv-tools',
+    name: 'Spreadsheet',
+    description: 'Sum, average, count, and filter CSV files in this project',
+    icon: 'table',
+    available: true,
+    chatHint: 'sum column sales in data.csv',
+  },
 ];
 
 export function getToolPanels() {

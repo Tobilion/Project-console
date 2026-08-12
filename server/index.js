@@ -36,6 +36,7 @@ import { registerPdfRoutes } from './routes/pdfRoutes.js';
 import { registerReminderRoutes } from './routes/reminderRoutes.js';
 import { registerFileToolsRoutes } from './routes/fileToolsRoutes.js';
 import { registerNoteRoutes } from './routes/noteRoutes.js';
+import { registerCsvRoutes } from './routes/csvRoutes.js';
 import { loadTuning } from './tuningStore.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -63,6 +64,7 @@ registerPdfRoutes(app);
 registerReminderRoutes(app);
 registerFileToolsRoutes(app);
 registerNoteRoutes(app);
+registerCsvRoutes(app);
 // Tuning overrides (data/tuning.json) must be in memory before any consumer reads a knob —
 // the first Fuse build happens during semanticMatcher.initialize() a few lines below.
 loadTuning();

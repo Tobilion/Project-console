@@ -35,4 +35,10 @@ export const TOOL_PANEL_INTENTS = {
       'open notes', 'open the notes', 'open notes panel',
     ],
   },
+  'system.tools.open_csv_tools': {
+    opensPanel: 'csv-tools',
+    examples: [
+      'open spreadsheet', 'open the spreadsheet', 'open csv tools', 'open the csv tools',
+    ],
+  },
 };

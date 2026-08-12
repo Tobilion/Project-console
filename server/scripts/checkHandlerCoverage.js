@@ -43,6 +43,7 @@ const { toolsHandlers } = await import(pathToFileURL(base + 'wsHandlers/builtinT
 const { pdfHandlers } = await import(pathToFileURL(base + 'wsHandlers/builtinPdfTools.js').href);
 const { reminderHandlers } = await import(pathToFileURL(base + 'wsHandlers/builtinReminders.js').href);
 const { noteHandlers } = await import(pathToFileURL(base + 'wsHandlers/builtinNotes.js').href);
+const { csvHandlers } = await import(pathToFileURL(base + 'wsHandlers/builtinCsvTools.js').href);
 const { parseReminderInput } = await import(pathToFileURL(base + 'schedules/reminderParser.js').href);
 const {
   parsePdfNames, parsePdfOutput, parsePageSpec, extractWatermarkText,
@@ -67,7 +68,7 @@ function eq(label, got, expect) {
   else if (!ok) console.log(`  FAIL ${label}\n    expected: ${e}\n    got:      ${g}`);
 }
 
-const merged = { ...gitHandlers, ...chitChatHandlers, ...fileNpmHandlers, ...projectKnowledgeHandlers, ...projectContextHandlers, ...projectActionHandlers, ...diagnosticsHandlers, ...generalFileHandlers, ...toolsHandlers, ...pdfHandlers, ...reminderHandlers, ...noteHandlers };
+const merged = { ...gitHandlers, ...chitChatHandlers, ...fileNpmHandlers, ...projectKnowledgeHandlers, ...projectContextHandlers, ...projectActionHandlers, ...diagnosticsHandlers, ...generalFileHandlers, ...toolsHandlers, ...pdfHandlers, ...reminderHandlers, ...noteHandlers, ...csvHandlers };
 const handlerKeys = Object.keys(merged).sort();
 const builtinKeys = [...BUILTIN_INTENTS].sort();
 const intentKeys = Object.keys(INTENTS).sort();
@@ -200,6 +201,10 @@ eq('tools leaf: open_file_tools answers with openPanel + CLI-usable text', ws.se
 sent.length = 0;
 await handleBuiltinIntent(ws, 'system.tools.open_notes', 'open notes', proj, {});
 eq('tools leaf: open_notes answers with openPanel + CLI-usable text', ws.sent.length === 1 && ws.sent[0].type === 'answer' && ws.sent[0].openPanel === 'notes' && /note: buy milk/.test(ws.sent[0].data), true);
+
+sent.length = 0;
+await handleBuiltinIntent(ws, 'system.tools.open_csv_tools', 'open spreadsheet', proj, {});
+eq('tools leaf: open_csv_tools answers with openPanel + CLI-usable text', ws.sent.length === 1 && ws.sent[0].type === 'answer' && ws.sent[0].openPanel === 'csv-tools' && /sum column sales/.test(ws.sent[0].data), true);
 
 sent.length = 0;
 const unknown = await handleBuiltinIntent(ws, 'no_such_intent', 'x', proj, {});
@@ -499,6 +504,46 @@ eq('notes store: list has both entries oldest-first', listed.length === 2 && lis
 const notesFile = path.join(notesRoot, '.console', 'notes.md');
 eq('notes store: file written under .console/notes.md', fs.existsSync(notesFile), true);
 fs.rmSync(notesRoot, { recursive: true, force: true });
+
+// --- CSV TOOLS (Phase 7, 2026-08-12) -------------------------------------------
+// Engine unit shapes + a temp-dir smoke with a real CSV (dispatch through the handlers,
+// which read the project path from the project object — all read-only).
+const { parseCsv, loadCsv, findColumn, cellToNumber, matchOp } = await import(pathToFileURL(base + 'csvTools.js').href);
+const parsed = parseCsv('a,b,c\n1,"two, words",3\n');
+eq('csv parse: quoted field preserved', parsed.length === 2 && parsed[1][1] === 'two, words', true);
+const parsedCrlf = parseCsv('x,y\r\n1,2\r\n');
+eq('csv parse: crlf tolerated', parsedCrlf.length === 2 && parsedCrlf[1][1] === '2', true);
+eq('csv cell number: $1,234.50', cellToNumber('$1,234.50'), 1234.5);
+eq('csv op: equals case-insensitive', matchOp('equals', 'Done', 'done'), true);
+eq('csv op: contains', matchOp('contains', 'north-east', 'north'), true);
+eq('csv op: greater than', matchOp('greater than', '60', '50'), true);
+
+const csvRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'console-csv-'));
+fs.writeFileSync(path.join(csvRoot, 'data.csv'), 'name,amount,status\nWidget,10,ok\nGadget,25,pending\nSprocket,15,ok\n');
+const csvProj = {
+  id: 'csv-p', name: 'CsvProj', path: csvRoot, workspaceType: 'general',
+  config: { projectName: 'CsvProj', entries: [] }, contextFiles: [],
+  parsedKnowledge: {}, codebaseIndex: { languages: [], keyFiles: {} },
+};
+sent.length = 0;
+await handleBuiltinIntent(ws, 'csv.sum', 'sum column amount in data.csv', csvProj, {});
+eq('csv leaf: sum answers 50', ws.sent.length === 1 && ws.sent[0].type === 'answer' && /50/.test(ws.sent[0].data), true);
+sent.length = 0;
+await handleBuiltinIntent(ws, 'csv.average', 'average column amount in data.csv', csvProj, {});
+eq('csv leaf: average answers 16.67', ws.sent.length === 1 && ws.sent[0].type === 'answer' && /16\.67/.test(ws.sent[0].data), true);
+sent.length = 0;
+await handleBuiltinIntent(ws, 'csv.count', 'count rows in data.csv where status equals ok', csvProj, {});
+eq('csv leaf: count answers 2', ws.sent.length === 1 && ws.sent[0].type === 'answer' && /2/.test(ws.sent[0].data), true);
+sent.length = 0;
+await handleBuiltinIntent(ws, 'csv.filter', 'filter data.csv where amount greater than 10', csvProj, {});
+eq('csv leaf: filter answers 2 matching rows', ws.sent.length === 1 && ws.sent[0].type === 'answer' && /2.*matching/.test(ws.sent[0].data), true);
+sent.length = 0;
+await handleBuiltinIntent(ws, 'csv.sum', 'sum column missing in data.csv', csvProj, {});
+eq('csv leaf: unknown column named', ws.sent.length === 1 && ws.sent[0].type === 'answer' && /not found/.test(ws.sent[0].data), true);
+sent.length = 0;
+await handleBuiltinIntent(ws, 'csv.sum', 'sum column amount in nowhere.csv', csvProj, {});
+eq('csv leaf: missing file named', ws.sent.length === 1 && ws.sent[0].type === 'answer' && /not found/.test(ws.sent[0].data), true);
+fs.rmSync(csvRoot, { recursive: true, force: true });
 
 console.log(`check-handlers: ${total} checks, ${failed} failed`);
 process.exit(failed ? 1 : 0);

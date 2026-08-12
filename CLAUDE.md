@@ -263,6 +263,18 @@ npm run lint    # tsc --noEmit
   (`server/routes/noteRoutes.js`); the Notes panel is `src/components/NotesPanel.tsx`
   (Apple Notes reference — flat feed, no per-row cards, instant filter; add/search go through
   the same WS trigger commands).
+- `server/csvTools.js` + `server/wsHandlers/builtinCsvTools.js` + `server/intents/csvIntents.js`
+  — Phase 7 (2026-08-12, spreadsheet-lite): deterministic CSV queries — a small fixed grammar
+  (`sum/average column X in Y`, `count rows in Y where X <op> v`, `filter Y where X <op> v`,
+  ops: equals/contains/greater than/less than). `parseCsv` is a dependency-free quoted-field
+  reader (2MB/20k-row caps); column/file names validated by `isSafeParamValue`. Read-only by
+  design — no filter-to-file write variant exists (a future one must go through the standard
+  confirm + action-history path). The Spreadsheet panel (`src/components/SpreadsheetPanel.tsx`,
+  Numbers/Sheets reference — toolbar + sortable sticky-header zebra table) renders filter
+  results via `GET /api/projects/:id/csv-filter` (same loadCsv/matchOp path as the chat
+  answer), with `GET /api/projects/:id/csv-files` + `csv-headers` (routes/csvRoutes.js).
+  All four intents tagged `opensPanel: 'csv-tools'`, pinned by Phase 7 pre-semantic overrides
+  (the .csv token + free-form where-values carry no embedding weight).
 - `server/conversationStore.js` — orchestration over `sessionPaths.js`/`sessionIndex.js`/
   `messageLog.js`/`chatLog.js`/`sessionMigration.js` (see "How chat memory works")
 - `server/sessionExport.js` — session export (Phase 0, 2026-08-10):
@@ -360,7 +372,7 @@ npm run lint    # tsc --noEmit
   Eligible from every workspace type — deliberately NOT in WORKSPACE_DEV_ONLY_INTENTS.
 - `server/toolPanelRegistry.js` + `server/routes/toolPanelRoutes.js` — Phase 1.5 (2026-08-11,
   shared interactive Tool Panel architecture): the server-driven interactive-tools registry
-  (`TOOL_PANELS`: calculator, pdf-tools, reminders, file-tools, notes — `getToolPanels()`/`getToolPanel()`, REST
+  (`TOOL_PANELS`: calculator, pdf-tools, reminders, file-tools, notes, csv-tools — `getToolPanels()`/`getToolPanel()`, REST
   `GET /api/tool-panels` mounted in server/index.js). PDF Tools is a real panel since Phase 3
   (see pdfKit.js entry below); Reminders is a real panel since Phase 4 (see builtinReminders.js);
   Calculator is a real live widget since Phase 6 (see the CalculatorPanel.tsx frontend bullet); Wire
@@ -380,7 +392,8 @@ npm run lint    # tsc --noEmit
   rules below.
 - Frontend: `src/components/ToolsPanel.tsx` (card grid → dedicated panel view with a back
   button — renders `PdfToolsPanel` for 'pdf-tools', `RemindersPanel` for 'reminders',
-  `FileToolsPanel` for 'file-tools', `NotesPanel` for 'notes', placeholder for anything else),
+  `FileToolsPanel` for 'file-tools', `NotesPanel` for 'notes', `SpreadsheetPanel` for
+  'csv-tools', placeholder for anything else),
   `useConsole.ts` toolPanel state cluster (`toolsOpen`/`activeToolPanel`/
   `toolPanels` + `fetchToolPanels`), `wsMessageCases.ts` answerCase reads `payload.openPanel`
   and opens the panel, App.tsx Tools view (header Tools button only when a General-workspace
@@ -1051,6 +1064,12 @@ time/date/calculate rows, 92/92).
    miles" must reach the matcher, not the NTFS convert tool); check-intents unchanged at
    1/5/82; check-docs 52/52 (+1 convert/calculator catalog entry); check-ws-cases 118/118
    unchanged.
+   Phase 7 (2026-08-12): check-handlers 155/155 (baseline 142/142 + 13 rows — csv engine
+   unit asserts + 6 csv dispatch shapes against a temp-dir CSV + 1 open_csv_tools opener
+   row); check-matcher 249/251 (baseline 241/243 + 8 CSV battery rows — pinned by Phase 7
+   pre-semantic overrides, the .csv token + free-form where-values carry no embedding weight;
+   same TWO PRE-EXISTING drifts); check-intents unchanged at 1/5/82; check-docs 53/53 (+1
+   csv catalog entry); check-ws-cases 118/118 unchanged.
    Run the relevant battery after ANY edit to the corresponding module.
 - **editFile** tolerates whitespace differences (normalized line-range fallback) but not
   wrong wording; on total failure the error names both attempts and tells the caller to

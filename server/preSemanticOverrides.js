@@ -145,6 +145,13 @@ export const PRE_SEMANTIC_OVERRIDES = [
   // unambiguous — always arithmetic. Deliberately does NOT anchor on the numbers, which are
   // free-form.
   { intent: 'system.chit_chat.calculate', pattern: /^(?:calculate|whats|what's|what\s+is|compute|calc)\b.*\d/ },
+  // Phase 7 (2026-08-12, probe-verified): the fixed CSV grammar — "sum column X in Y.csv" /
+  // "filter Y.csv where ..." — has a .csv extension token and a where-clause with free-form
+  // values; both carry no embedding weight. A leading verb + .csv mention is unambiguous.
+  { intent: 'csv.sum', pattern: /^(?:sum|add up|total)\s+(?:the\s+)?(?:column\s+)?[\w ]+?\s+(?:in|from|of)\s+[\w.-]+\.csv\b/i },
+  { intent: 'csv.average', pattern: /^(?:average|mean|avg)\s+(?:the\s+)?(?:column\s+)?[\w ]+?\s+(?:in|from|of)\s+[\w.-]+\.csv\b/i },
+  { intent: 'csv.filter', pattern: /^(?:filter|show rows in|show rows from)\s+[\w.-]+\.csv\s+where\s+\S/i },
+  { intent: 'csv.count', pattern: /^(?:count rows in|count rows from|how many rows in)\s+[\w.-]+\.csv\s+where\s+\S/i },
 ];
 
 /**

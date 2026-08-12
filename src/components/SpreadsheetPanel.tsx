@@ -1,0 +1,243 @@
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Table, RefreshCw, Send, CheckCircle2, ArrowUpDown } from 'lucide-react';
+import { apiFetchJson } from '../utils/apiFetch';
+import { cn } from '../lib/utils';
+import type { Project } from '../types';
+
+// Phase 7 (UPGRADE-ROADMAP.md, 2026-08-12): the Spreadsheet panel — Apple Numbers/Sheets
+// reference (toolbar row above a real table: sticky header, zebra striping, hover rows,
+// sortable columns). Sum/Average/Count Run buttons compose the exact chat trigger command;
+// Filter renders the result in-panel from the same read-only csvTools.js path the chat
+// answer uses (GET /api/projects/:id/csv-filter), so the table and the terminal can never
+// diverge. Every evaluation still goes through the server-side CSV engine — no client-side
+// reimplementation.
+
+interface CsvFile {
+  path: string;
+  name: string;
+  size: number;
+}
+
+interface SpreadsheetPanelProps {
+  project: Project | null;
+  onSendMessage: (text: string) => void;
+}
+
+const POLL_MS = 15000;
+const CSV_OPS = ['equals', 'contains', 'greater than', 'less than'];
+
+type Mode = 'sum' | 'average' | 'count' | 'filter';
+
+export function SpreadsheetPanel({ project, onSendMessage }: SpreadsheetPanelProps) {
+  const [files, setFiles] = useState<CsvFile[]>([]);
+  const [selectedFile, setSelectedFile] = useState('');
+  const [headers, setHeaders] = useState<string[]>([]);
+  const [column, setColumn] = useState('');
+  const [mode, setMode] = useState<Mode>('sum');
+  const [op, setOp] = useState('equals');
+  const [filterValue, setFilterValue] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [lastSent, setLastSent] = useState<string | null>(null);
+  const [table, setTable] = useState<{ headers: string[]; rows: string[][] } | null>(null);
+  const [sortCol, setSortCol] = useState<number | null>(null);
+  const [sortAsc, setSortAsc] = useState(true);
+  const lastSentTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const fetchFiles = useCallback(async () => {
+    if (!project?.id) return;
+    setLoading(true);
+    const data = await apiFetchJson<{ files: CsvFile[] }>(`/api/projects/${encodeURIComponent(project.id)}/csv-files`);
+    setLoading(false);
+    if (!data) { setError('Could not load CSV files.'); return; }
+    setError(null);
+    setFiles(data.files || []);
+  }, [project?.id]);
+
+  useEffect(() => {
+    if (project?.id) {
+      setSelectedFile('');
+      setHeaders([]);
+      setColumn('');
+      setTable(null);
+      fetchFiles();
+      const t = setInterval(fetchFiles, POLL_MS);
+      return () => clearInterval(t);
+    }
+  }, [project?.id, fetchFiles]);
+
+  const fetchHeaders = useCallback(async (filePath: string) => {
+    if (!project?.id) return;
+    const data = await apiFetchJson<{ headers: string[] }>(
+      `/api/projects/${encodeURIComponent(project.id)}/csv-headers?file=${encodeURIComponent(filePath)}`
+    );
+    setHeaders(data?.headers || []);
+    setColumn('');
+  }, [project?.id]);
+
+  const send = (text: string) => {
+    onSendMessage(text);
+    setLastSent(text);
+    if (lastSentTimer.current) clearTimeout(lastSentTimer.current);
+    lastSentTimer.current = setTimeout(() => setLastSent(null), 8000);
+  };
+
+  const runFilter = useCallback(async () => {
+    if (!project?.id || !selectedFile || !column || !filterValue.trim()) return;
+    setLoading(true);
+    const data = await apiFetchJson<{ headers: string[]; rows: string[][] }>(
+      `/api/projects/${encodeURIComponent(project.id)}/csv-filter` +
+      `?file=${encodeURIComponent(selectedFile)}&column=${encodeURIComponent(column)}` +
+      `&op=${encodeURIComponent(op)}&value=${encodeURIComponent(filterValue.trim())}`
+    );
+    setLoading(false);
+    if (!data) { setError('Filter failed.'); return; }
+    setError(null);
+    setTable(data);
+    send(`filter ${selectedFile} where ${column} ${op} ${filterValue.trim()}`);
+  }, [project?.id, selectedFile, column, op, filterValue]);
+
+  const run = () => {
+    if (!selectedFile) return;
+    if (mode === 'filter') { runFilter(); return; }
+    const cmd = (() => {
+      switch (mode) {
+        case 'sum': return `sum column ${column || '?'} in ${selectedFile}`;
+        case 'average': return `average column ${column || '?'} in ${selectedFile}`;
+        case 'count': return `count rows in ${selectedFile} where ${column || '?'} ${op} ${filterValue || '?'}`;
+      }
+    })();
+    send(cmd);
+  };
+
+  const runDisabled = !selectedFile || (mode !== 'count' && mode !== 'filter' && !column) ||
+    ((mode === 'count' || mode === 'filter') && (!column || !filterValue.trim()));
+
+  const sortedRows = useMemo(() => {
+    if (!table || sortCol === null) return table?.rows || [];
+    const col = sortCol;
+    const dir = sortAsc ? 1 : -1;
+    return [...table.rows].sort((a, b) => {
+      const na = Number(String(a[col] ?? '').replace(/[$,%\s]/g, ''));
+      const nb = Number(String(b[col] ?? '').replace(/[$,%\s]/g, ''));
+      if (!Number.isNaN(na) && !Number.isNaN(nb)) return (na - nb) * dir;
+      return String(a[col] ?? '').localeCompare(String(b[col] ?? '')) * dir;
+    });
+  }, [table, sortCol, sortAsc]);
+
+  const toggleSort = (i: number) => {
+    if (sortCol === i) setSortAsc((v) => !v);
+    else { setSortCol(i); setSortAsc(true); }
+  };
+
+  const selectCls = 'text-xs bg-panel-strong border border-border-soft rounded-lg px-2.5 py-2 text-fg-strong focus:outline-none focus:border-accent/50';
+
+  return (
+    <div className="h-full overflow-y-auto p-4">
+      <div className="max-w-5xl mx-auto">
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2">
+            <div className="p-2 bg-scrim-faint rounded-lg text-accent">
+              <Table size={16} />
+            </div>
+            <h2 className="text-sm font-semibold text-fg-strong tracking-wide uppercase">Spreadsheet</h2>
+            {project && <span className="text-xs text-fg-dim font-normal normal-case">— {project.name}</span>}
+          </div>
+          <button onClick={fetchFiles} className="p-1.5 text-fg-dim hover:text-fg-strong rounded-md transition-colors" title="Refresh">
+            <RefreshCw size={15} className={cn(loading && 'animate-spin')} />
+          </button>
+        </div>
+
+        {error && <p className="text-xs text-red-400 mb-3">{error}</p>}
+
+        {!project ? (
+          <div className="text-sm text-fg-muted bg-panel rounded-xl border border-border-soft p-6">
+            Select a project to work with its CSV files.
+          </div>
+        ) : (
+          <>
+            {/* Toolbar */}
+            <div className="flex items-center gap-2 px-3 py-2 rounded-t-xl border border-border-soft border-b-0 bg-panel flex-wrap">
+              <select value={selectedFile} onChange={(e) => { setSelectedFile(e.target.value); if (e.target.value) fetchHeaders(e.target.value); setTable(null); }} className={selectCls}>
+                <option value="">Pick a CSV…</option>
+                {files.map((f) => <option key={f.path} value={f.path}>{f.name}</option>)}
+              </select>
+              <select value={mode} onChange={(e) => { setMode(e.target.value as Mode); setTable(null); }} className={selectCls}>
+                <option value="sum">Sum</option>
+                <option value="average">Average</option>
+                <option value="count">Count</option>
+                <option value="filter">Filter</option>
+              </select>
+              <select value={column} onChange={(e) => setColumn(e.target.value)} className={selectCls} disabled={headers.length === 0}>
+                <option value="">Column…</option>
+                {headers.map((h) => <option key={h} value={h}>{h}</option>)}
+              </select>
+              {(mode === 'count' || mode === 'filter') && (
+                <>
+                  <select value={op} onChange={(e) => setOp(e.target.value)} className={selectCls}>
+                    {CSV_OPS.map((o) => <option key={o} value={o}>{o}</option>)}
+                  </select>
+                  <input
+                    value={filterValue}
+                    onChange={(e) => setFilterValue(e.target.value)}
+                    placeholder="value"
+                    className="text-xs bg-panel-strong border border-border-soft rounded-lg px-2.5 py-2 text-fg-strong focus:outline-none focus:border-accent/50 w-28"
+                  />
+                </>
+              )}
+              <button onClick={run} disabled={runDisabled} className="flex items-center gap-1.5 text-xs font-medium rounded-lg px-3 py-2 bg-accent/90 text-white hover:bg-accent transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
+                <Send size={12} /> Run
+              </button>
+            </div>
+            <div className="px-3 py-1.5 border border-border-soft rounded-b-xl bg-scrim-faint">
+              <span className="text-[11px] text-fg-dim">
+                {mode === 'filter' ? 'Filter renders the table below; other operations answer in chat.' : 'Result appears in the chat below.'}
+              </span>
+              {lastSent && (
+                <span className="ml-3 text-[11px] text-accent font-mono">sent: {lastSent}</span>
+              )}
+            </div>
+          </>
+        )}
+
+        {/* Filter result table */}
+        {table && (
+          <div className="mt-4 rounded-xl border border-border-soft overflow-hidden">
+            <div className="overflow-x-auto max-h-[60vh] overflow-y-auto">
+              <table className="w-full text-[13px] border-collapse">
+                <thead className="sticky top-0 z-10">
+                  <tr className="bg-panel-strong">
+                    {table.headers.map((h, i) => (
+                      <th key={i} onClick={() => toggleSort(i)} className="px-3 py-2 text-left text-[12px] font-semibold text-fg-strong whitespace-nowrap cursor-pointer hover:text-accent select-none border-b border-border-soft">
+                        <span className="inline-flex items-center gap-1">{h}<ArrowUpDown size={11} className="text-fg-faint" /></span>
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {sortedRows.map((row, ri) => (
+                    <tr key={ri} className={cn(ri % 2 === 1 && 'bg-scrim-faint', 'hover:bg-accent/5 transition-colors')}>
+                      {row.map((cell, ci) => (
+                        <td key={ci} className="px-3 py-1.5 text-fg-muted whitespace-nowrap border-b border-border-faint">{cell}</td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div className="px-3 py-1.5 text-[11px] text-fg-dim border-t border-border-soft bg-scrim-faint">
+              {sortedRows.length} matching row{sortedRows.length === 1 ? '' : 's'} — click a header to sort.
+            </div>
+          </div>
+        )}
+
+        {files.length === 0 && project && !table && (
+          <div className="mt-4 text-xs text-fg-dim italic bg-panel rounded-xl border border-border-soft p-4">
+            No .csv files in this project yet. Drop one in the folder, then pick it here or type{' '}
+            <code className="font-mono text-accent">sum column sales in data.csv</code> in chat.
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}

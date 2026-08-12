@@ -60,4 +60,13 @@ export const toolsHandlers = {
       openPanel: panel.id,
     }));
   },
+  'system.tools.open_csv_tools': async (ws, action) => {
+    const panel = getToolPanel(TOOL_PANEL_INTENTS[action].opensPanel);
+    if (!panel) return false;
+    ws.send(JSON.stringify({
+      type: 'answer',
+      data: `The ${panel.name} panel is an interactive web-UI grid (pick a CSV + column, run sum/average/count/filter). From chat — including the CLI — the same features work as plain commands: \`sum column sales in data.csv\` / \`filter data.csv where price greater than 50\`.`,
+      openPanel: panel.id,
+    }));
+  },
 };

@@ -505,6 +505,19 @@ const BATTERIES = [
       ['open the notes panel', 'BUILTIN=system.tools.open_notes'],
     ],
   },
+  {
+    name: 'CSV (Phase 7 spreadsheet intents)',
+    items: [
+      ['sum column sales in data.csv', 'BUILTIN=csv.sum'],
+      ['sum the total column in expenses.csv', 'BUILTIN=csv.sum'],
+      ['average column price in data.csv', 'BUILTIN=csv.average'],
+      ['count rows in data.csv where status equals done', 'BUILTIN=csv.count'],
+      ['filter data.csv where price greater than 50', 'BUILTIN=csv.filter'],
+      ['filter sales.csv where region equals west', 'BUILTIN=csv.filter'],
+      ['open spreadsheet', 'BUILTIN=system.tools.open_csv_tools'],
+      ['open the csv tools', 'BUILTIN=system.tools.open_csv_tools'],
+    ],
+  },
 ];
 
 await semanticMatcher.initialize();

@@ -54,6 +54,12 @@
 - **`show my notes`** / **`read my notes`** / **`search my notes for wifi`** — lists notes most-recent-first or substring-searches them. A Notes panel (Apple Notes-style flat feed with instant filter) is available from the Tools card grid; `open notes` opens it directly.
 - Notes are never written by the AI and are not injected into the AI system prompt — they're your scratch space, separate from AI memory (`memory.md`).
 
+### Spreadsheet (CSV)
+
+- **`sum column sales in data.csv`** / **`average column price in data.csv`** — deterministic, read-only aggregates over a project CSV (quoted-field aware parser, no AI).
+- **`count rows in data.csv where status equals done`** / **`filter data.csv where price greater than 50`** — row filtering with a fixed operator set (equals / contains / greater than / less than). Filter is read-only; a future filter-to-file write would go through the normal confirm + revert path.
+- The Spreadsheet panel (Tools > Spreadsheet, or `open spreadsheet`) picks a CSV + column, and renders filter results as a real sortable table with sticky headers and zebra striping.
+
 ### PDF toolkit
 
 - **`merge these pdfs into combined.pdf`** — merges several PDFs into one new file (never overwrites an existing output).
@@ -321,6 +327,8 @@ App-global identity (name/title/custom role) edited from the ⚙ Settings modal;
 | `list my reminders` / `cancel reminder s2` | List or cancel a personal reminder (cancel also via the Reminders panel checkbox) |
 | `note: buy milk` / `add a note: remember the wifi password` | Jot a user-authored scratch note (no confirmation) |
 | `show my notes` / `search my notes for wifi` | List or search notes (also via the Notes panel) |
+| `sum column sales in data.csv` / `average column price in data.csv` | Read-only CSV aggregates (quoted-field aware, no AI) |
+| `count rows in data.csv where status equals done` / `filter data.csv where price greater than 50` | CSV row filtering — fixed ops: equals/contains/greater than/less than (filter table also via the Spreadsheet panel) |
 | `notify me when dev-server-crash` / `stop notifying me about ...` | Desktop/webhook alerts per event — all off until you opt in |
 | `webhook add <url>` / `webhook remove <url>` / `list notifications` / `test notification` | Webhook channels and verification |
 
@@ -347,7 +355,7 @@ App-global identity (name/title/custom role) edited from the ⚙ Settings modal;
 |---|---|
 | `help` / `what can you do` / `how do I <anything>` | Full command guide; how-do-I answers come from the command catalog with the exact phrase, the real shell command, and a suggestion chip |
 | `what is 12 times 7` / `convert 5 km to miles` / `whats 18% tip on 64.50` | Safe arithmetic + offline unit conversion + percentage/tip/tax (also via the Calculator panel) |
-| `open calculator` / `open pdf tools` / `open reminders` / `open file tools` / `open notes` | Opens the interactive Tools panel (web UI); plain-text note + chat equivalents from the CLI |
+| `open calculator` / `open pdf tools` / `open reminders` / `open file tools` / `open notes` / `open spreadsheet` | Opens the interactive Tools panel (web UI); plain-text note + chat equivalents from the CLI |
 | `switch to developer mode` / `switch to general mode` / `what mode am I in` | Change/check a project's workspace type (persisted in console.config.json) |
 | `switch projects` / `change projects` | The project list in the left sidebar |
 | `dashboard` / `live sites` | The Dashboard tab: project overview + live-site status |

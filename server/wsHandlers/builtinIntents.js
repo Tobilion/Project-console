@@ -10,6 +10,7 @@ import { toolsHandlers } from './builtinTools.js';
 import { pdfHandlers } from './builtinPdfTools.js';
 import { reminderHandlers } from './builtinReminders.js';
 import { noteHandlers } from './builtinNotes.js';
+import { csvHandlers } from './builtinCsvTools.js';
 
 // Phase 10 (2026-08-04, splitting builtinIntents.js into per-domain leaf modules): this file
 // is now a pure orchestrator — every branch body lives in one of the domain modules
@@ -31,6 +32,7 @@ const handlers = {
   ...pdfHandlers,
   ...reminderHandlers,
   ...noteHandlers,
+  ...csvHandlers,
 };
 
 /**
