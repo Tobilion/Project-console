@@ -1037,6 +1037,31 @@ time/date/calculate rows, 92/92).
   `border-white/x → border-border*`, `bg-black/x → bg-scrim*`. Never collapse onto
   `text-foreground`/`text-muted-foreground` (that's what the fg ladder is for).
 
+## 6-stage UI redesign (2026-08-12) — completed on the `ui-redesign` branch
+
+Stages A–F are committed (a3a78af, 59a4cde, 996a871, 372b61b, d65fd18, b3f8573 + the Stage F
+sweep) on the `ui-redesign` branch, branched off `main` AFTER the 9-item audit fixes. All
+check-* harnesses hold their pre-redesign counts (the redesign touched styling/layout only —
+no dispatch or matching logic). Notable functional additions made during the styling pass:
+
+- **Panel upload endpoints** (project-scoped, journaled as `file_write` existed:false so
+  `revert action <id>` deletes them, existing-file refused, name basename-sanitized through
+  createResolveSafe): `POST /api/projects/:id/csv-upload` (2MB cap, routes/csvRoutes.js) and
+  `POST /api/projects/:id/pdf-upload` (50MB cap, routes/pdfRoutes.js) — the drag-and-drop
+  zones in the Spreadsheet/PDF Tools panels.
+- **Panel layout state**: Notes is a true 2-column split (240px --overlay rail + --panel
+  reader); selection + filter persist per project via localStorage `console.notesSelection.<id>` /
+  `console.notesFilter.<id>`. PdfToolsPanel operations are a 2x2 grid (extract-text +
+  extract-pages merged into one card with a text|pages sub-mode). FileToolsPanel is a
+  Finder-style rail + browser. Reminders summary cards are real switchable views.
+- **check-handlers clipboard row is profile-state tolerant** (same class as the
+  dev_server_status row): `readProfile` reads the REAL data/user-profile.json, and a live
+  machine where the user enabled clipboard tracking answers the on-state list/empty reply,
+  not the off-state text — accept all three shapes (plus an earlier `copy path` row can
+  seed the in-memory buffer).
+- `data/clipboard-history.json` was missing from .gitignore despite CLAUDE.md claiming it
+  was ignored (it had been accidentally committed) — the ignore entry now exists.
+
 ## Known gotchas — keep fixed
 
 - **Stale `dist/server.js` silently shadows source changes** (bit twice). `start.bat`'s
