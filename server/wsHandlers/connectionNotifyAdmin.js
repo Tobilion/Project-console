@@ -31,7 +31,9 @@ export async function handleNotifyCommand(ws, project, lowerInput, input) {
     const event = watchMatch[1].includes('change') ? 'file-changed' : 'file-added';
     const rule = addWatchRule({ folder, event, projectId: project.id, projectName: project.name });
     syncWatchRules();
-    ws.send(JSON.stringify({ type: 'answer', data: `Watching **${folder}** for ${event === 'file-changed' ? 'file changes' : 'new files'} — desktop/webhook notifications will fire when the event is enabled (\`notify me when ${event}\`).` }));
+    // Phase 15 audit: carrying openPanel on the answer opens the Notifications panel for the
+    // web client (CLI ignores openPanel — the text stays self-sufficient).
+    ws.send(JSON.stringify({ type: 'answer', data: `Watching **${folder}** for ${event === 'file-changed' ? 'file changes' : 'new files'} — desktop/webhook notifications will fire when the event is enabled (\`notify me when ${event}\`).`, openPanel: 'notifications' }));
     return true;
   }
 
@@ -44,7 +46,7 @@ export async function handleNotifyCommand(ws, project, lowerInput, input) {
       return true;
     }
     const rule = addWatchRule({ folder, event: 'folder-stale', days, projectId: project.id, projectName: project.name });
-    ws.send(JSON.stringify({ type: 'answer', data: `Stale-check watching **${folder}** (no changes for ${days} days) — fires once per day once it goes stale.` }));
+    ws.send(JSON.stringify({ type: 'answer', data: `Stale-check watching **${folder}** (no changes for ${days} days) — fires once per day once it goes stale.`, openPanel: 'notifications' }));
     return true;
   }
 

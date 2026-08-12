@@ -680,10 +680,10 @@ fs.rmSync(auditRoot, { recursive: true, force: true });
 // needs a live fs event) — the store + admin surface is the harnessable contract.
 sent.length = 0;
 const w1 = await handleNotifyCommand(ws, proj, 'notify me when files change in C:/tmp/watch-a', 'notify me when files change in C:/tmp/watch-a');
-eq('watch admin: file-changed rule consumed + answers', w1 === true && ws.sent.length === 1 && ws.sent[0].type === 'answer' && /Watching/.test(ws.sent[0].data), true);
+eq('watch admin: file-changed rule consumed + answers + opens panel', w1 === true && ws.sent.length === 1 && ws.sent[0].type === 'answer' && ws.sent[0].openPanel === 'notifications' && /Watching/.test(ws.sent[0].data), true);
 sent.length = 0;
 const w2 = await handleNotifyCommand(ws, proj, "notify me if C:/tmp/watch-b hasn't changed in 7 days", "notify me if C:/tmp/watch-b hasn't changed in 7 days");
-eq('watch admin: folder-stale rule consumed + answers', w2 === true && ws.sent.length === 1 && ws.sent[0].type === 'answer' && /Stale-check/.test(ws.sent[0].data), true);
+eq('watch admin: folder-stale rule consumed + answers + opens panel', w2 === true && ws.sent.length === 1 && ws.sent[0].type === 'answer' && ws.sent[0].openPanel === 'notifications' && /Stale-check/.test(ws.sent[0].data), true);
 sent.length = 0;
 const w3 = await handleNotifyCommand(ws, proj, 'list watched folders', 'list watched folders');
 eq('watch admin: list shows both rules', w3 === true && ws.sent.length === 1 && ws.sent[0].data.includes('watch-a') && ws.sent[0].data.includes('watch-b'), true);
