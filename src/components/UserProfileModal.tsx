@@ -320,6 +320,14 @@ export function UserProfileModal({ open, profile, onClose, onSave }: UserProfile
       </div>
 
       <div className="flex items-center justify-end gap-2 px-6 pb-6 pt-2">
+        <button
+          type="button"
+          onClick={() => onSave({ setupComplete: false })}
+          className="mr-auto px-3 py-2 text-[10px] text-fg-dim hover:text-fg-strong transition-colors border border-border-faint rounded-lg"
+          title="Resets setupComplete so the first-run wizard appears again on the next load"
+        >
+          Reset onboarding / retake tour
+        </button>
         <button onClick={onClose} className="px-4 py-2 text-xs text-fg-subtle hover:text-fg-strong transition-colors">
           Cancel
         </button>

@@ -65,6 +65,7 @@ const { revertAction, listActions, appendAction } = await import(pathToFileURL(b
 const { BUILTIN_INTENTS, WORKSPACE_DEV_ONLY_INTENTS, intentWorkspaceEligible } = await import(pathToFileURL(base + 'intentRegistry.js').href);
 const { detectWorkspaceType, isRecognizableByCodeAlone } = await import(pathToFileURL(base + 'projectScanHelpers.js').href);
 const { handleModeCommand } = await import(pathToFileURL(base + 'wsHandlers/connectionModeAdmin.js').href);
+const { handleOnboardingCommand } = await import(pathToFileURL(base + 'wsHandlers/connectionOnboardingAdmin.js').href);
 const { INTENTS } = await import(pathToFileURL(base + 'intentsData.js').href);
 const { state, pendingConfirmations } = await import(pathToFileURL(base + 'state.js').href);
 
@@ -695,6 +696,21 @@ const badChecksum = await fetchPackManifest({ name: 'tampered', manifestUrl: 'ht
 // The fetch itself will fail (no real network in harness) — assert the fetch failure path is
 // clean, not a crash; the checksum mismatch path needs a live HTTPS fetch (flagged manual).
 eq('pack registry: unreachable manifest answers a clean error', badChecksum.ok === false && typeof badChecksum.error === 'string' && badChecksum.error.length > 0, true);
+
+// --- ONBOARDING RESET (Phase 13 audit, 2026-08-12) -----------------------------
+// The admin command writes the real profile (data/user-profile.json) — back it up, run the
+// command, assert setupComplete flipped false, then restore the file byte-for-byte so the
+// harness never leaves the machine in a reset state.
+const profilePath = path.join(process.cwd(), 'data', 'user-profile.json');
+const profileBackup = fs.existsSync(profilePath) ? fs.readFileSync(profilePath, 'utf-8') : null;
+sent.length = 0;
+const onboarded = await handleOnboardingCommand(ws, 'reset onboarding');
+const onboardedProfile = JSON.parse(fs.readFileSync(profilePath, 'utf-8'));
+eq('onboarding: reset command consumed + answers', onboarded === true && ws.sent.length === 2 && ws.sent[0].type === 'answer' && /Onboarding reset/.test(ws.sent[0].data) && ws.sent[1].type === 'end', true);
+eq('onboarding: setupComplete flipped to false', onboardedProfile?.userProfile?.setupComplete === false, true);
+if (profileBackup !== null) fs.writeFileSync(profilePath, profileBackup, 'utf-8');
+const notOnboarding = await handleOnboardingCommand(ws, 'run the tests');
+eq('onboarding: unrelated input not consumed', notOnboarding === false, true);
 
 console.log(`check-handlers: ${total} checks, ${failed} failed`);
 process.exit(failed ? 1 : 0);
