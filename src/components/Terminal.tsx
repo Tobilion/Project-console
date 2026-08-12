@@ -234,7 +234,9 @@ export const Terminal = ({ messages, onSendMessage, onSearch, onDeepResearch, ac
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!input.trim() || !activeProject || isBlocked) return;
+    // 2026-08-12: no active-project gate — without a project the message goes to the server's
+    // General pseudo-workspace ('__general__'), so a user can chat before picking a project.
+    if (!input.trim() || isBlocked) return;
     pushHistory(input);
     onSendMessage(input);
     setInput('');

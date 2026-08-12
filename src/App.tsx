@@ -14,6 +14,22 @@ import { Home, LayoutDashboard, LayoutGrid, Search, Settings, Loader2, X } from 
 import { ThemeToggle } from './components/ui/ThemeToggle';
 import { UserProfileModal } from './components/UserProfileModal';
 import { FirstRunSetup } from './components/FirstRunSetup';
+import { GENERAL_PROJECT_ID } from './types';
+import type { Project } from './types';
+
+// 2026-08-12: client-side mirror of the server's General pseudo-workspace — passed to the
+// Tools panels when no real project is selected, so panel REST calls hit /api/projects/
+// __general__/... which the server resolves to its own synthetic project.
+const GENERAL_PROJECT: Project = {
+  id: GENERAL_PROJECT_ID,
+  folderName: 'General',
+  name: 'General',
+  path: '',
+  config: { projectName: 'General', entries: [] },
+  contextFiles: [],
+  parsedKnowledge: {},
+  codebaseIndex: { languages: [], keyFiles: {}, entryPoints: [] },
+} as Project;
 
 // Phase 1 per-project workspace tab persistence — key + helpers live next to the component
 // that owns them (same convention as the pinned-projects rail's inline localStorage usage in
@@ -61,8 +77,8 @@ function App() {
   // tab. Restored from localStorage per project (same inline-localStorage style as the pinned
   // projects rail in SidebarDrawer — deliberately NOT global, a user may keep both kinds of
   // workspace open across sessions), falling back to the server's scan-time classification,
-  // then 'dev'. The restore effect keys on the active project's id/workspaceType, so switching
-  // tabs never re-triggers it.
+  // then 'dev'. 2026-08-12: with no active project the default is 'general' — the General
+  // workspace (chat + Tools grid) is the landing surface before any project is picked.
   const [workspaceTab, setWorkspaceTab] = React.useState<'dev' | 'general'>('dev');
   const { profile, updateProfile, getFormattedName, loaded: profileLoaded } = useUserProfile();
   // Gate on `loaded` too, not just `!profile.setupComplete` — the hook's DEFAULT_PROFILE (used
@@ -109,14 +125,24 @@ function App() {
 
   // Phase 1: restore the active project's last-selected tab. Runs only when the active
   // project changes (never on a tab switch — that path writes, it doesn't read back).
+  // 2026-08-12: no active project -> 'general' (the General workspace is the landing surface
+  // before a project is picked; per-project tabs still win once one is active).
   useEffect(() => {
     const tabs = readWorkspaceTabs();
     const saved = activeProject?.id ? tabs[activeProject.id] : undefined;
-    setWorkspaceTab(saved ?? activeProject?.workspaceType ?? 'dev');
+    setWorkspaceTab(saved ?? activeProject?.workspaceType ?? 'general');
   }, [activeProject?.id, activeProject?.workspaceType]);
 
   const handleWorkspaceTabChange = (mode: 'dev' | 'general') => {
     setWorkspaceTab(mode);
+    // 2026-08-12: the General tab is tools-first — landing on the Tools card grid (chat stays
+    // reachable via the grid's close/back or the header Tools button). Developer stays chat.
+    if (mode === 'general') {
+      setShowDashboard(false);
+      setToolsOpen(true);
+    } else {
+      setToolsOpen(false);
+    }
     if (!activeProject?.id) return;
     const tabs = readWorkspaceTabs();
     tabs[activeProject.id] = mode;
@@ -129,6 +155,16 @@ function App() {
     // server's answer confirms the change).
     handleSendMessage(mode === 'dev' ? 'switch to developer mode' : 'switch to general mode');
   };
+
+  // 2026-08-12: General is tools-first — whenever the General tab is active and nothing else
+  // has claimed the main view (dashboard off, no explicit tool panel pick yet), land on the
+  // Tools card grid so a non-technical user immediately sees the panels. Chat stays reachable
+  // through the grid's close/back and the header Tools toggle.
+  useEffect(() => {
+    if (workspaceTab === 'general' && !showDashboard && !activeToolPanel && !chatFullscreen) {
+      setToolsOpen(true);
+    }
+  }, [workspaceTab, showDashboard, activeToolPanel, chatFullscreen]);
 
   // Phase 1.5: the Tools surface (shared interactive tool panels). Clicking a card opens that
   // tool's dedicated panel in the same top-level view space Terminal/Dashboard use; the
@@ -228,24 +264,22 @@ function App() {
           )}
         </div>
         <div className="flex items-center gap-2 ml-auto flex-shrink-0">
-          {activeProject && (
-            <div className="flex items-center gap-1 bg-scrim-faint rounded-lg p-0.5 border border-border-soft">
-              <button
-                onClick={() => handleWorkspaceTabChange('dev')}
-                className={`px-2.5 py-1 text-xs rounded-md transition-colors ${workspaceTab === 'dev' ? 'bg-panel-strong text-fg-strong' : 'text-fg-dim hover:text-fg-muted'}`}
-                title="Developer workspace — git/npm/run/diagnostics suggestions"
-              >
-                Developer
-              </button>
-              <button
-                onClick={() => handleWorkspaceTabChange('general')}
-                className={`px-2.5 py-1 text-xs rounded-md transition-colors ${workspaceTab === 'general' ? 'bg-panel-strong text-fg-strong' : 'text-fg-dim hover:text-fg-muted'}`}
-                title="General workspace — file tools/notes/reminders (later phases)"
-              >
-                General
-              </button>
-            </div>
-          )}
+          <div className="flex items-center gap-1 bg-scrim-faint rounded-lg p-0.5 border border-border-soft">
+            <button
+              onClick={() => handleWorkspaceTabChange('dev')}
+              className={`px-2.5 py-1 text-xs rounded-md transition-colors ${workspaceTab === 'dev' ? 'bg-panel-strong text-fg-strong' : 'text-fg-dim hover:text-fg-muted'}`}
+              title="Developer workspace — git/npm/run/diagnostics suggestions"
+            >
+              Developer
+            </button>
+            <button
+              onClick={() => handleWorkspaceTabChange('general')}
+              className={`px-2.5 py-1 text-xs rounded-md transition-colors ${workspaceTab === 'general' ? 'bg-panel-strong text-fg-strong' : 'text-fg-dim hover:text-fg-muted'}`}
+              title="General workspace — file tools, notes, reminders, PDF tools"
+            >
+              General
+            </button>
+          </div>
           {activeServers.length > 0 && (
             <span className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-green-400 bg-green-500/10 rounded-lg border border-green-500/20 whitespace-nowrap flex-shrink-0">
               <span className="w-1.5 h-1.5 rounded-full bg-green-400 inline-block animate-pulse" />
@@ -268,7 +302,7 @@ function App() {
           <button onClick={() => { setToolsOpen(false); setShowDashboard(v => !v); }} className={`p-2 transition-colors ${showDashboard ? 'text-accent' : 'text-fg-dim hover:text-fg-strong'}`} title="Dashboard">
             <LayoutDashboard size={18} />
           </button>
-          {activeProject && workspaceTab === 'general' && (
+          {workspaceTab === 'general' && (
             <button onClick={() => { setShowDashboard(false); setToolsOpen(v => !v); }} className={`p-2 transition-colors ${toolsOpen ? 'text-accent' : 'text-fg-dim hover:text-fg-strong'}`} title="Interactive tools (General workspace)">
               <LayoutGrid size={18} />
             </button>
@@ -309,7 +343,7 @@ function App() {
               activePanel={activeToolPanel}
               onOpenPanel={handleOpenToolPanel}
               onClose={handleCloseTools}
-              project={activeProject}
+              project={activeProject ?? GENERAL_PROJECT}
               onSendMessage={handleSendMessage}
             />
           </div>

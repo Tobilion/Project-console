@@ -1,4 +1,4 @@
-// Phase 3 (UPGRADE-ROADMAP.md, 2026-08-11): REST surface for the PDF Tools panel — the three
+﻿// Phase 3 (UPGRADE-ROADMAP.md, 2026-08-11): REST surface for the PDF Tools panel — the three
 // file-level endpoints the interactive panel needs beyond the chat path. Everything stays
 // project-scoped through the same createResolveSafe boundary the file tools use; the panel's
 // actual operations run over the normal WS trigger-command path (never a parallel execution
@@ -6,13 +6,13 @@
 import fs from 'fs';
 import path from 'path';
 import { spawn } from 'child_process';
-import { state } from '../state.js';
+import { resolveProject } from '../state.js';
 import { asyncHandler } from '../asyncHandler.js';
 import { listPdfFiles } from '../pdfKit.js';
 import { createResolveSafe } from '../toolSandbox.js';
 
 function findProject(req) {
-  return state.activeProjectsCache.find((p) => p.id === req.params.id) || null;
+  return resolveProject(req.params.id) || null;
 }
 
 export function registerPdfRoutes(app) {

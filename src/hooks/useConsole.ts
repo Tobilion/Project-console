@@ -1,5 +1,6 @@
 import { useEffect, useRef, useCallback, useState } from 'react';
 import type { TerminalMessage, ToolCallEntry, Project, ToolPanelDef } from '../types';
+import { GENERAL_PROJECT_ID } from '../types';
 import { useProjects } from './useProjects';
 import { useSessions } from './useSessions';
 import { useWebSocket } from './useWebSocket';
@@ -202,8 +203,12 @@ export function useConsole() {
   // markdownComponents useMemo inside it) does not churn on every render — the old plain
   // `terminal.handleSendMessage = fn` reassigned a new function each render, which rebuilt
   // markdownComponents on every 16ms token frame and forced the whole thread to re-render.
+  // 2026-08-12: no longer bails without an active project — the server resolves the reserved
+  // '__general__' pseudo-workspace so a user can chat (and use personal tools) before picking
+  // a project. The session lock is unaffected: a General-workspace session is created with
+  // projectId '__general__' and locks to that id exactly like any other session.
   const handleSendMessage = useCallback(async (content: string) => {
-    if (!projects.activeProject || !wsHandler.wsRef.current) return;
+    if (!wsHandler.wsRef.current) return;
     const open = await waitForSocketOpen(() => wsHandler.wsRef.current);
     // M19: the input was already cleared by the time this runs, so a dropped message used to
     // vanish silently — surface an error instead of swallowing it.
@@ -221,7 +226,7 @@ export function useConsole() {
     if (!ai.aiEnabled) setCommandPending(true);
     wsHandler.wsRef.current.send(JSON.stringify({
       type: 'execute',
-      payload: { projectId: projects.activeProject.id, input: content, sessionId: sessions.activeSessionId }
+      payload: { projectId: projects.activeProject?.id ?? GENERAL_PROJECT_ID, input: content, sessionId: sessions.activeSessionId }
     }));
   }, [projects.activeProject, wsHandler.wsRef, sessions.setMessages, sessions.activeSessionId, ai.aiEnabled, setCommandPending]);
 
@@ -263,7 +268,10 @@ export function useConsole() {
       terminal.setPendingMemorySuggestion(null);
       await deleteCurrentSessionIfEmpty();
       sessions.setShowWelcome(false);
-      sessions.createSession();
+      // 2026-08-12: without an active project, start a General-workspace session (the server's
+      // '__general__' pseudo-project) so chat works before picking a project — session-locked
+      // to that id like any other session.
+      sessions.createSession(projects.activeProject?.id ?? GENERAL_PROJECT_ID, projects.activeProject?.name ?? 'General');
     } catch (err) {
       // Belt-and-suspenders: this is the one button whose whole job is to force the
       // Welcome-screen tree to unmount and the full dashboard tree to mount with no active

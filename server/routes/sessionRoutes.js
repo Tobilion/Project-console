@@ -1,7 +1,7 @@
-import { listSessions, getSession, createSession, deleteSession, renameSession, linkSessionToProject } from '../conversationStore.js';
+﻿import { listSessions, getSession, createSession, deleteSession, renameSession, linkSessionToProject } from '../conversationStore.js';
 import { readIndex } from '../sessionIndex.js';
 import { readFullSessionHistory, formatExportMarkdown, formatExportJson } from '../sessionExport.js';
-import { state } from '../state.js';
+import { resolveProject } from '../state.js';
 import { asyncHandler } from '../asyncHandler.js';
 
 export function registerSessionRoutes(app) {
@@ -12,7 +12,7 @@ export function registerSessionRoutes(app) {
 
   app.post('/api/sessions', asyncHandler(async (req, res) => {
     const { projectId, projectName } = req.body || {};
-    const project = projectId ? state.activeProjectsCache.find((p) => p.id === projectId) : null;
+    const project = projectId ? resolveProject(projectId) : null;
     const session = await createSession(projectId, projectName, project?.path);
     res.json({ session });
   }));

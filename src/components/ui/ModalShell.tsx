@@ -26,8 +26,10 @@ export function ModalShell({ open, onClose, maxWidth = 'max-w-md', children }: M
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       <div className="absolute inset-0 bg-scrim-strong backdrop-blur-sm" onClick={onClose} />
-      <div className={`relative z-10 w-full ${maxWidth} mx-4 bg-overlay border border-border-soft rounded-2xl shadow-2xl overflow-hidden`}>
-        {children}
+      <div className={`relative z-10 w-full ${maxWidth} mx-4 bg-overlay border border-border-soft rounded-2xl shadow-2xl overflow-hidden max-h-[85vh] flex flex-col`}>
+        <div className="flex-1 min-h-0 overflow-y-auto">
+          {children}
+        </div>
       </div>
     </div>
   );

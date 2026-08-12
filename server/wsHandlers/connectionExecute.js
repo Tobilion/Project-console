@@ -1,5 +1,5 @@
 import crypto from 'crypto';
-import { state, pendingConfirmations } from '../state.js';
+import { state, pendingConfirmations, resolveProject } from '../state.js';
 import { appendMessage, getSession } from '../conversationStore.js';
 import { executeCommand } from '../executor.js';
 import { isCommandBlocked } from '../dangerousPatterns.js';
@@ -76,7 +76,7 @@ async function handleExecuteBody(ws, parsed, sessionContext) {
   sessionContext.activeProjectId = projectId;
   if (sessionId) sessionContext.currentSessionId = sessionId;
 
-  const project = state.activeProjectsCache.find((p) => p.id === projectId);
+  const project = resolveProject(projectId);
   if (!project) {
     ws.send(JSON.stringify({ type: 'error_output', data: 'Project not found. Scan directory again.\n' }));
     ws.send(JSON.stringify({ type: 'end' }));

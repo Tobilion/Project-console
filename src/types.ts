@@ -170,3 +170,7 @@ export interface ToolPanelDef {
   available: boolean;
   chatHint: string;
 }
+
+/** Reserved pseudo-workspace id (2026-08-12): the server resolves this to a synthetic General
+ *  project when no real project is selected, so chat + personal tools work before picking one. */
+export const GENERAL_PROJECT_ID = '__general__';

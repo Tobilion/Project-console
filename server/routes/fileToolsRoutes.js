@@ -1,11 +1,11 @@
-// Phase 2 catch-up (UPGRADE-ROADMAP.md, 2026-08-12): REST surface for the File Tools panel.
+﻿// Phase 2 catch-up (UPGRADE-ROADMAP.md, 2026-08-12): REST surface for the File Tools panel.
 // Read-only endpoints (file listing/search, duplicate scan) so the panel can render its three
 // sub-views without spamming the chat; mutations (tidy, duplicates_delete) go through the
 // normal WS trigger-command path — confirm cards, journaling, and the terminal stay the single
 // source of truth (same contract as every other panel in this roadmap).
 import fs from 'fs';
 import path from 'path';
-import { state } from '../state.js';
+import { resolveProject } from '../state.js';
 import { walkDir, isTextFile } from '../toolScan.js';
 import { createResolveSafe } from '../toolSandbox.js';
 import { findDuplicates } from '../wsHandlers/builtinGeneralFiles.js';
@@ -15,7 +15,7 @@ const MAX_SEARCH_RESULTS = 20;
 const MAX_CONTENT_FILE_BYTES = 20000;
 
 function findProject(req) {
-  return state.activeProjectsCache.find((p) => p.id === req.params.id) || null;
+  return resolveProject(req.params.id) || null;
 }
 
 /** List directory entries with size + mod date; optional name substring filter. */

@@ -1,15 +1,16 @@
-import { useMemo, useState } from 'react';
-import { CheckCircle2, Send, RotateCcw } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { CheckCircle2, Send, XCircle } from 'lucide-react';
+import { apiFetchJson } from '../utils/apiFetch';
 import { cn } from '../lib/utils';
 import './CalculatorPanel.css';
 
 // Phase 6 (UPGRADE-ROADMAP.md, 2026-08-12): the live Calculator widget — iOS calculator
 // layout (large result display, 4-column grid, systemOrange operator column). Button presses
-// update local React state instantly (no WS round-trip per keystroke); "=" sends the
-// accumulated expression through the EXISTING server-side mathEval.js via the same
-// "calculate ..." trigger command chat uses — one audited evaluation path, never a
-// client-side second evaluator. A mode toggle adds unit/tax/tip phrases for the same
-// server-side parsers. History is in-memory per session.
+// update local React state instantly; "=" (button or Enter) evaluates through the SAME
+// server-side mathEval.js the chat command uses, via the dedicated POST /api/calculate
+// endpoint, and the RESULT DISPLAYS IN THE PANEL — the user never has to leave the widget to
+// read chat. Keyboard input is wired (digits, + - * / ., Enter =, Backspace, Escape).
+// History is in-memory per session with real results.
 
 interface CalculatorPanelProps {
   onSendMessage: (text: string) => void;
@@ -27,38 +28,78 @@ const DISPLAY_MAX = 14;
 export function CalculatorPanel({ onSendMessage }: CalculatorPanelProps) {
   const [expr, setExpr] = useState('');
   const [lastResult, setLastResult] = useState<string | null>(null);
+  const [lastError, setLastError] = useState<string | null>(null);
   const [mode, setMode] = useState<Mode>('basic');
   const [convertInput, setConvertInput] = useState('');
   const [convertUnit, setConvertUnit] = useState('5 km to miles');
   const [tipInput, setTipInput] = useState('');
   const [tipPct, setTipPct] = useState('18');
   const [history, setHistory] = useState<HistoryEntry[]>([]);
-  const [lastSent, setLastSent] = useState<string | null>(null);
+  const [evaluating, setEvaluating] = useState(false);
 
   const press = (token: string) => {
     setExpr((prev) => {
       const next = prev === '0' && /^\d$/.test(token) ? token : prev + token;
       return next.slice(-40);
     });
+    setLastResult(null);
+    setLastError(null);
   };
 
-  const clear = () => { setExpr(''); setLastResult(null); };
+  const clear = () => { setExpr(''); setLastResult(null); setLastError(null); };
 
-  const send = (text: string) => {
-    onSendMessage(text);
-    setLastSent(text);
-    setTimeout(() => setLastSent(null), 8000);
+  const backspace = () => {
+    setExpr((prev) => prev.slice(0, -1));
+    setLastResult(null);
+    setLastError(null);
   };
 
-  const calculate = (text: string) => {
-    send(text);
-    setHistory((prev) => [{ expr: text, result: 'sent to chat' }, ...prev].slice(0, 8));
+  const evaluate = async (raw: string) => {
+    if (!raw.trim()) return;
+    setEvaluating(true);
+    setLastError(null);
+    const data = await apiFetchJson<{ ok: boolean; value?: number; formatted?: string; label?: string; error?: string }>(
+      '/api/calculate',
+      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ expression: raw }) }
+    );
+    setEvaluating(false);
+    if (!data) {
+      setLastError('Could not reach the server.');
+      return;
+    }
+    if (data.ok && data.formatted !== undefined) {
+      setLastResult(data.formatted);
+      setHistory((prev) => [{ expr: data.label || raw, result: data.formatted }, ...prev].slice(0, 8));
+    } else {
+      setLastError(data.error || 'Cannot evaluate that.');
+    }
   };
 
   const equals = () => {
     if (!expr.trim()) return;
-    calculate(`calculate ${expr}`);
+    evaluate(`calculate ${expr}`);
   };
+
+  // Keyboard input: digits, operators, Enter (=), Backspace, Escape. Ignored while the user
+  // is typing in the convert/tip text fields (target is an INPUT).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement;
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')) return;
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      const k = e.key;
+      if (/^[0-9.]$/.test(k)) { e.preventDefault(); press(k); }
+      else if (k === '+') { e.preventDefault(); press('+'); }
+      else if (k === '-') { e.preventDefault(); press('-'); }
+      else if (k === '*') { e.preventDefault(); press('*'); }
+      else if (k === '/') { e.preventDefault(); press('/'); }
+      else if (k === 'Enter' || k === '=') { e.preventDefault(); equals(); }
+      else if (k === 'Backspace') { e.preventDefault(); backspace(); }
+      else if (k === 'Escape') { e.preventDefault(); clear(); }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  });
 
   const display = lastResult ?? (expr || '0');
 
@@ -118,7 +159,7 @@ export function CalculatorPanel({ onSendMessage }: CalculatorPanelProps) {
           style={{ backgroundColor: 'var(--calc-key)', color: 'var(--calc-label)' }}
         />
         <button
-          onClick={() => { if (convertUnit.trim()) calculate(`convert ${convertUnit.trim()}`); }}
+          onClick={() => { if (convertUnit.trim()) evaluate(`convert ${convertUnit.trim()}`); }}
           className="px-4 rounded-lg text-sm font-semibold text-white transition-opacity hover:opacity-85"
           style={{ backgroundColor: 'var(--calc-orange)' }}
         >
@@ -149,7 +190,7 @@ export function CalculatorPanel({ onSendMessage }: CalculatorPanelProps) {
           title="tip percentage"
         />
         <button
-          onClick={() => { if (tipInput.trim()) calculate(`${tipPct || '15'}% tip on ${tipInput.trim()}`); }}
+          onClick={() => { if (tipInput.trim()) evaluate(`${tipPct || '15'}% tip on ${tipInput.trim()}`); }}
           className="px-4 rounded-lg text-sm font-semibold text-white transition-opacity hover:opacity-85"
           style={{ backgroundColor: 'var(--calc-orange)' }}
         >
@@ -157,7 +198,7 @@ export function CalculatorPanel({ onSendMessage }: CalculatorPanelProps) {
         </button>
       </div>
       <p className="text-xs" style={{ color: 'var(--calc-dim)' }}>
-        Tip % on the amount — e.g. 18% tip on 64.50. Tax works in chat too: <code>add 8.25% tax to 120</code>.
+        Tip % on the amount — e.g. 18% tip on 64.50. Tax works too: <code>add 8.25% tax to 120</code>.
       </p>
     </div>
   );
@@ -192,27 +233,27 @@ export function CalculatorPanel({ onSendMessage }: CalculatorPanelProps) {
 
         {mode === 'basic' ? (
           <>
-            {/* Result display */}
+            {/* Result display — shows the evaluated result right here */}
             <div className="text-right mb-3 px-2 overflow-x-auto whitespace-nowrap"
               style={{ color: 'var(--calc-label)' }}>
               <div className="text-4xl font-light tracking-tight">{display.slice(-DISPLAY_MAX)}</div>
-              <div className="text-sm mt-1 min-h-[20px]" style={{ color: 'var(--calc-dim)' }}>
-                {expr || 'press = to evaluate'}
+              <div className="text-sm mt-1 min-h-[20px]" style={{ color: lastError ? '#FF453A' : 'var(--calc-dim)' }}>
+                {evaluating ? '…' : lastError ?? (lastResult ? expr : 'press = to evaluate')}
               </div>
             </div>
             {basicGrid}
           </>
         ) : mode === 'convert' ? convertView : tipView}
 
-        {lastSent && (
+        {lastError && (
           <div className="mt-3 flex items-start gap-2 text-[11px] rounded-lg p-2.5"
-            style={{ color: 'var(--calc-dim)', backgroundColor: 'var(--calc-key)' }}>
-            <CheckCircle2 size={13} className="mt-0.5 shrink-0" style={{ color: 'var(--calc-orange)' }} />
-            <span>Sent <code className="font-mono">{lastSent}</code> — result appears in the chat below.</span>
+            style={{ color: '#FF453A', backgroundColor: 'var(--calc-key)' }}>
+            <XCircle size={13} className="mt-0.5 shrink-0" />
+            <span>{lastError}</span>
           </div>
         )}
 
-        {/* In-memory history */}
+        {/* In-memory history with real results */}
         {history.length > 0 && (
           <div className="mt-4">
             <div className="text-[11px] uppercase tracking-wider mb-1.5" style={{ color: 'var(--calc-dim)' }}>

@@ -1,9 +1,9 @@
-// Phase 7 (UPGRADE-ROADMAP.md, 2026-08-12): REST surface for the Spreadsheet panel — the
+﻿// Phase 7 (UPGRADE-ROADMAP.md, 2026-08-12): REST surface for the Spreadsheet panel — the
 // read-only CSV listing + header endpoints. Queries run through the normal WS trigger-command
 // path ("sum column X in Y" etc.) so the terminal stays the single source of truth.
 import fs from 'fs';
 import path from 'path';
-import { state } from '../state.js';
+import { resolveProject } from '../state.js';
 import { parseCsv, loadCsv, findColumn, matchOp } from '../csvTools.js';
 
 const MAX_CSV_FILES = 200;
@@ -11,7 +11,7 @@ const MAX_CSV_FILES = 200;
 export function registerCsvRoutes(app) {
   // Project CSV files (project-relative paths), for the panel's file picker.
   app.get('/api/projects/:id/csv-files', async (req, res) => {
-    const project = state.activeProjectsCache.find((p) => p.id === req.params.id);
+    const project = resolveProject(req.params.id);
     if (!project) return res.status(404).json({ error: 'Project not found' });
     const out = [];
     try {
@@ -38,7 +38,7 @@ export function registerCsvRoutes(app) {
 
   // Header row of one CSV, for the panel's column dropdown.
   app.get('/api/projects/:id/csv-headers', async (req, res) => {
-    const project = state.activeProjectsCache.find((p) => p.id === req.params.id);
+    const project = resolveProject(req.params.id);
     if (!project) return res.status(404).json({ error: 'Project not found' });
     const filePath = typeof req.query.file === 'string' ? req.query.file : '';
     if (!filePath || !/\.csv$/i.test(filePath)) return res.status(400).json({ error: 'Missing ?file= (a .csv path).' });
@@ -57,7 +57,7 @@ export function registerCsvRoutes(app) {
   // Filtered rows for the panel's table view — same read-only path the chat filter uses
   // (csvTools.loadCsv + matchOp), so the panel table and the chat answer can never diverge.
   app.get('/api/projects/:id/csv-filter', async (req, res) => {
-    const project = state.activeProjectsCache.find((p) => p.id === req.params.id);
+    const project = resolveProject(req.params.id);
     if (!project) return res.status(404).json({ error: 'Project not found' });
     const filePath = typeof req.query.file === 'string' ? req.query.file : '';
     const column = typeof req.query.column === 'string' ? req.query.column : '';

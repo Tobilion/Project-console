@@ -393,7 +393,11 @@ npm run lint    # tsc --noEmit
   (`TOOL_PANELS`: calculator, pdf-tools, reminders, file-tools, notes, csv-tools, clipboard — `getToolPanels()`/`getToolPanel()`, REST
   `GET /api/tool-panels` mounted in server/index.js). PDF Tools is a real panel since Phase 3
   (see pdfKit.js entry below); Reminders is a real panel since Phase 4 (see builtinReminders.js);
-  Calculator is a real live widget since Phase 6 (see the CalculatorPanel.tsx frontend bullet); Wire
+  Calculator is a real live widget since Phase 6 (see the CalculatorPanel.tsx frontend bullet;
+  its "=" evaluates via POST /api/calculate — routes/calculateRoutes.js — which calls the SAME
+  mathEval.js functions the chat command uses, so the panel result and the chat answer can
+  never diverge; the widget ALSO supports keyboard input: digits/operators/Enter/Backspace/
+  Escape, ignored while an input field is focused); Wire
   contract: intent-data entries carry an `opensPanel` tag (see
   `server/intents/toolPanelIntents.js` + pdfIntents.js), and the opener handlers in
   `server/wsHandlers/builtinTools.js` (`system.tools.open_calculator` /
@@ -620,7 +624,8 @@ npm run lint    # tsc --noEmit
   only, no eval/Function; Phase 6, 2026-08-12 adds `convertUnits` — offline static
   length/weight/volume/temperature table — and `percentageQuery` — percent-of/tip/tax phrases,
   both still evaluated through the same safe tokenize/evaluate path), `platformCommand.js`,
-  `typedCommand.js` (2026-08-11, wrapper-project fix: `extractCommandLine` — the typed-input
+  `typedCommand.js` (2026-08-11 wrapper-project fix: `getCommandDir`-aware
+  `extractCommandLine` — the typed-input
   bypass gate in connectionExecute.js. Exact well-formed command lines run directly: first
   token allowlisted OR PATH-resolved (so any real executable works, including ones the
   matcher has no intent for — "ng serve" in a wrapper project), natural prefixes
@@ -1005,6 +1010,17 @@ time/date/calculate rows, 92/92).
 - **CLI readline**: all `readline.createInterface()` calls need `crlfDelay: Infinity`
   (Windows ConPTY can otherwise emit two `'line'` events per Enter → "typing 10 acted like
   100"). All three in cli-client.js.
+- **General pseudo-workspace (2026-08-12)**: a reserved `__general__` project id
+  (`GENERAL_PROJECT_ID`/`getGeneralProject()`/`resolveProject()` in state.js) lets a user
+  chat and use personal tools BEFORE picking a real project — `handleExecute` and the
+  project-scoped REST routes resolve it to a synthetic project rooted at
+  `data/general-workspace/` (console-owned, gitignored, never the scan root). The client
+  mirrors it as `GENERAL_PROJECT` in App.tsx and sends `projectId: '__general__'` when no
+  project is active. Sessions created against it lock to that id like any other session —
+  the session-lock check is untouched. The Developer/General tab switcher is ALWAYS visible
+  (it used to be gated on an active project, which made the General tab unreachable on a
+  fresh open), and the General tab lands on the Tools card grid (tools-first; chat reachable
+  via the grid's close/back or the header Tools toggle).
 - **Startup is slow** (~41s cold: embeddings + NLP training + discovery): CLI client retries
   up to 90s across ports 3000-3009. Re-measure if the intent corpus grows a lot.
 - **check-handlers' `dev_server_status` row is environment-sensitive**: the common-ports

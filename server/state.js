@@ -20,6 +20,39 @@ export const state = {
   serverPort: null,
 };
 
+// Reserved pseudo-project id for the General workspace when NO real project is selected
+// (2026-08-12): lets a user open the app and chat/tool immediately without picking a project
+// first. Deliberately NOT in activeProjectsCache (never shows in the project grid/dashboard);
+// resolved lazily by resolveProject(). Its path is a console-owned, gitignored data/ folder —
+// never the scan root, so "tidy this folder"/file tools can never touch real user folders.
+export const GENERAL_PROJECT_ID = '__general__';
+
+let generalProject = null;
+
+export function getGeneralProject() {
+  if (generalProject) return generalProject;
+  generalProject = {
+    id: GENERAL_PROJECT_ID,
+    folderName: 'General',
+    name: 'General',
+    path: path.join(process.cwd(), 'data', 'general-workspace'),
+    config: { projectName: 'General', entries: [] },
+    workspaceType: 'general',
+    contextFiles: [],
+    parsedKnowledge: {},
+    codebaseIndex: { languages: [], keyFiles: {}, entryPoints: [] },
+  };
+  return generalProject;
+}
+
+/** Resolve a projectId to the scanned project, or the synthetic General workspace for the
+ *  reserved id (used by handleExecute and every project-scoped REST route, so the General
+ *  workspace's own file tools/notes/PDFs work without a real project). */
+export function resolveProject(projectId) {
+  if (projectId === GENERAL_PROJECT_ID) return getGeneralProject();
+  return state.activeProjectsCache.find((p) => p.id === projectId) || null;
+}
+
 /**
  * True if a detected dev-server URL's port matches the port this console server itself is
  * running on — that URL will look identical to the console app itself in the browser, which is

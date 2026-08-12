@@ -263,11 +263,17 @@ export function UserProfileModal({ open, profile, onClose, onSave }: UserProfile
             className="flex items-center gap-1.5 text-xs text-fg-dim hover:text-fg-strong transition-colors"
           >
             {advancedOpen ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
-            Advanced tuning
+            Developer / Advanced — you probably don't need this
             {tuning && Object.keys(tuning.overrides).length > 0 && (
               <span className="text-[10px] text-accent">({Object.keys(tuning.overrides).length} overridden)</span>
             )}
           </button>
+          {advancedOpen && (
+            <p className="text-[11px] text-fg-faint mt-1.5">
+              Raw matcher/executor constants for power users — the defaults are tuned for most
+              setups. Change these only if you know what they do.
+            </p>
+          )}
           {advancedOpen && tuning && (
             <div className="mt-2 space-y-3">
               {TUNING_GROUPS.map((group) => (
