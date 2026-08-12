@@ -25,7 +25,7 @@ export const toolsHandlers = {
     if (!panel) return false;
     ws.send(JSON.stringify({
       type: 'answer',
-      data: `The ${panel.name} is a web-UI panel where you drop a file and pick an operation — its tools are filled in during a later update. There is no terminal-native equivalent of a file-drop grid, so the PDF operations keep working as plain chat trigger commands once they ship.`,
+      data: `The ${panel.name} panel is an interactive web-UI where you pick PDFs and an operation (merge / split / extract / watermark). From chat — including the CLI — the same operations work as plain trigger commands: \`merge these pdfs into combined.pdf\` / \`split report.pdf at page 5\` / \`extract text from report.pdf\`.`,
       openPanel: panel.id,
     }));
   },

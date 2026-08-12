@@ -200,7 +200,7 @@ eq('tools leaf: open_calculator attaches chat-command chips', ws.sent[1].type ==
 
 sent.length = 0;
 await handleBuiltinIntent(ws, 'system.tools.open_pdf_tools', 'open pdf tools', proj, {});
-eq('tools leaf: open_pdf_tools answers with openPanel + CLI-usable text', ws.sent.length === 1 && ws.sent[0].type === 'answer' && ws.sent[0].openPanel === 'pdf-tools' && /web-UI panel/.test(ws.sent[0].data), true);
+eq('tools leaf: open_pdf_tools answers with openPanel + CLI-usable text', ws.sent.length === 1 && ws.sent[0].type === 'answer' && ws.sent[0].openPanel === 'pdf-tools' && /merge these pdfs into combined\.pdf/.test(ws.sent[0].data), true);
 
 sent.length = 0;
 await handleBuiltinIntent(ws, 'system.tools.open_reminders', 'open reminders', proj, {});
