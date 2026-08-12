@@ -40,6 +40,20 @@ npm run lint    # tsc --noEmit
   the bound port to `logs/daemon.port`; `scripts/stop-daemon.ps1` kills by port (not PID —
   robust even when the cmd.exe wrapper exits before npm); `scripts/add-to-startup.ps1`
   registers login startup.
+- **Desktop shell (Phase 18, 2026-08-12)**: `desktop/` is a self-contained Electron wrapper
+  (its OWN package.json so the root npm install never pulls electron). Decision per the
+  roadmap's stated default: **Electron over Tauri** — this codebase is 100% JS/TS and
+  Electron gives direct Node/npm parity; Tauri would add a Rust toolchain for no benefit.
+  `desktop/main.js` reuses bin/cli.js's port rule (3000-3009, skip if one already responds —
+  never a duplicate instance), otherwise spawns the server as a CHILD process (dist/server.js
+  bundle when present, else server/index.js) rather than importing it in-process, waits for
+  the bound port, opens the default browser + a minimal tray icon (quit stops the server
+  child cleanly — no orphan). First run uses the SAME web onboarding wizard; Ollama is NOT
+  bundled (the in-app note points at ollama.com — a separate optional install). Verification
+  status: source is lint/syntax-clean; the `npm install` in desktop/ + `npm run dist`
+  (electron-builder NSIS for Windows; mac dmg / Linux AppImage are stretch targets per the
+  roadmap) + the clean-machine install test CANNOT be done headless — flagged for manual
+  review (see the roadmap summary at the top of UPGRADE-ROADMAP.md).
 - CLI chat mode: `node server/cli-client.js [--dir "<full path>"] [--project "<name>"]`;
   it scans ports 3000-3009, retries up to 90s (cold boot is ~41s), and reports which port it
   connected on. Interactive arrow-key picker via @clack/prompts when a TTY is available,

@@ -1,0 +1,37 @@
+{
+  "name": "local-project-console-desktop",
+  "version": "1.0.0",
+  "description": "Project Console desktop shell — Electron wrapper around the local Express+WS server",
+  "main": "main.js",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --win nsis"
+  },
+  "build": {
+    "appId": "com.localprojectconsole.app",
+    "productName": "Project Console",
+    "files": ["main.js", "preload.js", "server/**/*", "bin/**/*", "data/**/*"],
+    "extraMetadata": {
+      "main": "main.js"
+    },
+    "win": {
+      "target": ["nsis"],
+      "icon": "icon.png"
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false
+    },
+    "mac": {
+      "target": ["dmg"]
+    },
+    "linux": {
+      "target": ["AppImage"]
+    }
+  },
+  "devDependencies": {
+    "electron": "^31.0.0",
+    "electron-builder": "^24.13.3"
+  }
+}
