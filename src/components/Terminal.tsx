@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
-import { TerminalMessage, Project, AIStatus, PendingToolConfirm, PendingMemorySuggestion, ToolCallEntry } from '../types';
+import { TerminalMessage, Project, AIStatus, PendingToolConfirm, ToolCallEntry } from '../types';
 import { getRandomChatPrompt, getRandomEmptyStatePrompt, getEmptyStateActions } from '../utils/greetings';
 import { ToolHistoryPanel } from './ToolHistoryPanel';
 import { ProcessDock, ProcessInfo } from './ProcessDock';
@@ -40,9 +40,6 @@ interface TerminalProps {
   onConfirm: (confirmed: boolean) => void;
   pendingToolConfirm: PendingToolConfirm | null;
   onToolConfirm: (confirmed: boolean) => void;
-  onApproveTask?: () => void;
-  pendingMemorySuggestion?: PendingMemorySuggestion | null;
-  onMemorySuggestionRespond?: (accept: boolean) => void;
   aiEnabled: boolean;
   aiThinking: boolean;
   aiThinkingText?: string;
@@ -85,7 +82,7 @@ interface TerminalProps {
    connected: boolean;
  }
 
-export const Terminal = ({ messages, onSendMessage, onSearch, onDeepResearch, activeProject, userName, pendingConfirm, onConfirm, pendingToolConfirm, onToolConfirm, onApproveTask, pendingMemorySuggestion, onMemorySuggestionRespond, aiEnabled, aiThinking, aiThinkingText, commandPending, onCancel, ollamaStatus, aiModel, aiMode, onAIToggle, onSetModel, onSetMode, toolHistory, showToolHistory, onToggleToolHistory, onRerunToolCall, onExportMarkdown, onExportJson, onExportPdf, onExportProjectChatLog, onDirectCommand, onDidYouMeanPick, workspaceProjects, addToWorkspace, removeFromWorkspace, clearWorkspace, onSwitchToProject, isFullscreen, onToggleFullscreen, processes, processLogs, 
+export const Terminal = ({ messages, onSendMessage, onSearch, onDeepResearch, activeProject, userName, pendingConfirm, onConfirm, pendingToolConfirm, onToolConfirm, aiEnabled, aiThinking, aiThinkingText, commandPending, onCancel, ollamaStatus, aiModel, aiMode, onAIToggle, onSetModel, onSetMode, toolHistory, showToolHistory, onToggleToolHistory, onRerunToolCall, onExportMarkdown, onExportJson, onExportPdf, onExportProjectChatLog, onDirectCommand, onDidYouMeanPick, workspaceProjects, addToWorkspace, removeFromWorkspace, clearWorkspace, onSwitchToProject, isFullscreen, onToggleFullscreen, processes, processLogs, 
  selectedProcessId, onSelectProcess, onStopProcess, dockExpanded, onToggleDock, dockTab, onSetDockTab, projects, knownDevUrls, connected }: TerminalProps) => {
   const [input, setInput] = useState('');
   const [showSearchOverlay, setShowSearchOverlay] = useState(false);
@@ -284,15 +281,8 @@ export const Terminal = ({ messages, onSendMessage, onSearch, onDeepResearch, ac
          aiThinkingText={aiThinkingText}
          commandPending={commandPending}
          onCancel={onCancel}
-         pendingConfirm={pendingConfirm}
-          onConfirm={onConfirm}
-          pendingToolConfirm={pendingToolConfirm}
-          onToolConfirm={onToolConfirm}
-          onApproveTask={onApproveTask}
-          pendingMemorySuggestion={pendingMemorySuggestion}
-          onMemorySuggestionRespond={onMemorySuggestionRespond}
-          emptyStatePrompt={emptyStatePrompt}
-          emptyStateActions={emptyStateActions}
+         emptyStatePrompt={emptyStatePrompt}
+         emptyStateActions={emptyStateActions}
           onDidYouMeanPick={onDidYouMeanPick}
           knownDevUrls={knownDevUrls}
         />

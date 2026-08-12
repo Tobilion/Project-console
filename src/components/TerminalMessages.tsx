@@ -1,11 +1,10 @@
 import React, { useMemo, useRef, useEffect, useCallback, ErrorInfo, ReactNode } from 'react';
-import { TerminalMessage, PendingToolConfirm, PendingMemorySuggestion } from '../types';
+import { TerminalMessage } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
 import ReactMarkdown from 'react-markdown';
 import { Loader2, Square, AlertTriangle, ExternalLink } from 'lucide-react';
 import { OutputBlock } from './TerminalOutputBlock';
 import { StructuredJsonBlock } from './StructuredJsonBlock';
-import { TerminalConfirmCards } from './TerminalConfirmCards';
 import { TerminalEmptyState } from './TerminalEmptyState';
 
 /** M23: a message-level boundary (local, NOT the app's shared ErrorBoundary) so a single
@@ -77,13 +76,6 @@ interface TerminalMessagesProps {
   aiThinkingText?: string;
   commandPending: boolean;
   onCancel?: () => void;
-  pendingConfirm: { token: string; command: string } | null;
-  onConfirm: (confirmed: boolean) => void;
-  pendingToolConfirm: PendingToolConfirm | null;
-  onToolConfirm: (confirmed: boolean) => void;
-  onApproveTask?: () => void;
-  pendingMemorySuggestion?: PendingMemorySuggestion | null;
-  onMemorySuggestionRespond?: (accept: boolean) => void;
   emptyStatePrompt: string;
   emptyStateActions: string[];
   onDidYouMeanPick?: (intent: string) => void;
@@ -247,13 +239,6 @@ const TerminalMessagesComponent = ({
   aiThinkingText,
   commandPending,
   onCancel,
-  pendingConfirm,
-  onConfirm,
-  pendingToolConfirm,
-  onToolConfirm,
-  onApproveTask,
-  pendingMemorySuggestion,
-  onMemorySuggestionRespond,
   emptyStatePrompt,
   emptyStateActions,
   onDidYouMeanPick,
@@ -291,7 +276,7 @@ const TerminalMessagesComponent = ({
       // the natural cadence of discrete user/system/error message arrivals.
       endRef.current?.scrollIntoView({ behavior: aiThinking ? 'auto' : 'smooth' });
     }
-  }, [messages, pendingConfirm, pendingToolConfirm, pendingMemorySuggestion, endRef]);
+  }, [messages, endRef]);
 
   return (
     <div ref={containerRef} onScroll={handleContainerScroll} className="flex-1 overflow-y-auto p-4">
@@ -341,16 +326,6 @@ const TerminalMessagesComponent = ({
         );
         })}
       </AnimatePresence>
-
-      <TerminalConfirmCards
-        pendingConfirm={pendingConfirm}
-        onConfirm={onConfirm}
-        pendingToolConfirm={pendingToolConfirm}
-        onToolConfirm={onToolConfirm}
-        onApproveTask={onApproveTask}
-        pendingMemorySuggestion={pendingMemorySuggestion}
-        onMemorySuggestionRespond={onMemorySuggestionRespond}
-      />
 
       <div ref={endRef} />
 

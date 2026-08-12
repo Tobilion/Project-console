@@ -15,6 +15,7 @@ import { ThemeToggle } from './components/ui/ThemeToggle';
 import { UserProfileModal } from './components/UserProfileModal';
 import { FirstRunSetup } from './components/FirstRunSetup';
 import { CommandReference } from './components/CommandReference';
+import { ConfirmCardsOverlay } from './components/ConfirmCardsOverlay';
 import { GENERAL_PROJECT_ID } from './types';
 import type { Project } from './types';
 
@@ -443,9 +444,6 @@ function App() {
               onConfirm={handleConfirm}
               pendingToolConfirm={pendingToolConfirm}
               onToolConfirm={handleToolConfirm}
-              onApproveTask={handleApproveTask}
-              pendingMemorySuggestion={pendingMemorySuggestion}
-              onMemorySuggestionRespond={handleMemorySuggestionRespond}
               aiEnabled={aiEnabled}
               aiThinking={aiThinking}
               aiThinkingText={aiThinkingText}
@@ -491,6 +489,19 @@ function App() {
         </div>
         </>)}
       </main>
+
+      {/* 2026-08-12 audit fix: confirm cards render as a fixed overlay so they are visible
+          regardless of which top-level view is active (chat, Tools panels, dashboard) — a
+          confirm-gated action triggered from a panel must never strand the user. */}
+      <ConfirmCardsOverlay
+        pendingConfirm={pendingConfirm}
+        onConfirm={handleConfirm}
+        pendingToolConfirm={pendingToolConfirm}
+        onToolConfirm={handleToolConfirm}
+        onApproveTask={handleApproveTask}
+        pendingMemorySuggestion={pendingMemorySuggestion}
+        onMemorySuggestionRespond={handleMemorySuggestionRespond}
+      />
 
       <CommandDeck
         open={deckOpen}
