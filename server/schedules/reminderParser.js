@@ -79,14 +79,22 @@ export function parseReminderInput(input) {
       when = toSplit[1];
       text = toSplit[2];
     } else {
-      when = body;
-      text = null;
+      // No time phrase anywhere in the input ("remind me to call the dentist" /
+      // "remind me about the meeting") — this is a dateless TODO, not an error. The whole
+      // body is the reminder text; it lives in the reminders list's No Date section and
+      // never fires on its own.
+      when = null;
+      text = body;
     }
   }
 
   text = (text || '').trim();
   if (!text) return { ok: false, reason: 'What should I remind you about? Try `remind me tomorrow at 9am to renew my license`.' };
-  if (!when) return { ok: false, reason: 'When should I remind you? Try `remind me tomorrow at 9am to renew my license`.' };
+  if (!when) {
+    // Dateless todo — no fireAt, no recurrence; delivered only via the list (Apple
+    // Reminders/Todoist "No Date" convention).
+    return { ok: true, type: 'todo', label: 'no date', text };
+  }
 
   const lowerWhen = when.toLowerCase();
 

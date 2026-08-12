@@ -8,7 +8,7 @@ import fs from 'fs';
 import path from 'path';
 import { writeFileAtomicSync } from '../atomicWrite.js';
 
-const SCHEDULES_FILE = path.join(process.cwd(), 'data', 'schedules.json');
+const SCHEDULES_FILE = process.env.SCHEDULES_FILE || path.join(process.cwd(), 'data', 'schedules.json');
 
 let schedules = [];
 let saveTimer = null;

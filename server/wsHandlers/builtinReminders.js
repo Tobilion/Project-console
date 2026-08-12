@@ -26,10 +26,12 @@ export const reminderHandlers = {
       firstFireAt: parsed.firstFireAt ?? null,
       createdBy: sessionContext?.displayName || 'local',
     });
-    ws.send(JSON.stringify({
-      type: 'answer',
-      data: `Reminder set 🔔 — **${schedule.id}**: ${schedule.label} → "${schedule.text}".\n\nIt posts to whatever chat is open when it fires (otherwise to the schedule log). Manage with \`list my reminders\` / \`cancel reminder ${schedule.id}\`.`,
-    }));
+    // Phase 4 audit (2026-08-12): dateless reminders are TODOs — they live in the list's
+    // No Date section and never fire, so the answer must not promise delivery.
+    const data = parsed.type === 'todo'
+      ? `Added to your list 📋 — **${schedule.id}**: "${schedule.text}" (no date set).\n\nManage with \`list my reminders\` / \`cancel reminder ${schedule.id}\`.`
+      : `Reminder set 🔔 — **${schedule.id}**: ${schedule.label} → "${schedule.text}".\n\nIt posts to whatever chat is open when it fires (otherwise to the schedule log). Manage with \`list my reminders\` / \`cancel reminder ${schedule.id}\`.`;
+    ws.send(JSON.stringify({ type: 'answer', data }));
   },
 
   'system.reminders.list': async (ws, action, input, project) => {
@@ -41,6 +43,8 @@ export const reminderHandlers = {
     const rows = reminders.map((s, i) => {
       const last = s.lastFiredAt ? new Date(s.lastFiredAt).toLocaleString() : 'never';
       const owner = s.projectId === project.id ? '' : ` (${s.projectName || s.projectId})`;
+      // Todos (dateless reminders) render with their own label — no "fires" language.
+      if (s.type === 'todo') return `${i + 1}. **${s.id}**${owner} — 📋 "${s.text}" (no date)`;
       return `${i + 1}. **${s.id}**${owner} — ${s.label} → "${s.text}" — last fired ${last}`;
     });
     ws.send(JSON.stringify({ type: 'answer', data: `### Reminders\n\n${rows.join('\n')}` }));

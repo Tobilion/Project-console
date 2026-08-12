@@ -27,6 +27,10 @@ import os from 'os';
 // Phase 15: point the watch-rules store at a temp file so admin-command smoke tests never
 // touch the real data/watch-rules.json (the module reads this env var at import time).
 process.env.WATCH_RULES_FILE = path.join(os.tmpdir(), `console-watchrules-${Date.now()}.json`);
+// Phase 4 audit (2026-08-12): the todo-create dispatch now SUCCEEDS (writes the schedule
+// store), so the store must be redirected to a temp file too — never pollute the real
+// data/schedules.json from the harness.
+process.env.SCHEDULES_FILE = path.join(os.tmpdir(), `console-schedules-${Date.now()}.json`);
 
 const PROBE = process.argv.includes('--probe');
 // Derived from this script's own location, not hardcoded to one machine/username (audit
@@ -442,18 +446,25 @@ eq('pdf revert: revert deletes the created output', revertOne.ok === true && !fs
 fs.rmSync(pdfRoot, { recursive: true, force: true });
 
 // --- REMINDERS (Phase 4, 2026-08-12) ------------------------------------------
-// Dispatch against the C:/tmp/nowhere fixture: create with no parseable when answers the
+// Dispatch against the C:/tmp/nowhere fixture: create with an empty body answers the
 // ask-for-when guidance, list answers the empty state, cancel answers not-found — all
 // deterministic, no schedule file writes (handlers fail before touching the store).
 sent.length = 0;
-await handleBuiltinIntent(ws, 'system.reminders.create', 'remind me to stretch', proj, {});
-eq('reminder leaf: create without a when asks for one + opens panel', ws.sent.length === 1 && ws.sent[0].type === 'answer' && ws.sent[0].openPanel === 'reminders' && /What should I remind you about/.test(ws.sent[0].data), true);
+await handleBuiltinIntent(ws, 'system.reminders.create', 'remind me', proj, {});
+eq('reminder leaf: create with empty body asks for one + opens panel', ws.sent.length === 1 && ws.sent[0].type === 'answer' && ws.sent[0].openPanel === 'reminders' && /Try `remind me tomorrow at 9am/.test(ws.sent[0].data), true);
 sent.length = 0;
 await handleBuiltinIntent(ws, 'system.reminders.list', 'list my reminders', proj, {});
 eq('reminder leaf: list answers the empty state', ws.sent.length === 1 && ws.sent[0].type === 'answer' && /No reminders/.test(ws.sent[0].data), true);
 sent.length = 0;
 await handleBuiltinIntent(ws, 'system.reminders.cancel', 'cancel reminder s9', proj, {});
 eq('reminder leaf: cancel answers not-found', ws.sent.length === 1 && ws.sent[0].type === 'answer' && /No reminder/.test(ws.sent[0].data), true);
+// Phase 4 audit (2026-08-12): "remind me to stretch" has no time phrase at all — it is a
+// dateless TODO, not an error (the fixture project path is never touched because the
+// handler writes to the schedule store before any file IO, and the assert only checks the
+// answer text).
+sent.length = 0;
+await handleBuiltinIntent(ws, 'system.reminders.create', 'remind me to stretch', proj, {});
+eq('reminder leaf: dateless input becomes a todo (no date)', ws.sent.length === 1 && ws.sent[0].type === 'answer' && /Added to your list/.test(ws.sent[0].data), true);
 
 // Parse-contract unit shapes (pure, no store interaction; the recurrence types are the
 // machine-independent part — fireAt/firstFireAt instants are only asserted as future).
@@ -468,7 +479,9 @@ eq('reminder parse: interval with aligned first fire', rInterval.ok === true && 
 const rTextFirst = parseReminderInput('remind me to water the plants at 8pm');
 eq('reminder parse: text-first order', rTextFirst.ok === true && rTextFirst.type === 'oneshot' && rTextFirst.text === 'water the plants' && rTextFirst.fireAt > Date.now(), true);
 const rNoWhen = parseReminderInput('remind me about the meeting');
-eq('reminder parse: no when -> ask', rNoWhen.ok === false && /remind you about/.test(rNoWhen.reason), true);
+eq('reminder parse: no time phrase -> dateless todo', rNoWhen.ok === true && rNoWhen.type === 'todo' && rNoWhen.text === 'the meeting' && rNoWhen.fireAt === undefined, true);
+const rTodo = parseReminderInput('remind me to call the dentist');
+eq('reminder parse: "remind me to X" with no time -> todo', rTodo.ok === true && rTodo.type === 'todo' && rTodo.text === 'call the dentist', true);
 const rPast = parseReminderInput('remind me yesterday at 9am to fix it');
 eq('reminder parse: explicit past -> rejected', rPast.ok === false && /past/.test(rPast.reason), true);
 const rGarbage = parseReminderInput('remind me blahblah to do the thing');

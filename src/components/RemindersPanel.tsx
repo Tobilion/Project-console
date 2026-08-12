@@ -9,6 +9,11 @@ import './RemindersPanel.css';
 // with concrete design tokens from the Design Tokens Appendix. Every mutation (create /
 // complete-as-cancel) goes through the normal WS trigger-command path so the terminal stays
 // the single source of truth for answers and confirmations.
+//
+// 2026-08-12 audit: (a) dateless TODOs — typing "call the dentist" (no time at all) creates
+// a `type: 'todo'` reminder that lives in the No Date view and never fires; (b) the views
+// (Today / Upcoming / All / No Date) are now genuinely separate switchable sections per the
+// Apple Reminders/Todoist pattern — no item repeats across views.
 
 interface ReminderInfo {
   id: string;
@@ -43,11 +48,14 @@ function isOverdue(fireAt: number): boolean {
   return fireAt < Date.now();
 }
 
+type View = 'today' | 'upcoming' | 'all' | 'nodate';
+
 export function RemindersPanel({ project, onSendMessage }: RemindersPanelProps) {
   const [reminders, setReminders] = useState<ReminderInfo[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [newInput, setNewInput] = useState('');
+  const [view, setView] = useState<View>('all');
   const [lastSent, setLastSent] = useState<string | null>(null);
   const [completing, setCompleting] = useState<Set<string>>(new Set());
   const lastSentTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -81,6 +89,9 @@ export function RemindersPanel({ project, onSendMessage }: RemindersPanelProps) 
     setTimeout(fetchReminders, REFETCH_AFTER_SEND_MS);
   };
 
+  // Quick-add supports both forms: a full trigger phrase ("remind me tomorrow at 9am to call
+  // the dentist") OR bare text ("call the dentist") — bare text becomes a dateless TODO via
+  // the server's no-time path. The time is genuinely optional, not a required field.
   const handleAdd = () => {
     const trimmed = newInput.trim();
     if (!trimmed) return;
@@ -100,28 +111,34 @@ export function RemindersPanel({ project, onSendMessage }: RemindersPanelProps) 
     if (e.key === 'Enter') handleAdd();
   };
 
-  const { today, upcoming, all } = useMemo(() => {
+  const { today, upcoming, all, nodate } = useMemo(() => {
     const t: ReminderInfo[] = [];
     const u: ReminderInfo[] = [];
+    const n: ReminderInfo[] = [];
     const a: ReminderInfo[] = [];
     const todayEnd = END_OF_TODAY();
-    const now = Date.now();
     for (const r of reminders) {
-      if (r.type === 'oneshot' && r.fireAt !== null) {
+      if (r.type === 'todo' || r.fireAt === null) {
+        n.push(r);
+        continue;
+      }
+      if (r.type === 'oneshot') {
         if (r.fireAt <= todayEnd) t.push(r);
         else u.push(r);
       }
       a.push(r);
     }
-    t.sort((a, b) => (a.fireAt || 0) - (b.fireAt || 0));
-    u.sort((a, b) => (a.fireAt || 0) - (b.fireAt || 0));
-    a.sort((a, b) => {
-      const ad = a.type === 'oneshot' && a.fireAt ? a.fireAt : Infinity;
-      const bd = b.type === 'oneshot' && b.fireAt ? b.fireAt : Infinity;
-      return ad - bd;
-    });
-    return { today: t, upcoming: u, all: a };
+    t.sort((x, y) => (x.fireAt || 0) - (y.fireAt || 0));
+    u.sort((x, y) => (x.fireAt || 0) - (y.fireAt || 0));
+    a.sort((x, y) => (x.fireAt || 0) - (y.fireAt || 0));
+    n.sort((x, y) => (x.createdAt || 0) - (y.createdAt || 0));
+    return { today: t, upcoming: u, all: a, nodate: n };
   }, [reminders]);
+
+  const viewItems: Record<View, ReminderInfo[]> = {
+    today, upcoming, all, nodate,
+  };
+  const shown = viewItems[view];
 
   const SectionHeader = ({ title, count }: { title: string; count: number }) => (
     <h3 className="text-[13px] font-semibold uppercase tracking-[0.05em] flex items-center gap-2 pb-1.5 pt-4 first:pt-0"
@@ -134,6 +151,7 @@ export function RemindersPanel({ project, onSendMessage }: RemindersPanelProps) 
   const Row = ({ reminder }: { reminder: ReminderInfo }) => {
     const completingThis = completing.has(reminder.id);
     const overdue = reminder.type === 'oneshot' && reminder.fireAt !== null && isOverdue(reminder.fireAt);
+    const isTodo = reminder.type === 'todo' || reminder.fireAt === null;
     return (
       <div
         className={cn(
@@ -163,7 +181,7 @@ export function RemindersPanel({ project, onSendMessage }: RemindersPanelProps) 
           </div>
           <div className="text-[13px] mt-0.5"
             style={{ color: overdue ? 'var(--rm-red)' : 'var(--rm-label2)' }}>
-            {reminder.label}
+            {isTodo ? 'No date' : reminder.label}
             {reminder.projectId !== project?.id && reminder.projectName && (
               <span className="opacity-70"> · {reminder.projectName}</span>
             )}
@@ -190,6 +208,16 @@ export function RemindersPanel({ project, onSendMessage }: RemindersPanelProps) 
     <div className="border-b mx-2" style={{ borderColor: 'var(--rm-sep)', ...style }} />
   );
 
+  const tabBtn = (v: View, label: string, count: number) => (
+    <button
+      onClick={() => setView(v)}
+      className={cn('px-2.5 py-1.5 rounded-lg text-[12px] font-semibold transition-colors', view === v ? 'text-white' : 'opacity-60 hover:opacity-90')}
+      style={{ backgroundColor: view === v ? 'var(--rm-blue)' : 'transparent' }}
+    >
+      {label} <span className="opacity-70">{count}</span>
+    </button>
+  );
+
   return (
     <div className="reminders-panel h-full overflow-y-auto p-4">
       <div className="max-w-2xl mx-auto">
@@ -211,7 +239,7 @@ export function RemindersPanel({ project, onSendMessage }: RemindersPanelProps) 
           <p className="text-xs mb-3" style={{ color: 'var(--rm-red)' }}>{error}</p>
         )}
 
-        {/* New reminder input row */}
+        {/* New reminder input row — time is optional: bare text becomes a dateless todo */}
         <div className="flex items-center gap-2 px-2 py-1 min-h-[44px] rounded-[10px] mb-2"
           style={{ backgroundColor: 'var(--rm-group-bg)' }}>
           <Plus size={18} style={{ color: 'var(--rm-blue)', opacity: 0.5, marginLeft: 2 }} />
@@ -219,7 +247,7 @@ export function RemindersPanel({ project, onSendMessage }: RemindersPanelProps) 
             value={newInput}
             onChange={(e) => setNewInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="New reminder — e.g. tomorrow at 9am to call the dentist"
+            placeholder="New reminder — e.g. call the dentist, or tomorrow at 9am to call the dentist"
             className={inputCls}
             style={{ color: 'var(--rm-label)' }}
           />
@@ -232,52 +260,33 @@ export function RemindersPanel({ project, onSendMessage }: RemindersPanelProps) 
           </div>
         )}
 
-        {/* Sectioned list */}
+        {/* View switcher — separate sections, no item repeats across views */}
+        <div className="flex gap-1 mb-3 rounded-lg p-1" style={{ backgroundColor: 'var(--rm-group-bg)' }}>
+          {tabBtn('today', 'Today', today.length)}
+          {tabBtn('upcoming', 'Upcoming', upcoming.length)}
+          {tabBtn('all', 'All', all.length)}
+          {tabBtn('nodate', 'No Date', nodate.length)}
+        </div>
+
         {reminders.length === 0 && !loading ? (
           <div className="text-center py-10 text-[15px]" style={{ color: 'var(--rm-label2)' }}>
             No reminders yet. Add one above or type <code className="text-[13px]" style={{ color: 'var(--rm-blue)' }}>remind me tomorrow at 9am to renew my license</code> in chat.
           </div>
+        ) : shown.length === 0 ? (
+          <div className="text-center py-8 text-[14px]" style={{ color: 'var(--rm-label2)' }}>
+            Nothing in {view === 'nodate' ? 'No Date' : view[0].toUpperCase() + view.slice(1)}.
+          </div>
         ) : (
           <div className="rounded-[12px] overflow-hidden" style={{ backgroundColor: 'var(--rm-group-bg)' }}>
-            {today.length > 0 && (
-              <>
-                <div className="px-3">
-                  <SectionHeader title="Today" count={today.length} />
-                </div>
-                {today.map((r) => (
-                  <div key={r.id}>
-                    <Row reminder={r} />
-                    {sectionSep()}
-                  </div>
-                ))}
-              </>
-            )}
-            {upcoming.length > 0 && (
-              <>
-                <div className="px-3">
-                  <SectionHeader title="Upcoming" count={upcoming.length} />
-                </div>
-                {upcoming.map((r) => (
-                  <div key={r.id}>
-                    <Row reminder={r} />
-                    {sectionSep()}
-                  </div>
-                ))}
-              </>
-            )}
-            {all.length > 0 && (
-              <>
-                <div className="px-3">
-                  <SectionHeader title="All" count={all.length} />
-                </div>
-                {all.map((r, i) => (
-                  <div key={r.id}>
-                    <Row reminder={r} />
-                    {i < all.length - 1 && sectionSep()}
-                  </div>
-                ))}
-              </>
-            )}
+            <div className="px-3">
+              <SectionHeader title={view === 'nodate' ? 'No Date' : view[0].toUpperCase() + view.slice(1)} count={shown.length} />
+            </div>
+            {shown.map((r, i) => (
+              <div key={r.id}>
+                <Row reminder={r} />
+                {i < shown.length - 1 && sectionSep()}
+              </div>
+            ))}
           </div>
         )}
 
