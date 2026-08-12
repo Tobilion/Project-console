@@ -112,6 +112,14 @@ export const PRE_SEMANTIC_OVERRIDES = [
   { intent: 'pdf.extract_pages', pattern: /\bextract\b(?=[\s\S]*\b(?:pdfs?|pdf\s+files?|[\w.-]+\.pdf)\b)(?=[\s\S]*\bpages?\b)/i },
   { intent: 'pdf.extract_text', pattern: /\bextract\b(?=[\s\S]*\b(?:pdfs?|pdf\s+files?|[\w.-]+\.pdf)\b)(?=[\s\S]*\btext\b)/i },
   { intent: 'pdf.watermark', pattern: /\b(?:watermark|stamp)\b(?=[\s\S]*\b(?:pdfs?|pdf\s+files?|[\w.-]+\.pdf)\b)/i },
+  // Phase 4 (2026-08-12, probe-verified with real embeddings): "remind me about the meeting"
+  // drifted onto project.context.structure ("about the meeting" reads like a project
+  // overview ask) and "remind me what time it is" drifted onto chit-chat status — the
+  // "remind me" prefix carries the intent, but the trailing nouns hijack the vector. A
+  // leading "remind me" is unambiguous in this app's domain — it is always a reminder
+  // request, and the create handler asks for the when/what it's missing. Deliberately
+  // anchored to the start; "set a reminder" shapes verified routing correctly without it.
+  { intent: 'system.reminders.create', pattern: /^remind\s+me\b/i },
 ];
 
 /**

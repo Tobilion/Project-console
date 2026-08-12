@@ -83,11 +83,48 @@ function deliverResult(schedule, text) {
 /**
  * Run one schedule fire. Marks the schedule fired immediately (before the async work) so
  * the tick can never double-fire while a task waits in the queue; the actual run goes
- * through taskQueue to stay off the chat-turn path.
+ * through taskQueue to stay off the chat-turn path. Phase 4: reminders are deliberately
+ * NOT queued or re-matched — they are plain text with nothing to validate, so they deliver
+ * synchronously (a single ws.send, trivially cheap on the tick).
  */
 export function fireSchedule(schedule) {
   markFired(schedule.id);
+  if (schedule.kind === 'reminder') {
+    deliverReminder(schedule);
+    return;
+  }
   enqueueTask(schedule.projectId, `schedule:${schedule.intentId}`, () => runScheduled(schedule));
+}
+
+/**
+ * Deliver a fired reminder: prefer the creating project's live session (web or CLI — both
+ * appear in the registry), else ANY live session (reminders are personal, not project
+ * assets), else the schedule log. Delivery rides the connection's intercepted ws.send, so
+ * it renders AND persists exactly like a typed answer.
+ */
+function deliverReminder(schedule) {
+  const text = `🔔 Reminder ("${schedule.label}"): ${schedule.text}`;
+  let target = null;
+  for (const [ws, ctx] of connectionRegistry) {
+    if (ctx.activeProjectId === schedule.projectId && ws.readyState === 1) {
+      target = ws;
+      break;
+    }
+  }
+  if (!target) {
+    for (const [ws, ctx] of connectionRegistry) {
+      if (ctx.activeProjectId && ws.readyState === 1) {
+        target = ws;
+        break;
+      }
+    }
+  }
+  if (target) {
+    target.send(JSON.stringify({ type: 'answer', data: text }));
+    return 'connected session';
+  }
+  appendScheduleLog(`🔔 Reminder (${schedule.projectName || schedule.projectId}): "${schedule.text}" — ${schedule.label}`);
+  return 'schedule log';
 }
 
 async function runScheduled(schedule) {

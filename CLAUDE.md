@@ -349,13 +349,14 @@ npm run lint    # tsc --noEmit
   Eligible from every workspace type — deliberately NOT in WORKSPACE_DEV_ONLY_INTENTS.
 - `server/toolPanelRegistry.js` + `server/routes/toolPanelRoutes.js` — Phase 1.5 (2026-08-11,
   shared interactive Tool Panel architecture): the server-driven interactive-tools registry
-  (`TOOL_PANELS`: calculator, pdf-tools — `getToolPanels()`/`getToolPanel()`, REST
+  (`TOOL_PANELS`: calculator, pdf-tools, reminders — `getToolPanels()`/`getToolPanel()`, REST
   `GET /api/tool-panels` mounted in server/index.js). PDF Tools is a real panel since Phase 3
-  (see pdfKit.js entry below); Calculator is still a placeholder (Phase 6 fills it in). Wire
+  (see pdfKit.js entry below); Reminders is a real panel since Phase 4 (see builtinReminders.js);
+  Calculator is still a placeholder (Phase 6 fills it in). Wire
   contract: intent-data entries carry an `opensPanel` tag (see
   `server/intents/toolPanelIntents.js` + pdfIntents.js), and the opener handlers in
   `server/wsHandlers/builtinTools.js` (`system.tools.open_calculator` /
-  `system.tools.open_pdf_tools`, registered in BUILTIN_INTENTS, NOT dev-only) send the normal
+  `system.tools.open_pdf_tools` / `system.tools.open_reminders`, registered in BUILTIN_INTENTS, NOT dev-only) send the normal
   `answer` message with an ADDITIVE `openPanel` field — no new WS type, no protocol change.
   The answer text is always CLI-usable (calculator handler also sends `suggestions` chips
   ["calculate 15% of 80","calculate 340 / 4"]; the pdf.* handlers send the operation GUIDE
@@ -367,7 +368,7 @@ npm run lint    # tsc --noEmit
   can't steal the documented "run the calculation" drift, plus the pdf-verb + pdf-mention
   rules below.
 - Frontend: `src/components/ToolsPanel.tsx` (card grid → dedicated panel view with a back
-  button — renders `PdfToolsPanel` for 'pdf-tools', placeholder for anything else),
+  button — renders `PdfToolsPanel` for 'pdf-tools', `RemindersPanel` for 'reminders', placeholder for anything else),
   `useConsole.ts` toolPanel state cluster (`toolsOpen`/`activeToolPanel`/
   `toolPanels` + `fetchToolPanels`), `wsMessageCases.ts` answerCase reads `payload.openPanel`
   and opens the panel, App.tsx Tools view (header Tools button only when a General-workspace
@@ -436,6 +437,29 @@ npm run lint    # tsc --noEmit
   send renders AND persists like a typed answer), else appended to `data/schedule-log.md`
   (400-line cap) for `review schedule log`. `initScheduler()` is called from
   `server/index.js` after project discovery (loadSchedules before any connection can create).
+- `server/wsHandlers/builtinReminders.js` + `server/schedules/reminderParser.js` +
+  `server/intents/reminderIntents.js` — Phase 4 (2026-08-12): personal reminders
+  (`server/intentsData.js` merges REMINDER_INTENTS; registered in BUILTIN_INTENTS, NOT in
+  WORKSPACE_DEV_ONLY_INTENTS — reminders are personal, usable from any project).
+  `reminderParser.js` parses free-form dates via chrono-node (one-shots) + its own
+  weekday/daily/interval branches (recurrence TYPE before chrono, since scheduler's isDue
+  needs the type); `reminderHandlers` create/list/cancel `kind: 'reminder'` schedules in the
+  SAME scheduleStore. Delivery is project-session → any-session → schedule log (deliverReminder
+  in scheduleFire.js, synchronous — reminders are plain text, never queued/re-matched, so they
+  can't drift into a mutating intent). Cancel accepts BOTH `cancel reminder s8` and bare
+  numbers (`cancel reminder 8` — normalized with a `/^\d+$/` → `s`-prefix rewrite in the
+  handler; a bare number is what users naturally type after reading the list). Verified live
+  2026-08-12: create→fire→deliver-to-creating-session→remove runs green end-to-end (fire due
+  at fireAt, delivered on the next 15s tick, the schedule removed after), CLI-parity checks
+  pass, and no-session fires land in schedule-log.md. Known observation: the first
+  embedding-staged match after a server boot can block the event loop ~30–45s (warm-up; the
+  reminder create shapes triggered by pre-semantic routes stay fast). The Reminders panel
+  (registered in `server/toolPanelRegistry.js`, rendered by `src/components/RemindersPanel.tsx`)
+  is a dedicated Apple Reminders-style sectioned list (Today/Upcoming/All); `GET
+  /api/reminders` (`server/routes/reminderRoutes.js`, mounted in server/index.js) serves the
+  read-only list. Mutations (create/complete-as-cancel) use the normal WS trigger-command path
+  so confirmations and the terminal stay the single source of truth. `system.tools.open_reminders`
+  (builtinTools.js) opens the panel and lists current reminders as plain text for CLI parity.
 - `server/notify.js` + `server/notify/` — Phase 2 (2026-08-10): push notifications beyond the chat.
   Rules persist to gitignored `data/notifications.json` (webhook URLs are bearer secrets,
   deliberately NOT in the git-tracked `data/user-profile.json`); everything defaults OFF — zero
@@ -983,6 +1007,14 @@ time/date/calculate rows, 92/92).
    95/95 (baseline 94/94 + 1 documentCount/DOCUMENT_EXTS row); check-intents unchanged at
    1/5/82 (the five pdf intents added no near-dups); check-ws-cases 118/118 unchanged (no new
    WS types — openPanel stays an additive answer field); check-tools 154/154 unchanged.
+   Phase 4 (2026-08-12): check-handlers 120/120 (baseline 108/108 + 12 rows — 11 REMINDERS
+   dispatch + parse asserts + 1 open_reminders opener dispatch row incl. openPanel assertion
+   on the create-failure reply); check-matcher 219/221 (baseline 200/201 + 18 REMINDERS rows
+   + 2 new open-reminders opener routing rows — same TWO PRE-EXISTING PDF drifts on "extract
+   the archive" and one other; the open_reminders rows both routed correctly); check-intents
+   unchanged at 1/5/82 (the open_reminders examples and opensPanel metadata added no near-dups);
+   check-ws-cases 118/118 unchanged (no new WS types); check-docs 49/49 (+1 reminders catalog
+   entry, README rows synced).
    Run the relevant battery after ANY edit to the corresponding module.
 - **editFile** tolerates whitespace differences (normalized line-range fallback) but not
   wrong wording; on total failure the error names both attempts and tells the caller to

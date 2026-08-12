@@ -5,7 +5,7 @@
 // broken schedule can never kill the loop; cadence is lastFiredAt-based, so a restart mid-
 // interval never double-fires and a freshly created schedule waits a full period.
 
-import { loadSchedules, getSchedules, markFired } from './scheduleStore.js';
+import { loadSchedules, getSchedules, markFired, removeScheduleById } from './scheduleStore.js';
 import { fireSchedule } from './scheduleFire.js';
 import { watchProjectChanges } from '../fileWatcher.js';
 import { state } from '../state.js';
@@ -26,6 +26,13 @@ function dailyAtMs(schedule) {
   return d.getTime();
 }
 
+function weeklyAtMs(schedule) {
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate(), schedule.hour, schedule.minute, 0, 0);
+  const daysAhead = (schedule.weekday - today.getDay() + 7) % 7;
+  return today.getTime() + daysAhead * 24 * 60 * 60 * 1000;
+}
+
 function isDue(schedule, now) {
   if (schedule.type === 'interval') {
     return now - (schedule.lastFiredAt || schedule.createdAt) >= schedule.everyMs;
@@ -35,6 +42,15 @@ function isDue(schedule, now) {
     // today's occurrence — a schedule created after today's HH:MM waits for tomorrow.
     return now >= dailyAtMs(schedule) && (schedule.lastFiredAt || 0) < dailyAtMs(schedule);
   }
+  if (schedule.type === 'weekly') {
+    // Phase 4: same occurrence semantics as daily, for "every friday at 5pm" reminders.
+    const occ = weeklyAtMs(schedule);
+    return now >= occ && (schedule.lastFiredAt || 0) < occ;
+  }
+  if (schedule.type === 'oneshot') {
+    // Phase 4: fire once at the parsed instant; the tick removes the schedule afterwards.
+    return now >= (schedule.fireAt || 0) && (schedule.lastFiredAt || 0) < (schedule.fireAt || 0);
+  }
   return false; // file-save / git-commit are event-driven, see handleProjectFsEvent
 }
 
@@ -42,7 +58,10 @@ function tick() {
   const now = Date.now();
   for (const schedule of getSchedules()) {
     try {
-      if (isDue(schedule, now)) fireSchedule(schedule);
+      if (isDue(schedule, now)) {
+        fireSchedule(schedule);
+        if (schedule.type === 'oneshot') removeScheduleById(schedule.id);
+      }
     } catch (err) {
       console.error(`[scheduler] fire failed for schedule ${schedule.id}:`, err.message);
     }

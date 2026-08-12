@@ -8,6 +8,7 @@ import { diagnosticsHandlers } from './builtinDiagnostics.js';
 import { generalFileHandlers } from './builtinGeneralFiles.js';
 import { toolsHandlers } from './builtinTools.js';
 import { pdfHandlers } from './builtinPdfTools.js';
+import { reminderHandlers } from './builtinReminders.js';
 
 // Phase 10 (2026-08-04, splitting builtinIntents.js into per-domain leaf modules): this file
 // is now a pure orchestrator — every branch body lives in one of the domain modules
@@ -27,6 +28,7 @@ const handlers = {
   ...generalFileHandlers,
   ...toolsHandlers,
   ...pdfHandlers,
+  ...reminderHandlers,
 };
 
 /**

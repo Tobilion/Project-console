@@ -433,6 +433,43 @@ const BATTERIES = [
       ['split the project into parts', 'BUILTIN=project.knowledge.architecture'],
     ],
   },
+  {
+    // Phase 4 (2026-08-12): personal reminders. The create shapes are embedding-driven (no
+    // pre-semantic override — "remind me" is a distinctive verb, probe-verified); the list
+    // and cancel shapes must not drift to the schedule admin tier (which is pre-matcher and
+    // answers "schedule/list schedules/remove schedule" shapes directly, so no conflict).
+    name: 'REMINDERS (Phase 4 reminder intents)',
+    items: [
+      ['remind me tomorrow at 9am to renew my license', 'BUILTIN=system.reminders.create'],
+      ['remind me in 3 days to follow up', 'BUILTIN=system.reminders.create'],
+      ['remind me every friday at 5pm to call the accountant', 'BUILTIN=system.reminders.create'],
+      ['remind me daily at 9am to drink water', 'BUILTIN=system.reminders.create'],
+      ['remind me to water the plants at 8pm', 'BUILTIN=system.reminders.create'],
+      ['remind me at 7pm to take out the trash', 'BUILTIN=system.reminders.create'],
+      ['remind me about the meeting', 'BUILTIN=system.reminders.create'],
+      ['set a reminder for friday at 5pm to pay rent', 'BUILTIN=system.reminders.create'],
+      ['set a reminder to call the dentist tomorrow at 10am', 'BUILTIN=system.reminders.create'],
+      ['list my reminders', 'BUILTIN=system.reminders.list'],
+      ['show my reminders', 'BUILTIN=system.reminders.list'],
+      ['what reminders do i have', 'BUILTIN=system.reminders.list'],
+      ['cancel reminder s1', 'BUILTIN=system.reminders.cancel'],
+      ['delete reminder s3', 'BUILTIN=system.reminders.cancel'],
+      ['remove reminder s2', 'BUILTIN=system.reminders.cancel'],
+      // Phase 4 panel opener: these phrases must route to the opener so the web client
+      // opens the Reminders panel (carried via openPanel on the answer, not tested here).
+      ['open reminders', 'BUILTIN=system.tools.open_reminders'],
+      ['open the reminders panel', 'BUILTIN=system.tools.open_reminders'],
+      // Guards: the schedule-admin tier is pre-matcher (the live server answers
+      // "schedule every 10 minutes ..." there, before the matcher ever sees it), so the
+      // harness can only pin what the RAW matcher does with the bare command; the reminder
+      // pin above keeps "remind me what time it is" on the create handler (which asks for
+      // the when) instead of drifting to status, and plain "what time is it" keeps its
+      // chit-chat route.
+      ['schedule every 10 minutes "git status"', 'BUILTIN=system.chit_chat.git_status'],
+      ['remind me what time it is', 'BUILTIN=system.reminders.create'], // create handler asks for a when
+      ['what time is it', 'BUILTIN=system.chit_chat.time'],
+    ],
+  },
 ];
 
 await semanticMatcher.initialize();

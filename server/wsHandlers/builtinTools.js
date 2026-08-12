@@ -1,5 +1,6 @@
 import { TOOL_PANEL_INTENTS } from '../intents/toolPanelIntents.js';
 import { getToolPanel } from '../toolPanelRegistry.js';
+import { getSchedules } from '../schedules/scheduleStore.js';
 
 // Phase 1.5 (UPGRADE-ROADMAP.md, 2026-08-11): chat-side openers for the shared interactive tool
 // panels. When a matched intent carries an `opensPanel` tag (see toolPanelIntents.js), the
@@ -25,6 +26,19 @@ export const toolsHandlers = {
     ws.send(JSON.stringify({
       type: 'answer',
       data: `The ${panel.name} is a web-UI panel where you drop a file and pick an operation — its tools are filled in during a later update. There is no terminal-native equivalent of a file-drop grid, so the PDF operations keep working as plain chat trigger commands once they ship.`,
+      openPanel: panel.id,
+    }));
+  },
+  'system.tools.open_reminders': async (ws, action) => {
+    const panel = getToolPanel(TOOL_PANEL_INTENTS[action].opensPanel);
+    if (!panel) return false;
+    const reminders = getSchedules().filter((s) => s.kind === 'reminder');
+    const listText = reminders.length
+      ? reminders.map((s, i) => `${i + 1}. **${s.id}** — ${s.text} (${s.label})`).join('\n')
+      : '(none set)';
+    ws.send(JSON.stringify({
+      type: 'answer',
+      data: `The ${panel.name} panel is an interactive web-UI list (Today / Upcoming / All). From chat — including the CLI — the same features work as plain commands.\n\nCurrent reminders:\n${listText}\n\nCreate: \`remind me tomorrow at 9am to renew my license\` · List: \`list my reminders\` · Cancel: \`cancel reminder <id>\``,
       openPanel: panel.id,
     }));
   },

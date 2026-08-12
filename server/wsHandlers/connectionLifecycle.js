@@ -57,8 +57,9 @@ function onConnection(ws) {
   };
   const origSend = ws.send.bind(ws);
   ws.send = (data) => {
+    let parsed = null;
     try {
-      const parsed = JSON.parse(typeof data === 'string' ? data : data.toString());
+      parsed = JSON.parse(typeof data === 'string' ? data : data.toString());
       if (sessionContext.currentSessionId && (parsed.type === 'answer' || parsed.type === 'error_output' || parsed.type === 'warning') && parsed.data) {
         // Flush any pending command output BEFORE the answer: executor.js streams output,
         // then sends the summary answer, then 'end' — persisting the answer first put the

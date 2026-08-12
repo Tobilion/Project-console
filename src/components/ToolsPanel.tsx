@@ -1,6 +1,7 @@
-import { Calculator, FileText, LayoutGrid, ArrowLeft } from 'lucide-react';
+import { Calculator, FileText, ListChecks, LayoutGrid, ArrowLeft } from 'lucide-react';
 import type { ToolPanelDef, Project } from '../types';
 import { PdfToolsPanel } from './PdfToolsPanel';
+import { RemindersPanel } from './RemindersPanel';
 
 // Phase 1.5 (UPGRADE-ROADMAP.md, 2026-08-11): the shared interactive "Tools" surface — a
 // card-grid launcher (icon + name + one-line description per registered tool, served by
@@ -12,6 +13,7 @@ import { PdfToolsPanel } from './PdfToolsPanel';
 const ICONS: Record<string, React.ComponentType<{ size?: number; className?: string }>> = {
   calculator: Calculator,
   'file-text': FileText,
+  'list-checks': ListChecks,
 };
 
 interface ToolsPanelProps {
@@ -42,6 +44,24 @@ export function ToolsPanel({ panels, activePanel, onOpenPanel, onClose, project,
           </div>
           <div className="flex-1 min-h-0">
             <PdfToolsPanel project={project} onSendMessage={onSendMessage} />
+          </div>
+        </div>
+      );
+    }
+    if (active.id === 'reminders') {
+      return (
+        <div className="h-full flex flex-col">
+          <div className="flex items-center gap-2 mb-3 shrink-0">
+            <button
+              onClick={() => onOpenPanel('')}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-fg-dim hover:text-fg-strong bg-scrim-faint rounded-lg border border-border-soft transition-colors"
+              title="Back to the tool grid"
+            >
+              <ArrowLeft size={14} /> Tools
+            </button>
+          </div>
+          <div className="flex-1 min-h-0">
+            <RemindersPanel project={project} onSendMessage={onSendMessage} />
           </div>
         </div>
       );

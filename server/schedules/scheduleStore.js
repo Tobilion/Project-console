@@ -38,7 +38,9 @@ export function loadSchedules() {
     if (!fs.existsSync(SCHEDULES_FILE)) return;
     const parsed = JSON.parse(fs.readFileSync(SCHEDULES_FILE, 'utf8'));
     if (parsed && Array.isArray(parsed.schedules)) {
-      schedules = parsed.schedules.filter((s) => s && typeof s.id === 'string' && typeof s.command === 'string');
+      // Phase 4: reminder-kind entries carry `text` instead of `command` — accept both
+      // so an old file (command-only) and a new one (mixed) both load cleanly.
+      schedules = parsed.schedules.filter((s) => s && typeof s.id === 'string' && (s.kind === 'reminder' ? typeof s.text === 'string' : typeof s.command === 'string'));
       idCounter = schedules.reduce((max, s) => Math.max(max, parseInt(s.id.replace(/^s/, ''), 10) || 0), 0);
     }
   } catch {
@@ -52,26 +54,33 @@ export function getSchedules(projectId) {
 }
 
 /**
- * Create a schedule. `spec` comes from scheduleParser's {ok:true} result; `command` is the
- * trigger phrase; `intentId` is the read-only intent it resolved to at creation time.
- * lastFiredAt starts at the creation time so interval schedules wait a full period before
- * their first fire and daily schedules fire at the NEXT occurrence, not immediately.
+ * Create a schedule. `spec` comes from scheduleParser's {ok:true} result (or
+ * reminderParser's for Phase 4 reminders); `command` is the trigger phrase for command
+ * schedules; `kind` defaults to 'command' and 'reminder' entries carry `text` instead.
+ * Reminder-only extras: `fireAt` (oneshot instant), `weekday` (weekly), and `firstFireAt`
+ * (interval alignment, see reminderParser) — lastFiredAt is set so the first fire lands
+ * exactly on firstFireAt for aligned intervals, else on the creation time so interval
+ * schedules wait a full period and daily/weekly schedules fire at the NEXT occurrence.
  */
-export function addSchedule({ projectId, projectName, spec, command, intentId, createdAt = Date.now() }) {
+export function addSchedule({ projectId, projectName, spec, command, text, kind = 'command', fireAt = null, weekday = null, firstFireAt = null, intentId = null, createdAt = Date.now() }) {
   const id = `s${++idCounter}`;
   const schedule = {
     id,
     projectId,
     projectName,
+    kind,
     type: spec.type,
     everyMs: spec.everyMs ?? null,
     hour: spec.hour ?? null,
     minute: spec.minute ?? null,
+    fireAt: fireAt ?? spec.fireAt ?? null,
+    weekday: weekday ?? spec.weekday ?? null,
     label: spec.label,
     command,
+    text: text ?? null,
     intentId,
     createdAt,
-    lastFiredAt: createdAt,
+    lastFiredAt: firstFireAt ? firstFireAt - spec.everyMs : createdAt,
   };
   schedules.push(schedule);
   schedulePersist();
@@ -95,6 +104,18 @@ export function markFired(id, at = Date.now()) {
   if (!schedule) return;
   schedule.lastFiredAt = at;
   schedulePersist();
+}
+
+/** Remove a schedule by id regardless of project. Used only by the scheduler for expired
+ *  oneshot reminders (a reminder is personal, not a project asset — cancel in chat goes
+ *  through removeSchedule for command schedules, and the reminder-specific cancel path in
+ *  builtinReminders.js also uses this, per the Phase 4 decision documented in CLAUDE.md). */
+export function removeScheduleById(id) {
+  const idx = schedules.findIndex((s) => s.id === id);
+  if (idx === -1) return null;
+  const [removed] = schedules.splice(idx, 1);
+  schedulePersist();
+  return removed;
 }
 
 export function getScheduleById(id) {

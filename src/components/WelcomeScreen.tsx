@@ -2,7 +2,7 @@ import React from 'react';
 import { TextScramble } from './TextScramble';
 import { BentoGrid } from './BentoGrid';
 import { Project, AIStatus } from '../types';
-import { Brain, Cpu, HardDrive, FolderSearch, Code, Zap, MessageSquare, BookOpen, Check, ChevronLeft, ChevronRight, X, Sparkles } from 'lucide-react';
+import { Brain, Cpu, HardDrive, FolderSearch, Code, Zap, MessageSquare, BookOpen, Check, ChevronLeft, ChevronRight, X, Sparkles, LayoutGrid } from 'lucide-react';
 
 interface WelcomeScreenProps {
   projects: Project[];
@@ -34,6 +34,11 @@ const TOUR_STEPS = [
     icon: <Brain size={28} />,
     title: 'AI Assistant',
     body: 'Toggle AI mode on for natural-language conversations: ask questions about a project\'s code, read files, write new ones, and run commands. Every write or risky action asks for your approval first — the AI never acts without your say-so.',
+  },
+  {
+    icon: <LayoutGrid size={28} />,
+    title: 'Tools Panel',
+    body: 'Click the Tools button in the header (or type "open reminders"/"open pdf tools" in chat) for interactive panels. PDF Tools, Reminders, and others as they ship live behind the same card grid — one surface for every utility the console offers.',
   },
   {
     icon: <Check size={28} />,
@@ -139,7 +144,7 @@ export function WelcomeScreen({ projects, activeProject, ollamaStatus, aiEnabled
                   {TOUR_STEPS[tourStep - 1].icon}
                 </div>
                 <div className="text-xs text-fg-dim">
-                  Step {tourStep} of 4
+                  Step {tourStep} of {TOUR_STEPS.length}
                 </div>
               </div>
               <button onClick={() => setTourStep(0)} className="p-1 text-fg-dim hover:text-fg-muted transition-colors">
@@ -154,8 +159,8 @@ export function WelcomeScreen({ projects, activeProject, ollamaStatus, aiEnabled
 
             <div className="flex items-center justify-between px-6 pb-6 pt-2">
               <div className="flex gap-1.5">
-                {[1, 2, 3, 4].map(i => (
-                  <div key={i} className={`w-2 h-2 rounded-full transition-colors ${i === tourStep ? 'bg-[#00d4a3]' : 'bg-panel-strong'}`} />
+                {TOUR_STEPS.map((_, i) => (
+                  <div key={i} className={`w-2 h-2 rounded-full transition-colors ${i + 1 === tourStep ? 'bg-[#00d4a3]' : 'bg-panel-strong'}`} />
                 ))}
               </div>
               <div className="flex items-center gap-2">
@@ -164,7 +169,7 @@ export function WelcomeScreen({ projects, activeProject, ollamaStatus, aiEnabled
                     <ChevronLeft size={14} /> Back
                   </button>
                 )}
-                {tourStep < 4 ? (
+                {tourStep < TOUR_STEPS.length ? (
                   <button onClick={() => setTourStep(s => s + 1)} className="flex items-center gap-1.5 px-4 py-2 bg-[#00d4a3]/20 text-[#00d4a3] rounded-lg text-xs font-bold tracking-wider uppercase hover:bg-[#00d4a3]/30 transition-colors">
                     Next <ChevronRight size={14} />
                   </button>

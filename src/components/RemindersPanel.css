@@ -1,0 +1,23 @@
+/* Phase 4 Reminders panel — Apple Reminders design reference + Design Tokens Appendix.
+   Scoped under .reminders-panel so no other component picks up these token overrides. */
+.reminders-panel {
+  --rm-bg: #000000;
+  --rm-group-bg: #1C1C1E;
+  --rm-label: #FFFFFF;
+  --rm-label2: rgba(235, 235, 245, 0.6);
+  --rm-blue: #0A84FF;
+  --rm-sep: #545458;
+  --rm-gray4: #48484A;
+  --rm-red: #FF453A;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif;
+}
+:root[data-theme="light"] .reminders-panel {
+  --rm-bg: #F2F2F7;
+  --rm-group-bg: #FFFFFF;
+  --rm-label: #000000;
+  --rm-label2: rgba(60, 60, 67, 0.6);
+  --rm-blue: #007AFF;
+  --rm-sep: rgba(60, 60, 67, 0.29);
+  --rm-gray4: #D1D1D6;
+  --rm-red: #FF3B30;
+}

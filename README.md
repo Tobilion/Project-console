@@ -28,16 +28,23 @@
 
 ### Tools panels (interactive web UI)
 
-- A **Tools** button (visible when a general-mode project is active) opens a card grid of interactive tools — Calculator and PDF Tools today, more later. Clicking a card opens that tool's dedicated panel in the same space the chat/dashboard use; no modal stacks.
+ - A **Tools** button (visible when a general-mode project is active) opens a card grid of interactive tools — Calculator, PDF Tools, and Reminders today, more later. Clicking a card opens that tool's dedicated panel in the same space the chat/dashboard use; no modal stacks.
 - Tools are chat-addressable too: typing `open calculator` or `open pdf tools` lands you in the same panel state as clicking the card. The chat reply stays plain text (the CLI is deliberately text-only — from a terminal, these commands answer with a short note and the equivalent chat phrasings).
 - Panels are server-driven (registry + `GET /api/tool-panels`), so a tool can later report availability (e.g. "PDF Tools disabled — missing dependency") without a frontend change.
-- The PDF Tools panel is fully interactive: project PDF list with download/"show in folder", merge with multi-select + output name, split (per page / around a page), extract text, page-range extract, and watermark — every Run button composes the same trigger command chat uses, so confirmation, checkpointing, history and `revert action <id>` all work identically from either surface.
+ - The PDF Tools panel is fully interactive: project PDF list with download/"show in folder", merge with multi-select + output name, split (per page / around a page), extract text, page-range extract, and watermark — every Run button composes the same trigger command chat uses, so confirmation, checkpointing, history and `revert action <id>` all work identically from either surface.
+ - The Reminders panel is an Apple Reminders-style sectioned list (Today / Upcoming / All); each row has a checkbox completion control and due-date/time subtitle. Adding works through a single `+ New Reminder` input row, and completing a row removes the reminder through the same chat command path.
 
 ### General-mode file tools
 
 - **`find files matching X` / `search for X in my files`** — filename + content search across the active folder (plain substring scan, no AI or embedding model required). Read-only, runs immediately.
 - **`tidy this folder` / `organize this folder by type`** — moves loose root files into category folders (Images/Documents/Spreadsheets/Archives/...), by date, or both. Shows the full move plan first, asks for confirmation, checkpoints, and journals every move so `revert action <id>` undoes it.
 - **`find duplicate files` / `find duplicates in this folder`** — hash-based duplicate groups with wasted-space estimate. Read-only; a separate confirm-gated `delete duplicates, keep newest` does the deletion (journaled, revertible).
+
+### Reminders
+
+- **`remind me tomorrow at 9am to renew my license`** / **`remind me in 3 days to follow up`** / **`remind me every friday at 5pm to call the accountant`** — sets a personal reminder with free-form natural-language dates. Fires to the open chat, or to the schedule log when nobody is connected.
+- **`list my reminders`** / **`cancel reminder s2`** — shows or cancels reminders. An interactive Reminders panel (Apple Reminders-style) is available from the Tools card grid; `open reminders` opens it directly.
+- Same delivery path as scheduled commands: creating-session preference, then any live session, then `data/schedule-log.md`. Reminders are plain text — they never execute commands, so they bypass the read-only intent check at fire time.
 
 ### PDF toolkit
 
@@ -302,6 +309,8 @@ App-global identity (name/title/custom role) edited from the ⚙ Settings modal;
 | `list schedules` / `show my schedules` | Shows the project's scheduled/triggered commands |
 | `delete schedule 2` / `remove schedule 1` | Removes a scheduled command by its list number |
 | `schedule log` | Shows the run history of scheduled commands |
+| `remind me tomorrow at 9am to renew my license` / `remind me in 3 days to follow up` | Personal reminder with natural-language dates (fires to open chat or log) |
+| `list my reminders` / `cancel reminder s2` | List or cancel a personal reminder (cancel also via the Reminders panel checkbox) |
 | `notify me when dev-server-crash` / `stop notifying me about ...` | Desktop/webhook alerts per event — all off until you opt in |
 | `webhook add <url>` / `webhook remove <url>` / `list notifications` / `test notification` | Webhook channels and verification |
 
@@ -327,7 +336,7 @@ App-global identity (name/title/custom role) edited from the ⚙ Settings modal;
 | Command | What it does |
 |---|---|
 | `help` / `what can you do` / `how do I <anything>` | Full command guide; how-do-I answers come from the command catalog with the exact phrase, the real shell command, and a suggestion chip |
-| `open calculator` / `open pdf tools` | Opens the interactive Tools panel (web UI); plain-text note + chat equivalents from the CLI |
+| `open calculator` / `open pdf tools` / `open reminders` | Opens the interactive Tools panel (web UI); plain-text note + chat equivalents from the CLI |
 | `switch to developer mode` / `switch to general mode` / `what mode am I in` | Change/check a project's workspace type (persisted in console.config.json) |
 | `switch projects` / `change projects` | The project list in the left sidebar |
 | `dashboard` / `live sites` | The Dashboard tab: project overview + live-site status |

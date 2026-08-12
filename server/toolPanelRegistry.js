@@ -20,6 +20,14 @@ export const TOOL_PANELS = [
     available: true,
     chatHint: 'merge these pdfs into combined.pdf',
   },
+{
+    id: 'reminders',
+    name: 'Reminders',
+    description: 'Personal reminders — Today / Upcoming / All, free-form natural-language dates',
+    icon: 'list-checks',
+    available: true,
+    chatHint: 'remind me tomorrow at 9am to renew my license',
+  },
 ];
 
 export function getToolPanels() {

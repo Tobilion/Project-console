@@ -17,4 +17,10 @@ export const TOOL_PANEL_INTENTS = {
       'open pdf tools', 'open the pdf tools', 'open pdf tools panel',
     ],
   },
+  'system.tools.open_reminders': {
+    opensPanel: 'reminders',
+    examples: [
+      'open reminders', 'open the reminders', 'open reminders panel', 'open the reminders panel',
+    ],
+  },
 };

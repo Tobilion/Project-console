@@ -41,6 +41,8 @@ const { diagnosticsHandlers } = await import(pathToFileURL(base + 'wsHandlers/bu
 const { generalFileHandlers, performTidy, planDuplicateDeletes, performDuplicateDeletes, extractFindQuery } = await import(pathToFileURL(base + 'wsHandlers/builtinGeneralFiles.js').href);
 const { toolsHandlers } = await import(pathToFileURL(base + 'wsHandlers/builtinTools.js').href);
 const { pdfHandlers } = await import(pathToFileURL(base + 'wsHandlers/builtinPdfTools.js').href);
+const { reminderHandlers } = await import(pathToFileURL(base + 'wsHandlers/builtinReminders.js').href);
+const { parseReminderInput } = await import(pathToFileURL(base + 'schedules/reminderParser.js').href);
 const {
   parsePdfNames, parsePdfOutput, parsePageSpec, extractWatermarkText,
   resolvePdfInput, listPdfFiles, mergePdfs, extractPages, watermarkPdf,
@@ -64,7 +66,7 @@ function eq(label, got, expect) {
   else if (!ok) console.log(`  FAIL ${label}\n    expected: ${e}\n    got:      ${g}`);
 }
 
-const merged = { ...gitHandlers, ...chitChatHandlers, ...fileNpmHandlers, ...projectKnowledgeHandlers, ...projectContextHandlers, ...projectActionHandlers, ...diagnosticsHandlers, ...generalFileHandlers, ...toolsHandlers, ...pdfHandlers };
+const merged = { ...gitHandlers, ...chitChatHandlers, ...fileNpmHandlers, ...projectKnowledgeHandlers, ...projectContextHandlers, ...projectActionHandlers, ...diagnosticsHandlers, ...generalFileHandlers, ...toolsHandlers, ...pdfHandlers, ...reminderHandlers };
 const handlerKeys = Object.keys(merged).sort();
 const builtinKeys = [...BUILTIN_INTENTS].sort();
 const intentKeys = Object.keys(INTENTS).sort();
@@ -185,6 +187,10 @@ eq('tools leaf: open_calculator attaches chat-command chips', ws.sent[1].type ==
 sent.length = 0;
 await handleBuiltinIntent(ws, 'system.tools.open_pdf_tools', 'open pdf tools', proj, {});
 eq('tools leaf: open_pdf_tools answers with openPanel + CLI-usable text', ws.sent.length === 1 && ws.sent[0].type === 'answer' && ws.sent[0].openPanel === 'pdf-tools' && /web-UI panel/.test(ws.sent[0].data), true);
+
+sent.length = 0;
+await handleBuiltinIntent(ws, 'system.tools.open_reminders', 'open reminders', proj, {});
+eq('tools leaf: open_reminders answers with openPanel + CLI-usable reminder list', ws.sent.length === 1 && ws.sent[0].type === 'answer' && ws.sent[0].openPanel === 'reminders' && /Current reminders/.test(ws.sent[0].data), true);
 
 sent.length = 0;
 const unknown = await handleBuiltinIntent(ws, 'no_such_intent', 'x', proj, {});
@@ -385,6 +391,39 @@ eq('pdf journal: created files journaled as file_write existed:false', createdAc
 const revertOne = await revertAction(pdfRoot, createdActions[0].id);
 eq('pdf revert: revert deletes the created output', revertOne.ok === true && !fs.existsSync(path.join(pdfRoot, createdActions[0].path)), true);
 fs.rmSync(pdfRoot, { recursive: true, force: true });
+
+// --- REMINDERS (Phase 4, 2026-08-12) ------------------------------------------
+// Dispatch against the C:/tmp/nowhere fixture: create with no parseable when answers the
+// ask-for-when guidance, list answers the empty state, cancel answers not-found — all
+// deterministic, no schedule file writes (handlers fail before touching the store).
+sent.length = 0;
+await handleBuiltinIntent(ws, 'system.reminders.create', 'remind me to stretch', proj, {});
+eq('reminder leaf: create without a when asks for one + opens panel', ws.sent.length === 1 && ws.sent[0].type === 'answer' && ws.sent[0].openPanel === 'reminders' && /What should I remind you about/.test(ws.sent[0].data), true);
+sent.length = 0;
+await handleBuiltinIntent(ws, 'system.reminders.list', 'list my reminders', proj, {});
+eq('reminder leaf: list answers the empty state', ws.sent.length === 1 && ws.sent[0].type === 'answer' && /No reminders/.test(ws.sent[0].data), true);
+sent.length = 0;
+await handleBuiltinIntent(ws, 'system.reminders.cancel', 'cancel reminder s9', proj, {});
+eq('reminder leaf: cancel answers not-found', ws.sent.length === 1 && ws.sent[0].type === 'answer' && /No reminder/.test(ws.sent[0].data), true);
+
+// Parse-contract unit shapes (pure, no store interaction; the recurrence types are the
+// machine-independent part — fireAt/firstFireAt instants are only asserted as future).
+const rOneshot = parseReminderInput('remind me tomorrow at 9am to renew my license');
+eq('reminder parse: oneshot shape', rOneshot.ok === true && rOneshot.type === 'oneshot' && rOneshot.text === 'renew my license' && typeof rOneshot.fireAt === 'number' && rOneshot.fireAt > Date.now(), true);
+const rWeekly = parseReminderInput('remind me every friday at 5pm to call the accountant');
+eq('reminder parse: weekly shape', rWeekly.ok === true && rWeekly.type === 'weekly' && rWeekly.weekday === 5 && rWeekly.hour === 17 && rWeekly.minute === 0 && rWeekly.text === 'call the accountant', true);
+const rDaily = parseReminderInput('remind me daily at 9am to drink water');
+eq('reminder parse: daily shape', rDaily.ok === true && rDaily.type === 'daily' && rDaily.hour === 9 && rDaily.minute === 0 && rDaily.text === 'drink water', true);
+const rInterval = parseReminderInput('remind me every 2 days at 8am to do pushups');
+eq('reminder parse: interval with aligned first fire', rInterval.ok === true && rInterval.type === 'interval' && rInterval.everyMs === 2 * 24 * 60 * 60 * 1000 && rInterval.text === 'do pushups' && typeof rInterval.firstFireAt === 'number' && rInterval.firstFireAt > Date.now(), true);
+const rTextFirst = parseReminderInput('remind me to water the plants at 8pm');
+eq('reminder parse: text-first order', rTextFirst.ok === true && rTextFirst.type === 'oneshot' && rTextFirst.text === 'water the plants' && rTextFirst.fireAt > Date.now(), true);
+const rNoWhen = parseReminderInput('remind me about the meeting');
+eq('reminder parse: no when -> ask', rNoWhen.ok === false && /remind you about/.test(rNoWhen.reason), true);
+const rPast = parseReminderInput('remind me yesterday at 9am to fix it');
+eq('reminder parse: explicit past -> rejected', rPast.ok === false && /past/.test(rPast.reason), true);
+const rGarbage = parseReminderInput('remind me blahblah to do the thing');
+eq('reminder parse: unparseable when -> named error', rGarbage.ok === false && /blahblah/.test(rGarbage.reason), true);
 
 console.log(`check-handlers: ${total} checks, ${failed} failed`);
 process.exit(failed ? 1 : 0);
