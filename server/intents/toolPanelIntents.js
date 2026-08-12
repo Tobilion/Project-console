@@ -65,4 +65,10 @@ export const TOOL_PANEL_INTENTS = {
       'open documents', 'open the documents', 'open knowledge base', 'open document search',
     ],
   },
+  'system.tools.open_marketplace': {
+    opensPanel: 'marketplace',
+    examples: [
+      'open marketplace', 'open the marketplace', 'open pack marketplace', 'open the pack store',
+    ],
+  },
 };

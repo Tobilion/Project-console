@@ -105,4 +105,13 @@ export const toolsHandlers = {
       openPanel: panel.id,
     }));
   },
+  'system.tools.open_marketplace': async (ws, action) => {
+    const panel = getToolPanel(TOOL_PANEL_INTENTS[action].opensPanel);
+    if (!panel) return false;
+    ws.send(JSON.stringify({
+      type: 'answer',
+      data: `The ${panel.name} panel is an interactive web-UI grid of packs from a registry you configure. From chat — including the CLI — the same features work as plain commands: \`set pack registry <url>\` / \`browse pack registry\` / \`install pack <name> from registry\`.`,
+      openPanel: panel.id,
+    }));
+  },
 };

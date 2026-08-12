@@ -598,6 +598,13 @@ const BATTERIES = [
       ['open the knowledge base', 'BUILTIN=system.tools.open_documents'],
     ],
   },
+  {
+    name: 'MARKETPLACE (Phase 17 panel opener)',
+    items: [
+      ['open marketplace', 'BUILTIN=system.tools.open_marketplace'],
+      ['open the pack marketplace', 'BUILTIN=system.tools.open_marketplace'],
+    ],
+  },
 ];
 
 await semanticMatcher.initialize();

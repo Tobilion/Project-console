@@ -230,6 +230,10 @@ await handleBuiltinIntent(ws, 'system.tools.open_documents', 'open documents', p
 eq('tools leaf: open_documents answers with openPanel + CLI-usable text', ws.sent.length === 1 && ws.sent[0].type === 'answer' && ws.sent[0].openPanel === 'knowledge-base' && /search my documents/.test(ws.sent[0].data), true);
 
 sent.length = 0;
+await handleBuiltinIntent(ws, 'system.tools.open_marketplace', 'open marketplace', proj, {});
+eq('tools leaf: open_marketplace answers with openPanel + CLI-usable text', ws.sent.length === 1 && ws.sent[0].type === 'answer' && ws.sent[0].openPanel === 'marketplace' && /browse pack registry/.test(ws.sent[0].data), true);
+
+sent.length = 0;
 await handleBuiltinIntent(ws, 'system.chit_chat.list_commands', 'list commands', proj, {});
 eq('chit-chat leaf: list_commands answers the full catalog', ws.sent.length === 1 && ws.sent[0].type === 'answer' && /Command reference/.test(ws.sent[0].data) && /entries/.test(ws.sent[0].data), true);
 
@@ -659,6 +663,25 @@ const w5 = await handleNotifyCommand(ws, proj, 'notify me when dev-server-crash'
 eq('watch admin: existing event enable still works', w5 === true && ws.sent.length === 1 && /ON/.test(ws.sent[0].data), true);
 try { fs.unlinkSync(process.env.WATCH_RULES_FILE); } catch {}
 delete process.env.WATCH_RULES_FILE;
+
+// --- PACK REGISTRY (Phase 17, 2026-08-12) -------------------------------------
+// The network fetch itself can't be exercised in the harness (SSRF guard blocks localhost by
+// design — a real HTTPS registry is required for live testing), but the verifiable core is
+// pure: index parsing, checksum verification, and the SSRF/hostname gates.
+const { fetchPackManifest } = await import(pathToFileURL(base + 'packRegistry.js').href);
+const crypto = await import('crypto');
+const goodManifest = JSON.stringify({ tools: [{ name: 'demo', description: 'demo tool', command: 'echo hi' }] });
+const goodChecksum = crypto.createHash('sha256').update(goodManifest, 'utf-8').digest('hex');
+// Checksum match path requires a real fetch — instead assert the mismatch + URL guards, which
+// are deterministic without network:
+const badHost = await fetchPackManifest({ name: 'evil', manifestUrl: 'http://127.0.0.1/x' });
+eq('pack registry: non-HTTPS manifest URL rejected before any fetch', badHost.ok === false && /HTTPS/.test(badHost.error), true);
+const badHost2 = await fetchPackManifest({ name: 'evil2', manifestUrl: 'https://192.168.1.5/x' });
+eq('pack registry: private-host manifest URL rejected (SSRF guard)', badHost2.ok === false && /SSRF/.test(badHost2.error), true);
+const badChecksum = await fetchPackManifest({ name: 'tampered', manifestUrl: 'https://registry.example.com/pack.json', checksum: '0'.repeat(64) });
+// The fetch itself will fail (no real network in harness) — assert the fetch failure path is
+// clean, not a crash; the checksum mismatch path needs a live HTTPS fetch (flagged manual).
+eq('pack registry: unreachable manifest answers a clean error', badChecksum.ok === false && typeof badChecksum.error === 'string' && badChecksum.error.length > 0, true);
 
 console.log(`check-handlers: ${total} checks, ${failed} failed`);
 process.exit(failed ? 1 : 0);

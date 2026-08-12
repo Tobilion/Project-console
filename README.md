@@ -35,6 +35,14 @@
 - Panels are server-driven (registry + `GET /api/tool-panels`), so a tool can later report availability (e.g. "PDF Tools disabled — missing dependency") without a frontend change.
  - The PDF Tools panel is fully interactive: project PDF list with download/"show in folder", merge with multi-select + output name, split (per page / around a page), extract text, page-range extract, and watermark — every Run button composes the same trigger command chat uses, so confirmation, checkpointing, history and `revert action <id>` all work identically from either surface.
  - The Reminders panel is an Apple Reminders-style sectioned list (Today / Upcoming / All); each row has a checkbox completion control and due-date/time subtitle. Adding works through a single `+ New Reminder` input row, and completing a row removes the reminder through the same chat command path.
+ - The Pack Marketplace panel is an App Store-style browsing grid (name + description + author/version per card, Install as the primary action) for remote tool packs — see "Pack marketplace" below.
+
+### Pack marketplace
+
+- **Remote pack installation** on top of the local-file pack flow: `set pack registry <https-url>` (never defaulted — no console silently talks to a network endpoint), `browse pack registry`, `search packs for X`, and `install pack <name> from registry`.
+- All registry/manifest fetches are SSRF-guarded (public HTTPS only — localhost/private addresses rejected by the same guard as webhooks), and each manifest's sha256 is verified against the registry index's declared checksum before any preview is shown — a mismatch is refused.
+- The preview-then-confirm flow is identical to local packs (tool names/commands/risky flags shown before anything is written), and installed packs still run through the same `isSafeParamValue`/`isCommandBlocked` runtime checks at call time regardless of install source.
+- **Honesty note**: this project does not host, curate, or vet a public registry itself — a registry URL is whatever the user points it at, at their own risk (same trust model as pointing npm at a custom registry).
 
 ### General-mode file tools
 
@@ -383,6 +391,7 @@ App-global identity (name/title/custom role) edited from the ⚙ Settings modal;
 | `the theme toggle in the top bar (sun/moon)` | Dark/light switch, persists per browser |
 | `the model picker in the AI popover` | Local Ollama + cloud models (`ollama pull <name>` for new ones) |
 | `install pack <path-to-console.tools.json>` | Add custom tools from a local manifest — preview first, confirm to install |
+| `set pack registry <https-url>` / `browse pack registry` / `install pack <name> from registry` | Remote pack registry (HTTPS only, SSRF-guarded, checksum-verified) — see "Pack marketplace" above |
 | `AI mode: "remember that ..."` | Save a durable cross-session fact to .console/memory.md |
 | `chat header download icon` | Export the session as Markdown/JSON/PDF; chat-log download from the session list |
 | `how do i publish this` / `how do i install this on someone else's system` | Publish-to-npm and cross-machine install steps (see "Publishing & installing on another machine" below) |

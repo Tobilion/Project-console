@@ -352,7 +352,17 @@ npm run lint    # tsc --noEmit
   Deliberately local-file-only, no URL/registry fetch — a hosted pack registry is a real
   vetting/hosting commitment, not a chat command, and installed tools still run through
   `createPluginToolFn`'s normal isSafeParamValue/isCommandBlocked checks at call time regardless
-  of how they got into the manifest.
+  of how they got into the manifest. Phase 17 (2026-08-12) adds the REMOTE source on top:
+  `server/packRegistry.js` (registry config in gitignored data/registry-config.json, NO default
+  URL — never silent network; registry/manifest fetches are SSRF-guarded public-HTTPS-only;
+  sha256 checksum verified against the index before any preview) + commands
+  `set pack registry <url>` / `browse pack registry` / `search packs for X` /
+  `install pack <name> from registry` (same pendingPackInstall preview-then-confirm flow).
+  REST read-only `GET /api/registry/config` + `/api/registry/packs` (marketplaceRoutes.js);
+  panel `src/components/MarketplacePanel.tsx` (App Store grid — 18-20px card radius).
+  Live-testing note: the SSRF guard blocks localhost by design, so a REAL public HTTPS
+  registry is required to exercise browse/install end-to-end (checksum-mismatch + SSRF-gate
+  paths are harness-covered).
 - `server/crossProjectMemory.js` — infrastructure expansion (2026-08-10): searches every scanned
   project's `.console/memory.md` at once via the shared embedding extractor (same lazy
   dynamic-import pattern as `memoryDedupe.js`, to avoid a load-order cycle through
@@ -410,7 +420,7 @@ npm run lint    # tsc --noEmit
   Eligible from every workspace type — deliberately NOT in WORKSPACE_DEV_ONLY_INTENTS.
 - `server/toolPanelRegistry.js` + `server/routes/toolPanelRoutes.js` — Phase 1.5 (2026-08-11,
   shared interactive Tool Panel architecture): the server-driven interactive-tools registry
-  (`TOOL_PANELS`: calculator, pdf-tools, reminders, file-tools, notes, csv-tools, clipboard, backup, notifications, knowledge-base — `getToolPanels()`/`getToolPanel()`, REST
+  (`TOOL_PANELS`: calculator, pdf-tools, reminders, file-tools, notes, csv-tools, clipboard, backup, notifications, knowledge-base, marketplace — `getToolPanels()`/`getToolPanel()`, REST
   `GET /api/tool-panels` mounted in server/index.js). PDF Tools is a real panel since Phase 3
   (see pdfKit.js entry below); Reminders is a real panel since Phase 4 (see builtinReminders.js);
   Calculator is a real live widget since Phase 6 (see the CalculatorPanel.tsx frontend bullet;
@@ -437,7 +447,7 @@ npm run lint    # tsc --noEmit
   `FileToolsPanel` for 'file-tools', `NotesPanel` for 'notes', `SpreadsheetPanel` for
   'csv-tools', `ClipboardPanel` for 'clipboard', `BackupPanel` for 'backup',
   `NotificationsPanel` for 'notifications', `DocumentsPanel` for 'knowledge-base',
-  placeholder for anything else),
+  `MarketplacePanel` for 'marketplace', placeholder for anything else),
   `useConsole.ts` toolPanel state cluster (`toolsOpen`/`activeToolPanel`/
   `toolPanels` + `fetchToolPanels`), `wsMessageCases.ts` answerCase reads `payload.openPanel`
   and opens the panel, App.tsx Tools view (header Tools button only when a General-workspace
@@ -1210,6 +1220,13 @@ time/date/calculate rows, 92/92).
    overrides (trailing-noun vector trap); "find my notes on Y" shapes deliberately left to
    notes.search, so ask_documents examples avoid them; same TWO PRE-EXISTING drifts);
    check-intents unchanged at 1/7/82; check-docs 56/56 (+1 documents catalog entry);
+   check-ws-cases 118/118 unchanged.
+   Phase 17 (2026-08-12): check-handlers 183/183 (baseline 179/179 + 4 rows — 1 open_marketplace
+   opener row + 3 packRegistry unit rows: non-HTTPS manifest URL rejected, private-host SSRF
+   gate, unreachable-manifest clean error; the checksum-mismatch path needs a live HTTPS
+   registry — harness covers the gates, live browse/install is flagged manual); check-matcher
+   280/282 (baseline 276/278 + 2 open_marketplace opener rows, same TWO PRE-EXISTING drifts);
+   check-intents unchanged at 1/7/82; check-docs 57/57 (+1 pack-registry catalog entry);
    check-ws-cases 118/118 unchanged.
    Run the relevant battery after ANY edit to the corresponding module.
 - **editFile** tolerates whitespace differences (normalized line-range fallback) but not

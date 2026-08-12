@@ -84,6 +84,14 @@ export const TOOL_PANELS = [
     available: true,
     chatHint: 'search my documents for pricing',
   },
+  {
+    id: 'marketplace',
+    name: 'Pack Marketplace',
+    description: 'Browse and install tool packs from a registry you configure',
+    icon: 'store',
+    available: true,
+    chatHint: 'browse pack registry',
+  },
 ];
 
 export function getToolPanels() {

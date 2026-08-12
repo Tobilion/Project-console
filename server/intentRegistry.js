@@ -120,7 +120,7 @@ export const BUILTIN_INTENTS = new Set([
   'system.tools.open_calculator', 'system.tools.open_pdf_tools', 'system.tools.open_reminders',
   'system.tools.open_file_tools', 'system.tools.open_notes', 'system.tools.open_csv_tools',
   'system.tools.open_clipboard', 'system.tools.open_backup', 'system.tools.open_notifications',
-  'system.tools.open_documents',
+  'system.tools.open_documents', 'system.tools.open_marketplace',
   // Phase 3 (UPGRADE-ROADMAP.md, 2026-08-11): the PDF toolkit trigger intents
   // (builtinPdfTools.js). Each carries the same `opensPanel: 'pdf-tools'` tag; handlers open
   // the panel only when the input lacks parameters, and full commands execute in chat (writes

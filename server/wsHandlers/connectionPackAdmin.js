@@ -1,6 +1,7 @@
 import fs from 'fs/promises';
 import path from 'path';
 import { validateToolEntry, sanitizePermissions, MANIFEST_FILENAME } from '../pluginTools.js';
+import { getRegistryUrl, setRegistryUrl, fetchRegistryIndex, fetchPackManifest } from '../packRegistry.js';
 
 // Plugin/pack install mechanism — infrastructure expansion (2026-08-10, "new infrastructure,
 // not just more intents"). console.tools.json (pluginTools.js) was already a real per-project
@@ -57,6 +58,104 @@ async function readPackFile(resolvedPath) {
 /** "install pack <path>" / "list packs" / "pack list" — the preview half of the flow. Returns
  *  true when the input matched and was consumed. */
 export async function handlePackCommand(ws, project, lowerInput, rawInput, sessionContext) {
+  // Phase 17 (2026-08-12): remote registry commands. All fetches go through the SSRF-guarded
+  // packRegistry.js; checksums are verified before any preview; the confirm flow is identical
+  // to the local install (pendingPackInstall). No default registry URL — never silent network.
+  const setRegistryMatch = lowerInput.match(/^set\s+pack\s+registry\s+(\S+)$/);
+  if (setRegistryMatch) {
+    const url = setRegistryMatch[1];
+    if (!/^https:\/\//.test(url)) {
+      ws.send(JSON.stringify({ type: 'answer', data: 'The registry URL must be HTTPS (an http registry index would be trivially spoofable).' }));
+      ws.send(JSON.stringify({ type: 'end' }));
+      return true;
+    }
+    const ok = setRegistryUrl(url);
+    ws.send(JSON.stringify({ type: 'answer', data: ok ? `Pack registry set to \`${url}\`. Browse it with \`browse pack registry\`. (This project does not host or vet any registry — a registry URL is whatever you point it at, at your own risk, same trust model as a custom npm registry.)` : 'Could not save the registry URL.' }));
+    ws.send(JSON.stringify({ type: 'end' }));
+    return true;
+  }
+
+  if (/^browse\s+pack\s+registry$/.test(lowerInput) || lowerInput === 'browse packs' || lowerInput === 'show pack registry') {
+    const result = await fetchRegistryIndex();
+    if (result.error) {
+      ws.send(JSON.stringify({ type: 'answer', data: result.error }));
+      ws.send(JSON.stringify({ type: 'end' }));
+      return true;
+    }
+    if (result.packs.length === 0) {
+      ws.send(JSON.stringify({ type: 'answer', data: 'The registry is configured but lists no packs yet.' }));
+      ws.send(JSON.stringify({ type: 'end' }));
+      return true;
+    }
+    const rows = result.packs.map((p, i) => `${i + 1}. **${p.name}** — ${p.description || ''} (${p.author || 'unknown author'}, v${p.version || '?'})`);
+    ws.send(JSON.stringify({
+      type: 'answer',
+      data: `### Pack registry (${result.packs.length} packs)\n\n${rows.join('\n')}\n\nInstall one with \`install pack <name> from registry\`.`,
+    }));
+    ws.send(JSON.stringify({ type: 'end' }));
+    return true;
+  }
+
+  const searchPacksMatch = lowerInput.match(/^search\s+packs?\s+(?:for|matching)\s+(.+)$/);
+  if (searchPacksMatch) {
+    const q = searchPacksMatch[1].trim().toLowerCase();
+    const result = await fetchRegistryIndex();
+    if (result.error) {
+      ws.send(JSON.stringify({ type: 'answer', data: result.error }));
+      ws.send(JSON.stringify({ type: 'end' }));
+      return true;
+    }
+    const hits = result.packs.filter((p) => `${p.name} ${p.description || ''} ${p.author || ''}`.toLowerCase().includes(q));
+    if (hits.length === 0) {
+      ws.send(JSON.stringify({ type: 'answer', data: `No packs in the registry match "${q}".` }));
+      ws.send(JSON.stringify({ type: 'end' }));
+      return true;
+    }
+    const rows = hits.map((p) => `- **${p.name}** — ${p.description || ''} (${p.author || 'unknown author'}, v${p.version || '?'})`);
+    ws.send(JSON.stringify({ type: 'answer', data: `### Packs matching "${q}" (${hits.length})\n\n${rows.join('\n')}` }));
+    ws.send(JSON.stringify({ type: 'end' }));
+    return true;
+  }
+
+  const installFromRegistryMatch = rawInput.trim().match(/^install\s+pack\s+(.+?)\s+from\s+registry$/i);
+  if (installFromRegistryMatch) {
+    const name = installFromRegistryMatch[1].trim().toLowerCase();
+    const index = await fetchRegistryIndex();
+    if (index.error) {
+      ws.send(JSON.stringify({ type: 'answer', data: index.error }));
+      ws.send(JSON.stringify({ type: 'end' }));
+      return true;
+    }
+    const pack = index.packs.find((p) => p.name.toLowerCase() === name);
+    if (!pack) {
+      ws.send(JSON.stringify({ type: 'answer', data: `No pack named "${name}" in the registry — \`browse pack registry\` lists them.` }));
+      ws.send(JSON.stringify({ type: 'end' }));
+      return true;
+    }
+    const fetched = await fetchPackManifest(pack);
+    if (!fetched.ok) {
+      ws.send(JSON.stringify({ type: 'error_output', data: `${fetched.error}\n` }));
+      ws.send(JSON.stringify({ type: 'end' }));
+      return true;
+    }
+    const { tools, permissions, errors } = fetched;
+    if (tools.length === 0 && !permissions) {
+      ws.send(JSON.stringify({ type: 'answer', data: `"${fetched.name}" has nothing installable${errors.length ? ` — every entry failed validation:\n${errors.join('\n')}` : '.'}` }));
+      ws.send(JSON.stringify({ type: 'end' }));
+      return true;
+    }
+    sessionContext.pendingPackInstall = { resolvedPath: pack.manifestUrl, tools, permissions, createdAt: Date.now() };
+    let msg = `**Pack preview — "${fetched.name}" from the registry**\n\n`;
+    msg += `${tools.length} tool(s) to install:\n\n${tools.slice(0, PREVIEW_MAX_TOOLS).map(summarizeTool).join('\n')}`;
+    if (tools.length > PREVIEW_MAX_TOOLS) msg += `\n  …and ${tools.length - PREVIEW_MAX_TOOLS} more`;
+    if (permissions) msg += `\n\nAlso sets permission overrides for: ${Object.keys(permissions).join(', ')}`;
+    if (errors.length) msg += `\n\n${errors.length} entr(y/ies) skipped for failing validation:\n${errors.join('\n')}`;
+    msg += `\n\nChecksum verified against the registry index. \`risky\`-flagged tools still require confirmation every time they're actually called. Reply \`confirm install pack\` to install, or \`cancel install pack\` to discard.`;
+    ws.send(JSON.stringify({ type: 'answer', data: msg }));
+    ws.send(JSON.stringify({ type: 'end' }));
+    return true;
+  }
+
   if (lowerInput === 'list packs' || lowerInput === 'pack list' || lowerInput === 'list tools' || lowerInput === 'list custom tools') {
     const manifestPath = path.join(project.path, MANIFEST_FILENAME);
     try {
