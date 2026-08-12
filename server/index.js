@@ -21,6 +21,8 @@ import { initScheduler } from './schedules/scheduler.js';
 import { initNotifications } from './notify.js';
 import { loadAutoStart, initAutoStart } from './autoStartProjects.js';
 import { syncClipboardPolling } from './clipboardHistory.js';
+import { loadWatchRules } from './watchRules.js';
+import { initWatchRules } from './watchEngine.js';
 import { checkCollisionBaseline } from './collisions.js';
 import { checkForUpdates } from './updateChecker.js';
 import { wss, broadcast } from './wsServer.js';
@@ -42,6 +44,7 @@ import { registerClipboardRoutes } from './routes/clipboardRoutes.js';
 import { registerCalculateRoutes } from './routes/calculateRoutes.js';
 import { registerBackupRoutes } from './routes/backupRoutes.js';
 import { registerCommandDocsRoutes } from './routes/commandDocsRoutes.js';
+import { registerNotificationsRoutes } from './routes/notificationsRoutes.js';
 import { loadTuning } from './tuningStore.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -74,6 +77,7 @@ registerClipboardRoutes(app);
 registerCalculateRoutes(app);
 registerBackupRoutes(app);
 registerCommandDocsRoutes(app);
+registerNotificationsRoutes(app);
 // Tuning overrides (data/tuning.json) must be in memory before any consumer reads a knob —
 // the first Fuse build happens during semanticMatcher.initialize() a few lines below.
 loadTuning();
@@ -141,6 +145,10 @@ async function init() {
   // before any connection arrives, and defaults are all-off, so this is a no-op until the user
   // opts in via the notify/admin commands.
   initNotifications();
+
+  // Phase 15: restore file-watch notification rules and attach their folder watchers.
+  loadWatchRules();
+  initWatchRules();
 
   // Initialize semantic matcher (embedding + Fuse.js)
   await semanticMatcher.initialize().catch((err) => console.error('SemanticMatcher init failed:', err.message));

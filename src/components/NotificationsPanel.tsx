@@ -1,0 +1,200 @@
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Bell, RefreshCw, Plus, Trash2, CheckCircle2, Globe, MonitorSmartphone } from 'lucide-react';
+import { apiFetchJson } from '../utils/apiFetch';
+import { cn } from '../lib/utils';
+import type { Project } from '../types';
+
+// Phase 15 (UPGRADE-ROADMAP.md, 2026-08-12): the Notifications panel — IFTTT/Zapier-style
+// rule cards ("When <event> in <folder>, notify me"): colored icon circle per event type,
+// plain-language sentence, remove action. Add-rule form: folder + type + days threshold.
+// Every mutation sends the exact same admin trigger command over WS as typing it in chat.
+
+interface WatchRule {
+  id: string;
+  folder: string;
+  event: 'file-changed' | 'file-added' | 'folder-stale';
+  days: number | null;
+  projectName: string | null;
+  createdAt: number;
+}
+
+interface NotificationsPanelProps {
+  project: Project | null;
+  onSendMessage: (text: string) => void;
+}
+
+const POLL_MS = 10000;
+
+const EVENT_COLORS: Record<string, string> = {
+  'file-changed': '#0A84FF',
+  'file-added': '#30D158',
+  'folder-stale': '#FF9F0A',
+};
+
+const EVENT_LABEL: Record<string, string> = {
+  'file-changed': 'file changes',
+  'file-added': 'a new file appears',
+  'folder-stale': 'no changes for N days',
+};
+
+function ruleSentence(r: WatchRule): string {
+  if (r.event === 'folder-stale') {
+    return `When ${r.folder} hasn't changed in ${r.days} days, notify me`;
+  }
+  return `When ${EVENT_LABEL[r.event]} in ${r.folder}, notify me`;
+}
+
+export function NotificationsPanel({ project, onSendMessage }: NotificationsPanelProps) {
+  const [rules, setRules] = useState<WatchRule[]>([]);
+  const [events, setEvents] = useState<Record<string, boolean>>({});
+  const [desktop, setDesktop] = useState(false);
+  const [webhooks, setWebhooks] = useState<string[]>([]);
+  const [folder, setFolder] = useState('');
+  const [ruleType, setRuleType] = useState<'file-changed' | 'file-added' | 'folder-stale'>('file-changed');
+  const [days, setDays] = useState('7');
+  const [lastSent, setLastSent] = useState<string | null>(null);
+  const lastSentTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const fetchState = useCallback(async () => {
+    const data = await apiFetchJson<{ rules: WatchRule[]; events: Record<string, boolean>; desktop: boolean; webhooks: string[] }>('/api/notifications');
+    if (!data) return;
+    setRules(data.rules || []);
+    setEvents(data.events || {});
+    setDesktop(data.desktop);
+    setWebhooks(data.webhooks || []);
+  }, []);
+
+  useEffect(() => {
+    fetchState();
+    const t = setInterval(fetchState, POLL_MS);
+    return () => clearInterval(t);
+  }, [fetchState]);
+
+  const send = (text: string) => {
+    onSendMessage(text);
+    setLastSent(text);
+    if (lastSentTimer.current) clearTimeout(lastSentTimer.current);
+    lastSentTimer.current = setTimeout(() => setLastSent(null), 8000);
+    setTimeout(fetchState, 1200);
+  };
+
+  const addRule = () => {
+    if (!folder.trim()) return;
+    if (ruleType === 'folder-stale') {
+      send(`notify me if ${folder.trim()} hasn't changed in ${days.trim() || '7'} days`);
+    } else {
+      send(`notify me when ${ruleType === 'file-added' ? 'a new file appears' : 'files change'} in ${folder.trim()}`);
+    }
+    setFolder('');
+  };
+
+  const toggleEvent = (event: string, on: boolean) => {
+    send(on ? `notify me when ${event}` : `stop notifying me about ${event}`);
+  };
+
+  const cardCls = 'bg-panel rounded-xl border border-border-soft p-4';
+  const inputCls = 'text-xs bg-panel-strong border border-border-soft rounded-lg px-2.5 py-2 text-fg-strong focus:outline-none focus:border-accent/50';
+
+  return (
+    <div className="h-full overflow-y-auto p-4">
+      <div className="max-w-2xl mx-auto">
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2">
+            <div className="p-2 bg-scrim-faint rounded-lg text-accent">
+              <Bell size={16} />
+            </div>
+            <h2 className="text-sm font-semibold text-fg-strong tracking-wide uppercase">Notifications</h2>
+          </div>
+          <button onClick={fetchState} className="p-1.5 text-fg-dim hover:text-fg-strong rounded-md transition-colors" title="Refresh">
+            <RefreshCw size={15} />
+          </button>
+        </div>
+
+        {lastSent && (
+          <div className="mb-3 flex items-start gap-2 text-[11px] text-fg-muted bg-scrim-faint border border-border-soft rounded-lg p-2.5">
+            <CheckCircle2 size={13} className="text-accent mt-0.5 shrink-0" />
+            <span>Sent <code className="font-mono text-accent">{lastSent}</code> — follow the result in the chat below.</span>
+          </div>
+        )}
+
+        {/* Add-rule form */}
+        <div className={cn(cardCls, 'mb-4')}>
+          <h3 className="text-xs font-semibold text-fg-strong mb-2">Add a watch rule</h3>
+          <div className="flex flex-wrap gap-2">
+            <input
+              value={folder}
+              onChange={(e) => setFolder(e.target.value)}
+              placeholder="Folder path (e.g. C:\Users\you\Downloads)"
+              className={cn(inputCls, 'flex-1 min-w-[220px]')}
+            />
+            <select value={ruleType} onChange={(e) => setRuleType(e.target.value as typeof ruleType)} className={inputCls}>
+              <option value="file-changed">File changes</option>
+              <option value="file-added">New file appears</option>
+              <option value="folder-stale">Goes stale</option>
+            </select>
+            {ruleType === 'folder-stale' && (
+              <input
+                value={days}
+                onChange={(e) => setDays(e.target.value.replace(/[^\d]/g, ''))}
+                className={cn(inputCls, 'w-16 text-center')}
+                title="days without changes"
+              />
+            )}
+            <button onClick={addRule} disabled={!folder.trim()} className="flex items-center gap-1.5 text-xs font-medium rounded-lg px-3 py-2 bg-accent/90 text-white hover:bg-accent transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
+              <Plus size={12} /> Add rule
+            </button>
+          </div>
+          <p className="text-[11px] text-fg-faint mt-2">
+            Rules are notification-only — they never run commands. Each rule also needs its event
+            enabled below to actually fire.
+          </p>
+        </div>
+
+        {/* Event toggles */}
+        <div className={cn(cardCls, 'mb-4')}>
+          <h3 className="text-xs font-semibold text-fg-strong mb-2">Events & channels</h3>
+          <div className="space-y-1.5">
+            {Object.entries(events).map(([event, on]) => (
+              <div key={event} className="flex items-center justify-between gap-2 py-0.5">
+                <span className="text-xs text-fg-muted font-mono">{event}</span>
+                <button
+                  onClick={() => toggleEvent(event, !on)}
+                  className={`relative w-9 h-5 rounded-full transition-colors ${on ? 'bg-[#30D158]' : 'bg-panel-strong border border-border-soft'}`}
+                  title={on ? `${event} on` : `${event} off`}
+                >
+                  <span className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white transition-transform ${on ? 'translate-x-4' : ''}`} />
+                </button>
+              </div>
+            ))}
+          </div>
+          <div className="flex items-center gap-4 mt-3 pt-2 border-t border-border-faint text-[11px] text-fg-dim">
+            <span className="flex items-center gap-1"><MonitorSmartphone size={12} /> Desktop: {desktop ? 'on' : 'off'}</span>
+            <span className="flex items-center gap-1"><Globe size={12} /> Webhooks: {webhooks.length === 0 ? 'none' : webhooks.length}</span>
+          </div>
+        </div>
+
+        {/* Watch-rule cards */}
+        <div className={cn(cardCls, 'mb-3')}>
+          <h3 className="text-xs font-semibold text-fg-strong mb-2">Watched folders ({rules.length})</h3>
+          {rules.length === 0 ? (
+            <p className="text-xs text-fg-dim italic">
+              No rules yet — add one above, or type <code className="font-mono text-accent">notify me when files change in C:\Users\you\Documents</code> in chat.
+            </p>
+          ) : (
+            <div className="space-y-2">
+              {rules.map((r) => (
+                <div key={r.id} className="flex items-center gap-3 rounded-lg border border-border-soft bg-surface px-3 py-2.5">
+                  <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: EVENT_COLORS[r.event] || '#0A84FF' }} />
+                  <span className="flex-1 text-xs text-fg-subtle min-w-0 truncate" title={r.folder}>{ruleSentence(r)}</span>
+                  <button onClick={() => send(`stop watching ${r.folder}`)} className="p-1 text-fg-dim hover:text-red-400 rounded transition-colors" title="Remove rule">
+                    <Trash2 size={13} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}

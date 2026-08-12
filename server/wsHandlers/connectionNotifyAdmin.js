@@ -8,10 +8,67 @@ import { resolveEventName, eventListText } from '../notify/notifyEvents.js';
 import { getRules, setEventEnabled, getWebhooks, addWebhook, removeWebhook } from '../notify/notifyStore.js';
 import { notify } from '../notify.js';
 import { isSafeExternalUrl } from '../urlSafety.js';
+import { loadWatchRules, addWatchRule, removeWatchRule, getWatchRules } from '../watchRules.js';
+import { syncWatchRules } from '../watchEngine.js';
 
 export async function handleNotifyCommand(ws, project, lowerInput, input) {
   if (/^test\s+notification$/.test(lowerInput)) {
     await runTestNotification(ws, project);
+    return true;
+  }
+
+  // Phase 15 (2026-08-12): generalized file-watch rules — "notify me when files change in
+  // <folder>", "notify me if <folder> hasn't changed in N days", "stop watching <folder>",
+  // "list watched folders". Notification-only by design: the rule fires notify.js channels,
+  // never a command.
+  const watchMatch = lowerInput.match(/^notify\s+me\s+(?:when|if)\s+(?:files?\s+)?(change|are\s+added|is\s+added|a\s+new\s+file\s+appears)\s+in\s+(.+)$/);
+  if (watchMatch) {
+    const folder = watchMatch[2].trim().replace(/["'`]/g, '');
+    if (!folder) {
+      ws.send(JSON.stringify({ type: 'answer', data: 'Which folder? Try `notify me when files change in C:\\Users\\you\\Documents`.' }));
+      return true;
+    }
+    const event = watchMatch[1].includes('change') ? 'file-changed' : 'file-added';
+    const rule = addWatchRule({ folder, event, projectId: project.id, projectName: project.name });
+    syncWatchRules();
+    ws.send(JSON.stringify({ type: 'answer', data: `Watching **${folder}** for ${event === 'file-changed' ? 'file changes' : 'new files'} — desktop/webhook notifications will fire when the event is enabled (\`notify me when ${event}\`).` }));
+    return true;
+  }
+
+  const staleMatch = lowerInput.match(/^notify\s+me\s+if\s+(.+?)\s+hasn'?t\s+changed\s+in\s+(\d+)\s+days?$/);
+  if (staleMatch) {
+    const folder = staleMatch[1].trim().replace(/["'`]/g, '');
+    const days = parseInt(staleMatch[2], 10);
+    if (!folder || !days || days < 1 || days > 365) {
+      ws.send(JSON.stringify({ type: 'answer', data: 'Say it like: `notify me if C:\\Users\\you\\Downloads hasn\'t changed in 7 days`.' }));
+      return true;
+    }
+    const rule = addWatchRule({ folder, event: 'folder-stale', days, projectId: project.id, projectName: project.name });
+    ws.send(JSON.stringify({ type: 'answer', data: `Stale-check watching **${folder}** (no changes for ${days} days) — fires once per day once it goes stale.` }));
+    return true;
+  }
+
+  if (/^stop\s+watching\s+(.+)$/.test(lowerInput)) {
+    const folder = lowerInput.match(/^stop\s+watching\s+(.+)$/)[1].trim().replace(/["'`]/g, '');
+    const matches = getWatchRules().filter((r) => r.folder.toLowerCase() === folder.toLowerCase());
+    if (matches.length === 0) {
+      ws.send(JSON.stringify({ type: 'answer', data: `No watch rule for **${folder}** — \`list watched folders\` shows what's being watched.` }));
+      return true;
+    }
+    matches.forEach((r) => removeWatchRule(r.id));
+    syncWatchRules();
+    ws.send(JSON.stringify({ type: 'answer', data: `Stopped watching **${folder}** (${matches.length} rule${matches.length === 1 ? '' : 's'} removed).` }));
+    return true;
+  }
+
+  if (lowerInput === 'list watched folders') {
+    const rules = getWatchRules();
+    if (rules.length === 0) {
+      ws.send(JSON.stringify({ type: 'answer', data: 'No watched folders yet. Try `notify me when files change in C:\\Users\\you\\Documents`.' }));
+      return true;
+    }
+    const rows = rules.map((r, i) => `${i + 1}. **${r.folder}** — ${r.event === 'folder-stale' ? `stale after ${r.days} days` : r.event === 'file-changed' ? 'file changes' : 'new files'} (\`${r.id}\`)`);
+    ws.send(JSON.stringify({ type: 'answer', data: `### Watched folders (${rules.length})\n\n${rows.join('\n')}\n\nStop one with \`stop watching <folder>\`.` }));
     return true;
   }
 

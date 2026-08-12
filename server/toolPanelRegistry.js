@@ -68,6 +68,14 @@ export const TOOL_PANELS = [
     available: true,
     chatHint: 'backup this folder',
   },
+  {
+    id: 'notifications',
+    name: 'Notifications',
+    description: 'File-watch rules and delivery channels — IFTTT-style rule cards',
+    icon: 'bell',
+    available: true,
+    chatHint: 'notify me when files change in Downloads',
+  },
 ];
 
 export function getToolPanels() {

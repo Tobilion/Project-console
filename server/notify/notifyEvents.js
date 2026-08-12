@@ -24,6 +24,29 @@ export const NOTIFY_EVENTS = {
     description: 'a boot-time sweep finds intent-embedding overlaps that were not present on the previous boot (see collisions.js)',
     alias: ['collision', 'intent collision', 'new collision', 'collisions appeared'],
   },
+  // Phase 15 (2026-08-12): generalized file-watch / home-automation events — notification-
+  // only, never a command trigger (same "notification only" separation Phase 4 uses for
+  // reminders: a file-watch rule must never be a backdoor to running commands on file change).
+  'file-changed': {
+    label: 'a watched file changes',
+    description: 'any file inside a watched folder is modified (debounced per folder)',
+    alias: ['file changed', 'files change', 'a file changes', 'files changed'],
+  },
+  'file-added': {
+    label: 'a new file appears',
+    description: 'a new file is created inside a watched folder',
+    alias: ['file added', 'a new file', 'new file appears', 'a file is added'],
+  },
+  'folder-stale': {
+    label: 'a watched folder goes stale',
+    description: 'no changes in a watched folder for the configured number of days',
+    alias: ['folder stale', 'hasn\'t changed', 'no changes in', 'stale folder'],
+  },
+  'reminder-fired': {
+    label: 'a reminder fires',
+    description: 'a Phase 4 reminder delivers (also makes it eligible for desktop/webhook when nobody is watching the console)',
+    alias: ['reminder fired', 'a reminder fires', 'reminder goes off', 'reminder'],
+  },
 };
 
 export const NOTIFY_EVENT_KEYS = Object.keys(NOTIFY_EVENTS);

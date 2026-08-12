@@ -1,4 +1,4 @@
-import { Calculator, FileText, ListChecks, FolderSearch, StickyNote, Table as TableIcon, ClipboardCopy, Archive, LayoutGrid, ArrowLeft } from 'lucide-react';
+import { Calculator, FileText, ListChecks, FolderSearch, StickyNote, Table as TableIcon, ClipboardCopy, Archive, Bell, LayoutGrid, ArrowLeft } from 'lucide-react';
 import type { ToolPanelDef, Project } from '../types';
 import { PdfToolsPanel } from './PdfToolsPanel';
 import { RemindersPanel } from './RemindersPanel';
@@ -8,6 +8,7 @@ import { CalculatorPanel } from './CalculatorPanel';
 import { SpreadsheetPanel } from './SpreadsheetPanel';
 import { ClipboardPanel } from './ClipboardPanel';
 import { BackupPanel } from './BackupPanel';
+import { NotificationsPanel } from './NotificationsPanel';
 
 // Phase 1.5 (UPGRADE-ROADMAP.md, 2026-08-11): the shared interactive "Tools" surface — a
 // card-grid launcher (icon + name + one-line description per registered tool, served by
@@ -25,6 +26,7 @@ const ICONS: Record<string, React.ComponentType<{ size?: number; className?: str
   table: TableIcon,
   'clipboard-copy': ClipboardCopy,
   archive: Archive,
+  bell: Bell,
 };
 
 interface ToolsPanelProps {
@@ -181,6 +183,24 @@ export function ToolsPanel({ panels, activePanel, onOpenPanel, onClose, project,
           </div>
           <div className="flex-1 min-h-0">
             <BackupPanel project={project} onSendMessage={onSendMessage} />
+          </div>
+        </div>
+      );
+    }
+    if (active.id === 'notifications') {
+      return (
+        <div className="h-full flex flex-col">
+          <div className="flex items-center gap-2 mb-3 shrink-0">
+            <button
+              onClick={() => onOpenPanel('')}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-fg-dim hover:text-fg-strong bg-scrim-faint rounded-lg border border-border-soft transition-colors"
+              title="Back to the tool grid"
+            >
+              <ArrowLeft size={14} /> Tools
+            </button>
+          </div>
+          <div className="flex-1 min-h-0">
+            <NotificationsPanel project={project} onSendMessage={onSendMessage} />
           </div>
         </div>
       );

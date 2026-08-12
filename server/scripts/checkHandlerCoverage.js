@@ -24,6 +24,10 @@ import path from 'path';
 import fs from 'fs';
 import os from 'os';
 
+// Phase 15: point the watch-rules store at a temp file so admin-command smoke tests never
+// touch the real data/watch-rules.json (the module reads this env var at import time).
+process.env.WATCH_RULES_FILE = path.join(os.tmpdir(), `console-watchrules-${Date.now()}.json`);
+
 const PROBE = process.argv.includes('--probe');
 // Derived from this script's own location, not hardcoded to one machine/username (audit
 // 2026-08-10 — see checkMatcherCoverage.js for the full rationale).
@@ -46,6 +50,7 @@ const { noteHandlers } = await import(pathToFileURL(base + 'wsHandlers/builtinNo
 const { csvHandlers } = await import(pathToFileURL(base + 'wsHandlers/builtinCsvTools.js').href);
 const { clipboardHandlers } = await import(pathToFileURL(base + 'wsHandlers/builtinClipboard.js').href);
 const { backupHandlers } = await import(pathToFileURL(base + 'wsHandlers/builtinBackup.js').href);
+const { handleNotifyCommand } = await import(pathToFileURL(base + 'wsHandlers/connectionNotifyAdmin.js').href);
 const { parseReminderInput } = await import(pathToFileURL(base + 'schedules/reminderParser.js').href);
 const {
   parsePdfNames, parsePdfOutput, parsePageSpec, extractWatermarkText,
@@ -620,6 +625,28 @@ eq('phase12: backup action journaled', typeof auditId === 'string', true);
 const auditRevert = await revertAction(auditRoot, auditId);
 eq('phase12: backup revert deletes the zip', auditRevert.ok === true && !fs.existsSync(fakeZip), true);
 fs.rmSync(auditRoot, { recursive: true, force: true });
+
+// --- NOTIFICATIONS / WATCH RULES (Phase 15, 2026-08-12) ------------------------
+// Admin-command smoke against the temp watch-rules store: create file-changed + folder-stale
+// rules, list, stop watching. The engine's chokidar attachment is not exercised here (it
+// needs a live fs event) — the store + admin surface is the harnessable contract.
+sent.length = 0;
+const w1 = await handleNotifyCommand(ws, proj, 'notify me when files change in C:/tmp/watch-a', 'notify me when files change in C:/tmp/watch-a');
+eq('watch admin: file-changed rule consumed + answers', w1 === true && ws.sent.length === 1 && ws.sent[0].type === 'answer' && /Watching/.test(ws.sent[0].data), true);
+sent.length = 0;
+const w2 = await handleNotifyCommand(ws, proj, "notify me if C:/tmp/watch-b hasn't changed in 7 days", "notify me if C:/tmp/watch-b hasn't changed in 7 days");
+eq('watch admin: folder-stale rule consumed + answers', w2 === true && ws.sent.length === 1 && ws.sent[0].type === 'answer' && /Stale-check/.test(ws.sent[0].data), true);
+sent.length = 0;
+const w3 = await handleNotifyCommand(ws, proj, 'list watched folders', 'list watched folders');
+eq('watch admin: list shows both rules', w3 === true && ws.sent.length === 1 && ws.sent[0].data.includes('watch-a') && ws.sent[0].data.includes('watch-b'), true);
+sent.length = 0;
+const w4 = await handleNotifyCommand(ws, proj, 'stop watching C:/tmp/watch-a', 'stop watching C:/tmp/watch-a');
+eq('watch admin: stop watching removes the rule', w4 === true && ws.sent.length === 1 && /Stopped watching/.test(ws.sent[0].data), true);
+sent.length = 0;
+const w5 = await handleNotifyCommand(ws, proj, 'notify me when dev-server-crash', 'notify me when dev-server-crash');
+eq('watch admin: existing event enable still works', w5 === true && ws.sent.length === 1 && /ON/.test(ws.sent[0].data), true);
+try { fs.unlinkSync(process.env.WATCH_RULES_FILE); } catch {}
+delete process.env.WATCH_RULES_FILE;
 
 console.log(`check-handlers: ${total} checks, ${failed} failed`);
 process.exit(failed ? 1 : 0);

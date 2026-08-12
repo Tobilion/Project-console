@@ -7,6 +7,7 @@
 
 import { loadSchedules, getSchedules, markFired, removeScheduleById } from './scheduleStore.js';
 import { fireSchedule } from './scheduleFire.js';
+import { checkStaleFolders } from '../watchEngine.js';
 import { watchProjectChanges } from '../fileWatcher.js';
 import { state } from '../state.js';
 
@@ -65,6 +66,13 @@ function tick() {
     } catch (err) {
       console.error(`[scheduler] fire failed for schedule ${schedule.id}:`, err.message);
     }
+  }
+  // Phase 15: the folder-stale sweep reuses this same tick (guarded to once per day per rule
+  // inside checkStaleFolders — never a full folder walk on every 15s tick).
+  try {
+    checkStaleFolders();
+  } catch (err) {
+    console.error('[scheduler] stale-folder check failed:', err.message);
   }
 }
 

@@ -53,4 +53,10 @@ export const TOOL_PANEL_INTENTS = {
       'open backup', 'open backups', 'open the backup panel',
     ],
   },
+  'system.tools.open_notifications': {
+    opensPanel: 'notifications',
+    examples: [
+      'open notifications', 'open the notifications', 'open notifications panel',
+    ],
+  },
 };

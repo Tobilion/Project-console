@@ -98,6 +98,7 @@
 
 - **Scheduled & triggered commands**: per-project schedules ("schedule every 10 minutes \"git status\"", "schedule daily at 09:30 ...", "schedule on file save/git commit ...") fire through the same matching pipeline a typed message would use, restricted to read-only intents, with results delivered to the open chat or `data/schedule-log.md`. `list schedules` / `delete schedule 2` / `review schedule log` manage them.
 - **Notifications**: opt-in per-event alerts (`notify me when dev-server-crash` / `schedule-find` / `task-done` / new intent collisions) to the Windows desktop and/or webhooks (`webhook add <url>` — SSRF-guarded, no localhost). Everything is off until enabled; `list notifications` / `test notification` verify.
+- **File-watch notifications**: `notify me when files change in <folder>` / `notify me if <folder> hasn't changed in N days` — IFTTT-style rules that fire desktop/webhook alerts on file changes, new files, or folder staleness. Watch rules are notification-only (they never run commands) and persist across restarts. `list watched folders` / `stop watching <folder>` manage them; the Notifications panel (Tools > Notifications) shows them as rule cards.
 - **Auto-start projects**: "auto-start this project" (or `auto-start <name>`) makes the console boot that project's dev server automatically on every start — the stored phrase is re-matched through the normal pipeline, skips when the site is already answering (no double-serve), staggers multiple projects, and reports into the open chat or `data/auto-start-log.md`. `run auto-start now` starts it immediately; `disable auto-start` / `list auto-start` manage it.
 - **Intent-collision baseline**: every boot compares intent-embedding overlaps against the previous boot's baseline and raises the opt-in "new intent collisions appear" notification for anything new — a drift alarm for the matching corpus. `check collisions` shows the current state on demand.
 
@@ -346,6 +347,8 @@ App-global identity (name/title/custom role) edited from the ⚙ Settings modal;
 | `list backups` | Show past backups (also via the Backup panel) |
 | `notify me when dev-server-crash` / `stop notifying me about ...` | Desktop/webhook alerts per event — all off until you opt in |
 | `webhook add <url>` / `webhook remove <url>` / `list notifications` / `test notification` | Webhook channels and verification |
+| `notify me when files change in <folder>` / `notify me if <folder> hasn't changed in 7 days` | File-watch rules (notification-only, never a command trigger) |
+| `list watched folders` / `stop watching <folder>` | Manage watch rules (also via the Notifications panel) |
 
 ### Learning, diagnostics & introspection
 
@@ -371,7 +374,7 @@ App-global identity (name/title/custom role) edited from the ⚙ Settings modal;
 | `help` / `what can you do` / `how do I <anything>` | Full command guide; how-do-I answers come from the command catalog with the exact phrase, the real shell command, and a suggestion chip |
 | `list commands` / `help all` / `show all commands` | Prints the ENTIRE command catalog as plain text — the CLI's equivalent of the Command Reference tab (book icon in the header) |
 | `what is 12 times 7` / `convert 5 km to miles` / `whats 18% tip on 64.50` | Safe arithmetic + offline unit conversion + percentage/tip/tax (also via the Calculator panel) |
-| `open calculator` / `open pdf tools` / `open reminders` / `open file tools` / `open notes` / `open spreadsheet` / `open clipboard` / `open backup` | Opens the interactive Tools panel (web UI); plain-text note + chat equivalents from the CLI |
+| `open calculator` / `open pdf tools` / `open reminders` / `open file tools` / `open notes` / `open spreadsheet` / `open clipboard` / `open backup` / `open notifications` | Opens the interactive Tools panel (web UI); plain-text note + chat equivalents from the CLI |
 | `switch to developer mode` / `switch to general mode` / `what mode am I in` | Change/check a project's workspace type (persisted in console.config.json) |
 | `switch projects` / `change projects` | The project list in the left sidebar |
 | `dashboard` / `live sites` | The Dashboard tab: project overview + live-site status |

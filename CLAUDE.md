@@ -410,7 +410,7 @@ npm run lint    # tsc --noEmit
   Eligible from every workspace type — deliberately NOT in WORKSPACE_DEV_ONLY_INTENTS.
 - `server/toolPanelRegistry.js` + `server/routes/toolPanelRoutes.js` — Phase 1.5 (2026-08-11,
   shared interactive Tool Panel architecture): the server-driven interactive-tools registry
-  (`TOOL_PANELS`: calculator, pdf-tools, reminders, file-tools, notes, csv-tools, clipboard, backup — `getToolPanels()`/`getToolPanel()`, REST
+  (`TOOL_PANELS`: calculator, pdf-tools, reminders, file-tools, notes, csv-tools, clipboard, backup, notifications — `getToolPanels()`/`getToolPanel()`, REST
   `GET /api/tool-panels` mounted in server/index.js). PDF Tools is a real panel since Phase 3
   (see pdfKit.js entry below); Reminders is a real panel since Phase 4 (see builtinReminders.js);
   Calculator is a real live widget since Phase 6 (see the CalculatorPanel.tsx frontend bullet;
@@ -435,7 +435,8 @@ npm run lint    # tsc --noEmit
 - Frontend: `src/components/ToolsPanel.tsx` (card grid → dedicated panel view with a back
   button — renders `PdfToolsPanel` for 'pdf-tools', `RemindersPanel` for 'reminders',
   `FileToolsPanel` for 'file-tools', `NotesPanel` for 'notes', `SpreadsheetPanel` for
-  'csv-tools', `ClipboardPanel` for 'clipboard', `BackupPanel` for 'backup', placeholder for anything else),
+  'csv-tools', `ClipboardPanel` for 'clipboard', `BackupPanel` for 'backup',
+  `NotificationsPanel` for 'notifications', placeholder for anything else),
   `useConsole.ts` toolPanel state cluster (`toolsOpen`/`activeToolPanel`/
   `toolPanels` + `fetchToolPanels`), `wsMessageCases.ts` answerCase reads `payload.openPanel`
   and opens the panel, App.tsx Tools view (header Tools button only when a General-workspace
@@ -537,10 +538,19 @@ npm run lint    # tsc --noEmit
   crashes), `sendWebhook` POSTs JSON with an 8s AbortSignal timeout and is re-validated through
   `isSafeExternalUrl` AT SEND TIME — localhost/private webhook endpoints are blocked by design
   (same SSRF guard as webSearch), so webhook testing requires a real public URL. `notifyEvents.js`
-  keeps a bounded event set (`dev-server-crash` / `schedule-find` / `task-done`) with aliases.
+  keeps a bounded event set (`dev-server-crash` / `schedule-find` / `task-done` / `collision-found`)
+  with aliases. Phase 15 (2026-08-12) adds the general-purpose events `file-changed` /
+  `file-added` / `folder-stale` / `reminder-fired` (reminder delivery in scheduleFire.js also
+  notifies now — additive to the live-session delivery). `server/watchRules.js` persists
+  file-watch rules (gitignored data/watch-rules.json, debounced — deliberately SEPARATE from
+  scheduleStore: rules are notification-only, never a command trigger); `server/watchEngine.js`
+  attaches one chokidar watcher per watched folder (1s debounce, IGNORE_DIRS skip) and runs a
+  once-per-day-per-rule folder-stale sweep from the scheduler tick (no second interval).
   Admin commands in `connectionNotifyAdmin.js` (pre-matcher tier): `notify me when <event>` /
   `stop notifying me about <event>` / `list notifications` / `webhook add <url>` /
-  `webhook remove <url>` / `test notification`. Wiring: `initNotifications()` runs from
+  `webhook remove <url>` / `test notification` + Phase 15's `notify me when files change in
+  <folder>` / `notify me if <folder> hasn't changed in N days` / `stop watching <folder>` /
+  `list watched folders`. Wiring: `initNotifications()` runs from
   `server/index.js` after `initScheduler()` (loads rules before any connection, registers the
   taskQueue completion listener — `setTaskCompletionListener` in taskQueue.js); `scheduleFire.js`
   notifies when a fire produced non-empty output; executor.js's detached-close handler notifies
@@ -1177,6 +1187,12 @@ time/date/calculate rows, 92/92).
    activeWhen predicate (skipped unless the profile locale is 'de'). A corpus pin was needed:
    "extract the zip file" drifted onto backup.create ("export this project as a zip") —
    pre-semantic override pins extract+archive-file shapes to file_count.
+   Phase 15 (2026-08-12): check-handlers 176/176 (baseline 171/171 + 5 watch-admin rows —
+   file-changed rule, folder-stale rule, list, stop-watching, existing-event-enable; watch-rules
+   store redirected to a temp file via WATCH_RULES_FILE env so the harness never touches real
+   data); check-matcher 271/273 (baseline 269/271 + 2 open_notifications opener rows, same TWO
+   PRE-EXISTING drifts); check-intents unchanged at 1/7/82; check-docs 55/55 (the watch entry
+   replaced the old notify entry — same count); check-ws-cases 118/118 unchanged.
    Run the relevant battery after ANY edit to the corresponding module.
 - **editFile** tolerates whitespace differences (normalized line-range fallback) but not
   wrong wording; on total failure the error names both attempts and tells the caller to

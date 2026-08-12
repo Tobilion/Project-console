@@ -87,4 +87,13 @@ export const toolsHandlers = {
       openPanel: panel.id,
     }));
   },
+  'system.tools.open_notifications': async (ws, action) => {
+    const panel = getToolPanel(TOOL_PANEL_INTENTS[action].opensPanel);
+    if (!panel) return false;
+    ws.send(JSON.stringify({
+      type: 'answer',
+      data: `The ${panel.name} panel is an interactive web-UI list of watch rules + channels. From chat — including the CLI — the same features work as plain commands: \`notify me when files change in <folder>\` / \`notify me if <folder> hasn't changed in 7 days\` / \`list watched folders\` / \`stop watching <folder>\`.`,
+      openPanel: panel.id,
+    }));
+  },
 };

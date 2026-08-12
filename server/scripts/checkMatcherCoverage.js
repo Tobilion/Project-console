@@ -579,6 +579,13 @@ const BATTERIES = [
       ['open the backup panel', 'BUILTIN=system.tools.open_backup'],
     ],
   },
+  {
+    name: 'NOTIFICATIONS (Phase 15 panel opener)',
+    items: [
+      ['open notifications', 'BUILTIN=system.tools.open_notifications'],
+      ['open the notifications panel', 'BUILTIN=system.tools.open_notifications'],
+    ],
+  },
 ];
 
 await semanticMatcher.initialize();
