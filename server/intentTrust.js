@@ -42,7 +42,11 @@ export const PURE_CHITCHAT_INTENTS = new Set([
 ]);
 
 export function looksLikeRealRequest(input) {
-  return /\.[a-zA-Z0-9]{1,6}\b/.test(input) || /["']/.test(input);
+  // Extension-ish pattern: a dot followed by at least one LETTER — ".md"/".tsx" read as file
+  // names, but "8.25"/"64.50" (pure-digit decimals from the calculate grammar) must not, or
+  // the Phase 6 percent/tax/tip shapes get blocked by the chit-chat guard below and fall
+  // through to deploy (confirmed live 2026-08-12).
+  return /\.[a-zA-Z][a-zA-Z0-9]{0,5}\b/.test(input) || /["']/.test(input);
 }
 
 export function isTrustworthyChitChat(intent, input) {
@@ -67,7 +71,8 @@ export const KNOWLEDGE_INTENTS_NEVER_ABOUT_A_FILE = new Set([
 ]);
 
 export function looksLikeFileReference(input) {
-  return /\.[a-zA-Z0-9]{1,6}\b/.test(input);
+  // Same extension-ish rule as looksLikeRealRequest: dot + at least one letter.
+  return /\.[a-zA-Z][a-zA-Z0-9]{0,5}\b/.test(input);
 }
 
 export function isTrustworthyKnowledgeIntent(intent, input) {

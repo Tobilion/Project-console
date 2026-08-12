@@ -174,6 +174,8 @@ try {
   eq('typed sentence find rejected', typed.extractCommandLine('find duplicate files'), null);
   eq('typed sentence sort rejected', typed.extractCommandLine('sort these files by type'), null);
   eq('typed sentence where rejected', typed.extractCommandLine('where are my files'), null);
+  eq('typed sentence convert rejected', typed.extractCommandLine('convert 5 km to miles'), null);
+  eq('typed sentence convert with digits rejected', typed.extractCommandLine('convert 2 liters to cups'), null);
   eq('typed find with glob still runs', typed.extractCommandLine('find . -name "*.js"'), 'find . -name "*.js"');
   eq('typed sort with file arg still runs', typed.extractCommandLine('sort data.csv'), 'sort data.csv');
   const npmOnPath = typed.resolveExecutableOnPath('npm');

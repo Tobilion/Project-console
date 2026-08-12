@@ -231,7 +231,25 @@ const BATTERIES = [
       ['what is today', 'BUILTIN=system.chit_chat.date'],
       ['what is 12 times 7', 'BUILTIN=system.chit_chat.calculate'],
       ['whats 340 divided by 4', 'BUILTIN=system.chit_chat.calculate'],
+      ['calculate 12 + 8', 'BUILTIN=system.chit_chat.calculate'],
+      ['calculate 12 + 8 * 3', 'BUILTIN=system.chit_chat.calculate'],
       ['asdf1234', 'FALLBACK'],
+    ],
+  },
+  {
+    // Phase 6 (2026-08-12): expanded calculator grammar — unit conversion + percentage/tax/tip
+    // stay on the same calculate intent; the percent sign / unit words carry little embedding
+    // weight, so these shapes are pinned by pre-semantic overrides.
+    name: 'PHASE6 (expanded calculator: convert / percent / tip / tax)',
+    items: [
+      ['convert 5 km to miles', 'BUILTIN=system.chit_chat.calculate'],
+      ['convert 2 liters to cups', 'BUILTIN=system.chit_chat.calculate'],
+      ['convert 100 fahrenheit to celsius', 'BUILTIN=system.chit_chat.calculate'],
+      ['how many cups in 2 liters', 'BUILTIN=system.chit_chat.calculate'],
+      ['what is 15% of 80', 'BUILTIN=system.chit_chat.calculate'],
+      ['whats 18% tip on 64.50', 'BUILTIN=system.chit_chat.calculate'],
+      ['add 8.25% tax to 120', 'BUILTIN=system.chit_chat.calculate'],
+      ['calculate 20% tip on 45', 'BUILTIN=system.chit_chat.calculate'],
     ],
   },
   {

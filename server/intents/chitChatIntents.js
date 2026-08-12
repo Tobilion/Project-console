@@ -249,12 +249,17 @@ export const CHIT_CHAT_INTENTS = {
     ],
   },
   'system.chit_chat.calculate': {
+    opensPanel: 'calculator',
     examples: [
       'what is 12 times 7', 'whats 340 divided by 4', 'what is 5 plus 3',
       'whats 10 minus 4', 'calculate 2 plus 2', 'what is 8 times 6',
       'whats 100 divided by 5', 'what is 2 plus 2', 'whats 9 times 9',
       'calculate 144 divided by 12', 'what is 25 minus 13', 'whats 7 times 8',
       'calculate 50 plus 25', 'what is 100 minus 37', 'whats 11 times 11',
+      // Phase 6 (2026-08-12): unit conversions + percentage/tax/tip shapes.
+      'convert 5 km to miles', 'convert 2 liters to cups', 'convert 100 fahrenheit to celsius',
+      'how many cups in 2 liters', 'what is 15% of 80', 'whats 18% tip on 64.50',
+      'add 8.25% tax to 120', 'calculate 20% tip on 45',
     ],
   },
   // Phase 1 (2026-08-10): "how do I ..." guidance intent. Questions about console features

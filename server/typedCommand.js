@@ -89,7 +89,7 @@ const WRAP_QUOTES_RE = /^(['"`])([\s\S]*)\1$/;
 // instead of reaching their intents. A first token in this set followed only by plain words
 // (no flags, paths, globs, pipes, quotes) is a sentence, not a command — reject it so the
 // matcher decides. Real command lines ("find . -name x", "sort data.csv") keep working.
-const NATURAL_LANG_FIRST_TOKENS = new Set(['find', 'sort', 'where']);
+const NATURAL_LANG_FIRST_TOKENS = new Set(['find', 'sort', 'where', 'convert']);
 const PLAIN_WORD_RE = /^[a-z']+$/i;
 
 /**
@@ -128,8 +128,13 @@ export function extractCommandLine(input, projectRoot) {
   if (tokens.length === 0) return null;
   const first = tokens[0];
 
+  // Natural-language sentences never bypass the matcher: a first token in this set followed
+  // by plain words (and, for the unit-conversion shapes, bare numbers) is a sentence, not a
+  // command — "convert 5 km to miles" is the calculate intent, not the Windows `convert`
+  // binary. Real command lines ("find . -name x", "convert d: /fs:ntfs") contain flags or
+  // drive-letter colons that fail the plain-word test and still bypass.
   if (NATURAL_LANG_FIRST_TOKENS.has(first.toLowerCase()) && tokens.length >= 2 &&
-      tokens.slice(1).every((t) => PLAIN_WORD_RE.test(t))) {
+      tokens.slice(1).every((t) => PLAIN_WORD_RE.test(t) || /^[\d.]+$/.test(t))) {
     return null;
   }
 

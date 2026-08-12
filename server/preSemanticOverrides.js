@@ -133,6 +133,18 @@ export const PRE_SEMANTIC_OVERRIDES = [
   // Same class of trap for note SEARCH: "search my notes for <free text>" — the query
   // terms after "for/about/with" dominate the vector. The prefix is unambiguous.
   { intent: 'system.notes.search', pattern: /^(?:search|find)\s+(?:my\s+)?notes?\s+(?:for|about|with)\s+\S/i },
+  // Phase 6 (2026-08-12): the expanded calculator grammar — "convert 5 km to miles" /
+  // "15% of 80" / "18% tip on 64.50" / "add 8.25% tax to 120". The percent sign and unit
+  // words carry little embedding weight, so these shapes drift off the calculate cluster;
+  // a leading convert/how-many verb + a number, or any percent phrase, is unambiguous.
+  { intent: 'system.chit_chat.calculate', pattern: /^(?:convert|how\s+many)\s+[\d.]+\s+[a-z]+\s+(?:to|in|into)\b/i },
+  { intent: 'system.chit_chat.calculate', pattern: /[\d.]+%\s+(?:of|tip|tax|gratuity|vat)\b/i },
+  // Symbol-operator arithmetic ("calculate 12 + 8" / "what is 12*7"): the + - * / symbols
+  // carry no embedding weight, so the expression falls out of the calculate cluster and
+  // lands in the generic fallback. A leading calculate/what-is phrase + any number is
+  // unambiguous — always arithmetic. Deliberately does NOT anchor on the numbers, which are
+  // free-form.
+  { intent: 'system.chit_chat.calculate', pattern: /^(?:calculate|whats|what's|what\s+is|compute|calc)\b.*\d/ },
 ];
 
 /**

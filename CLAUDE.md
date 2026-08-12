@@ -363,7 +363,7 @@ npm run lint    # tsc --noEmit
   (`TOOL_PANELS`: calculator, pdf-tools, reminders, file-tools, notes — `getToolPanels()`/`getToolPanel()`, REST
   `GET /api/tool-panels` mounted in server/index.js). PDF Tools is a real panel since Phase 3
   (see pdfKit.js entry below); Reminders is a real panel since Phase 4 (see builtinReminders.js);
-  Calculator is still a placeholder (Phase 6 fills it in). Wire
+  Calculator is a real live widget since Phase 6 (see the CalculatorPanel.tsx frontend bullet); Wire
   contract: intent-data entries carry an `opensPanel` tag (see
   `server/intents/toolPanelIntents.js` + pdfIntents.js), and the opener handlers in
   `server/wsHandlers/builtinTools.js` (`system.tools.open_calculator` /
@@ -586,7 +586,9 @@ npm run lint    # tsc --noEmit
   (last-resort keyword fallback with word-boundary regex — `.env`-style keywords special-cased),
   `gitSafety.js` (createCheckpoint/performUndo/isGitRepo), `metrics.js`, `fileWatcher.js`,
   `mathEval.js` (safe shunting-yard evaluator for the `calculate` intent — `+ - * / ( )`
-  only, no eval/Function), `platformCommand.js`,
+  only, no eval/Function; Phase 6, 2026-08-12 adds `convertUnits` — offline static
+  length/weight/volume/temperature table — and `percentageQuery` — percent-of/tip/tax phrases,
+  both still evaluated through the same safe tokenize/evaluate path), `platformCommand.js`,
   `typedCommand.js` (2026-08-11, wrapper-project fix: `extractCommandLine` — the typed-input
   bypass gate in connectionExecute.js. Exact well-formed command lines run directly: first
   token allowlisted OR PATH-resolved (so any real executable works, including ones the
@@ -1039,6 +1041,16 @@ time/date/calculate rows, 92/92).
    Phase 5 pre-semantic overrides after the trailing nouns dominated the vector, same class
    of trap as the remind-me override; same TWO PRE-EXISTING drifts); check-intents unchanged
    at 1/5/82; check-docs 51/51 (+1 notes catalog entry); check-ws-cases 118/118 unchanged.
+   Phase 6 (2026-08-12): check-handlers 142/142 (baseline 130/130 + 12 rows — mathEval
+   convert/percent unit asserts + calculate-handler dispatch rows); check-matcher 241/243
+   (baseline 231/233 + 10 rows: 8 PHASE6 convert/percent/tax/tip shapes + 2 symbol-operator
+   arithmetic rows — pinned by Phase 6 pre-semantic overrides; the tax/tip shapes also needed
+   the looksLikeRealRequest extension-dot fix in intentTrust.js, ".25" must not read as a
+   file extension; same TWO PRE-EXISTING drifts); check-tools 156/156 (baseline 154/154 + 2
+   convert natural-language-guard rows — `convert` is a real Windows binary, "convert 5 km to
+   miles" must reach the matcher, not the NTFS convert tool); check-intents unchanged at
+   1/5/82; check-docs 52/52 (+1 convert/calculator catalog entry); check-ws-cases 118/118
+   unchanged.
    Run the relevant battery after ANY edit to the corresponding module.
 - **editFile** tolerates whitespace differences (normalized line-range fallback) but not
   wrong wording; on total failure the error names both attempts and tells the caller to

@@ -4,6 +4,7 @@ import { PdfToolsPanel } from './PdfToolsPanel';
 import { RemindersPanel } from './RemindersPanel';
 import { FileToolsPanel } from './FileToolsPanel';
 import { NotesPanel } from './NotesPanel';
+import { CalculatorPanel } from './CalculatorPanel';
 
 // Phase 1.5 (UPGRADE-ROADMAP.md, 2026-08-11): the shared interactive "Tools" surface — a
 // card-grid launcher (icon + name + one-line description per registered tool, served by
@@ -34,6 +35,24 @@ export function ToolsPanel({ panels, activePanel, onOpenPanel, onClose, project,
   const active = activePanel ? panels.find(p => p.id === activePanel) : null;
 
   if (active) {
+    if (active.id === 'calculator') {
+      return (
+        <div className="h-full flex flex-col">
+          <div className="flex items-center gap-2 mb-3 shrink-0">
+            <button
+              onClick={() => onOpenPanel('')}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-fg-dim hover:text-fg-strong bg-scrim-faint rounded-lg border border-border-soft transition-colors"
+              title="Back to the tool grid"
+            >
+              <ArrowLeft size={14} /> Tools
+            </button>
+          </div>
+          <div className="flex-1 min-h-0">
+            <CalculatorPanel onSendMessage={onSendMessage} />
+          </div>
+        </div>
+      );
+    }
     if (active.id === 'pdf-tools') {
       return (
         <div className="h-full flex flex-col">

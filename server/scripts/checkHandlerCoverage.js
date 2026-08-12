@@ -434,6 +434,40 @@ eq('reminder parse: explicit past -> rejected', rPast.ok === false && /past/.tes
 const rGarbage = parseReminderInput('remind me blahblah to do the thing');
 eq('reminder parse: unparseable when -> named error', rGarbage.ok === false && /blahblah/.test(rGarbage.reason), true);
 
+// --- EXPANDED CALCULATOR (Phase 6, 2026-08-12) ---------------------------------
+// mathEval.js unit + percentage grammars (pure, no store interaction):
+const { convertUnits, percentageQuery, evaluateArithmetic } = await import(pathToFileURL(base + 'mathEval.js').href);
+const kmToMiles = convertUnits('convert 5 km to miles');
+eq('calc: convert km to miles ok', kmToMiles && kmToMiles.ok === true && Math.abs(kmToMiles.value - 3.10685596118667) < 1e-9, true);
+const litersToCups = convertUnits('convert 2 liters to cups');
+eq('calc: convert liters to cups ok', litersToCups && litersToCups.ok === true && Math.abs(litersToCups.value - 8.45350567546) < 1e-6, true);
+const fToC = convertUnits('convert 100 fahrenheit to celsius');
+eq('calc: convert fahrenheit to celsius ok', fToC && fToC.ok === true && Math.abs(fToC.value - 37.77777777777778) < 1e-9, true);
+const badUnits = convertUnits('convert 5 km to seconds');
+eq('calc: unknown units rejected', badUnits && badUnits.ok === false, true);
+const pctOf = percentageQuery('15% of 80');
+eq('calc: percent of ok', pctOf && pctOf.ok === true && pctOf.kind === 'percent-of' && pctOf.value === 12, true);
+const tip = percentageQuery('18% tip on 64.50');
+eq('calc: tip ok', tip && tip.ok === true && tip.kind === 'tip' && Math.abs(tip.value - 11.61) < 1e-9, true);
+const tax = percentageQuery('add 8.25% tax to 120');
+eq('calc: tax ok', tax && tax.ok === true && tax.kind === 'tax' && Math.abs(tax.value - 129.9) < 1e-9, true);
+const plain = evaluateArithmetic('what is 12 times 7');
+eq('calc: plain arithmetic still ok', plain.ok === true && plain.value === 84, true);
+
+// Handler dispatch (no store writes — pure answer):
+sent.length = 0;
+await handleBuiltinIntent(ws, 'system.chit_chat.calculate', 'convert 5 km to miles', proj, {});
+eq('calc leaf: convert answers with the converted value', ws.sent.length === 1 && ws.sent[0].type === 'answer' && /3\.106/.test(ws.sent[0].data), true);
+sent.length = 0;
+await handleBuiltinIntent(ws, 'system.chit_chat.calculate', 'what is 15% of 80', proj, {});
+eq('calc leaf: percent-of answers 12', ws.sent.length === 1 && ws.sent[0].type === 'answer' && /12/.test(ws.sent[0].data), true);
+sent.length = 0;
+await handleBuiltinIntent(ws, 'system.chit_chat.calculate', 'whats 18% tip on 64.50', proj, {});
+eq('calc leaf: tip answers with tip amount', ws.sent.length === 1 && ws.sent[0].type === 'answer' && /11\.61/.test(ws.sent[0].data), true);
+sent.length = 0;
+await handleBuiltinIntent(ws, 'system.chit_chat.calculate', 'add 8.25% tax to 120', proj, {});
+eq('calc leaf: tax answers total incl tax', ws.sent.length === 1 && ws.sent[0].type === 'answer' && /129\.9/.test(ws.sent[0].data), true);
+
 // --- NOTES (Phase 5, 2026-08-12) ----------------------------------------------
 // Dispatch shapes against the C:/tmp/nowhere fixture (append fails before writing anywhere):
 sent.length = 0;
