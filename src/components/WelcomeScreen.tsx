@@ -137,7 +137,7 @@ export function WelcomeScreen({ projects, activeProject, ollamaStatus, aiEnabled
       {tourStep > 0 && (
         <div className="fixed inset-0 z-50 flex items-center justify-center">
           <div className="absolute inset-0 bg-scrim-strong backdrop-blur-sm" onClick={() => setTourStep(0)} />
-          <div className="relative z-10 w-full max-w-lg mx-4 bg-overlay border border-border-soft rounded-2xl shadow-2xl overflow-hidden">
+          <div className="relative z-10 w-full max-w-lg mx-4 bg-panel/90 backdrop-blur-xl border border-border-strong rounded-2xl shadow-modal overflow-hidden">
             <div className="flex items-center justify-between px-6 pt-6 pb-2">
               <div className="flex items-center gap-3">
                 <div className="p-2 bg-[#00d4a3]/10 rounded-lg text-[#00d4a3]">

@@ -40,7 +40,7 @@ export function TerminalSearchOverlay({
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: 10 }}
-          className={`absolute bottom-20 z-50 ${isFullscreen ? 'inset-x-0 mx-auto max-w-3xl' : 'left-4 right-4'} bg-surface border border-border-soft rounded-xl shadow-2xl overflow-hidden`}
+          className={`absolute bottom-20 z-50 ${isFullscreen ? 'inset-x-0 mx-auto max-w-3xl' : 'left-4 right-4'} bg-surface border border-border-soft rounded-xl shadow-float overflow-hidden`}
         >
           <div className="flex items-center gap-2 px-4 py-3 border-b border-border-soft bg-panel">
             <History size={14} className="text-fg-dim" />

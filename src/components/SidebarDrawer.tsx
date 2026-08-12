@@ -100,7 +100,7 @@ export const SidebarDrawer = ({
     : sessions.filter(s => s.projectId === activeProject.id);
 
   return (
-    <aside className="hidden lg:flex flex-col w-64 flex-shrink-0 h-full bg-panel rounded-2xl border border-border-soft overflow-hidden">
+    <aside className="hidden lg:flex flex-col w-[240px] flex-shrink-0 h-full bg-overlay border-r border-border-faint overflow-hidden">
       <div className="flex items-center gap-1.5 p-2.5 border-b border-border-faint flex-shrink-0">
         <button onClick={() => onSetCollapsed(true)} className="p-1 text-fg-dim hover:text-fg-strong transition-colors flex-shrink-0" title="Collapse sidebar">
           <ChevronLeft size={16} />
@@ -206,10 +206,13 @@ export const SidebarDrawer = ({
             <div
               key={p.id}
               onClick={() => handleSelectProject(p)}
-              className={`flex items-center gap-2 px-2 py-1.5 rounded-lg cursor-pointer text-xs transition-colors group ${
-                activeProject?.id === p.id ? 'bg-teal-500/15 text-teal-300' : 'text-fg-subtle hover:bg-panel'
+              className={`relative flex items-center gap-2 pl-2.5 pr-2 h-9 rounded-lg cursor-pointer text-xs transition-colors group ${
+                activeProject?.id === p.id ? 'bg-panel-strong text-fg-strong' : 'text-fg-subtle hover:bg-panel-strong/60'
               }`}
             >
+              {activeProject?.id === p.id && (
+                <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-4 rounded-full bg-accent-blue" />
+              )}
               <FolderGit2 size={13} className="flex-shrink-0" />
                  <span className="truncate flex-1 min-w-0">{p.name}</span>
                  <button

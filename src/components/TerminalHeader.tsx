@@ -93,7 +93,7 @@ export function TerminalHeader({
             {showSessionMenu && (
               <>
                 <div className="fixed inset-0 z-40" onClick={() => setShowSessionMenu(false)} />
-                <div className="absolute right-0 top-full mt-1 z-50 bg-surface border border-border-soft rounded-lg shadow-2xl py-1 min-w-[200px]">
+                <div className="absolute right-0 top-full mt-1 z-50 bg-surface border border-border-soft rounded-lg shadow-float py-1 min-w-[200px]">
                   <button onClick={() => { setShowSessionMenu(false); onExportMarkdown(); }} className="w-full text-left px-3 py-1.5 text-xs text-fg-muted hover:bg-panel flex items-center gap-2 transition-colors">
                     <Download size={12} /> Export as Markdown
                   </button>

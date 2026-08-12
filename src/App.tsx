@@ -273,9 +273,9 @@ function App() {
       <GlowOrbs />
 
       {!chatFullscreen && (
-      <header className="relative z-10 flex-shrink-0 flex flex-wrap items-center gap-3 mb-4">
+      <header className="relative z-10 flex-shrink-0 flex items-center gap-3 h-[52px] px-6 bg-background border-b border-border-faint">
         <div className="flex items-center gap-3 min-w-0">
-          <h1 className="text-lg font-semibold italic text-fg-strong whitespace-nowrap">
+          <h1 className="text-[18px] leading-6 font-semibold italic text-fg-strong whitespace-nowrap">
             <TextScramble text="Project Console" />
           </h1>
           <p className="text-[10px] tracking-[0.2em] uppercase text-fg-dim font-bold hidden sm:inline">
@@ -286,25 +286,25 @@ function App() {
           )}
         </div>
         <div className="flex items-center gap-2 ml-auto flex-shrink-0">
-          <div className="flex items-center gap-1 bg-scrim-faint rounded-lg p-0.5 border border-border-soft">
+          <div className="flex items-center gap-1 bg-overlay rounded-full p-1 border border-border-faint">
             <button
               onClick={() => handleWorkspaceTabChange('dev')}
-              className={`px-2.5 py-1 text-xs rounded-md transition-colors ${workspaceTab === 'dev' ? 'bg-panel-strong text-fg-strong' : 'text-fg-dim hover:text-fg-muted'}`}
+              className={`px-3 py-1 text-xs rounded-full transition-colors ${workspaceTab === 'dev' ? 'bg-accent-blue text-white' : 'text-fg-dim hover:text-fg-strong'}`}
               title="Developer workspace — git/npm/run/diagnostics suggestions"
             >
               Developer
             </button>
             <button
               onClick={() => handleWorkspaceTabChange('general')}
-              className={`px-2.5 py-1 text-xs rounded-md transition-colors ${workspaceTab === 'general' ? 'bg-panel-strong text-fg-strong' : 'text-fg-dim hover:text-fg-muted'}`}
+              className={`px-3 py-1 text-xs rounded-full transition-colors ${workspaceTab === 'general' ? 'bg-accent-blue text-white' : 'text-fg-dim hover:text-fg-strong'}`}
               title="General workspace — file tools, notes, reminders, PDF tools"
             >
               General
             </button>
           </div>
           {activeServers.length > 0 && (
-            <span className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-green-400 bg-green-500/10 rounded-lg border border-green-500/20 whitespace-nowrap flex-shrink-0">
-              <span className="w-1.5 h-1.5 rounded-full bg-green-400 inline-block animate-pulse" />
+            <span className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-accent-green bg-accent-green/10 rounded-lg border border-accent-green/20 whitespace-nowrap flex-shrink-0">
+              <span className="w-1.5 h-1.5 rounded-full bg-accent-green inline-block animate-pulse" />
               {activeServers.length} running
             </span>
           )}
@@ -327,11 +327,11 @@ function App() {
           <button onClick={() => { setToolsOpen(false); setShowDashboard(v => !v); }} className={`p-2 transition-colors ${showDashboard ? 'text-accent' : 'text-fg-dim hover:text-fg-strong'}`} title="Dashboard">
             <LayoutDashboard size={18} />
           </button>
-          {workspaceTab === 'general' && (
-            <button onClick={() => { setShowDashboard(false); setShowCommandRef(false); setToolsOpen(v => !v); }} className={`p-2 transition-colors ${toolsOpen ? 'text-accent' : 'text-fg-dim hover:text-fg-strong'}`} title="Interactive tools (General workspace)">
-              <LayoutGrid size={18} />
-            </button>
-          )}
+          {/* Stage B: the Tools icon is visible in BOTH Developer and General modes — a
+              functional fix, not just visual (the panels were previously General-only). */}
+          <button onClick={() => { setShowDashboard(false); setShowCommandRef(false); setToolsOpen(v => !v); }} className={`p-2 transition-colors ${toolsOpen ? 'text-accent' : 'text-fg-dim hover:text-fg-strong'}`} title="Interactive tools">
+            <LayoutGrid size={18} />
+          </button>
           <button onClick={() => setProfileOpen(true)} className="p-2 text-fg-dim hover:text-fg-strong transition-colors" title="User profile">
             <Settings size={18} />
           </button>

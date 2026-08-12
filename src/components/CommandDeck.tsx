@@ -167,11 +167,11 @@ export const CommandDeck = ({
           data-sel={sel === i ? 'true' : undefined}
           onMouseEnter={() => setSel(i)}
           onClick={runSelected}
-          className={`w-full flex items-center gap-2.5 px-2 py-2 rounded-lg text-left text-xs transition-colors ${sel === i ? 'bg-panel-strong text-fg-strong' : 'text-fg-subtle hover:bg-panel'}`}
+          className={`w-full flex items-center gap-2.5 px-2.5 h-10 rounded-lg text-left text-xs transition-colors ${sel === i ? 'bg-accent-blue text-white' : 'text-fg-subtle hover:bg-panel'}`}
         >
-          <span className="text-[#00d4a3] flex-shrink-0">{it.icon}</span>
+          <span className={sel === i ? 'text-white flex-shrink-0' : 'text-accent flex-shrink-0'}>{it.icon}</span>
           <span className="flex-1 truncate min-w-0">{it.label}</span>
-          {it.hint && <span className="text-[10px] text-fg-dim font-mono truncate max-w-[45%] flex-shrink-0">{it.hint}</span>}
+          {it.hint && <span className={`text-[10px] font-mono truncate max-w-[45%] flex-shrink-0 ${sel === i ? 'text-white/80' : 'text-fg-dim'}`}>{it.hint}</span>}
         </button>
       );
     }
@@ -180,9 +180,9 @@ export const CommandDeck = ({
   return (
     <div className="fixed inset-0 z-40" onMouseDown={onClose}>
       <div className="absolute inset-0 bg-scrim-strong backdrop-blur-sm" />
-      <div className="relative z-10 w-full max-w-lg mx-auto mt-24 bg-overlay border border-border-soft rounded-2xl shadow-2xl overflow-hidden" onMouseDown={e => e.stopPropagation()}>
-        <div className="flex items-center gap-2 px-4 py-3 border-b border-border-faint">
-          <Search size={16} className="text-fg-dim flex-shrink-0" />
+      <div className="relative z-10 w-full max-w-[640px] mx-auto mt-24 bg-panel/90 backdrop-blur-xl border border-border-strong rounded-2xl shadow-modal overflow-hidden" onMouseDown={e => e.stopPropagation()}>
+        <div className="flex items-center gap-3 px-4 h-12 border-b border-border-faint">
+          <Search size={18} className="text-fg-dim flex-shrink-0" />
           <input
             autoFocus
             value={query}
@@ -194,7 +194,7 @@ export const CommandDeck = ({
               if (e.key === 'Enter') { e.preventDefault(); runSelected(); }
             }}
             placeholder="Search commands, projects, actions…"
-            className="bg-transparent outline-none flex-1 text-sm text-fg placeholder:text-fg-faint"
+            className="bg-transparent outline-none flex-1 text-[15px] text-fg placeholder:text-fg-faint"
           />
           <kbd className="text-[10px] text-fg-dim border border-border-soft rounded px-1.5 py-0.5 font-mono flex-shrink-0">Esc</kbd>
         </div>
