@@ -52,7 +52,7 @@ const {
   resolvePdfInput, listPdfFiles, mergePdfs, extractPages, watermarkPdf,
 } = await import(pathToFileURL(base + 'pdfKit.js').href);
 const { PDFDocument } = await import('pdf-lib');
-const { revertAction, listActions } = await import(pathToFileURL(base + 'actionHistory.js').href);
+const { revertAction, listActions, appendAction } = await import(pathToFileURL(base + 'actionHistory.js').href);
 const { BUILTIN_INTENTS, WORKSPACE_DEV_ONLY_INTENTS, intentWorkspaceEligible } = await import(pathToFileURL(base + 'intentRegistry.js').href);
 const { detectWorkspaceType, isRecognizableByCodeAlone } = await import(pathToFileURL(base + 'projectScanHelpers.js').href);
 const { handleModeCommand } = await import(pathToFileURL(base + 'wsHandlers/connectionModeAdmin.js').href);
@@ -606,6 +606,20 @@ const bkSub = await createBackup(backupProj, 'nope');
 eq('backup store: missing subfolder refused', bkSub.ok === false, true);
 if (bk.ok) { try { fs.unlinkSync(bk.file); } catch {} }
 fs.rmSync(backupRoot, { recursive: true, force: true });
+
+// Phase 12 audit: backup zip revert — the action is journaled as backups/<name>.zip and
+// revertAction must delete the actual zip from data/backups (outside the project root).
+const realBackupsDir = path.join(process.cwd(), 'data', 'backups');
+fs.mkdirSync(realBackupsDir, { recursive: true });
+const fakeZip = path.join(realBackupsDir, 'audit-test.zip');
+fs.writeFileSync(fakeZip, 'zip-bytes');
+const auditRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'console-audit-'));
+const auditProj = { id: 'audit', name: 'Audit', path: auditRoot, workspaceType: 'general', config: { projectName: 'Audit', entries: [] }, contextFiles: [], parsedKnowledge: {}, codebaseIndex: {} };
+const auditId = appendAction(auditRoot, { type: 'file_write', path: 'backups/audit-test.zip', existed: false, preContent: null });
+eq('phase12: backup action journaled', typeof auditId === 'string', true);
+const auditRevert = await revertAction(auditRoot, auditId);
+eq('phase12: backup revert deletes the zip', auditRevert.ok === true && !fs.existsSync(fakeZip), true);
+fs.rmSync(auditRoot, { recursive: true, force: true });
 
 console.log(`check-handlers: ${total} checks, ${failed} failed`);
 process.exit(failed ? 1 : 0);

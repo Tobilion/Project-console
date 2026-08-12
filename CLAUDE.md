@@ -368,7 +368,13 @@ npm run lint    # tsc --noEmit
   log) and confirmed/risky commands (`connectionConfirm` for `pending.sandbox !== false` —
   dev-server port retries are excluded deliberately — plus `aiQueryToolRun`/`connectionToolCall`
   for risky `executeCommand`; type is `git` when the command starts with `git`; Phase 2 adds
-  `file_move` for general.files tidy moves). Checkpoints
+  `file_move` for general.files tidy moves). Phase 12 (2026-08-12) audited the post-Phase-1
+  trigger-only mutators and confirmed every one journals: general.files tidy/duplicates_delete
+  (file_move + file_write with preContent), PDF writes (pdfKit.js file_write existed:false),
+  and backup zips (builtinBackup.js file_write existed:false at `backups/<name>.zip` — the
+  zip lives OUTSIDE the project in data/backups, so revertAction special-cases the `backups/`
+  prefix to delete the real zip; the generic file_ branch would miss it. Phase 7 CSV is
+  read-only by design — no write variant exists). Checkpoints
   themselves are NOT logged. `revertAction`: file entries restore `preContent` (deleting the
   file when it did not exist before), `file_move` entries move the file back (refusing when
   the original path is occupied or the moved file is gone), git/command entries answer checkpoint-aware advice —
@@ -1142,6 +1148,13 @@ time/date/calculate rows, 92/92).
    model's data source; the palette's ranking is UI-level, persisted in the same inline-
    localStorage style as pinned projects/workspace tabs (roadmap step 2's sanctioned "minimal
    lastUsedAt map").
+   Phase 12 (2026-08-12): check-handlers 171/171 (baseline 169/169 + 2 rows — backup-action
+   journal + backup revert deletes the zip from data/backups); check-tools 156/156 unchanged;
+   check-matcher/handlers/intents/ws-cases unchanged. Audit result: every post-Phase-1
+   trigger-only mutator journals through appendAction (tidy/duplicates/PDF/backup); the backup
+   journaling bug found live — it passed project.id instead of project.path, so the action was
+   never written to the project's own history file — is fixed, plus revertAction's `backups/`
+   prefix special-case.
    Run the relevant battery after ANY edit to the corresponding module.
 - **editFile** tolerates whitespace differences (normalized line-range fallback) but not
   wrong wording; on total failure the error names both attempts and tells the caller to

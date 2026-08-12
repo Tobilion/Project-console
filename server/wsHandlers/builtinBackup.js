@@ -27,9 +27,12 @@ export const backupHandlers = {
     }
     const rel = result.relPath === '.' ? project.name : result.relPath;
     // Journal the created zip (file_write, existed:false) — revert action <id> deletes it.
+    // NOTE: the zip lives in data/backups (outside the project), so the journaled path is
+    // `backups/<name>.zip` — the revert path below special-cases that prefix to the backups
+    // dir; the generic file_write revert (which resolves inside the project) would miss it.
     try {
       const relFile = `backups/${path.basename(result.file)}`;
-      await appendAction(project.id, {
+      await appendAction(project.path, {
         type: 'file_write',
         path: relFile,
         existed: false,

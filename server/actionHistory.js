@@ -162,6 +162,28 @@ export async function revertAction(projectPath, id) {
     };
   }
 
+  // Phase 9 (2026-08-12): backup zips are journaled as `backups/<name>.zip` but physically
+  // live in data/backups (outside the project root) — the generic file_ branch below resolves
+  // inside the project and would miss them. Special-case the prefix to the console-owned
+  // backups dir; a backup revert is just deleting the zip (existed:false, nothing to restore).
+  if (action.type === 'file_write' && !action.existed && typeof action.path === 'string' && action.path.startsWith('backups/')) {
+    const name = action.path.slice('backups/'.length);
+    if (name && path.basename(name) === name && name.endsWith('.zip')) {
+      const abs = path.join(process.cwd(), 'data', 'backups', name);
+      try {
+        if (fs.existsSync(abs)) fs.rmSync(abs, { force: true });
+      } catch (err) {
+        return { error: `Restore failed: ${err.message}` };
+      }
+      appendAction(projectPath, {
+        type: 'revert',
+        description: `Reverted action ${id}: deleted backup ${name}`,
+        path: action.path,
+      });
+      return { ok: true, data: `Deleted backup ${name} (it was created by action ${id}).` };
+    }
+  }
+
   if (action.type.startsWith('file_')) {
     if (!isSafeRelativePath(projectPath, action.path)) {
       return { error: `Action ${id} has an unsafe path (${action.path}) — refusing to restore.` };
