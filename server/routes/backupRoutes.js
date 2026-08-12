@@ -14,6 +14,23 @@ export function registerBackupRoutes(app) {
     res.json({ backups: listBackups(project) });
   });
 
+  // Project subdirectories for the panel's subfolder picker (one level, relative paths).
+  app.get('/api/projects/:id/folders', (req, res) => {
+    const project = resolveProject(req.params.id);
+    if (!project) return res.status(404).json({ error: 'Project not found' });
+    const folders = [];
+    try {
+      for (const name of fs.readdirSync(project.path)) {
+        const p = path.join(project.path, name);
+        try {
+          if (fs.statSync(p).isDirectory() && !name.startsWith('.')) folders.push(name);
+        } catch {}
+      }
+    } catch {}
+    folders.sort((a, b) => a.localeCompare(b));
+    res.json({ folders });
+  });
+
   // Download one backup by name — basename-validated so the lookup stays inside the
   // backups dir (same pattern as the workspace-export download).
   app.get('/api/projects/:id/backup-file', (req, res) => {

@@ -31,6 +31,8 @@ function formatSize(n: number): string {
 
 export function BackupPanel({ project, onSendMessage }: BackupPanelProps) {
   const [backups, setBackups] = useState<BackupInfo[]>([]);
+  const [folders, setFolders] = useState<string[]>([]);
+  const [subFolder, setSubFolder] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lastSent, setLastSent] = useState<string | null>(null);
@@ -53,6 +55,21 @@ export function BackupPanel({ project, onSendMessage }: BackupPanelProps) {
       return () => clearInterval(t);
     }
   }, [project?.id, fetchBackups]);
+
+  // Phase 9 audit: subfolder picker — backend backupStore.js already supports subPath, the
+  // panel just never exposed it. Populate the picker from the project's one-level dirs.
+  const fetchFolders = useCallback(async () => {
+    if (!project?.id) return;
+    const data = await apiFetchJson<{ folders: string[] }>(`/api/projects/${encodeURIComponent(project.id)}/folders`);
+    if (data) setFolders(data.folders || []);
+  }, [project?.id]);
+
+  useEffect(() => {
+    if (project?.id) {
+      fetchFolders();
+      setSubFolder('');
+    }
+  }, [project?.id, fetchFolders]);
 
   const send = (text: string) => {
     onSendMessage(text);
@@ -101,12 +118,23 @@ export function BackupPanel({ project, onSendMessage }: BackupPanelProps) {
           <div className={cn(cardCls, 'text-sm text-fg-muted')}>Select a project to back up.</div>
         ) : (
           <>
-            <button
-              onClick={() => send('backup this folder')}
-              className="w-full flex items-center justify-center gap-1.5 text-xs font-medium rounded-lg px-3 py-2.5 bg-accent/90 text-white hover:bg-accent transition-colors mb-4"
-            >
-              <Send size={12} /> Backup now (this project's folder)
-            </button>
+            <div className="flex gap-2 mb-4">
+              <select
+                value={subFolder}
+                onChange={(e) => setSubFolder(e.target.value)}
+                className="flex-1 text-xs bg-panel-strong border border-border-soft rounded-lg px-2.5 py-2 text-fg-strong focus:outline-none focus:border-accent/50"
+                title="Subfolder to back up (defaults to the whole project)"
+              >
+                <option value="">Whole project</option>
+                {folders.map((f) => <option key={f} value={f}>{f}/</option>)}
+              </select>
+              <button
+                onClick={() => send(subFolder ? `backup the ${subFolder} folder` : 'backup this folder')}
+                className="flex items-center justify-center gap-1.5 text-xs font-medium rounded-lg px-4 py-2.5 bg-accent/90 text-white hover:bg-accent transition-colors"
+              >
+                <Send size={12} /> Backup now{subFolder ? ` (${subFolder}/)` : ''}
+              </button>
+            </div>
 
             {lastSent && (
               <div className="mb-3 flex items-start gap-2 text-[11px] text-fg-muted bg-scrim-faint border border-border-soft rounded-lg p-2.5">
