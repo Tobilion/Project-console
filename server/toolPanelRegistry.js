@@ -76,6 +76,14 @@ export const TOOL_PANELS = [
     available: true,
     chatHint: 'notify me when files change in Downloads',
   },
+  {
+    id: 'knowledge-base',
+    name: 'Documents',
+    description: 'Search PDFs, Word docs, and notes by meaning (offline index)',
+    icon: 'book-open',
+    available: true,
+    chatHint: 'search my documents for pricing',
+  },
 ];
 
 export function getToolPanels() {

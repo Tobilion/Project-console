@@ -171,4 +171,68 @@ export const projectKnowledgeHandlers = {
     ws.send(JSON.stringify({ type: 'answer', data: formatResults(result.results, input) }));
     return true;
   },
+
+  async 'project.knowledge.ask_documents'(ws, _action, input, project, sessionContext) {
+    // Phase 16 (2026-08-12): knowledge-base search over documents (PDFs/docx/notes) — the
+    // SAME persisted code-index store (the builder now chunks doc files too), so search and
+    // status handling mirror project.code.search exactly. Retrieval-only by default: real
+    // file citations, no generated prose. When AI mode is ON and a model is reachable, the
+    // retrieved chunks are handed to the model for a synthesized natural-language answer —
+    // the raw chunk list stays the fallback, never an error state.
+    const formatResults = (results, query) => {
+      if (results.length === 0) {
+        return `### Documents — [${project.name}]\n\nNo documents match "${query}". The knowledge base covers PDFs, .docx and .md/.txt files up to the per-project cap.`;
+      }
+      const lines = results.map((r, i) => {
+        const loc = `${r.filePath}:${r.startLine}${r.endLine && r.endLine !== r.startLine ? `-${r.endLine}` : ''}`;
+        return `${i + 1}. **${loc}**\n\n\`\`\`\n${r.snippet}\n\`\`\``;
+      });
+      return `### Documents — [${project.name}]\n\nFound ${results.length} match(es) for "${query}" (retrieved from the document index, not generated):\n\n${lines.join('\n\n')}`;
+    };
+    const result = await searchProjectCode(project, input);
+    if (result.status === 'unavailable') {
+      ws.send(JSON.stringify({
+        type: 'answer',
+        data: `Document search needs the embedding model, which failed to load this session — try again after a restart.`,
+      }));
+      return true;
+    }
+    if (result.status === 'indexing') {
+      ws.send(JSON.stringify({
+        type: 'answer',
+        data: `Indexing **[${project.name}]**'s documents in the background (first search builds the index) — I'll post the results here when ready.`,
+      }));
+      enqueueTask(project.id, 'document index build', async () => {
+        await buildProjectIndex(project);
+        const results = await performSearch(project, input);
+        if (ws.readyState === 1) ws.send(JSON.stringify({ type: 'answer', data: formatResults(results, input) }));
+      });
+      return true;
+    }
+    // Retrieval done. AI-mode synthesis (optional, additive): only when AI is on AND a model
+    // answered — otherwise the raw chunk list is the answer, never an error.
+    if (sessionContext?.aiEnabled) {
+      const { chatOnce, listModels } = await import('../ollama.js');
+      const model = sessionContext.aiModel || null;
+      const models = model ? [model] : (await listModels().catch(() => [])).map((m) => m.name);
+      const contextText = result.results.map((r) => `[${r.filePath}:${r.startLine}]\n${r.snippet}`).join('\n\n---\n\n');
+      try {
+        const synthesized = await chatOnce(models[0] || null, [
+          { role: 'system', content: "Answer the user's question using ONLY the retrieved document excerpts below. If the excerpts don't answer it, say so plainly — do not invent content." },
+          { role: 'user', content: `EXCERPTS:\n${contextText}\n\nQUESTION: ${input}` },
+        ]);
+        if (synthesized && synthesized.trim()) {
+          ws.send(JSON.stringify({
+            type: 'answer',
+            data: `### Documents — [${project.name}]\n\n${synthesized.trim()}\n\n---\n\n${formatResults(result.results, input)}`,
+          }));
+          return true;
+        }
+      } catch {
+        // synthesis failed — fall through to the raw chunk list
+      }
+    }
+    ws.send(JSON.stringify({ type: 'answer', data: formatResults(result.results, input) }));
+    return true;
+  },
 };

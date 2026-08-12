@@ -46,3 +46,11 @@ export const INDEX_IGNORE_DIRS = new Set([
 ]);
 
 export const INDEX_EXTS = REAL_CODE_EXTS;
+
+// Phase 16 (2026-08-12): non-code documents the knowledge-base index also covers — PDFs
+// (via pdfKit's extractPdfTextBytes), .docx (mammoth), and plain prose files (.md/.txt).
+// Deliberately narrow: these are prose documents, not "anything with text".
+export const INDEX_DOC_EXTS = new Set(['.pdf', '.docx', '.md', '.txt']);
+
+// PDFs/docx are binary — the 1MB cap still applies but text extraction happens on bytes.
+export const MAX_DOC_BYTES = 20 * 1024 * 1024;

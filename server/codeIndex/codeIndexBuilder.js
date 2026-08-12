@@ -7,11 +7,17 @@ import fs from 'fs/promises';
 import path from 'path';
 import { readProjectTree } from '../codebaseScans.js';
 import { semanticMatcher } from '../semanticMatcher.js';
-import { chunkFile } from './codeIndexChunker.js';
+import { chunkFile, chunkProse } from './codeIndexChunker.js';
 import * as store from './codeIndexStore.js';
-import { MAX_FILE_BYTES, INDEX_EXTS, INDEX_IGNORE_DIRS, INDEX_VERSION } from './codeIndexData.js';
+import { MAX_FILE_BYTES, INDEX_EXTS, INDEX_IGNORE_DIRS, INDEX_VERSION, INDEX_DOC_EXTS, MAX_DOC_BYTES } from './codeIndexData.js';
+import { extractPdfTextBytes } from '../pdfKit.js';
+import { createRequire } from 'module';
 import { watchProjectCodeFiles } from '../fileWatcher.js';
 import { enqueueTask } from '../taskQueue.js';
+
+const require = createRequire(import.meta.url);
+// mammoth is CommonJS — same createRequire pattern as archiver.
+const mammoth = require('mammoth');
 
 const watchedProjects = new Set(); // projectId -> watcher instance
 
@@ -32,7 +38,32 @@ function shouldIndexFile(relPath) {
   if (relPath.startsWith('.')) return false;
   const parts = relPath.split('/');
   if (parts.some((p) => INDEX_IGNORE_DIRS.has(p))) return false;
-  return INDEX_EXTS.has(path.extname(relPath).toLowerCase());
+  const ext = path.extname(relPath).toLowerCase();
+  return INDEX_EXTS.has(ext) || INDEX_DOC_EXTS.has(ext);
+}
+
+/** Read one document's plain text: PDF via pdfKit, docx via mammoth, md/txt as-is. Returns
+ *  { ok, text } or { ok:false }. Text length is capped so a huge doc can't blow the embed
+ *  budget (the chunker caps per-chunk, but the extraction itself is bounded here). */
+async function readDocumentText(fullPath, ext) {
+  try {
+    if (ext === '.pdf') {
+      const bytes = await fs.readFile(fullPath);
+      if (bytes.length > MAX_DOC_BYTES) return { ok: false };
+      const r = await extractPdfTextBytes(bytes);
+      return r.ok ? { ok: true, text: r.text.slice(0, 2_000_000) } : { ok: false };
+    }
+    if (ext === '.docx') {
+      const bytes = await fs.readFile(fullPath);
+      if (bytes.length > MAX_DOC_BYTES) return { ok: false };
+      const r = await mammoth.extractRawText({ buffer: bytes });
+      return { ok: true, text: (r.value || '').slice(0, 2_000_000) };
+    }
+    const text = await fs.readFile(fullPath, 'utf-8');
+    return { ok: true, text: text.slice(0, 2_000_000) };
+  } catch {
+    return { ok: false };
+  }
 }
 
 /** Re-chunk and re-embed one file, dropping its old chunks first. */
@@ -40,19 +71,28 @@ export async function updateFileInProjectIndex(project, relPath) {
   if (!semanticMatcher.ready || !semanticMatcher.extractor) return;
   const fullPath = path.join(project.path, relPath.split('/').join(path.sep));
   let content;
+  const ext = path.extname(fullPath).toLowerCase();
   try {
-    const [stat, raw] = await Promise.all([fs.stat(fullPath), fs.readFile(fullPath, 'utf-8')]);
+    const stat = await fs.stat(fullPath);
     if (!stat.isFile() || stat.size > MAX_FILE_BYTES) {
       await store.dropFile(project.id, project.path, relPath);
       return;
     }
-    content = raw;
+    if (INDEX_DOC_EXTS.has(ext)) {
+      const doc = await readDocumentText(fullPath, ext);
+      if (!doc.ok) { await store.dropFile(project.id, project.path, relPath); return; }
+      content = doc.text;
+    } else {
+      content = await fs.readFile(fullPath, 'utf-8');
+    }
   } catch {
     // File vanished between the watcher event and the update — drop its chunks.
     await store.dropFile(project.id, project.path, relPath);
     return;
   }
-  const chunks = await chunkFile(content, path.extname(fullPath).toLowerCase(), relPath);
+  const chunks = INDEX_DOC_EXTS.has(ext)
+    ? chunkProse(content, relPath, ext === '.pdf' ? 'page' : 'paragraph')
+    : await chunkFile(content, ext, relPath);
   const vectors = [];
   for (const chunk of chunks) {
     try {
@@ -89,13 +129,21 @@ export async function buildProjectIndex(project) {
     }
     if (stat.size > MAX_FILE_BYTES) continue;
     if (store.isFileIndexed(project.id, project.path, relPath, stat.mtimeMs)) continue;
-    let content;
-    try {
-      content = await fs.readFile(fullPath, 'utf-8');
-    } catch {
-      continue;
+    const ext = path.extname(fullPath).toLowerCase();
+    let chunks = [];
+    if (INDEX_DOC_EXTS.has(ext)) {
+      const doc = await readDocumentText(fullPath, ext);
+      if (!doc.ok) continue;
+      chunks = chunkProse(doc.text, relPath, ext === '.pdf' ? 'page' : 'paragraph');
+    } else {
+      let content;
+      try {
+        content = await fs.readFile(fullPath, 'utf-8');
+      } catch {
+        continue;
+      }
+      chunks = await chunkFile(content, ext, relPath);
     }
-    const chunks = await chunkFile(content, path.extname(fullPath).toLowerCase(), relPath);
     const vectors = [];
     for (const chunk of chunks) {
       try {

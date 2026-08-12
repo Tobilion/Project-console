@@ -150,6 +150,11 @@ export const PRE_SEMANTIC_OVERRIDES = [
   // unambiguous — always arithmetic. Deliberately does NOT anchor on the numbers, which are
   // free-form.
   { intent: 'system.chit_chat.calculate', pattern: /^(?:calculate|whats|what's|what\s+is|compute|calc)\b.*\d/ },
+  // Phase 16 (2026-08-12, probe-verified): "search my documents for <free text>" — the query
+  // terms after "for/about" dominate the vector and the input drifts onto file_find/notes.
+  // The search-documents prefix is unambiguous (same class of trap as the notes.search pin).
+  { intent: 'project.knowledge.ask_documents', pattern: /^(?:search|find)\s+(?:my|the|all)\s+(?:documents?|pdfs?)\s+(?:for|about)\s+\S/i },
+  { intent: 'project.knowledge.ask_documents', pattern: /^what\s+(?:did|do)\s+i\s+write\s+about\s+\S/i },
   // Phase 7 (2026-08-12, probe-verified): the fixed CSV grammar — "sum column X in Y.csv" /
   // "filter Y.csv where ..." — has a .csv extension token and a where-clause with free-form
   // values; both carry no embedding weight. A leading verb + .csv mention is unambiguous.

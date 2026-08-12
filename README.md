@@ -13,6 +13,7 @@
 - **Chit-chat**: greeting, status, gratitude, farewell, acknowledgment, and joke replies with varied templates — no LLM call involved. Greetings/status are enriched with live state (console port, projects indexed, running dev server + URL, uncommitted-file count) and what the console remembers about the project. With AI mode on, greeting/status also ask the active model for a tailored reply (bounded timeout, falls back to the canned reply on any error).
 - **Calculator**: safe arithmetic (`+ - * / ( )`, no eval) plus offline unit conversion (length/weight/volume/temperature), percentage/tip/tax phrases (`convert 5 km to miles`, `what is 15% of 80`, `whats 18% tip on 64.50`, `add 8.25% tax to 120`). The Calculator panel (Tools) is a live iOS-style widget — button presses are instant, `=` evaluates through the same server-side evaluator chat uses.
 - **Read-only code Q&A**: detected API routes (Express/Flask/FastAPI/Django), file import/imported-by relationships, monorepo sub-package detection, TODO/FIXME scanning, largest files, recent file activity, session info, running processes.
+- **Documents knowledge base**: `search my documents for pricing` / `what did i write about the budget` searches the project's PDFs, Word docs, and `.md`/`.txt` notes by meaning through the same offline embedding index used for code search (no cloud, no AI required for retrieval — results are real file citations). With AI mode on, a synthesized answer appears above the raw excerpts. The Documents panel (Tools > Documents) shows index status and results.
 - **Git actions**: push, commit, pull, fetch, stash (list/pop), branch creation, tagging, diff, log, remote info, checkpoint commits, ahead/behind status. Safe/read-only operations run immediately; anything that mutates state asks for confirmation first. Hard reset and force operations are deliberately not available.
 - **Non-AI file operations**: "create a file called X with the text '...'", "append to X the text '...'", "read file X" — parsed with regex, gated behind the same confirm-before-write flow as any risky command.
 - **Parameterized commands**: a `console.config.json` command entry can declare `{placeholder}` params (e.g. `watch --interval {interval}`); the console asks for missing values in chat and substitutes them safely (shell metacharacters rejected regardless of the entry's own pattern). Entries can also declare `requires: [paths]` (checked before running, with setup guidance if missing) and a `followUp` field to ask a plain question before the command starts.
@@ -349,6 +350,7 @@ App-global identity (name/title/custom role) edited from the ⚙ Settings modal;
 | `webhook add <url>` / `webhook remove <url>` / `list notifications` / `test notification` | Webhook channels and verification |
 | `notify me when files change in <folder>` / `notify me if <folder> hasn't changed in 7 days` | File-watch rules (notification-only, never a command trigger) |
 | `list watched folders` / `stop watching <folder>` | Manage watch rules (also via the Notifications panel) |
+| `search my documents for pricing` / `what did i write about the budget` | Offline semantic search of PDFs/Word docs/notes — retrieval-only citations, optional AI synthesis |
 
 ### Learning, diagnostics & introspection
 
@@ -374,7 +376,7 @@ App-global identity (name/title/custom role) edited from the ⚙ Settings modal;
 | `help` / `what can you do` / `how do I <anything>` | Full command guide; how-do-I answers come from the command catalog with the exact phrase, the real shell command, and a suggestion chip |
 | `list commands` / `help all` / `show all commands` | Prints the ENTIRE command catalog as plain text — the CLI's equivalent of the Command Reference tab (book icon in the header) |
 | `what is 12 times 7` / `convert 5 km to miles` / `whats 18% tip on 64.50` | Safe arithmetic + offline unit conversion + percentage/tip/tax (also via the Calculator panel) |
-| `open calculator` / `open pdf tools` / `open reminders` / `open file tools` / `open notes` / `open spreadsheet` / `open clipboard` / `open backup` / `open notifications` | Opens the interactive Tools panel (web UI); plain-text note + chat equivalents from the CLI |
+| `open calculator` / `open pdf tools` / `open reminders` / `open file tools` / `open notes` / `open spreadsheet` / `open clipboard` / `open backup` / `open notifications` / `open documents` | Opens the interactive Tools panel (web UI); plain-text note + chat equivalents from the CLI |
 | `switch to developer mode` / `switch to general mode` / `what mode am I in` | Change/check a project's workspace type (persisted in console.config.json) |
 | `switch projects` / `change projects` | The project list in the left sidebar |
 | `dashboard` / `live sites` | The Dashboard tab: project overview + live-site status |

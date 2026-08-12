@@ -410,7 +410,7 @@ npm run lint    # tsc --noEmit
   Eligible from every workspace type — deliberately NOT in WORKSPACE_DEV_ONLY_INTENTS.
 - `server/toolPanelRegistry.js` + `server/routes/toolPanelRoutes.js` — Phase 1.5 (2026-08-11,
   shared interactive Tool Panel architecture): the server-driven interactive-tools registry
-  (`TOOL_PANELS`: calculator, pdf-tools, reminders, file-tools, notes, csv-tools, clipboard, backup, notifications — `getToolPanels()`/`getToolPanel()`, REST
+  (`TOOL_PANELS`: calculator, pdf-tools, reminders, file-tools, notes, csv-tools, clipboard, backup, notifications, knowledge-base — `getToolPanels()`/`getToolPanel()`, REST
   `GET /api/tool-panels` mounted in server/index.js). PDF Tools is a real panel since Phase 3
   (see pdfKit.js entry below); Reminders is a real panel since Phase 4 (see builtinReminders.js);
   Calculator is a real live widget since Phase 6 (see the CalculatorPanel.tsx frontend bullet;
@@ -436,7 +436,8 @@ npm run lint    # tsc --noEmit
   button — renders `PdfToolsPanel` for 'pdf-tools', `RemindersPanel` for 'reminders',
   `FileToolsPanel` for 'file-tools', `NotesPanel` for 'notes', `SpreadsheetPanel` for
   'csv-tools', `ClipboardPanel` for 'clipboard', `BackupPanel` for 'backup',
-  `NotificationsPanel` for 'notifications', placeholder for anything else),
+  `NotificationsPanel` for 'notifications', `DocumentsPanel` for 'knowledge-base',
+  placeholder for anything else),
   `useConsole.ts` toolPanel state cluster (`toolsOpen`/`activeToolPanel`/
   `toolPanels` + `fetchToolPanels`), `wsMessageCases.ts` answerCase reads `payload.openPanel`
   and opens the panel, App.tsx Tools view (header Tools button only when a General-workspace
@@ -633,13 +634,21 @@ npm run lint    # tsc --noEmit
   `semanticMatcher.extractor` — `Array.from()` on the typed-array output is mandatory,
   JSON.stringify otherwise serializes vectors as `{"0":...}` objects; lazy per-project
   chokidar attach via `watchProjectCodeFiles` for incremental re-chunks, unlink drops
-  chunks), `codeIndexSearch.js` (`searchProjectCode` statuses: unavailable (no model) /
+  chunks),   `codeIndexSearch.js` (`searchProjectCode` statuses: unavailable (no model) /
   indexing (build queued or running — never blocks the WS turn) / ready with real file:line
   citations). Intent `project.code.search` ("where do we handle X") in
   builtinProjectKnowledge.js: first query on an unstored project answers "indexing..." and
   the enqueued task posts the results out of band (same pattern as type_check, `ws.readyState
   === 1` guard included). Retrieval-only by design — the answer says results are from the
-  index, not generated.
+  index, not generated. Phase 16 (2026-08-12): the same index now covers DOCUMENTS — PDFs
+  (pdfKit.extractPdfTextBytes), .docx (mammoth), .md/.txt (prose chunking via chunkProse —
+  paragraph-run chunks in the same ~2000-char range, page-mode for PDFs; INDEX_DOC_EXTS).
+  Intent `project.knowledge.ask_documents` ("search my documents for X") mirrors code.search's
+  status handling and retrieval-only contract, with an OPTIONAL AI-mode synthesis (chatOnce
+  over the retrieved chunks) that renders ABOVE the raw list — the chunk list is always the
+  fallback, never an error. Deliberately avoids "find my notes on Y" shapes (Phase 5's
+  notes.search owns those). Documents panel: src/components/DocumentsPanel.tsx, REST
+  GET /api/projects/:id/documents (routes/knowledgeRoutes.js).
 - Misc leaves: `urlSafety.js` (isSafeExternalUrl/isProbeableUrl — SSRF guards; webSearch.js
   re-exports), `regexUtils.js`, `markdownUtils.js`, `webSearch.js` (DuckDuckGo, decodes
   `uddg` redirects, deep-research SSRF guard), `consoleCommandDocs.js` (reference catalog for
@@ -1193,6 +1202,15 @@ time/date/calculate rows, 92/92).
    data); check-matcher 271/273 (baseline 269/271 + 2 open_notifications opener rows, same TWO
    PRE-EXISTING drifts); check-intents unchanged at 1/7/82; check-docs 55/55 (the watch entry
    replaced the old notify entry — same count); check-ws-cases 118/118 unchanged.
+   Phase 16 (2026-08-12): check-indexer 98/98 (baseline 95/95 + 3 chunkProse rows — short doc
+   one bounded chunk, long doc splits, page-mode splits); check-handlers 179/179 (baseline
+   176/176 + 2 open_documents opener rows + 1 ask_documents unavailable-path row); check-matcher
+   278/280 (baseline 271/273 + 7 DOCUMENTS rows — incl. the free-text "search my documents for
+   <arbitrary words>" and "what did i write about X" shapes pinned by Phase 16 pre-semantic
+   overrides (trailing-noun vector trap); "find my notes on Y" shapes deliberately left to
+   notes.search, so ask_documents examples avoid them; same TWO PRE-EXISTING drifts);
+   check-intents unchanged at 1/7/82; check-docs 56/56 (+1 documents catalog entry);
+   check-ws-cases 118/118 unchanged.
    Run the relevant battery after ANY edit to the corresponding module.
 - **editFile** tolerates whitespace differences (normalized line-range fallback) but not
   wrong wording; on total failure the error names both attempts and tells the caller to

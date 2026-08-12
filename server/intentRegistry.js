@@ -106,6 +106,9 @@ export const BUILTIN_INTENTS = new Set([
   // Phase 7 (2026-08-11): semantic code search over the persisted code-content index
   // (codeIndexSearch.js) — read-only retrieval with file:line citations.
   'project.code.search',
+  // Phase 16 (2026-08-12): knowledge-base search over documents (PDFs/.docx/notes) — same
+  // index + retrieval contract as code.search, with optional AI-mode synthesis on top.
+  'project.knowledge.ask_documents',
   // Phase 2 (UPGRADE-ROADMAP.md, 2026-08-11): general-mode file tools (builtinGeneralFiles.js).
   // Not in WORKSPACE_DEV_ONLY_INTENTS — they're usable from every workspace type, per the
   // roadmap's "tag general but don't hard-gate" rule.
@@ -117,6 +120,7 @@ export const BUILTIN_INTENTS = new Set([
   'system.tools.open_calculator', 'system.tools.open_pdf_tools', 'system.tools.open_reminders',
   'system.tools.open_file_tools', 'system.tools.open_notes', 'system.tools.open_csv_tools',
   'system.tools.open_clipboard', 'system.tools.open_backup', 'system.tools.open_notifications',
+  'system.tools.open_documents',
   // Phase 3 (UPGRADE-ROADMAP.md, 2026-08-11): the PDF toolkit trigger intents
   // (builtinPdfTools.js). Each carries the same `opensPanel: 'pdf-tools'` tag; handlers open
   // the panel only when the input lacks parameters, and full commands execute in chat (writes

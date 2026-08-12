@@ -59,4 +59,10 @@ export const TOOL_PANEL_INTENTS = {
       'open notifications', 'open the notifications', 'open notifications panel',
     ],
   },
+  'system.tools.open_documents': {
+    opensPanel: 'knowledge-base',
+    examples: [
+      'open documents', 'open the documents', 'open knowledge base', 'open document search',
+    ],
+  },
 };

@@ -222,6 +222,14 @@ await handleBuiltinIntent(ws, 'system.tools.open_backup', 'open backup', proj, {
 eq('tools leaf: open_backup answers with openPanel + CLI-usable text', ws.sent.length === 1 && ws.sent[0].type === 'answer' && ws.sent[0].openPanel === 'backup' && /backup this folder/.test(ws.sent[0].data), true);
 
 sent.length = 0;
+await handleBuiltinIntent(ws, 'system.tools.open_notifications', 'open notifications', proj, {});
+eq('tools leaf: open_notifications answers with openPanel + CLI-usable text', ws.sent.length === 1 && ws.sent[0].type === 'answer' && ws.sent[0].openPanel === 'notifications' && /notify me when files change/.test(ws.sent[0].data), true);
+
+sent.length = 0;
+await handleBuiltinIntent(ws, 'system.tools.open_documents', 'open documents', proj, {});
+eq('tools leaf: open_documents answers with openPanel + CLI-usable text', ws.sent.length === 1 && ws.sent[0].type === 'answer' && ws.sent[0].openPanel === 'knowledge-base' && /search my documents/.test(ws.sent[0].data), true);
+
+sent.length = 0;
 await handleBuiltinIntent(ws, 'system.chit_chat.list_commands', 'list commands', proj, {});
 eq('chit-chat leaf: list_commands answers the full catalog', ws.sent.length === 1 && ws.sent[0].type === 'answer' && /Command reference/.test(ws.sent[0].data) && /entries/.test(ws.sent[0].data), true);
 
@@ -239,6 +247,10 @@ await handleBuiltinIntent(ws, 'project.code.search', 'where do we handle retries
 // this harness), so the code-search handler must answer the clean unavailable path — never
 // crash, never touch the fixture's non-existent project dir.
 eq('knowledge leaf: code.search answers unavailable without the embedding model', ws.sent.length === 1 && ws.sent[0].type === 'answer' && /embedding model/.test(ws.sent[0].data), true);
+
+sent.length = 0;
+await handleBuiltinIntent(ws, 'project.knowledge.ask_documents', 'search my documents for pricing', proj, {});
+eq('knowledge leaf: ask_documents answers unavailable without the embedding model', ws.sent.length === 1 && ws.sent[0].type === 'answer' && /embedding model/.test(ws.sent[0].data), true);
 
 // --- WORKSPACE TYPE (Phase 1, 2026-08-11) -------------------------------------
 // Eligibility is pure, so it's unit-assertable here. The key regression guard is the sync

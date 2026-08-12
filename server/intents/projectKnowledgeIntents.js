@@ -185,4 +185,19 @@ export const PROJECT_KNOWLEDGE_INTENTS = {
       'where is the upload code', 'find code related to uploads', 'where is the upload handler',
     ],
   },
+  // Phase 16 (2026-08-12): knowledge-base search over DOCUMENTS (PDFs, .docx, notes/.md/.txt)
+  // — "what did I write about X", "search my documents for Z". Same retrieval-only contract
+  // as project.code.search (file citations, no generated prose) with an optional AI-mode
+  // synthesis on top. Deliberately avoids "find my notes on Y" shapes — those belong to the
+  // Phase 5 notes.search intent (the note feed is a different surface than the document index).
+  // Tagged `opensPanel: 'knowledge-base'`.
+  'project.knowledge.ask_documents': {
+    opensPanel: 'knowledge-base',
+    examples: [
+      'what did i write about the budget', 'search my documents for quarterly goals',
+      'search my documents for pricing', 'search my documents for the contract terms',
+      'search my documents about the roadmap', 'what do my notes say about the move',
+      'search the pdfs for the contract terms', 'search the documents for the meeting notes',
+    ],
+  },
 };

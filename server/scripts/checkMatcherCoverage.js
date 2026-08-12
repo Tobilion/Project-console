@@ -586,6 +586,18 @@ const BATTERIES = [
       ['open the notifications panel', 'BUILTIN=system.tools.open_notifications'],
     ],
   },
+  {
+    name: 'DOCUMENTS (Phase 16 knowledge-base intents)',
+    items: [
+      ['search my documents for pricing', 'BUILTIN=project.knowledge.ask_documents'],
+      ['search my documents for quarterly goals', 'BUILTIN=project.knowledge.ask_documents'],
+      ['search my documents for the trip', 'BUILTIN=project.knowledge.ask_documents'],
+      ['what did i write about the budget', 'BUILTIN=project.knowledge.ask_documents'],
+      ['search the pdfs for the contract terms', 'BUILTIN=project.knowledge.ask_documents'],
+      ['open documents', 'BUILTIN=system.tools.open_documents'],
+      ['open the knowledge base', 'BUILTIN=system.tools.open_documents'],
+    ],
+  },
 ];
 
 await semanticMatcher.initialize();

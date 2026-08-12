@@ -70,6 +70,37 @@ export async function chunkFile(content, ext, relPath) {
   return chunks;
 }
 
+// Phase 16 (2026-08-12): prose chunking for documents (md/txt/docx-extracted text). Paragraph
+// boundaries are the natural unit for prose (a fixed line window reads poorly for markdown);
+// chunks are paragraph runs in the same rough token range as code chunks (MAX_CHUNK_CHARS),
+// with an overlap of one paragraph so a topic spanning a boundary stays findable. PDFs are
+// chunked by page runs instead (extractPdfTextBytes already separates pages by newlines).
+export function chunkProse(text, relPath, mode = 'paragraph') {
+  const trimmed = (text || '').trim();
+  if (!trimmed) return [];
+  let units;
+  if (mode === 'page') {
+    units = trimmed.split(/\n{2,}|\n(?=\S)/).map((p) => p.trim()).filter(Boolean);
+  } else {
+    units = trimmed.split(/\n{2,}/).map((p) => p.trim()).filter(Boolean);
+  }
+  const chunks = [];
+  let current = '';
+  let startUnit = 1;
+  for (let i = 0; i < units.length; i++) {
+    const next = current ? `${current}\n\n${units[i]}` : units[i];
+    if (next.length > MAX_CHUNK_CHARS && current) {
+      chunks.push({ id: `${relPath}:p${startUnit}`, start: startUnit, end: i, text: current });
+      current = units[i];
+      startUnit = i + 1;
+    } else {
+      current = next;
+    }
+  }
+  if (current) chunks.push({ id: `${relPath}:p${startUnit}`, start: startUnit, end: units.length, text: current });
+  return chunks;
+}
+
 // Exported for the chunking unit checks in check-indexer: a pure regression surface for
 // "does this file produce stable, bounded chunks" without touching the embedding model.
-export const _testHooks = { symbolChunks, windowChunks, splitOversized };
+export const _testHooks = { symbolChunks, windowChunks, splitOversized, chunkProse };

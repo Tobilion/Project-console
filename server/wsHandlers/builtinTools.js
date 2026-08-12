@@ -96,4 +96,13 @@ export const toolsHandlers = {
       openPanel: panel.id,
     }));
   },
+  'system.tools.open_documents': async (ws, action) => {
+    const panel = getToolPanel(TOOL_PANEL_INTENTS[action].opensPanel);
+    if (!panel) return false;
+    ws.send(JSON.stringify({
+      type: 'answer',
+      data: `The ${panel.name} panel is an interactive web-UI search over the project's PDFs, Word docs and notes (offline semantic index). From chat — including the CLI — the same feature works as a plain command: \`search my documents for pricing\`.`,
+      openPanel: panel.id,
+    }));
+  },
 };

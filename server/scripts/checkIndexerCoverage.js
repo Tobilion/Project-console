@@ -251,6 +251,15 @@ try {
   eq('chunker py fixed-window single chunk (file under window)', pyChunks.length === 1 && pyChunks[0].start === 1 && pyChunks[0].end === 5, true);
   const big = await chunker.chunkFile('x'.repeat(4500), '.js', 'src/c.js');
   eq('chunker oversized split into overlapping passes', big.length, 5);
+  // Phase 16 (2026-08-12): prose chunking for documents — paragraph-run chunks up to the
+  // char cap (a short doc is one chunk; a long doc splits into bounded chunks; PDFs use page
+  // runs).
+  const prose = chunker.chunkProse('First paragraph about pricing.\n\nSecond paragraph about the roadmap.\n\nThird paragraph about the meeting.', 'docs/notes.md');
+  eq('chunker prose: short doc is one bounded chunk with all paragraphs', prose.length === 1 && prose[0].text.includes('pricing') && prose[0].text.includes('meeting') && prose[0].text.length <= 2000, true);
+  const proseBig = chunker.chunkProse(Array.from({ length: 300 }, (_, i) => `Paragraph ${i} with some content about topic ${i % 3}.`).join('\n\n'), 'docs/big.md');
+  eq('chunker prose: long doc splits into bounded chunks', proseBig.length > 1 && proseBig.every((c) => c.text.length <= 2000), true);
+  const prosePage = chunker.chunkProse(Array.from({ length: 200 }, (_, i) => `Page ${i + 1} content about topic ${i % 2}.`).join('\n\n'), 'docs/guide.pdf', 'page');
+  eq('chunker prose: page mode splits long docs', prosePage.length > 1 && prosePage.every((c) => c.text.length <= 2000), true);
   const idxRoot = path.join(os.tmpdir(), 'console-codeindex-fixtures');
   const idxDir = path.join(idxRoot, 'project');
   await fs.mkdir(idxDir, { recursive: true });

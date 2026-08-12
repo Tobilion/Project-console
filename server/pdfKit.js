@@ -271,6 +271,20 @@ export async function extractText(root, input) {
   }
 }
 
+/** Phase 16 (2026-08-12): raw-bytes PDF text extraction for the document indexer (the
+ *  chat-facing extractText takes a project-relative filename; the indexer has a path + bytes
+ *  already). Same pdf-parse path — one extraction implementation. */
+export async function extractPdfTextBytes(bytes) {
+  try {
+    const parser = new PDFParse({ data: bytes });
+    await parser.load();
+    const { text, pages } = await parser.getText({ pageJoiner: '\n' });
+    return { ok: true, text: (text || '').trim(), pages: (pages || []).length };
+  } catch (err) {
+    return { ok: false, error: `PDF text extraction failed: ${err.message}` };
+  }
+}
+
 /** Extract a page range into one new PDF. Returns { ok, output, pages } or { ok:false, error }. */
 export async function extractPages(root, input, from, to, output) {
   const read = readPdfBytes(root, input);
