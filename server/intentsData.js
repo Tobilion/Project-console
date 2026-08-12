@@ -19,6 +19,7 @@ import { NOTE_INTENTS } from './intents/noteIntents.js';
 import { CSV_INTENTS } from './intents/csvIntents.js';
 import { CLIPBOARD_INTENTS } from './intents/clipboardIntents.js';
 import { BACKUP_INTENTS } from './intents/backupIntents.js';
+import { getLocalePhrases } from './intents/localeIntents.js';
 
 export const INTENTS = {
   ...CHIT_CHAT_INTENTS,
@@ -37,3 +38,19 @@ export const INTENTS = {
   ...CLIPBOARD_INTENTS,
   ...BACKUP_INTENTS,
 };
+
+// Phase 14 (2026-08-12): i18n scaffolding — merge the active locale's phrases into the
+// shared INTENTS object so the semantic matcher, Fuse index, NLP classifier, and the
+// check-intents harness all see the same set. Locale phrases ADD to English (never replace):
+// a mixed-language user must not lose English commands by picking a locale. Default locale
+// 'en' has no phrase map, so this is a no-op unless the user profile sets `locale`.
+const localePhrases = getLocalePhrases();
+if (localePhrases) {
+  for (const [intent, phrases] of Object.entries(localePhrases)) {
+    if (!INTENTS[intent]) continue;
+    const existing = new Set(INTENTS[intent].examples || []);
+    for (const phrase of phrases) {
+      if (!existing.has(phrase)) INTENTS[intent].examples.push(phrase);
+    }
+  }
+}

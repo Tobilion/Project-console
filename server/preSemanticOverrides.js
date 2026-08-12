@@ -125,6 +125,11 @@ export const PRE_SEMANTIC_OVERRIDES = [
   // this override the open_file literal rule below catches "file" and routes to
   // project.action.open_file (which asks "Which file?"). Placed BEFORE the open_file rule.
   { intent: 'system.tools.open_file_tools', pattern: /^open\s+(?:the\s+)?file\s+tools(?:\s+panel)?$/i },
+  // Phase 14 (2026-08-12, probe-verified): "extract the zip file" drifted onto backup.create
+  // ("export this project as a zip") — the archive-file "extract" ask is a file_count query,
+  // never a request to create a backup. Same class of pin as the pdf-verb rules: an
+  // extract-verb + archive-file mention is unambiguous.
+  { intent: 'project.context.file_count', pattern: /\bextract\b(?=[\s\S]*\b(?:zip|archive|rar|7z|tar|gz)\s*(?:file|folder)?\b)/i },
   // Phase 5 (2026-08-12, probe-verified): "note: <free text>" with arbitrary words scores
   // low in the embedding stage because the trailing nouns dominate the vector — same trap
   // as the "remind me" override. A leading "note:" / "add a note:" / "write a note:" /

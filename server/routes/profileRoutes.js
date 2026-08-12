@@ -40,6 +40,10 @@ const DEFAULT_PROFILE = {
   // 'dev' or 'general'. The App falls back to this when a project has no per-project tab
   // preference and the server's heuristic hasn't classified it yet.
   defaultWorkspaceType: 'dev',
+  // Phase 14 (2026-08-12): phrase-matching locale ('en' default; 'de' is the POC). Locale
+  // phrases ADD to English — never a replacement. Answer text/UI strings are NOT translated
+  // (scope boundary, see localeIntents.js).
+  locale: 'en',
 };
 
 // Only plain, trimmed strings up to a sane length — mirrors the conservative
@@ -69,6 +73,7 @@ function readProfile() {
       clipboardHistory: sanitizeBool(p.clipboardHistory, DEFAULT_PROFILE.clipboardHistory),
       clipboardPersist: sanitizeBool(p.clipboardPersist, DEFAULT_PROFILE.clipboardPersist),
       defaultWorkspaceType: p.defaultWorkspaceType === 'general' ? 'general' : 'dev',
+      locale: typeof p.locale === 'string' && p.locale.length <= 8 ? p.locale : 'en',
     };
   } catch {
     // Missing or corrupt file — serve defaults without touching disk.
@@ -109,6 +114,7 @@ export function registerProfileRoutes(app) {
       clipboardHistory: sanitizeBool(body.clipboardHistory, current.clipboardHistory),
       clipboardPersist: sanitizeBool(body.clipboardPersist, current.clipboardPersist),
       defaultWorkspaceType: body.defaultWorkspaceType === 'general' ? 'general' : 'dev',
+      locale: typeof body.locale === 'string' && body.locale.length <= 8 ? body.locale : 'en',
     };
     const err = writeProfile(updated);
     if (err) {

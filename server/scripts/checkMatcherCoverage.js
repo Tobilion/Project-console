@@ -24,6 +24,7 @@
  */
 import { fileURLToPath, pathToFileURL } from 'url';
 import path from 'path';
+import fs from 'fs';
 
 const PROBE = process.argv.includes('--probe');
 // Derived from this script's own location, not hardcoded to one machine/username — was
@@ -247,6 +248,27 @@ const BATTERIES = [
       ['help all', 'BUILTIN=system.chit_chat.list_commands'],
       ['list all commands', 'BUILTIN=system.chit_chat.help'],
       ['show all commands', 'BUILTIN=system.chit_chat.help'],
+      ['help', 'BUILTIN=system.chit_chat.help'],
+    ],
+  },
+  {
+    // Phase 14 (2026-08-12): i18n scaffolding — German POC phrases ADD to English. These rows
+    // only apply when the profile locale is 'de' (the locale merge is a no-op for 'en', and
+    // the harness must stay machine-independent); the English shapes must keep matching even
+    // with the locale active (additive, never replace).
+    name: 'PHASE14 (i18n: de locale POC — active only when profile locale is de)',
+    activeWhen: () => {
+      try {
+        const raw = fs.readFileSync(path.join(process.cwd(), 'data', 'user-profile.json'), 'utf-8');
+        return JSON.parse(raw)?.userProfile?.locale === 'de';
+      } catch { return false; }
+    },    items: [
+      ['hallo', 'BUILTIN=system.chit_chat.greeting'],
+      ['was ist 12 mal 7', 'BUILTIN=system.chit_chat.calculate'],
+      ['hilfe', 'BUILTIN=system.chit_chat.help'],
+      ['tschuess', 'BUILTIN=system.chit_chat.farewell'],
+      ['hello', 'BUILTIN=system.chit_chat.greeting'],
+      ['what is 12 times 7', 'BUILTIN=system.chit_chat.calculate'],
       ['help', 'BUILTIN=system.chit_chat.help'],
     ],
   },
@@ -564,6 +586,12 @@ await semanticMatcher.addProjectIntents([project]);
 
 let total = 0, failed = 0;
 for (const battery of BATTERIES) {
+  // Phase 14: batteries with an `activeWhen` predicate only run when it passes (the de-locale
+  // battery is machine-independent — it runs only when the profile locale is actually 'de').
+  if (battery.activeWhen && !battery.activeWhen()) {
+    if (PROBE) console.log(`\n=== ${battery.name} === (skipped — locale not active)`);
+    continue;
+  }
   console.log(`\n=== ${battery.name} ===`);
   for (const [input, expect] of battery.items) {
     const r = await matchInput(input, project, 0);

@@ -1164,6 +1164,19 @@ time/date/calculate rows, 92/92).
    Ollama note; the CLI mirrors it via @clack after connect when setupComplete is false.
    `defaultWorkspaceType` ('dev'|'general', sanitized server-side) is the App's tab fallback
    for unclassified/no-project states. Live-verified: POST round-trips + sanitization.
+   Phase 14 (2026-08-12): i18n scaffolding — `server/intents/localeIntents.js` carries a POC
+   German phrase map (greeting/farewell/help/status/calculate); intentsData.js merges the
+   active locale's phrases INTO the shared INTENTS object at export (semantic matcher, Fuse,
+   NLP classifier, and check-intents all see the same set). Locale phrases ADD to English —
+   never replace (mixed-language users keep English commands). The locale comes from the
+   user profile (`locale` field, default 'en' — the matcher is global by design, so this is a
+   global setting, not per-project). Scope boundary: phrase matching only — answer text and
+   UI strings are NOT translated. check-intents baseline moved to 1/7/82 (the +2 exact dupes
+   came from earlier phases' phrase additions, not the German set — verified none of the
+   German phrases dup). check-matcher 269/271 with the de-locale battery gated by an
+   activeWhen predicate (skipped unless the profile locale is 'de'). A corpus pin was needed:
+   "extract the zip file" drifted onto backup.create ("export this project as a zip") —
+   pre-semantic override pins extract+archive-file shapes to file_count.
    Run the relevant battery after ANY edit to the corresponding module.
 - **editFile** tolerates whitespace differences (normalized line-range fallback) but not
   wrong wording; on total failure the error names both attempts and tells the caller to

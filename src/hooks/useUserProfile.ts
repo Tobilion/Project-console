@@ -18,6 +18,8 @@ export interface UserProfile {
   clipboardPersist: boolean;
   // Phase 13 (2026-08-12): workspace-type default chosen in the first-run wizard.
   defaultWorkspaceType: 'dev' | 'general';
+  // Phase 14 (2026-08-12): phrase-matching locale ('en' default; 'de' is the POC).
+  locale: string;
 }
 
 // Neutral defaults, not a hardcoded person's name/title — matches server/routes/profileRoutes.js's
@@ -35,6 +37,7 @@ const DEFAULT_PROFILE: UserProfile = {
   clipboardHistory: false,
   clipboardPersist: false,
   defaultWorkspaceType: 'dev',
+  locale: 'en',
 };
 
 /** Client state for the user profile persisted to the server (GET/POST /api/profile).
