@@ -66,6 +66,11 @@
 - **`save this as a snippet: welcome`** / **`copy snippet welcome`** / **`delete snippet welcome`** — named text blocks, global and persistent.
 - Every copy goes through a server-side OS clipboard write (Set-Clipboard/pbcopy/xclip), so the CLI copies for real too — no browser needed. The Clipboard panel (Tools > Clipboard, or `open clipboard`) shows both lists with copy/delete actions; when history is off the panel still renders and explains how to enable it.
 
+### Backup
+
+- **`backup this folder`** / **`export this project as a zip`** — zips the project folder (or a named subfolder) to `data/backups/` with a timestamp, returns the absolute path + a download link, and journals the zip so `revert action <id>` deletes it. Read-only against the source — nothing in the project is modified or deleted.
+- **`list backups`** — shows past backups (timestamp + size). The Backup panel (Tools > Backup, or `open backup`) is a Time Machine-style reverse-chronological list with per-row download and "show in folder".
+
 ### PDF toolkit
 
 - **`merge these pdfs into combined.pdf`** — merges several PDFs into one new file (never overwrites an existing output).
@@ -337,6 +342,8 @@ App-global identity (name/title/custom role) edited from the ⚙ Settings modal;
 | `count rows in data.csv where status equals done` / `filter data.csv where price greater than 50` | CSV row filtering — fixed ops: equals/contains/greater than/less than (filter table also via the Spreadsheet panel) |
 | `show clipboard history` / `copy clipboard item 2` / `clear clipboard history` | Opt-in OS clipboard history (Settings → Advanced) — copy re-writes to the OS clipboard server-side |
 | `save this as a snippet: welcome` / `copy snippet welcome` / `delete snippet welcome` | Named text snippets (global, persistent) |
+| `backup this folder` / `export this project as a zip` | Zip the project to data/backups (read-only on the source, journaled, revertible) |
+| `list backups` | Show past backups (also via the Backup panel) |
 | `notify me when dev-server-crash` / `stop notifying me about ...` | Desktop/webhook alerts per event — all off until you opt in |
 | `webhook add <url>` / `webhook remove <url>` / `list notifications` / `test notification` | Webhook channels and verification |
 
@@ -363,7 +370,7 @@ App-global identity (name/title/custom role) edited from the ⚙ Settings modal;
 |---|---|
 | `help` / `what can you do` / `how do I <anything>` | Full command guide; how-do-I answers come from the command catalog with the exact phrase, the real shell command, and a suggestion chip |
 | `what is 12 times 7` / `convert 5 km to miles` / `whats 18% tip on 64.50` | Safe arithmetic + offline unit conversion + percentage/tip/tax (also via the Calculator panel) |
-| `open calculator` / `open pdf tools` / `open reminders` / `open file tools` / `open notes` / `open spreadsheet` / `open clipboard` | Opens the interactive Tools panel (web UI); plain-text note + chat equivalents from the CLI |
+| `open calculator` / `open pdf tools` / `open reminders` / `open file tools` / `open notes` / `open spreadsheet` / `open clipboard` / `open backup` | Opens the interactive Tools panel (web UI); plain-text note + chat equivalents from the CLI |
 | `switch to developer mode` / `switch to general mode` / `what mode am I in` | Change/check a project's workspace type (persisted in console.config.json) |
 | `switch projects` / `change projects` | The project list in the left sidebar |
 | `dashboard` / `live sites` | The Dashboard tab: project overview + live-site status |

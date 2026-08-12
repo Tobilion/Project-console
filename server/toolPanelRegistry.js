@@ -60,6 +60,14 @@ export const TOOL_PANELS = [
     available: true,
     chatHint: 'show clipboard history',
   },
+  {
+    id: 'backup',
+    name: 'Backup',
+    description: 'Zip a folder and browse past backups (Time Machine-style list)',
+    icon: 'archive',
+    available: true,
+    chatHint: 'backup this folder',
+  },
 ];
 
 export function getToolPanels() {

@@ -533,6 +533,16 @@ const BATTERIES = [
       ['open the clipboard panel', 'BUILTIN=system.tools.open_clipboard'],
     ],
   },
+  {
+    name: 'BACKUP (Phase 9 backup intents)',
+    items: [
+      ['backup this folder', 'BUILTIN=backup.create'],
+      ['export this project as a zip', 'BUILTIN=backup.create'],
+      ['list backups', 'BUILTIN=backup.list'],
+      ['open backup', 'BUILTIN=system.tools.open_backup'],
+      ['open the backup panel', 'BUILTIN=system.tools.open_backup'],
+    ],
+  },
 ];
 
 await semanticMatcher.initialize();

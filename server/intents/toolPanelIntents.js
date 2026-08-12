@@ -47,4 +47,10 @@ export const TOOL_PANEL_INTENTS = {
       'open clipboard', 'open the clipboard', 'open clipboard panel',
     ],
   },
+  'system.tools.open_backup': {
+    opensPanel: 'backup',
+    examples: [
+      'open backup', 'open backups', 'open the backup panel',
+    ],
+  },
 };

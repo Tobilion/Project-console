@@ -293,6 +293,16 @@ npm run lint    # tsc --noEmit
   snippets above the history stack; when the setting is off the panel explains how to
   enable it rather than disappearing). `syncClipboardPolling()` runs at boot and on profile
   save so the setting takes effect live without a restart.
+- `server/backupStore.js` + `server/wsHandlers/builtinBackup.js` + `server/intents/backupIntents.js`
+  — Phase 9 (2026-08-12): backup/zip. `createBackup` zips a project (or a named subfolder) to
+  `data/backups/<name>-<timestamp>.zip` via archiver@7 (classic `archiver('zip')` API — v8 is
+  a breaking rewrite with no callable default export, do not bump), 50MB cap matching
+  workspaceTransfer.js, IGNORE_DIRS skip list (node_modules/.git/.console/dist/...). Zipping
+  is read-only w.r.t. the source (no confirm gate) but journals each zip via appendAction
+  (`file_write`, existed:false) so `revert action <id>` deletes it. Intents backup.create/list,
+  tagged `opensPanel: 'backup'`; REST `GET /api/projects/:id/backups` + `backup-file?name=`
+  (basename-validated download, routes/backupRoutes.js); panel `src/components/BackupPanel.tsx`
+  (Time Machine simplified — reverse-chronological list with download/show-in-folder).
 - `server/conversationStore.js` — orchestration over `sessionPaths.js`/`sessionIndex.js`/
   `messageLog.js`/`chatLog.js`/`sessionMigration.js` (see "How chat memory works")
 - `server/sessionExport.js` — session export (Phase 0, 2026-08-10):
@@ -390,7 +400,7 @@ npm run lint    # tsc --noEmit
   Eligible from every workspace type — deliberately NOT in WORKSPACE_DEV_ONLY_INTENTS.
 - `server/toolPanelRegistry.js` + `server/routes/toolPanelRoutes.js` — Phase 1.5 (2026-08-11,
   shared interactive Tool Panel architecture): the server-driven interactive-tools registry
-  (`TOOL_PANELS`: calculator, pdf-tools, reminders, file-tools, notes, csv-tools, clipboard — `getToolPanels()`/`getToolPanel()`, REST
+  (`TOOL_PANELS`: calculator, pdf-tools, reminders, file-tools, notes, csv-tools, clipboard, backup — `getToolPanels()`/`getToolPanel()`, REST
   `GET /api/tool-panels` mounted in server/index.js). PDF Tools is a real panel since Phase 3
   (see pdfKit.js entry below); Reminders is a real panel since Phase 4 (see builtinReminders.js);
   Calculator is a real live widget since Phase 6 (see the CalculatorPanel.tsx frontend bullet;
@@ -415,7 +425,7 @@ npm run lint    # tsc --noEmit
 - Frontend: `src/components/ToolsPanel.tsx` (card grid → dedicated panel view with a back
   button — renders `PdfToolsPanel` for 'pdf-tools', `RemindersPanel` for 'reminders',
   `FileToolsPanel` for 'file-tools', `NotesPanel` for 'notes', `SpreadsheetPanel` for
-  'csv-tools', `ClipboardPanel` for 'clipboard', placeholder for anything else),
+  'csv-tools', `ClipboardPanel` for 'clipboard', `BackupPanel` for 'backup', placeholder for anything else),
   `useConsole.ts` toolPanel state cluster (`toolsOpen`/`activeToolPanel`/
   `toolPanels` + `fetchToolPanels`), `wsMessageCases.ts` answerCase reads `payload.openPanel`
   and opens the panel, App.tsx Tools view (header Tools button only when a General-workspace
@@ -1109,7 +1119,12 @@ time/date/calculate rows, 92/92).
    row); check-matcher 259/261 (baseline 249/251 + 10 CLIPBOARD battery rows, same TWO
    PRE-EXISTING drifts); check-intents unchanged at 1/5/82; check-docs 53/53 unchanged (the
    clipboard catalog entry replaced the schedule-log row position — verify count on next
-   run); check-ws-cases 118/118 unchanged (copy_to_clipboard comment-only update).
+   run);    check-ws-cases 118/118 unchanged (copy_to_clipboard comment-only update).
+   Phase 9 (2026-08-12): check-handlers 168/168 (baseline 164/164 + 4 rows — 1 open_backup
+   opener row + 3 temp-dir backup-store asserts: zip created/list/missing-subfolder-refused);
+   check-matcher 264/266 (baseline 259/261 + 5 BACKUP battery rows, same TWO PRE-EXISTING
+   drifts); check-intents unchanged at 1/5/82; check-docs 54/54 (+1 backup catalog entry);
+   check-ws-cases 118/118 unchanged.
    Run the relevant battery after ANY edit to the corresponding module.
 - **editFile** tolerates whitespace differences (normalized line-range fallback) but not
   wrong wording; on total failure the error names both attempts and tells the caller to

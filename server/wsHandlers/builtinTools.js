@@ -78,4 +78,13 @@ export const toolsHandlers = {
       openPanel: panel.id,
     }));
   },
+  'system.tools.open_backup': async (ws, action) => {
+    const panel = getToolPanel(TOOL_PANEL_INTENTS[action].opensPanel);
+    if (!panel) return false;
+    ws.send(JSON.stringify({
+      type: 'answer',
+      data: `The ${panel.name} panel is an interactive web-UI list (zip a folder, browse past backups). From chat — including the CLI — the same features work as plain commands: \`backup this folder\` / \`list backups\`.`,
+      openPanel: panel.id,
+    }));
+  },
 };

@@ -45,6 +45,7 @@ const { reminderHandlers } = await import(pathToFileURL(base + 'wsHandlers/built
 const { noteHandlers } = await import(pathToFileURL(base + 'wsHandlers/builtinNotes.js').href);
 const { csvHandlers } = await import(pathToFileURL(base + 'wsHandlers/builtinCsvTools.js').href);
 const { clipboardHandlers } = await import(pathToFileURL(base + 'wsHandlers/builtinClipboard.js').href);
+const { backupHandlers } = await import(pathToFileURL(base + 'wsHandlers/builtinBackup.js').href);
 const { parseReminderInput } = await import(pathToFileURL(base + 'schedules/reminderParser.js').href);
 const {
   parsePdfNames, parsePdfOutput, parsePageSpec, extractWatermarkText,
@@ -69,7 +70,7 @@ function eq(label, got, expect) {
   else if (!ok) console.log(`  FAIL ${label}\n    expected: ${e}\n    got:      ${g}`);
 }
 
-const merged = { ...gitHandlers, ...chitChatHandlers, ...fileNpmHandlers, ...projectKnowledgeHandlers, ...projectContextHandlers, ...projectActionHandlers, ...diagnosticsHandlers, ...generalFileHandlers, ...toolsHandlers, ...pdfHandlers, ...reminderHandlers, ...noteHandlers, ...csvHandlers, ...clipboardHandlers };
+const merged = { ...gitHandlers, ...chitChatHandlers, ...fileNpmHandlers, ...projectKnowledgeHandlers, ...projectContextHandlers, ...projectActionHandlers, ...diagnosticsHandlers, ...generalFileHandlers, ...toolsHandlers, ...pdfHandlers, ...reminderHandlers, ...noteHandlers, ...csvHandlers, ...clipboardHandlers, ...backupHandlers };
 const handlerKeys = Object.keys(merged).sort();
 const builtinKeys = [...BUILTIN_INTENTS].sort();
 const intentKeys = Object.keys(INTENTS).sort();
@@ -210,6 +211,10 @@ eq('tools leaf: open_csv_tools answers with openPanel + CLI-usable text', ws.sen
 sent.length = 0;
 await handleBuiltinIntent(ws, 'system.tools.open_clipboard', 'open clipboard', proj, {});
 eq('tools leaf: open_clipboard answers with openPanel + CLI-usable text', ws.sent.length === 1 && ws.sent[0].type === 'answer' && ws.sent[0].openPanel === 'clipboard' && /show clipboard history/.test(ws.sent[0].data), true);
+
+sent.length = 0;
+await handleBuiltinIntent(ws, 'system.tools.open_backup', 'open backup', proj, {});
+eq('tools leaf: open_backup answers with openPanel + CLI-usable text', ws.sent.length === 1 && ws.sent[0].type === 'answer' && ws.sent[0].openPanel === 'backup' && /backup this folder/.test(ws.sent[0].data), true);
 
 sent.length = 0;
 const unknown = await handleBuiltinIntent(ws, 'no_such_intent', 'x', proj, {});
@@ -576,6 +581,27 @@ eq('snippet store: delete ok', deleteSnippet('greeting').name === 'greeting' && 
 eq('snippet store: delete missing -> null', deleteSnippet('nope'), null);
 delete process.env.SNIPPETS_FILE;
 try { fs.unlinkSync(snippetsTmp); } catch {}
+
+// --- BACKUP (Phase 9, 2026-08-12) ---------------------------------------------
+// Temp-dir smoke: create a zip of a scratch folder, assert the file exists, list it. The
+// handler writes to data/backups (console-owned, gitignored) — the zip is created then
+// removed so the harness never leaves artifacts.
+const backupRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'console-backup-'));
+fs.writeFileSync(path.join(backupRoot, 'a.txt'), 'hello');
+fs.writeFileSync(path.join(backupRoot, 'b.txt'), 'world');
+const backupProj = {
+  id: 'backup-p', name: 'BackupProj', folderName: 'backup-p', path: backupRoot, workspaceType: 'general',
+  config: { projectName: 'BackupProj', entries: [] }, contextFiles: [],
+  parsedKnowledge: {}, codebaseIndex: { languages: [], keyFiles: {} },
+};
+const { createBackup, listBackups } = await import(pathToFileURL(base + 'backupStore.js').href);
+const bk = await createBackup(backupProj, null);
+eq('backup store: zip created ok', bk.ok === true && bk.file.endsWith('.zip') && fs.existsSync(bk.file), true);
+eq('backup store: list finds it', listBackups(backupProj).length === 1, true);
+const bkSub = await createBackup(backupProj, 'nope');
+eq('backup store: missing subfolder refused', bkSub.ok === false, true);
+if (bk.ok) { try { fs.unlinkSync(bk.file); } catch {} }
+fs.rmSync(backupRoot, { recursive: true, force: true });
 
 console.log(`check-handlers: ${total} checks, ${failed} failed`);
 process.exit(failed ? 1 : 0);
