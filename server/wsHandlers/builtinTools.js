@@ -51,4 +51,13 @@ export const toolsHandlers = {
       openPanel: panel.id,
     }));
   },
+  'system.tools.open_notes': async (ws, action) => {
+    const panel = getToolPanel(TOOL_PANEL_INTENTS[action].opensPanel);
+    if (!panel) return false;
+    ws.send(JSON.stringify({
+      type: 'answer',
+      data: `The ${panel.name} panel is an interactive web-UI feed (add / read back / search). From chat — including the CLI — the same features work as plain commands: \`note: buy milk\` / \`show my notes\` / \`search my notes for wifi\`.`,
+      openPanel: panel.id,
+    }));
+  },
 };

@@ -125,6 +125,14 @@ export const PRE_SEMANTIC_OVERRIDES = [
   // this override the open_file literal rule below catches "file" and routes to
   // project.action.open_file (which asks "Which file?"). Placed BEFORE the open_file rule.
   { intent: 'system.tools.open_file_tools', pattern: /^open\s+(?:the\s+)?file\s+tools(?:\s+panel)?$/i },
+  // Phase 5 (2026-08-12, probe-verified): "note: <free text>" with arbitrary words scores
+  // low in the embedding stage because the trailing nouns dominate the vector — same trap
+  // as the "remind me" override. A leading "note:" / "add a note:" / "write a note:" /
+  // "jot down:" prefix is unambiguous — it is always a note-creation request.
+  { intent: 'system.notes.create', pattern: /^(?:note|add\s+a\s+note|write\s+a\s+note|jot\s+down)\s*:/i },
+  // Same class of trap for note SEARCH: "search my notes for <free text>" — the query
+  // terms after "for/about/with" dominate the vector. The prefix is unambiguous.
+  { intent: 'system.notes.search', pattern: /^(?:search|find)\s+(?:my\s+)?notes?\s+(?:for|about|with)\s+\S/i },
 ];
 
 /**

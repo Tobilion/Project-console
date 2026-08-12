@@ -29,4 +29,10 @@ export const TOOL_PANEL_INTENTS = {
       'open file tools', 'open the file tools', 'open file tools panel',
     ],
   },
+  'system.tools.open_notes': {
+    opensPanel: 'notes',
+    examples: [
+      'open notes', 'open the notes', 'open notes panel',
+    ],
+  },
 };

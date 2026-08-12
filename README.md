@@ -47,6 +47,12 @@
 - **`list my reminders`** / **`cancel reminder s2`** — shows or cancels reminders. An interactive Reminders panel (Apple Reminders-style) is available from the Tools card grid; `open reminders` opens it directly.
 - Same delivery path as scheduled commands: creating-session preference, then any live session, then `data/schedule-log.md`. Reminders are plain text — they never execute commands, so they bypass the read-only intent check at fire time.
 
+### Notes
+
+- **`note: buy milk`** / **`add a note: remember the wifi password`** — jots a user-authored scratch note to `<project>/.console/notes.md` (immediate, no confirmation — your own text, not a risky action).
+- **`show my notes`** / **`read my notes`** / **`search my notes for wifi`** — lists notes most-recent-first or substring-searches them. A Notes panel (Apple Notes-style flat feed with instant filter) is available from the Tools card grid; `open notes` opens it directly.
+- Notes are never written by the AI and are not injected into the AI system prompt — they're your scratch space, separate from AI memory (`memory.md`).
+
 ### PDF toolkit
 
 - **`merge these pdfs into combined.pdf`** — merges several PDFs into one new file (never overwrites an existing output).
@@ -312,6 +318,8 @@ App-global identity (name/title/custom role) edited from the ⚙ Settings modal;
 | `schedule log` | Shows the run history of scheduled commands |
 | `remind me tomorrow at 9am to renew my license` / `remind me in 3 days to follow up` | Personal reminder with natural-language dates (fires to open chat or log) |
 | `list my reminders` / `cancel reminder s2` | List or cancel a personal reminder (cancel also via the Reminders panel checkbox) |
+| `note: buy milk` / `add a note: remember the wifi password` | Jot a user-authored scratch note (no confirmation) |
+| `show my notes` / `search my notes for wifi` | List or search notes (also via the Notes panel) |
 | `notify me when dev-server-crash` / `stop notifying me about ...` | Desktop/webhook alerts per event — all off until you opt in |
 | `webhook add <url>` / `webhook remove <url>` / `list notifications` / `test notification` | Webhook channels and verification |
 
@@ -337,7 +345,7 @@ App-global identity (name/title/custom role) edited from the ⚙ Settings modal;
 | Command | What it does |
 |---|---|
 | `help` / `what can you do` / `how do I <anything>` | Full command guide; how-do-I answers come from the command catalog with the exact phrase, the real shell command, and a suggestion chip |
-| `open calculator` / `open pdf tools` / `open reminders` / `open file tools` | Opens the interactive Tools panel (web UI); plain-text note + chat equivalents from the CLI |
+| `open calculator` / `open pdf tools` / `open reminders` / `open file tools` / `open notes` | Opens the interactive Tools panel (web UI); plain-text note + chat equivalents from the CLI |
 | `switch to developer mode` / `switch to general mode` / `what mode am I in` | Change/check a project's workspace type (persisted in console.config.json) |
 | `switch projects` / `change projects` | The project list in the left sidebar |
 | `dashboard` / `live sites` | The Dashboard tab: project overview + live-site status |

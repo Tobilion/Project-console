@@ -472,6 +472,21 @@ const BATTERIES = [
       ['what time is it', 'BUILTIN=system.chit_chat.time'],
     ],
   },
+  {
+    name: 'NOTES (Phase 5 note intents)',
+    items: [
+      ['note: buy milk', 'BUILTIN=system.notes.create'],
+      ['add a note: remember the wifi password', 'BUILTIN=system.notes.create'],
+      ['note: panel test 12345', 'BUILTIN=system.notes.create'],
+      ['show my notes', 'BUILTIN=system.notes.list'],
+      ['read my notes', 'BUILTIN=system.notes.list'],
+      ['search my notes for wifi', 'BUILTIN=system.notes.search'],
+      ['search my notes for panel test 54760', 'BUILTIN=system.notes.search'],
+      ['find my notes about the trip', 'BUILTIN=system.notes.search'],
+      ['open notes', 'BUILTIN=system.tools.open_notes'],
+      ['open the notes panel', 'BUILTIN=system.tools.open_notes'],
+    ],
+  },
 ];
 
 await semanticMatcher.initialize();

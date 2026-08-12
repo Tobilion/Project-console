@@ -252,6 +252,17 @@ npm run lint    # tsc --noEmit
   appendMemoryEntry + sanitizeMemoryEntry; capped 200 entries; deduped). Do not confuse with
   projectMemoryStore.js (JSON usage patterns). A split once overwrote the wrong file and the
   server failed to start — check every external importer when moving exports.
+- `server/notesStore.js` — Phase 5 (2026-08-12): **the user-authored notes store** at
+  `<project>/.console/notes.md` — a THIRD store, deliberately distinct from memoryStore.js
+  (AI-authored memory.md) and projectMemoryStore.js (JSON usage patterns). User free text
+  only: never written by the AI, never injected into the AI system prompt unless the user
+  explicitly asks it read back. `appendNote`/`listNotes`/`readNotes`; capped 200 entries,
+  exact-normalized dedupe, per-project write lock (same pattern as memoryStore). Handlers in
+  `server/wsHandlers/builtinNotes.js` (`system.notes.create/list/search`), intents in
+  `server/intents/noteIntents.js`, read-only REST at `GET /api/projects/:id/notes`
+  (`server/routes/noteRoutes.js`); the Notes panel is `src/components/NotesPanel.tsx`
+  (Apple Notes reference — flat feed, no per-row cards, instant filter; add/search go through
+  the same WS trigger commands).
 - `server/conversationStore.js` — orchestration over `sessionPaths.js`/`sessionIndex.js`/
   `messageLog.js`/`chatLog.js`/`sessionMigration.js` (see "How chat memory works")
 - `server/sessionExport.js` — session export (Phase 0, 2026-08-10):
@@ -349,7 +360,7 @@ npm run lint    # tsc --noEmit
   Eligible from every workspace type — deliberately NOT in WORKSPACE_DEV_ONLY_INTENTS.
 - `server/toolPanelRegistry.js` + `server/routes/toolPanelRoutes.js` — Phase 1.5 (2026-08-11,
   shared interactive Tool Panel architecture): the server-driven interactive-tools registry
-  (`TOOL_PANELS`: calculator, pdf-tools, reminders, file-tools — `getToolPanels()`/`getToolPanel()`, REST
+  (`TOOL_PANELS`: calculator, pdf-tools, reminders, file-tools, notes — `getToolPanels()`/`getToolPanel()`, REST
   `GET /api/tool-panels` mounted in server/index.js). PDF Tools is a real panel since Phase 3
   (see pdfKit.js entry below); Reminders is a real panel since Phase 4 (see builtinReminders.js);
   Calculator is still a placeholder (Phase 6 fills it in). Wire
@@ -369,7 +380,7 @@ npm run lint    # tsc --noEmit
   rules below.
 - Frontend: `src/components/ToolsPanel.tsx` (card grid → dedicated panel view with a back
   button — renders `PdfToolsPanel` for 'pdf-tools', `RemindersPanel` for 'reminders',
-  `FileToolsPanel` for 'file-tools', placeholder for anything else),
+  `FileToolsPanel` for 'file-tools', `NotesPanel` for 'notes', placeholder for anything else),
   `useConsole.ts` toolPanel state cluster (`toolsOpen`/`activeToolPanel`/
   `toolPanels` + `fetchToolPanels`), `wsMessageCases.ts` answerCase reads `payload.openPanel`
   and opens the panel, App.tsx Tools view (header Tools button only when a General-workspace
@@ -1021,6 +1032,13 @@ time/date/calculate rows, 92/92).
    was hijacked by the open_file literal rule until `tools` joined its lookahead exclusion;
    same TWO PRE-EXISTING drifts); check-intents unchanged at 1/5/82; check-docs 50/50 (+1
    file-tools catalog entry); check-ws-cases 118/118 unchanged.
+   Phase 5 (2026-08-12): check-handlers 130/130 (baseline 121/121 + 9 rows — 3 notes dispatch
+   shapes against the fixture, 6 temp-dir store smoke asserts, 1 open_notes opener row);
+   check-matcher 231/233 (baseline 221/223 + 10 NOTES battery rows — incl. the free-text
+   "note: <arbitrary words>" and "search my notes for <arbitrary words>" shapes pinned by
+   Phase 5 pre-semantic overrides after the trailing nouns dominated the vector, same class
+   of trap as the remind-me override; same TWO PRE-EXISTING drifts); check-intents unchanged
+   at 1/5/82; check-docs 51/51 (+1 notes catalog entry); check-ws-cases 118/118 unchanged.
    Run the relevant battery after ANY edit to the corresponding module.
 - **editFile** tolerates whitespace differences (normalized line-range fallback) but not
   wrong wording; on total failure the error names both attempts and tells the caller to

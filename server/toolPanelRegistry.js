@@ -36,6 +36,14 @@ export const TOOL_PANELS = [
     available: true,
     chatHint: 'find files matching invoice',
   },
+  {
+    id: 'notes',
+    name: 'Notes',
+    description: 'Quick-capture scratch notes — add, read back, and search them',
+    icon: 'sticky-note',
+    available: true,
+    chatHint: 'note: buy milk',
+  },
 ];
 
 export function getToolPanels() {

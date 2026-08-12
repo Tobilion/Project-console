@@ -115,7 +115,7 @@ export const BUILTIN_INTENTS = new Set([
   // the handler echoes it back as an `openPanel` field on the answer payload. Also not dev-only
   // — the Tools surface is reachable from the General tab by design.
   'system.tools.open_calculator', 'system.tools.open_pdf_tools', 'system.tools.open_reminders',
-  'system.tools.open_file_tools',
+  'system.tools.open_file_tools', 'system.tools.open_notes',
   // Phase 3 (UPGRADE-ROADMAP.md, 2026-08-11): the PDF toolkit trigger intents
   // (builtinPdfTools.js). Each carries the same `opensPanel: 'pdf-tools'` tag; handlers open
   // the panel only when the input lacks parameters, and full commands execute in chat (writes
@@ -127,6 +127,9 @@ export const BUILTIN_INTENTS = new Set([
   // store text, never a command — they can never execute anything. Personal, not
   // project-scoped (cancel works from any chat), so deliberately NOT dev-only.
   'system.reminders.create', 'system.reminders.list', 'system.reminders.cancel',
+  // Phase 5 (UPGRADE-ROADMAP.md, 2026-08-12): user-authored scratch notes (builtinNotes.js +
+  // notesStore.js — .console/notes.md). Personal, not project assets, so NOT dev-only.
+  'system.notes.create', 'system.notes.list', 'system.notes.search',
 ]);
 
 // Phase 1 workspaceType filtering (UPGRADE-ROADMAP.md, 2026-08-11): builtin intents that make

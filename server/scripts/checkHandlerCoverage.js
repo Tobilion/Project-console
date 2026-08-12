@@ -42,6 +42,7 @@ const { generalFileHandlers, performTidy, planDuplicateDeletes, performDuplicate
 const { toolsHandlers } = await import(pathToFileURL(base + 'wsHandlers/builtinTools.js').href);
 const { pdfHandlers } = await import(pathToFileURL(base + 'wsHandlers/builtinPdfTools.js').href);
 const { reminderHandlers } = await import(pathToFileURL(base + 'wsHandlers/builtinReminders.js').href);
+const { noteHandlers } = await import(pathToFileURL(base + 'wsHandlers/builtinNotes.js').href);
 const { parseReminderInput } = await import(pathToFileURL(base + 'schedules/reminderParser.js').href);
 const {
   parsePdfNames, parsePdfOutput, parsePageSpec, extractWatermarkText,
@@ -66,7 +67,7 @@ function eq(label, got, expect) {
   else if (!ok) console.log(`  FAIL ${label}\n    expected: ${e}\n    got:      ${g}`);
 }
 
-const merged = { ...gitHandlers, ...chitChatHandlers, ...fileNpmHandlers, ...projectKnowledgeHandlers, ...projectContextHandlers, ...projectActionHandlers, ...diagnosticsHandlers, ...generalFileHandlers, ...toolsHandlers, ...pdfHandlers, ...reminderHandlers };
+const merged = { ...gitHandlers, ...chitChatHandlers, ...fileNpmHandlers, ...projectKnowledgeHandlers, ...projectContextHandlers, ...projectActionHandlers, ...diagnosticsHandlers, ...generalFileHandlers, ...toolsHandlers, ...pdfHandlers, ...reminderHandlers, ...noteHandlers };
 const handlerKeys = Object.keys(merged).sort();
 const builtinKeys = [...BUILTIN_INTENTS].sort();
 const intentKeys = Object.keys(INTENTS).sort();
@@ -195,6 +196,10 @@ eq('tools leaf: open_reminders answers with openPanel + CLI-usable reminder list
 sent.length = 0;
 await handleBuiltinIntent(ws, 'system.tools.open_file_tools', 'open file tools', proj, {});
 eq('tools leaf: open_file_tools answers with openPanel + CLI-usable text', ws.sent.length === 1 && ws.sent[0].type === 'answer' && ws.sent[0].openPanel === 'file-tools' && /find files matching/.test(ws.sent[0].data), true);
+
+sent.length = 0;
+await handleBuiltinIntent(ws, 'system.tools.open_notes', 'open notes', proj, {});
+eq('tools leaf: open_notes answers with openPanel + CLI-usable text', ws.sent.length === 1 && ws.sent[0].type === 'answer' && ws.sent[0].openPanel === 'notes' && /note: buy milk/.test(ws.sent[0].data), true);
 
 sent.length = 0;
 const unknown = await handleBuiltinIntent(ws, 'no_such_intent', 'x', proj, {});
@@ -428,6 +433,38 @@ const rPast = parseReminderInput('remind me yesterday at 9am to fix it');
 eq('reminder parse: explicit past -> rejected', rPast.ok === false && /past/.test(rPast.reason), true);
 const rGarbage = parseReminderInput('remind me blahblah to do the thing');
 eq('reminder parse: unparseable when -> named error', rGarbage.ok === false && /blahblah/.test(rGarbage.reason), true);
+
+// --- NOTES (Phase 5, 2026-08-12) ----------------------------------------------
+// Dispatch shapes against the C:/tmp/nowhere fixture (append fails before writing anywhere):
+sent.length = 0;
+await handleBuiltinIntent(ws, 'system.notes.create', 'note:', proj, {});
+eq('notes leaf: create without text asks + opens panel', ws.sent.length === 1 && ws.sent[0].type === 'answer' && ws.sent[0].openPanel === 'notes' && /What should the note say/.test(ws.sent[0].data), true);
+sent.length = 0;
+await handleBuiltinIntent(ws, 'system.notes.list', 'show my notes', proj, {});
+eq('notes leaf: list answers empty state', ws.sent.length === 1 && ws.sent[0].type === 'answer' && /No notes yet/.test(ws.sent[0].data), true);
+sent.length = 0;
+await handleBuiltinIntent(ws, 'system.notes.search', 'search my notes for wifi', proj, {});
+eq('notes leaf: search answers no-hits on empty store', ws.sent.length === 1 && ws.sent[0].type === 'answer' && /No notes match/.test(ws.sent[0].data), true);
+
+// Temp-dir smoke: append -> list round trip -> search hit -> dedupe -> cap behavior.
+const notesRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'console-notes-'));
+const notesProj = {
+  id: 'notes-p', name: 'NotesProj', path: notesRoot, workspaceType: 'general',
+  config: { projectName: 'NotesProj', entries: [] }, contextFiles: [],
+  parsedKnowledge: {}, codebaseIndex: { languages: [], keyFiles: {} },
+};
+const { appendNote, listNotes } = await import(pathToFileURL(base + 'notesStore.js').href);
+const n1 = await appendNote(notesRoot, 'buy milk');
+eq('notes store: append succeeds', n1.success === true, true);
+const n2 = await appendNote(notesRoot, 'call the dentist tomorrow');
+eq('notes store: second append succeeds', n2.success === true, true);
+const dup = await appendNote(notesRoot, 'buy milk');
+eq('notes store: exact duplicate skipped', dup.success === true && /duplicate/.test(dup.data), true);
+const listed = await listNotes(notesRoot);
+eq('notes store: list has both entries oldest-first', listed.length === 2 && listed[0].text === 'buy milk' && listed[1].text === 'call the dentist tomorrow', true);
+const notesFile = path.join(notesRoot, '.console', 'notes.md');
+eq('notes store: file written under .console/notes.md', fs.existsSync(notesFile), true);
+fs.rmSync(notesRoot, { recursive: true, force: true });
 
 console.log(`check-handlers: ${total} checks, ${failed} failed`);
 process.exit(failed ? 1 : 0);
