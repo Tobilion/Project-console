@@ -26,16 +26,17 @@ interface FirstRunSetupProps {
  */
 export function FirstRunSetup({ open, scanPath, setScanPath, handleScan, onFinish }: FirstRunSetupProps) {
   const [name, setName] = useState('');
+  const [workspaceType, setWorkspaceType] = useState<'dev' | 'general'>('dev');
 
   const handleContinue = (e: React.FormEvent<HTMLFormElement>) => {
     // Only actually rescan if the user changed the pre-filled path — the default scan
     // directory has usually already been scanned once by the time this wizard renders.
     handleScan(e);
-    onFinish({ name: name.trim(), setupComplete: true });
+    onFinish({ name: name.trim(), setupComplete: true, defaultWorkspaceType: workspaceType });
   };
 
   const handleSkip = () => {
-    onFinish({ setupComplete: true });
+    onFinish({ setupComplete: true, defaultWorkspaceType: workspaceType });
   };
 
   return (
@@ -77,6 +78,38 @@ export function FirstRunSetup({ open, scanPath, setScanPath, handleScan, onFinis
               className="w-full bg-surface border border-border-soft rounded-lg px-3 py-2 text-sm text-fg font-mono focus:outline-none focus:border-[#3d6bff] transition-colors"
             />
             <p className="text-[11px] text-fg-faint mt-1">The folder containing your project folders — you can rescan a different one anytime from the sidebar.</p>
+          </div>
+
+          <div>
+            <label className="block text-xs text-fg-dim mb-1.5">What's the default workspace type? (optional)</label>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setWorkspaceType('dev')}
+                className={`flex-1 px-3 py-2 rounded-lg border text-left transition-colors ${workspaceType === 'dev' ? 'border-[#3d6bff] bg-[#3d6bff]/10' : 'border-border-soft bg-surface hover:border-border-strong'}`}
+              >
+                <span className="block text-sm text-fg">Developer</span>
+                <span className="block text-[10px] text-fg-faint mt-0.5">git, npm, run commands, diagnostics</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setWorkspaceType('general')}
+                className={`flex-1 px-3 py-2 rounded-lg border text-left transition-colors ${workspaceType === 'general' ? 'border-[#3d6bff] bg-[#3d6bff]/10' : 'border-border-soft bg-surface hover:border-border-strong'}`}
+              >
+                <span className="block text-sm text-fg">General</span>
+                <span className="block text-[10px] text-fg-faint mt-0.5">files, notes, reminders, PDF tools — a tools-first landing</span>
+              </button>
+            </div>
+            <p className="text-[11px] text-fg-faint mt-1">Used as the default when a project isn't auto-classified — switch any project anytime from the header tabs.</p>
+          </div>
+
+          <div className="rounded-lg bg-scrim-faint border border-border-soft px-3 py-2">
+            <p className="text-[11px] text-fg-muted">
+              <span className="text-fg-strong font-semibold">About AI mode:</span> everything here works
+              without AI. If you later want natural-language AI answers, install{' '}
+              <a href="https://ollama.com" target="_blank" rel="noreferrer" className="text-[#3d6bff] underline">Ollama</a>{' '}
+              (a free local app) — then flip the AI toggle in the chat header. Nothing else is required.
+            </p>
           </div>
         </div>
 

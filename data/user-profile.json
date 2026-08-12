@@ -4,6 +4,9 @@
     "title": "Master",
     "customRole": "Software Engineer",
     "setupComplete": true,
-    "sandboxRiskyCommands": false
+    "sandboxRiskyCommands": false,
+    "clipboardHistory": false,
+    "clipboardPersist": false,
+    "defaultWorkspaceType": "dev"
   }
 }

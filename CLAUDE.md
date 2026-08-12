@@ -43,7 +43,11 @@ npm run lint    # tsc --noEmit
 - CLI chat mode: `node server/cli-client.js [--dir "<full path>"] [--project "<name>"]`;
   it scans ports 3000-3009, retries up to 90s (cold boot is ~41s), and reports which port it
   connected on. Interactive arrow-key picker via @clack/prompts when a TTY is available,
-  numbered-list fallback otherwise; invalid input re-asks instead of guessing. The TTY path
+  numbered-list fallback otherwise; invalid input re-asks instead of guessing. Phase 13
+  (2026-08-12): first-run onboarding mirror — when the server profile's `setupComplete` is
+  false, the CLI asks the same three questions as the web wizard (name, default workspace
+  type, Ollama note) and writes through the same /api/profile path; never blocks on
+  non-TTY/failure. The TTY path
   renders a cowsay mascot (the project's pre-commit hook runs `npm install` when
   `package.json` is touched, so `cowsay` is a real dependency — renderMascot() must stay
   defensive against a missing install). Chip-style server messages (`suggestions` /
@@ -1155,6 +1159,11 @@ time/date/calculate rows, 92/92).
    journaling bug found live — it passed project.id instead of project.path, so the action was
    never written to the project's own history file — is fixed, plus revertAction's `backups/`
    prefix special-case.
+   Phase 13 (2026-08-12): no harness deltas (profile field + first-run UI). The web wizard
+   (FirstRunSetup.tsx) gained a default-workspace-type selector (Developer/General) + an
+   Ollama note; the CLI mirrors it via @clack after connect when setupComplete is false.
+   `defaultWorkspaceType` ('dev'|'general', sanitized server-side) is the App's tab fallback
+   for unclassified/no-project states. Live-verified: POST round-trips + sanitization.
    Run the relevant battery after ANY edit to the corresponding module.
 - **editFile** tolerates whitespace differences (normalized line-range fallback) but not
   wrong wording; on total failure the error names both attempts and tells the caller to

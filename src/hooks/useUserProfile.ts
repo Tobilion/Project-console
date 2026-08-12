@@ -16,6 +16,8 @@ export interface UserProfile {
   // history to disk. Defaults false — both are explicit privacy decisions.
   clipboardHistory: boolean;
   clipboardPersist: boolean;
+  // Phase 13 (2026-08-12): workspace-type default chosen in the first-run wizard.
+  defaultWorkspaceType: 'dev' | 'general';
 }
 
 // Neutral defaults, not a hardcoded person's name/title — matches server/routes/profileRoutes.js's
@@ -32,6 +34,7 @@ const DEFAULT_PROFILE: UserProfile = {
   sandboxRiskyCommands: false,
   clipboardHistory: false,
   clipboardPersist: false,
+  defaultWorkspaceType: 'dev',
 };
 
 /** Client state for the user profile persisted to the server (GET/POST /api/profile).

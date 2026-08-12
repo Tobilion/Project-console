@@ -253,6 +253,48 @@ async function main() {
     console.log(`${C.yellow}Note: server is on port ${PORT}, not ${BASE_PORT} (something else had ${BASE_PORT}).${C.reset}`);
   }
 
+  // Phase 13 (2026-08-12): first-run onboarding mirror — when the server's profile hasn't
+  // been completed yet, ask the same three questions the web wizard asks (name, default
+  // workspace type, and a note about AI mode) and write through the same /api/profile path.
+  // Never blocks: on any failure or non-TTY, silently skip (setupComplete stays false and the
+  // web wizard will show instead).
+  try {
+    const profRes = await fetch(`http://${HOST}:${PORT}/api/profile`);
+    const profData = await profRes.json();
+    const userProfile = profData?.userProfile;
+    if (isTTY && userProfile && !userProfile.setupComplete) {
+      console.log(`\n${C.bold}${C.bgBlue}  First run — a few quick questions  ${C.reset}\n`);
+      const firstName = await p.text({
+        message: 'What should we call you? (optional, Enter to skip)',
+        placeholder: 'Your name',
+        validate: (v) => (v.trim().length <= 60 ? undefined : 'Keep it under 60 characters.'),
+      }).catch(() => undefined);
+      const workspaceChoice = await p.select({
+        message: 'Default workspace type? (change per project anytime)',
+        options: [
+          { value: 'dev', label: 'Developer — git, npm, run commands, diagnostics' },
+          { value: 'general', label: 'General — files, notes, reminders, PDF tools (tools-first)' },
+        ],
+      }).catch(() => 'dev');
+      const aiNote = await p.confirm({
+        message: 'AI mode needs the free local app "Ollama" (optional). Got it?',
+        initialValue: true,
+      }).catch(() => true);
+      await fetch(`http://${HOST}:${PORT}/api/profile`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userProfile: {
+          name: (firstName || '').trim(),
+          setupComplete: true,
+          defaultWorkspaceType: workspaceChoice === 'general' ? 'general' : 'dev',
+        } }),
+      });
+      console.log(`${C.green}✔ ${C.reset}Setup saved. Everything works without AI — flip the AI toggle in the web UI later to enable it.${C.reset}\n`);
+    }
+  } catch {
+    // profile unreachable — the web wizard will handle onboarding instead
+  }
+
   let project = findProjectFromArgs(projects) || (projects.length === 1 ? projects[0] : await selectProject(projects));
 
   console.log(`\n${C.dim}─── Project: ${C.green}${project.name}${C.dim} ───────${C.reset}`);

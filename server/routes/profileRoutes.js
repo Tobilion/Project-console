@@ -36,6 +36,10 @@ const DEFAULT_PROFILE = {
   // Phase 8: a SECOND, separate opt-in — persisting clipboard history to disk is a materially
   // bigger privacy commitment than an in-memory buffer that clears on restart.
   clipboardPersist: false,
+  // Phase 13 (2026-08-12): the workspace-type default chosen in the first-run wizard —
+  // 'dev' or 'general'. The App falls back to this when a project has no per-project tab
+  // preference and the server's heuristic hasn't classified it yet.
+  defaultWorkspaceType: 'dev',
 };
 
 // Only plain, trimmed strings up to a sane length — mirrors the conservative
@@ -64,6 +68,7 @@ function readProfile() {
       sandboxRiskyCommands: sanitizeBool(p.sandboxRiskyCommands, DEFAULT_PROFILE.sandboxRiskyCommands),
       clipboardHistory: sanitizeBool(p.clipboardHistory, DEFAULT_PROFILE.clipboardHistory),
       clipboardPersist: sanitizeBool(p.clipboardPersist, DEFAULT_PROFILE.clipboardPersist),
+      defaultWorkspaceType: p.defaultWorkspaceType === 'general' ? 'general' : 'dev',
     };
   } catch {
     // Missing or corrupt file — serve defaults without touching disk.
@@ -103,6 +108,7 @@ export function registerProfileRoutes(app) {
       sandboxRiskyCommands: sanitizeBool(body.sandboxRiskyCommands, current.sandboxRiskyCommands),
       clipboardHistory: sanitizeBool(body.clipboardHistory, current.clipboardHistory),
       clipboardPersist: sanitizeBool(body.clipboardPersist, current.clipboardPersist),
+      defaultWorkspaceType: body.defaultWorkspaceType === 'general' ? 'general' : 'dev',
     };
     const err = writeProfile(updated);
     if (err) {

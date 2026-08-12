@@ -128,12 +128,13 @@ function App() {
   // Phase 1: restore the active project's last-selected tab. Runs only when the active
   // project changes (never on a tab switch — that path writes, it doesn't read back).
   // 2026-08-12: no active project -> 'general' (the General workspace is the landing surface
-  // before a project is picked; per-project tabs still win once one is active).
+  // before a project is picked; per-project tabs still win once one is active). Phase 13: the
+  // profile's first-run defaultWorkspaceType is the fallback when a project isn't classified.
   useEffect(() => {
     const tabs = readWorkspaceTabs();
     const saved = activeProject?.id ? tabs[activeProject.id] : undefined;
-    setWorkspaceTab(saved ?? activeProject?.workspaceType ?? 'general');
-  }, [activeProject?.id, activeProject?.workspaceType]);
+    setWorkspaceTab(saved ?? activeProject?.workspaceType ?? profile.defaultWorkspaceType ?? 'general');
+  }, [activeProject?.id, activeProject?.workspaceType, profile.defaultWorkspaceType]);
 
   const handleWorkspaceTabChange = (mode: 'dev' | 'general') => {
     setWorkspaceTab(mode);
