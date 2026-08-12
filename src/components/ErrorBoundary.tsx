@@ -38,7 +38,7 @@ export class ErrorBoundary extends React.Component<{ children: React.ReactNode }
           <div className="text-xs font-mono text-fg-dim max-w-lg break-words">{this.state.error.message}</div>
           <button
             onClick={this.handleReset}
-            className="px-4 py-2 bg-[#3d6bff]/20 border border-[#3d6bff]/40 text-[#3d6bff] rounded-lg text-sm font-bold hover:bg-[#3d6bff]/30 transition-colors"
+            className="px-4 py-2 bg-accent-blue/20 border border-accent-blue/40 text-accent-blue rounded-lg text-sm font-bold hover:bg-accent-blue/30 transition-colors"
           >
             Try to recover
           </button>

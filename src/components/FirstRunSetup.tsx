@@ -43,7 +43,7 @@ export function FirstRunSetup({ open, scanPath, setScanPath, handleScan, onFinis
     <ModalShell open={open} onClose={handleSkip} maxWidth="max-w-lg">
       <form onSubmit={handleContinue}>
         <div className="flex items-center gap-3 px-6 pt-6 pb-2">
-          <div className="p-2 bg-[#00d4a3]/10 rounded-lg text-[#00d4a3]">
+          <div className="p-2 bg-accent-teal/10 rounded-lg text-accent-teal">
             <Sparkles size={22} />
           </div>
           <div>
@@ -61,7 +61,7 @@ export function FirstRunSetup({ open, scanPath, setScanPath, handleScan, onFinis
               onChange={(e) => setName(e.target.value)}
               autoFocus
               placeholder="Your name"
-              className="w-full bg-surface border border-border-soft rounded-lg px-3 py-2 text-sm text-fg focus:outline-none focus:border-[#3d6bff] transition-colors"
+              className="w-full bg-surface border border-border-soft rounded-lg px-3 py-2 text-sm text-fg focus:outline-none focus:border-accent-blue transition-colors"
             />
             <p className="text-[11px] text-fg-faint mt-1">Used for greetings only — change it anytime from the profile settings.</p>
           </div>
@@ -75,7 +75,7 @@ export function FirstRunSetup({ open, scanPath, setScanPath, handleScan, onFinis
               value={scanPath}
               onChange={(e) => setScanPath(e.target.value)}
               placeholder="C:\Users\you\Desktop\Projects"
-              className="w-full bg-surface border border-border-soft rounded-lg px-3 py-2 text-sm text-fg font-mono focus:outline-none focus:border-[#3d6bff] transition-colors"
+              className="w-full bg-surface border border-border-soft rounded-lg px-3 py-2 text-sm text-fg font-mono focus:outline-none focus:border-accent-blue transition-colors"
             />
             <p className="text-[11px] text-fg-faint mt-1">The folder containing your project folders — you can rescan a different one anytime from the sidebar.</p>
           </div>
@@ -86,7 +86,7 @@ export function FirstRunSetup({ open, scanPath, setScanPath, handleScan, onFinis
               <button
                 type="button"
                 onClick={() => setWorkspaceType('dev')}
-                className={`flex-1 px-3 py-2 rounded-lg border text-left transition-colors ${workspaceType === 'dev' ? 'border-[#3d6bff] bg-[#3d6bff]/10' : 'border-border-soft bg-surface hover:border-border-strong'}`}
+                className={`flex-1 px-3 py-2 rounded-lg border text-left transition-colors ${workspaceType === 'dev' ? 'border-accent-blue bg-accent-blue/10' : 'border-border-soft bg-surface hover:border-border-strong'}`}
               >
                 <span className="block text-sm text-fg">Developer</span>
                 <span className="block text-[10px] text-fg-faint mt-0.5">git, npm, run commands, diagnostics</span>
@@ -94,7 +94,7 @@ export function FirstRunSetup({ open, scanPath, setScanPath, handleScan, onFinis
               <button
                 type="button"
                 onClick={() => setWorkspaceType('general')}
-                className={`flex-1 px-3 py-2 rounded-lg border text-left transition-colors ${workspaceType === 'general' ? 'border-[#3d6bff] bg-[#3d6bff]/10' : 'border-border-soft bg-surface hover:border-border-strong'}`}
+                className={`flex-1 px-3 py-2 rounded-lg border text-left transition-colors ${workspaceType === 'general' ? 'border-accent-blue bg-accent-blue/10' : 'border-border-soft bg-surface hover:border-border-strong'}`}
               >
                 <span className="block text-sm text-fg">General</span>
                 <span className="block text-[10px] text-fg-faint mt-0.5">files, notes, reminders, PDF tools — a tools-first landing</span>
@@ -107,7 +107,7 @@ export function FirstRunSetup({ open, scanPath, setScanPath, handleScan, onFinis
             <p className="text-[11px] text-fg-muted">
               <span className="text-fg-strong font-semibold">About AI mode:</span> everything here works
               without AI. If you later want natural-language AI answers, install{' '}
-              <a href="https://ollama.com" target="_blank" rel="noreferrer" className="text-[#3d6bff] underline">Ollama</a>{' '}
+              <a href="https://ollama.com" target="_blank" rel="noreferrer" className="text-accent-blue underline">Ollama</a>{' '}
               (a free local app) — then flip the AI toggle in the chat header. Nothing else is required.
             </p>
           </div>
@@ -119,7 +119,7 @@ export function FirstRunSetup({ open, scanPath, setScanPath, handleScan, onFinis
           </button>
           <button
             type="submit"
-            className="flex items-center gap-1.5 px-4 py-2 bg-gradient-to-r from-[#3d6bff] to-[#6366f1] text-white rounded-lg text-xs font-bold tracking-wider uppercase hover:opacity-90 transition-opacity"
+            className="flex items-center gap-1.5 px-4 py-2 bg-accent-blue text-white rounded-lg text-xs font-bold tracking-wider uppercase hover:opacity-90 transition-opacity"
           >
             Get Started <ArrowRight size={14} />
           </button>

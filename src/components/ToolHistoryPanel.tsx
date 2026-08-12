@@ -36,7 +36,7 @@ className="border-t border-border-soft bg-surface/60 overflow-hidden"
                       onClick={() => setExpandedId(isExpanded ? null : entry.id)}
                       className="w-full flex items-center gap-2 px-3 py-2 hover:bg-panel transition-colors text-left"
                     >
-                      <TerminalIcon size={12} className={hasError ? 'text-red-400' : 'text-[#3d6bff]'} />
+                      <TerminalIcon size={12} className={hasError ? 'text-red-400' : 'text-accent-blue'} />
                       <span className="text-xs font-mono text-fg-muted flex-1">{entry.tool}</span>
                       {entry.gated && <span className="text-[10px] text-orange-400/60">gated</span>}
                       <span className="text-[10px] text-fg-faint">

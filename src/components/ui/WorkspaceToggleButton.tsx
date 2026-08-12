@@ -15,8 +15,8 @@ interface WorkspaceToggleButtonProps {
  *  same active/inactive tints (a teal-accent remove on hover-to-red, a dim add on hover-to-teal)
  *  — only the padding/size/layout classes differ, so those come via `className` while the color
  *  classes default to the shared values. */
-const DEFAULT_IN_CLASS = 'text-[#3d6bff] hover:text-red-400 transition-colors';
-const DEFAULT_OUT_CLASS = 'text-fg-faint hover:text-[#3d6bff] transition-colors';
+const DEFAULT_IN_CLASS = 'text-accent-blue hover:text-red-400 transition-colors';
+const DEFAULT_OUT_CLASS = 'text-fg-faint hover:text-accent-blue transition-colors';
 
 export function WorkspaceToggleButton({
   inWorkspace,
