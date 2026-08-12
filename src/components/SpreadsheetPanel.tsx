@@ -82,6 +82,29 @@ export function SpreadsheetPanel({ project, onSendMessage }: SpreadsheetPanelPro
     lastSentTimer.current = setTimeout(() => setLastSent(null), 8000);
   };
 
+  // Phase 7 audit: Sum/Average/Count render a result card IN the panel (same aggregateColumn
+  // path as the chat answer) instead of only saying "check the chat below".
+  const [aggregate, setAggregate] = useState<{ op: string; value: number; count: number; column: string; file: string } | null>(null);
+
+  const runAggregate = useCallback(async () => {
+    if (!project?.id || !selectedFile || !column) return;
+    setLoading(true);
+    const isCount = mode === 'count';
+    const params = `file=${encodeURIComponent(selectedFile)}&column=${encodeURIComponent(column)}&op=${encodeURIComponent(mode)}` +
+      (isCount ? `&cmp=${encodeURIComponent(op)}&value=${encodeURIComponent(filterValue.trim())}` : '');
+    const data = await apiFetchJson<{ op: string; value: number; count: number; column: string; file: string }>(
+      `/api/projects/${encodeURIComponent(project.id)}/csv-aggregate?${params}`
+    );
+    setLoading(false);
+    if (!data) { setError('Aggregate failed.'); return; }
+    setError(null);
+    setAggregate(data);
+    setTable(null);
+    send(isCount
+      ? `count rows in ${selectedFile} where ${column} ${op} ${filterValue.trim()}`
+      : `${mode} column ${column} in ${selectedFile}`);
+  }, [project?.id, selectedFile, column, mode, op, filterValue]);
+
   const runFilter = useCallback(async () => {
     if (!project?.id || !selectedFile || !column || !filterValue.trim()) return;
     setLoading(true);
@@ -94,20 +117,14 @@ export function SpreadsheetPanel({ project, onSendMessage }: SpreadsheetPanelPro
     if (!data) { setError('Filter failed.'); return; }
     setError(null);
     setTable(data);
+    setAggregate(null);
     send(`filter ${selectedFile} where ${column} ${op} ${filterValue.trim()}`);
   }, [project?.id, selectedFile, column, op, filterValue]);
 
   const run = () => {
     if (!selectedFile) return;
     if (mode === 'filter') { runFilter(); return; }
-    const cmd = (() => {
-      switch (mode) {
-        case 'sum': return `sum column ${column || '?'} in ${selectedFile}`;
-        case 'average': return `average column ${column || '?'} in ${selectedFile}`;
-        case 'count': return `count rows in ${selectedFile} where ${column || '?'} ${op} ${filterValue || '?'}`;
-      }
-    })();
-    send(cmd);
+    runAggregate();
   };
 
   const runDisabled = !selectedFile || (mode !== 'count' && mode !== 'filter' && !column) ||
@@ -191,13 +208,31 @@ export function SpreadsheetPanel({ project, onSendMessage }: SpreadsheetPanelPro
             </div>
             <div className="px-3 py-1.5 border border-border-soft rounded-b-xl bg-scrim-faint">
               <span className="text-[11px] text-fg-dim">
-                {mode === 'filter' ? 'Filter renders the table below; other operations answer in chat.' : 'Result appears in the chat below.'}
+                {mode === 'filter' ? 'Filter renders the table below.' : 'Result renders in the card below.'}
               </span>
               {lastSent && (
                 <span className="ml-3 text-[11px] text-accent font-mono">sent: {lastSent}</span>
               )}
             </div>
           </>
+        )}
+
+        {/* Aggregate result card (Sum/Average/Count) */}
+        {aggregate && (
+          <div className="mt-4 rounded-xl border border-border-soft bg-panel p-4 flex items-center gap-4">
+            <div className="p-2 bg-scrim-faint rounded-lg text-accent">
+              <Table size={16} />
+            </div>
+            <div>
+              <div className="text-[11px] uppercase tracking-wider text-fg-dim">
+                {aggregate.op === 'sum' ? 'Sum' : aggregate.op === 'average' ? 'Average' : 'Count'} of {aggregate.column}
+              </div>
+              <div className="text-2xl font-semibold text-fg-strong font-mono">
+                {aggregate.op === 'average' ? aggregate.value.toFixed(2) : aggregate.value.toLocaleString()}
+              </div>
+              <div className="text-[11px] text-fg-faint">{aggregate.file} — {aggregate.count} numeric row{aggregate.count === 1 ? '' : 's'}</div>
+            </div>
+          </div>
         )}
 
         {/* Filter result table */}

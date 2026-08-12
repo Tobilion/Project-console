@@ -4,7 +4,7 @@
 import fs from 'fs';
 import path from 'path';
 import { resolveProject } from '../state.js';
-import { parseCsv, loadCsv, findColumn, matchOp } from '../csvTools.js';
+import { parseCsv, loadCsv, findColumn, matchOp, aggregateColumn } from '../csvTools.js';
 
 const MAX_CSV_FILES = 200;
 
@@ -75,5 +75,36 @@ export function registerCsvRoutes(app) {
       .slice(0, 500)
       .map((r) => csv.headers.map((h, i) => r[i] ?? ''));
     res.json({ headers: csv.headers, rows });
+  });
+
+  // Aggregate result for the panel's Sum/Average/Count card — the SAME aggregateColumn /
+  // matchOp paths the chat handlers use, so the panel result and the chat answer can never
+  // diverge. Count follows the chat semantics: rows matching a where-clause (op + value),
+  // not raw numeric cells.
+  app.get('/api/projects/:id/csv-aggregate', async (req, res) => {
+    const project = resolveProject(req.params.id);
+    if (!project) return res.status(404).json({ error: 'Project not found' });
+    const filePath = typeof req.query.file === 'string' ? req.query.file : '';
+    const column = typeof req.query.column === 'string' ? req.query.column : '';
+    const op = typeof req.query.op === 'string' ? req.query.op : '';
+    if (!filePath || !column || !['sum', 'average', 'count'].includes(op)) {
+      return res.status(400).json({ error: 'Missing/invalid ?file=&column=&op= (sum|average|count) parameters.' });
+    }
+    const csv = loadCsv(project.path, filePath);
+    if (!csv.ok) return res.status(400).json({ error: csv.error });
+    const colIdx = findColumn(csv.headers, column);
+    if (colIdx === -1) return res.status(400).json({ error: `Column "${column}" not found.` });
+    if (op === 'count') {
+      const cmp = typeof req.query.cmp === 'string' ? req.query.cmp : '';
+      const value = typeof req.query.value === 'string' ? req.query.value : '';
+      if (!['equals', 'contains', 'greater than', 'less than'].includes(cmp)) {
+        return res.status(400).json({ error: 'Count requires ?cmp= (equals|contains|greater than|less than) and ?value=.' });
+      }
+      const count = csv.rows.filter((r) => matchOp(cmp, r[colIdx], value)).length;
+      return res.json({ op, value: count, count, column: csv.headers[colIdx], file: filePath });
+    }
+    const result = aggregateColumn(csv, column, op);
+    if (!result.ok) return res.status(400).json({ error: result.error });
+    res.json({ op, value: result.value, count: result.count, column: csv.headers[colIdx], file: filePath });
   });
 }

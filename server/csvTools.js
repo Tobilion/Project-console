@@ -85,3 +85,21 @@ export function matchOp(op, cell, value) {
     default: return false;
   }
 }
+
+/** Aggregate one numeric column: sum/average/count of non-NaN cells.
+ *  Returns { ok, value, count } or { ok:false, error }. */
+export function aggregateColumn(csv, column, op) {
+  const idx = findColumn(csv.headers, column);
+  if (idx === -1) return { ok: false, error: `Column "${column}" not found.` };
+  let sum = 0, count = 0;
+  for (const row of csv.rows) {
+    const n = cellToNumber(row[idx]);
+    if (!Number.isNaN(n)) { sum += n; count++; }
+  }
+  if (op === 'sum') return { ok: true, value: sum, count };
+  if (op === 'average') {
+    if (count === 0) return { ok: false, error: `No numeric values in ${column}.` };
+    return { ok: true, value: sum / count, count };
+  }
+  return { ok: true, value: count, count };
+}

@@ -4,7 +4,7 @@
 // no confirmation needed, nothing journaled.
 import path from 'path';
 import { isSafeParamValue } from '../paramCommand.js';
-import { loadCsv, findColumn, cellToNumber, matchOp } from '../csvTools.js';
+import { loadCsv, findColumn, cellToNumber, matchOp, aggregateColumn } from '../csvTools.js';
 
 const answer = (ws, data) => ws.send(JSON.stringify({ type: 'answer', data }));
 
@@ -47,12 +47,9 @@ export const csvHandlers = {
     if (!csv.ok) { answer(ws, csv.error); return; }
     const idx = findColumn(csv.headers, column);
     if (idx === -1) { answer(ws, columnError(file, column)); return; }
-    let sum = 0, count = 0;
-    for (const row of csv.rows) {
-      const n = cellToNumber(row[idx]);
-      if (!Number.isNaN(n)) { sum += n; count++; }
-    }
-    answer(ws, `**Sum** of ${csv.headers[idx]} in ${file}: **${sum.toLocaleString()}** (${count} numeric rows)`);
+    const result = aggregateColumn(csv, csv.headers[idx], 'sum');
+    if (!result.ok) { answer(ws, result.error); return; }
+    answer(ws, `**Sum** of ${csv.headers[idx]} in ${file}: **${result.value.toLocaleString()}** (${result.count} numeric rows)`);
   },
 
   'csv.average': async (ws, action, input, project) => {
@@ -64,13 +61,9 @@ export const csvHandlers = {
     if (!csv.ok) { answer(ws, csv.error); return; }
     const idx = findColumn(csv.headers, column);
     if (idx === -1) { answer(ws, columnError(file, column)); return; }
-    let sum = 0, count = 0;
-    for (const row of csv.rows) {
-      const n = cellToNumber(row[idx]);
-      if (!Number.isNaN(n)) { sum += n; count++; }
-    }
-    if (count === 0) { answer(ws, `No numeric values in ${csv.headers[idx]} of ${file}.`); return; }
-    answer(ws, `**Average** of ${csv.headers[idx]} in ${file}: **${(sum / count).toFixed(2)}** (${count} numeric rows)`);
+    const result = aggregateColumn(csv, csv.headers[idx], 'average');
+    if (!result.ok) { answer(ws, result.error); return; }
+    answer(ws, `**Average** of ${csv.headers[idx]} in ${file}: **${result.value.toFixed(2)}** (${result.count} numeric rows)`);
   },
 
   'csv.count': async (ws, action, input, project) => {
