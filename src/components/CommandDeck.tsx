@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Project } from '../types';
-import { Search, Home, LayoutDashboard, Plus, PanelLeft, FolderGit2, Terminal as TerminalIcon } from 'lucide-react';
+import { Search, Home, LayoutDashboard, Plus, PanelLeft, FolderGit2, Terminal as TerminalIcon, Clock, Flame } from 'lucide-react';
 
 interface DeckItem {
   id: string;
@@ -26,11 +26,33 @@ interface CommandDeckProps {
   onSetSidebarCollapsed: (v: boolean) => void;
 }
 
-// Ctrl+K command palette. Execution routes through the exact same paths the rest of the UI
-// uses: config command entries run via onDirectCommand (the typed-command/chip path) when
-// they have no {params}, otherwise the trigger phrase goes to chat so the normal
-// matcher/param-ask flow owns them; navigation items call the same handlers the header
-// buttons do. Nothing here bypasses the confirm flows.
+// Phase 11 (UPGRADE-ROADMAP.md, 2026-08-12): recency/frequency ranking for the palette —
+// Raycast/Spotlight behavior (Recent / Frequent groups above the flat list). Usage is tracked
+// in a minimal per-browser localStorage map (item key -> { lastUsedAt, count }), the same
+// inline-localStorage style as pinned projects / workspace tabs — this is UI-level ranking
+// data for a UI surface, deliberately NOT a second server telemetry store (the server's
+// intentTelemetry stays the confidence-model's data source; see the roadmap's step 1-2 note).
+const DECK_USAGE_KEY = 'console.deckUsage';
+
+interface UsageEntry { lastUsedAt: number; count: number; }
+
+function readUsage(): Record<string, UsageEntry> {
+  try {
+    const raw = localStorage.getItem(DECK_USAGE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) return parsed;
+    }
+  } catch {}
+  return {};
+}
+
+function writeUsage(usage: Record<string, UsageEntry>) {
+  try {
+    localStorage.setItem(DECK_USAGE_KEY, JSON.stringify(usage));
+  } catch {}
+}
+
 export const CommandDeck = ({
   open, onClose, projects, activeProject, onSelectProject,
   onDirectCommand, onSendMessage, onHome, onToggleDashboard, onNewChat,
@@ -38,6 +60,7 @@ export const CommandDeck = ({
 }: CommandDeckProps) => {
   const [query, setQuery] = useState('');
   const [sel, setSel] = useState(0);
+  const [usage, setUsage] = useState<Record<string, UsageEntry>>(() => readUsage());
   const listRef = useRef<HTMLDivElement>(null);
 
   const items = useMemo<DeckItem[]>(() => {
@@ -76,30 +99,71 @@ export const CommandDeck = ({
     ? items.filter(it => `${it.label} ${it.hint ?? ''} ${it.group}`.toLowerCase().includes(q))
     : items;
 
-  useEffect(() => {
-    const el = listRef.current?.querySelector('[data-sel="true"]');
-    el?.scrollIntoView({ block: 'nearest' });
-  }, [sel, filtered.length]);
+  // Phase 11: when there's no query, split into Recent (used within the last 7 days, newest
+  // first) / Frequent (top by count, excluding the recent list) / everything else — Raycast-
+  // style. With a query, relevance filtering wins and usage only breaks ties.
+  const ranked = useMemo(() => {
+    if (q) {
+      const used = filtered.filter(it => usage[it.id]);
+      const unused = filtered.filter(it => !usage[it.id]);
+      return {
+        recent: used.sort((a, b) => (usage[b.id]?.lastUsedAt || 0) - (usage[a.id]?.lastUsedAt || 0)),
+        frequent: [],
+        rest: unused,
+      };
+    }
+    const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+    const recent = filtered.filter(it => usage[it.id] && usage[it.id].lastUsedAt >= weekAgo)
+      .sort((a, b) => (usage[b.id]?.lastUsedAt || 0) - (usage[a.id]?.lastUsedAt || 0));
+    const recentIds = new Set(recent.map(r => r.id));
+    const frequent = filtered.filter(it => usage[it.id] && !recentIds.has(it.id) && usage[it.id].count >= 2)
+      .sort((a, b) => (usage[b.id]?.count || 0) - (usage[a.id]?.count || 0));
+    const freqIds = new Set([...recentIds, ...frequent.map(f => f.id)]);
+    const rest = filtered.filter(it => !freqIds.has(it.id));
+    return { recent, frequent, rest };
+  }, [filtered, usage, q]);
 
   const runSelected = () => {
     const it = filtered[sel];
     if (!it) return;
     onClose();
+    // Record usage (recency + frequency) before running.
+    setUsage(prev => {
+      const next = { ...prev };
+      const cur = next[it.id] || { lastUsedAt: 0, count: 0 };
+      next[it.id] = { lastUsedAt: Date.now(), count: cur.count + 1 };
+      writeUsage(next);
+      return next;
+    });
     it.run();
   };
 
+  useEffect(() => {
+    const el = listRef.current?.querySelector('[data-sel="true"]');
+    el?.scrollIntoView({ block: 'nearest' });
+  }, [sel, filtered.length]);
+
   if (!open) return null;
 
-  let lastGroup = '';
-  const rendered = filtered.map((it, i) => {
-    const header = it.group !== lastGroup ? (
-      <div key={`g-${it.group}`} className="px-2 pt-2 pb-1 text-[10px] tracking-[0.2em] uppercase text-fg-dim font-bold">{it.group}</div>
-    ) : null;
-    lastGroup = it.group;
-    return (
-      <React.Fragment key={it.id}>
-        {header}
+  const sections: { key: string; label: string; icon?: React.ReactNode; items: DeckItem[] }[] = [];
+  if (!q && ranked.recent.length > 0) sections.push({ key: 'recent', label: 'Recent', icon: <Clock size={10} />, items: ranked.recent });
+  if (!q && ranked.frequent.length > 0) sections.push({ key: 'frequent', label: 'Frequent', icon: <Flame size={10} />, items: ranked.frequent });
+  if (ranked.rest.length > 0) sections.push({ key: 'all', label: q ? 'Results' : 'All', items: ranked.rest });
+
+  let rendered: React.ReactNode[] = [];
+  let flatIndex = -1;
+  for (const section of sections) {
+    rendered.push(
+      <div key={`g-${section.key}`} className="px-2 pt-2 pb-1 text-[10px] tracking-[0.2em] uppercase text-fg-dim font-bold flex items-center gap-1">
+        {section.icon}{section.label}
+      </div>
+    );
+    for (const it of section.items) {
+      flatIndex++;
+      const i = flatIndex;
+      rendered.push(
         <button
+          key={it.id}
           data-sel={sel === i ? 'true' : undefined}
           onMouseEnter={() => setSel(i)}
           onClick={runSelected}
@@ -109,9 +173,9 @@ export const CommandDeck = ({
           <span className="flex-1 truncate min-w-0">{it.label}</span>
           {it.hint && <span className="text-[10px] text-fg-dim font-mono truncate max-w-[45%] flex-shrink-0">{it.hint}</span>}
         </button>
-      </React.Fragment>
-    );
-  });
+      );
+    }
+  }
 
   return (
     <div className="fixed inset-0 z-40" onMouseDown={onClose}>

@@ -1136,6 +1136,12 @@ time/date/calculate rows, 92/92).
    you can do" drifted the status intent's didYouMean — same corpus-collision lesson as
    Phase 1.5; same TWO PRE-EXISTING drifts); check-intents unchanged at 1/5/82; check-docs
    55/55 (+1 list-commands catalog entry); check-ws-cases 118/118 unchanged.
+   Phase 11 (2026-08-12): no harness deltas — CommandDeck ranking is client-side (localStorage
+   `console.deckUsage`, Recent/Frequent/All sections per the Raycast reference). Deliberately
+   NOT a second server telemetry store: the server's intentTelemetry stays the confidence
+   model's data source; the palette's ranking is UI-level, persisted in the same inline-
+   localStorage style as pinned projects/workspace tabs (roadmap step 2's sanctioned "minimal
+   lastUsedAt map").
    Run the relevant battery after ANY edit to the corresponding module.
 - **editFile** tolerates whitespace differences (normalized line-range fallback) but not
   wrong wording; on total failure the error names both attempts and tells the caller to
