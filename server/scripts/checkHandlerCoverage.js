@@ -390,6 +390,24 @@ if (delPending) {
 }
 fs.rmSync(gRoot, { recursive: true, force: true });
 
+// Phase 2 audit: the panel's move-preview table sends an explicit file list after a colon —
+// "tidy this folder: pic.jpg" must confirm only that file, not the whole plan.
+const gRoot2 = fs.mkdtempSync(path.join(os.tmpdir(), 'console-genfiles2-'));
+const gProj2 = { id: 'genfiles2', name: 'GenFiles2', path: gRoot2, workspaceType: 'general', config: { projectName: 'GenFiles2', entries: [] }, contextFiles: [], parsedKnowledge: {}, codebaseIndex: { languages: [], keyFiles: {} } };
+fs.writeFileSync(path.join(gRoot2, 'pic.jpg'), 'jpeg-bytes');
+fs.writeFileSync(path.join(gRoot2, 'doc.pdf'), 'pdf-bytes');
+sent.length = 0;
+await handleBuiltinIntent(ws, 'general.files.tidy', 'tidy this folder: pic.jpg', gProj2, {});
+const tidyCandidates2 = [...pendingConfirmations.values()].filter((p) => p.generalFileOp?.kind === 'tidy');
+const tidyPending2 = tidyCandidates2[tidyCandidates2.length - 1];
+eq('tidy audit: explicit file list filters the plan', ws.sent.length === 1 && ws.sent[0].type === 'confirm_prompt' && !!tidyPending2 && tidyPending2.generalFileOp.moves.length === 1 && tidyPending2.generalFileOp.moves[0].from === 'pic.jpg', true);
+sent.length = 0;
+await handleBuiltinIntent(ws, 'general.files.tidy', 'tidy this folder: pic.jpg, doc.pdf', gProj2, {});
+const tidyCandidates3 = [...pendingConfirmations.values()].filter((p) => p.generalFileOp?.kind === 'tidy');
+const tidyPending3 = tidyCandidates3[tidyCandidates3.length - 1];
+eq('tidy audit: multi-file list keeps both', !!tidyPending3 && tidyPending3.generalFileOp.moves.length === 2, true);
+fs.rmSync(gRoot2, { recursive: true, force: true });
+
 // --- PDF TOOLKIT (Phase 3, 2026-08-11) ---------------------------------------
 // Dispatch shapes against the C:/tmp/nowhere fixture (no PDFs exist there, so every answer is
 // deterministic and no files are ever touched): parameter-less intents open the panel with

@@ -15,6 +15,13 @@
  */
 export function splitConjunctions(input) {
   if (/["']/.test(input)) return null;
+  // Phase 2 audit (2026-08-12): the File Tools panel sends explicit file lists after a
+  // colon ("tidy this folder: pic.jpg, doc.pdf", "delete duplicates, keep newest: a.txt")
+  // — the commas there are list separators, not conjunction splits, and chopping them
+  // produces a bogus multi-intent (tidy + file_find). Skip splitting whenever a colon
+  // introduces the comma-separated tail, same "don't cut a structured value in half"
+  // reasoning as the quote guard above.
+  if (/:\s*[\w.,\s/-]+$/.test(input)) return null;
   // Split on common conjunctions (non-capturing groups to avoid split artifacts)
   const separators = /\s+(?:and|also|then|plus)\s+|,\s*|;\s*|\s+&\s+|\s+as well as\s+/i;
   const parts = input.split(separators).map(s => s.trim()).filter(s => s && s.length > 3);

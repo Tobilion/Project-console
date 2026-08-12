@@ -437,12 +437,18 @@ const BATTERIES = [
       ['organize this folder by type', 'BUILTIN=general.files.tidy'],
       ['organize my files by date', 'BUILTIN=general.files.tidy'],
       ['sort these files by type', 'BUILTIN=general.files.tidy'],
+      // Phase 2 audit: the panel's move-preview table sends an explicit file list after a
+      // colon — pinned by a pre-semantic override (the filenames dominate the vector).
+      ['tidy this folder: pic.jpg', 'BUILTIN=general.files.tidy'],
+      ['tidy this folder: pic.jpg, doc.pdf', 'BUILTIN=general.files.tidy'],
       // Duplicates: find vs delete must split cleanly.
       ['find duplicate files', 'BUILTIN=general.files.duplicates'],
       ['are there any duplicate files', 'BUILTIN=general.files.duplicates'],
       ['delete duplicate files', 'BUILTIN=general.files.duplicates_delete'],
       ['remove duplicates', 'BUILTIN=general.files.duplicates_delete'],
       ['delete duplicates keep newest', 'BUILTIN=general.files.duplicates_delete'],
+      // Phase 2 audit: the panel's per-row checkbox subset.
+      ['delete duplicates, keep newest: dup-b.txt', 'BUILTIN=general.files.duplicates_delete'],
     ],
   },
   {

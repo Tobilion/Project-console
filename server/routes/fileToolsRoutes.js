@@ -8,7 +8,7 @@ import path from 'path';
 import { resolveProject } from '../state.js';
 import { walkDir, isTextFile } from '../toolScan.js';
 import { createResolveSafe } from '../toolSandbox.js';
-import { findDuplicates } from '../wsHandlers/builtinGeneralFiles.js';
+import { findDuplicates, planTidy } from '../wsHandlers/builtinGeneralFiles.js';
 
 const MAX_LIST_ENTRIES = 500;
 const MAX_SEARCH_RESULTS = 20;
@@ -105,6 +105,18 @@ export function registerFileToolsRoutes(app) {
     if (!q) return res.status(400).json({ error: 'Missing ?q= parameter.' });
     const results = await searchFiles(project.path, q);
     res.json({ results });
+  });
+
+  // Tidy plan for the panel's move-preview table (?by=type|date) — the same planTidy the
+  // chat confirm flow uses, so the preview and the actual move can never diverge.
+  app.get('/api/projects/:id/tidy-plan', (req, res) => {
+    const project = findProject(req);
+    if (!project) return res.status(404).json({ error: 'Project not found' });
+    const by = req.query.by === 'date' ? 'date' : 'type';
+    const input = by === 'date' ? 'organize this folder by date' : 'tidy this folder';
+    const result = planTidy(project.path, input);
+    if (result.error) return res.status(400).json({ error: result.error });
+    res.json({ moves: result.moves });
   });
 
   // Duplicate scan — reuses the existing findDuplicates orchestrator, enriched per group

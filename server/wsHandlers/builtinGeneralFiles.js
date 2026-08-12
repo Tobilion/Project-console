@@ -194,30 +194,42 @@ export async function performTidy(root, moves) {
 }
 
 async function handleTidy(ws, action, input, project, sessionContext) {
-  const { moves, error } = planTidy(project.path, input);
+  // Phase 2 audit (2026-08-12): the File Tools panel's move-preview table lets the user
+  // exclude individual moves before confirming — it sends `tidy this folder: a.txt, b.txt`
+  // (a colon + comma-separated file names after the verb), and the plan is filtered to just
+  // those files. Plain "tidy this folder" keeps the full-plan behavior.
+  const listMatch = input.match(/:\s*([\w.,\s-]+)$/);
+  let onlyFiles = null;
+  if (listMatch) {
+    onlyFiles = listMatch[1].split(',').map((s) => s.trim()).filter(Boolean);
+  }
+  const { moves, error } = planTidy(project.path, input.replace(/:\s*[\w.,\s-]+$/, ''));
   if (error) {
     answer(ws, error);
     return true;
   }
-  if (moves.length === 0) {
+  const filtered = onlyFiles && onlyFiles.length > 0
+    ? moves.filter((m) => onlyFiles.includes(m.from))
+    : moves;
+  if (filtered.length === 0) {
     answer(ws, `Nothing to tidy in **[${project.name}]** — the folder's files are already organized (or none match the media/document categories).`);
     return true;
   }
-  const preview = moves.slice(0, MAX_PREVIEW_LINES).map((m) => `  ${m.from} -> ${m.to}`).join('\n');
-  const more = moves.length > MAX_PREVIEW_LINES ? `\n  …and ${moves.length - MAX_PREVIEW_LINES} more` : '';
+  const preview = filtered.slice(0, MAX_PREVIEW_LINES).map((m) => `  ${m.from} -> ${m.to}`).join('\n');
+  const more = filtered.length > MAX_PREVIEW_LINES ? `\n  …and ${filtered.length - MAX_PREVIEW_LINES} more` : '';
   const token = crypto.randomUUID();
   pendingConfirmations.set(token, {
     owner: ws,
     projectId: project.id,
-    command: `tidy ${moves.length} file(s) in ${project.name}`,
+    command: `tidy ${filtered.length} file(s) in ${project.name}`,
     trigger: input,
     createdAt: Date.now(),
-    generalFileOp: { kind: 'tidy', moves },
+    generalFileOp: { kind: 'tidy', moves: filtered },
   });
   ws.send(JSON.stringify({
     type: 'confirm_prompt',
     token,
-    command: `Move ${moves.length} file(s) into subfolders?\n\n${preview}${more}\n\nThis is reversible via "revert action <id>" after it runs.`,
+    command: `Move ${filtered.length} file(s) into subfolders?\n\n${preview}${more}\n\nThis is reversible via "revert action <id>" after it runs.`,
     trigger: 'general_files_tidy',
   }));
   return true;
@@ -312,7 +324,18 @@ export async function performDuplicateDeletes(root, files) {
 }
 
 async function handleDuplicatesDelete(ws, action, input, project, sessionContext) {
-  const files = await planDuplicateDeletes(project.path);
+  // Phase 2 audit (2026-08-12): the File Tools panel's duplicates view has per-row checkboxes
+  // — it sends `delete duplicates, keep newest: <file1, file2>` to delete only the selected
+  // older copies. Plain "delete duplicates, keep newest" keeps the whole-plan behavior.
+  const listMatch = input.match(/:\s*([\w.,\s/-]+)$/);
+  let onlyFiles = null;
+  if (listMatch) {
+    onlyFiles = listMatch[1].split(',').map((s) => s.trim()).filter(Boolean);
+  }
+  const all = await planDuplicateDeletes(project.path);
+  const files = onlyFiles && onlyFiles.length > 0
+    ? all.filter((f) => onlyFiles.includes(f))
+    : all;
   if (files.length === 0) {
     answer(ws, `No duplicate files found in **[${project.name}]** — nothing to delete.`);
     return true;

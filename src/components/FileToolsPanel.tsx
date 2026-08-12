@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { FolderSearch, RefreshCw, Send, CheckCircle2, File, FileText, FolderOpen, Image, Music, Video, Archive, Table } from 'lucide-react';
+import { FolderSearch, RefreshCw, Send, Check, CheckCircle2, File, FileText, FolderOpen, Image, Music, Video, Archive, Table } from 'lucide-react';
 import { apiFetchJson } from '../utils/apiFetch';
 import { cn } from '../lib/utils';
 import type { Project } from '../types';
@@ -125,10 +125,58 @@ export function FileToolsPanel({ project, onSendMessage }: FileToolsPanelProps) 
     if (!data) { setError('Could not scan for duplicates.'); return; }
     setError(null);
     setDupeGroups(data.groups || []);
+    // Phase 2 audit: per-row delete checkboxes — older copies start checked (keep-newest
+    // convention), the newest copy of each group is never selectable.
+    setDupSelected((prev) => {
+      const next = new Set(prev);
+      next.clear();
+      for (const g of data.groups || []) {
+        for (const f of g.files) {
+          if (f.path !== g.keepPath) next.add(f.path);
+        }
+      }
+      return next;
+    });
   }, [project?.id]);
   useEffect(() => {
     if (view === 'duplicates' && project?.id) fetchDuplicates();
   }, [view, project?.id]);
+
+  // Phase 2 audit: tidy move-preview table — fetch the same plan the chat confirm flow uses,
+  // let the user exclude individual moves with per-row checkboxes, then run the filtered set.
+  const [tidyPlan, setTidyPlan] = useState<{ from: string; to: string }[]>([]);
+  const [tidyByDate, setTidyByDate] = useState(false);
+  const [tidySelected, setTidySelected] = useState<Set<string>>(new Set());
+  const [dupSelected, setDupSelected] = useState<Set<string>>(new Set());
+  const fetchTidyPlan = useCallback(async (byDate: boolean) => {
+    if (!project?.id) return;
+    setLoading(true);
+    const data = await apiFetchJson<{ moves: { from: string; to: string }[] }>(
+      `/api/projects/${encodeURIComponent(project.id)}/tidy-plan?by=${byDate ? 'date' : 'type'}`
+    );
+    setLoading(false);
+    if (!data) { setError('Could not build the tidy plan.'); return; }
+    setError(null);
+    setTidyPlan(data.moves || []);
+    setTidyByDate(byDate);
+    setTidySelected(new Set((data.moves || []).map((m) => m.from)));
+  }, [project?.id]);
+  useEffect(() => {
+    if (view === 'tidy' && project?.id) fetchTidyPlan(false);
+  }, [view, project?.id]);
+
+  const runTidy = () => {
+    const files = [...tidySelected];
+    if (files.length === 0) return;
+    const verb = tidyByDate ? 'tidy this folder by date' : 'tidy this folder';
+    send(files.length === tidyPlan.length ? verb : `${verb}: ${files.join(', ')}`);
+  };
+
+  const runDupDelete = () => {
+    const files = [...dupSelected];
+    if (files.length === 0) return;
+    send(`delete duplicates, keep newest: ${files.join(', ')}`);
+  };
 
   const send = (text: string) => {
     onSendMessage(text);
@@ -187,16 +235,62 @@ export function FileToolsPanel({ project, onSendMessage }: FileToolsPanelProps) 
 
   const TidyView = (
     <div className="space-y-3">
+      <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1 bg-panel-strong rounded-lg p-0.5 border border-border-soft">
+          <button
+            onClick={() => fetchTidyPlan(false)}
+            className={cn('px-3 py-1.5 text-xs rounded-md transition-colors', !tidyByDate ? 'bg-accent/15 text-accent font-semibold' : 'text-fg-muted hover:text-fg-strong')}
+          >
+            By type
+          </button>
+          <button
+            onClick={() => fetchTidyPlan(true)}
+            className={cn('px-3 py-1.5 text-xs rounded-md transition-colors', tidyByDate ? 'bg-accent/15 text-accent font-semibold' : 'text-fg-muted hover:text-fg-strong')}
+          >
+            By date
+          </button>
+        </div>
+        <button
+          onClick={runTidy}
+          disabled={tidySelected.size === 0}
+          className={cn(runBtn, 'w-auto')}
+        >
+          <Send size={12} /> Move {tidySelected.size} file{tidySelected.size === 1 ? '' : 's'}
+        </button>
+      </div>
       <p className="text-xs text-fg-muted">
-        Tidy files moves loose root files into type-category folders (Images, Documents, ...) or by date.
-        Trigger the plan and confirm from the terminal below.
+        Uncheck any row to exclude it. The selected moves run through the normal confirm flow —
+        the card appears above, wherever you are.
       </p>
-      <button onClick={() => send('tidy this folder')} className={cn(runBtn, 'w-full')}>
-        <Send size={12} /> Plan: tidy this folder
-      </button>
-      <button onClick={() => send('tidy this folder by date')} className={cn(runBtn, 'w-full !bg-panel-strong !text-fg-strong !border !border-border-soft hover:!bg-scrim-faint')}>
-        <Send size={12} /> Plan: tidy by date
-      </button>
+      {tidyPlan.length === 0 ? (
+        <p className="text-xs text-fg-dim italic">No moves planned — the folder's root files are already organized (or none match the categories).</p>
+      ) : (
+        <div className="rounded-xl border border-border-soft overflow-hidden">
+          <div className="text-[11px] text-fg-dim px-3 py-1.5 bg-scrim-faint border-b border-border-faint">Move preview — {tidyPlan.length} file(s)</div>
+          {tidyPlan.map((m) => {
+            const on = tidySelected.has(m.from);
+            return (
+              <div key={m.from} className="flex items-center gap-2 px-3 py-1.5 text-xs border-b border-border-faint last:border-b-0 min-h-[32px]">
+                <button
+                  onClick={() => setTidySelected((prev) => {
+                    const next = new Set(prev);
+                    if (next.has(m.from)) next.delete(m.from); else next.add(m.from);
+                    return next;
+                  })}
+                  className={cn('shrink-0 w-[18px] h-[18px] rounded border-2 flex items-center justify-center transition-colors', on ? 'border-accent bg-accent/15' : 'border-border-soft')}
+                  title={on ? 'Exclude this move' : 'Include this move'}
+                >
+                  {on && <CheckCircle2 size={12} className="text-accent" />}
+                </button>
+                {fileIcon(m.from)}
+                <span className="text-fg-strong truncate flex-1 font-mono" title={m.from}>{m.from}</span>
+                <span className="text-fg-faint text-[11px]">→</span>
+                <span className="text-fg-muted truncate font-mono flex-1" title={m.to}>{m.to}</span>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 
@@ -207,11 +301,15 @@ export function FileToolsPanel({ project, onSendMessage }: FileToolsPanelProps) 
           <RefreshCw size={12} className={cn(loading && 'animate-spin')} /> Scan for duplicates
         </button>
         {dupeGroups.length > 0 && (
-          <button onClick={() => send('delete duplicates, keep newest')} className={cn(runBtn, 'w-auto !bg-[#FF3B30]/15 !text-[#FF3B30] !border !border-[#FF3B30]/30 hover:!bg-[#FF3B30]/20')}>
-            Delete all older copies
+          <button onClick={runDupDelete} disabled={dupSelected.size === 0} className={cn(runBtn, 'w-auto !bg-[#FF3B30]/15 !text-[#FF3B30] !border !border-[#FF3B30]/30 hover:!bg-[#FF3B30]/20')}>
+            Delete {dupSelected.size} selected older cop{dupSelected.size === 1 ? 'y' : 'ies'}
           </button>
         )}
       </div>
+      <p className="text-xs text-fg-muted">
+        Per-row checkboxes select which older copies to delete — the newest copy of each group is
+        always kept and cannot be selected.
+      </p>
       {dupeGroups.length > 0 && (
         <div className="rounded-xl border border-border-soft overflow-hidden">
           {dupeGroups.map((g, gi) => (
@@ -221,11 +319,22 @@ export function FileToolsPanel({ project, onSendMessage }: FileToolsPanelProps) 
               </div>
               {g.files.map((f) => {
                 const isKeep = f.path === g.keepPath;
+                const on = !isKeep && dupSelected.has(f.path);
                 return (
                   <div key={f.path} className="flex items-center gap-2 px-3 py-1.5 text-xs border-t border-border-faint min-h-[30px]">
-                    <div className={cn('w-[18px] h-[18px] rounded border-2 flex items-center justify-center shrink-0', isKeep ? 'border-accent bg-accent/10' : 'border-border-soft')}>
-                      {isKeep && <CheckCircle2 size={12} className="text-accent" />}
-                    </div>
+                    <button
+                      onClick={() => { if (isKeep) return; setDupSelected((prev) => {
+                        const next = new Set(prev);
+                        if (next.has(f.path)) next.delete(f.path); else next.add(f.path);
+                        return next;
+                      }); }}
+                      disabled={isKeep}
+                      className={cn('shrink-0 w-[18px] h-[18px] rounded border-2 flex items-center justify-center transition-colors', on ? 'border-accent bg-accent/15' : isKeep ? 'border-border-soft opacity-40' : 'border-border-soft')}
+                      title={isKeep ? 'Newest copy — always kept' : on ? 'Exclude from delete' : 'Select for delete'}
+                    >
+                      {on && <CheckCircle2 size={12} className="text-accent" />}
+                      {isKeep && <Check size={12} className="text-fg-faint" />}
+                    </button>
                     {fileIcon(f.path)}
                     <span className="text-fg-strong truncate flex-1 font-mono" title={f.path}>{f.path}</span>
                     <span className="text-fg-dim text-[11px]">{formatSize(f.size)}</span>

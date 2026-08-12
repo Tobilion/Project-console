@@ -125,6 +125,14 @@ export const PRE_SEMANTIC_OVERRIDES = [
   // this override the open_file literal rule below catches "file" and routes to
   // project.action.open_file (which asks "Which file?"). Placed BEFORE the open_file rule.
   { intent: 'system.tools.open_file_tools', pattern: /^open\s+(?:the\s+)?file\s+tools(?:\s+panel)?$/i },
+  // Phase 2 audit (2026-08-12, probe-verified): the File Tools panel's move-preview table
+  // sends "tidy this folder: <explicit file list>" — the colon + filenames after the verb
+  // dominate the vector and the input drifts onto project.context.structure. A leading
+  // "tidy this folder" is unambiguous.
+  { intent: 'general.files.tidy', pattern: /^tidy\s+this\s+folder(?:\s+by\s+(?:date|year|month))?(?:\s*:\s*[\w.,\s/-]+)?$/i },
+  // Same class for the duplicates delete list-filter the panel sends
+  // ("delete duplicates, keep newest: <files>").
+  { intent: 'general.files.duplicates_delete', pattern: /^delete\s+duplicates?,\s*keep\s+newest(?:\s*:\s*[\w.,\s/-]+)?$/i },
   // Phase 14 (2026-08-12, probe-verified): "extract the zip file" drifted onto backup.create
   // ("export this project as a zip") — the archive-file "extract" ask is a file_count query,
   // never a request to create a backup. Same class of pin as the pdf-verb rules: an

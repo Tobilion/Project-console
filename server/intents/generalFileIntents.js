@@ -7,6 +7,7 @@
 // never confirm.
 export const GENERAL_FILE_INTENTS = {
   'general.files.find': {
+    opensPanel: 'file-tools',
     examples: [
       'find files matching invoice', 'find files containing tax', 'search my files for budget',
       'search for budget in my files', 'search all my files for expenses', 'search my documents for recipe',
@@ -19,6 +20,7 @@ export const GENERAL_FILE_INTENTS = {
     ],
   },
   'general.files.tidy': {
+    opensPanel: 'file-tools',
     examples: [
       'tidy this folder', 'tidy up this folder', 'organize this folder by type', 'organize this folder by date',
       'organize my files by type', 'organize my files by date', 'sort this folder', 'sort my files by type',
@@ -29,6 +31,7 @@ export const GENERAL_FILE_INTENTS = {
     ],
   },
   'general.files.duplicates': {
+    opensPanel: 'file-tools',
     examples: [
       'find duplicate files', 'find duplicates', 'find duplicate files in this folder',
       'look for duplicate files', 'check for duplicate files', 'find duplicate documents',
@@ -38,6 +41,7 @@ export const GENERAL_FILE_INTENTS = {
     ],
   },
   'general.files.duplicates_delete': {
+    opensPanel: 'file-tools',
     examples: [
       'delete duplicate files', 'remove duplicate files', 'delete duplicates keep newest',
       'delete duplicates', 'remove duplicates', 'delete all duplicate files',
