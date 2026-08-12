@@ -5,8 +5,11 @@ import fs from 'fs';
 import path from 'path';
 import { resolveProject } from '../state.js';
 import { parseCsv, loadCsv, findColumn, matchOp, aggregateColumn } from '../csvTools.js';
+import { createResolveSafe } from '../toolSandbox.js';
+import { appendAction } from '../actionHistory.js';
 
 const MAX_CSV_FILES = 200;
+const MAX_CSV_UPLOAD_BYTES = 2 * 1024 * 1024;
 
 export function registerCsvRoutes(app) {
   // Project CSV files (project-relative paths), for the panel's file picker.
@@ -106,5 +109,40 @@ export function registerCsvRoutes(app) {
     const result = aggregateColumn(csv, column, op);
     if (!result.ok) return res.status(400).json({ error: result.error });
     res.json({ op, value: result.value, count: result.count, column: csv.headers[colIdx], file: filePath });
+  });
+
+  // Upload a CSV into the project folder — the Spreadsheet panel's drag-and-drop / file-picker
+  // target (Stage C). An explicit user action with the file already in hand; the write is
+  // journaled as file_write (existed:false) so `revert action <id>` deletes it. Caps match
+  // parseCsv (2MB), name is basename-sanitized + project-scoped via createResolveSafe, and an
+  // existing file is refused (never overwrite — mirrors the PDF tools' rule).
+  app.post('/api/projects/:id/csv-upload', (req, res) => {
+    const project = resolveProject(req.params.id);
+    if (!project) return res.status(404).json({ error: 'Project not found' });
+    const rawName = typeof req.query.file === 'string' ? req.query.file : '';
+    if (!rawName || !/\.csv$/i.test(rawName)) return res.status(400).json({ error: 'Missing ?file= (a .csv name).' });
+    const name = path.basename(rawName);
+    let abs;
+    try { abs = createResolveSafe(project.path)(name); } catch { return res.status(400).json({ error: 'Invalid file name.' }); }
+    if (fs.existsSync(abs)) return res.status(409).json({ error: `${name} already exists in the project folder.` });
+    const chunks = [];
+    let total = 0;
+    let tooBig = false;
+    req.on('data', (c) => {
+      total += c.length;
+      if (total <= MAX_CSV_UPLOAD_BYTES) chunks.push(c);
+      else tooBig = true;
+    });
+    req.on('end', async () => {
+      if (tooBig) return res.status(413).json({ error: 'CSV must be under 2 MB (matches the chat CSV reader).' });
+      try {
+        fs.writeFileSync(abs, Buffer.concat(chunks));
+        await appendAction(project.path, { type: 'file_write', path: name, existed: false, preContent: null });
+        res.json({ path: name, name, size: total });
+      } catch {
+        res.status(500).json({ error: 'Could not write the file.' });
+      }
+    });
+    req.on('error', () => { res.status(500).json({ error: 'Upload failed.' }); });
   });
 }

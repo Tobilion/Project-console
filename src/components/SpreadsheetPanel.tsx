@@ -130,6 +130,37 @@ export function SpreadsheetPanel({ project, onSendMessage }: SpreadsheetPanelPro
   const runDisabled = !selectedFile || (mode !== 'count' && mode !== 'filter' && !column) ||
     ((mode === 'count' || mode === 'filter') && (!column || !filterValue.trim()));
 
+  // Stage C: drag-and-drop CSV upload zone with a file-picker fallback. The file is POSTed
+  // to /api/projects/:id/csv-upload (project-scoped, journaled) and then selected so the
+  // existing toolbar/query path works on it immediately.
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [dragging, setDragging] = useState(false);
+  const [uploading, setUploading] = useState(false);
+
+  const uploadFile = async (file: File) => {
+    if (!project?.id) return;
+    if (!/\.csv$/i.test(file.name)) { setError('Only .csv files can be uploaded here.'); return; }
+    setUploading(true);
+    setError(null);
+    try {
+      const res = await fetch(
+        `/api/projects/${encodeURIComponent(project.id)}/csv-upload?file=${encodeURIComponent(file.name)}`,
+        { method: 'POST', headers: { 'Content-Type': 'text/csv' }, body: file }
+      );
+      const data = await res.json();
+      if (!res.ok) { setError(data?.error || 'Upload failed.'); return; }
+      await fetchFiles();
+      setSelectedFile(data.path);
+      fetchHeaders(data.path);
+      setTable(null);
+      setAggregate(null);
+    } catch {
+      setError('Could not reach the server.');
+    } finally {
+      setUploading(false);
+    }
+  };
+
   const sortedRows = useMemo(() => {
     if (!table || sortCol === null) return table?.rows || [];
     const col = sortCol;
@@ -173,6 +204,41 @@ export function SpreadsheetPanel({ project, onSendMessage }: SpreadsheetPanelPro
           </div>
         ) : (
           <>
+            {/* Drag-and-drop upload zone — dashed --border-strong, file-picker fallback */}
+            <div
+              onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
+              onDragLeave={() => setDragging(false)}
+              onDrop={(e) => {
+                e.preventDefault();
+                setDragging(false);
+                const f = e.dataTransfer.files?.[0];
+                if (f) uploadFile(f);
+              }}
+              className={`border-2 border-dashed rounded-xl p-4 mb-3 text-center transition-colors cursor-pointer ${dragging ? 'border-accent-blue bg-accent-blue/5' : 'border-border-strong bg-background hover:border-accent-blue/50'}`}
+              onClick={() => fileInputRef.current?.click()}
+            >
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".csv"
+                className="hidden"
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  if (f) uploadFile(f);
+                  e.target.value = '';
+                }}
+              />
+              <p className="text-[13px] text-fg-muted">
+                {uploading ? 'Uploading…' : dragging ? 'Drop it to upload' : 'Drag & drop a CSV into this project'}
+              </p>
+              <button
+                onClick={(e) => { e.stopPropagation(); fileInputRef.current?.click(); }}
+                className="mt-1.5 text-[11px] text-accent-blue hover:underline"
+              >
+                or pick a file…
+              </button>
+            </div>
+
             {/* Toolbar */}
             <div className="flex items-center gap-2 px-3 py-2 rounded-t-xl border border-border-soft border-b-0 bg-panel flex-wrap">
               <select value={selectedFile} onChange={(e) => { setSelectedFile(e.target.value); if (e.target.value) fetchHeaders(e.target.value); setTable(null); }} className={selectCls}>
@@ -251,9 +317,16 @@ export function SpreadsheetPanel({ project, onSendMessage }: SpreadsheetPanelPro
                 </thead>
                 <tbody>
                   {sortedRows.map((row, ri) => (
-                    <tr key={ri} className={cn(ri % 2 === 1 && 'bg-scrim-faint', 'hover:bg-accent/5 transition-colors')}>
+                    <tr key={ri} className={cn(ri % 2 === 1 ? 'bg-panel' : 'bg-background', 'hover:bg-accent/5 transition-colors')}>
                       {row.map((cell, ci) => (
-                        <td key={ci} className="px-3 py-1.5 text-fg-muted whitespace-nowrap border-b border-border-faint">{cell}</td>
+                        <td key={ci} className={cn(
+                          'px-3 py-1.5 whitespace-nowrap border-b border-border-faint',
+                          !Number.isNaN(Number(String(cell).replace(/[$,%\s]/g, ''))) && String(cell).trim() !== ''
+                            ? 'font-mono text-right text-fg-strong'
+                            : 'text-fg-muted',
+                        )}>
+                          {cell}
+                        </td>
                       ))}
                     </tr>
                   ))}

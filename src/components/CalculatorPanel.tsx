@@ -110,7 +110,7 @@ export function CalculatorPanel({ onSendMessage }: CalculatorPanelProps) {
         'flex items-center justify-center rounded-full transition-transform active:scale-95 select-none',
         kind === 'num' && 'text-[24px]',
         kind === 'func' && 'text-[20px]',
-        kind === 'op' && 'text-[26px]',
+        kind === 'op' && 'text-[26px] font-bold',
         wide && 'col-span-2 text-left pl-6',
       )}
       style={{
@@ -234,12 +234,12 @@ export function CalculatorPanel({ onSendMessage }: CalculatorPanelProps) {
         {mode === 'basic' ? (
           <>
             {/* Result display — shows the evaluated result right here */}
-            <div className="text-right mb-3 px-2 overflow-x-auto whitespace-nowrap"
+            <div className="flex items-center justify-end h-16 mb-3 px-4 bg-background rounded-xl overflow-x-auto whitespace-nowrap"
               style={{ color: 'var(--calc-label)' }}>
-              <div className="text-4xl font-light tracking-tight">{display.slice(-DISPLAY_MAX)}</div>
-              <div className="text-sm mt-1 min-h-[20px]" style={{ color: lastError ? '#FF453A' : 'var(--calc-dim)' }}>
-                {evaluating ? '…' : lastError ?? (lastResult ? expr : 'press = to evaluate')}
-              </div>
+              <div className="font-mono text-[36px] font-semibold tracking-tight">{display.slice(-DISPLAY_MAX)}</div>
+            </div>
+            <div className="text-right px-2 mb-1 text-sm min-h-[20px]" style={{ color: lastError ? 'var(--color-accent-red)' : 'var(--calc-dim)' }}>
+              {evaluating ? '…' : lastError ?? (lastResult ? expr : 'press = to evaluate')}
             </div>
             {basicGrid}
           </>
@@ -247,7 +247,7 @@ export function CalculatorPanel({ onSendMessage }: CalculatorPanelProps) {
 
         {lastError && (
           <div className="mt-3 flex items-start gap-2 text-[11px] rounded-lg p-2.5"
-            style={{ color: '#FF453A', backgroundColor: 'var(--calc-key)' }}>
+            style={{ color: 'var(--color-accent-red)', backgroundColor: 'var(--calc-key)' }}>
             <XCircle size={13} className="mt-0.5 shrink-0" />
             <span>{lastError}</span>
           </div>

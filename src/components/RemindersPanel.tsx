@@ -155,32 +155,32 @@ export function RemindersPanel({ project, onSendMessage }: RemindersPanelProps) 
     return (
       <div
         className={cn(
-          'flex items-center gap-3 px-2 py-2 min-h-[48px] rounded-[10px] transition-colors',
-          completingThis ? 'opacity-40' : '',
+          'flex items-center gap-3 px-2 py-2 min-h-[44px] transition-colors',
+          completingThis ? 'opacity-50' : '',
         )}
       >
         <button
           onClick={() => handleComplete(reminder.id)}
           disabled={completingThis}
-          className="shrink-0 w-[24px] h-[24px] rounded-full border-2 flex items-center justify-center transition-all"
+          className="shrink-0 w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all"
           style={{
             borderColor: 'var(--rm-gray4)',
-            minWidth: '24px',
-            minHeight: '24px',
+            minWidth: '20px',
+            minHeight: '20px',
           }}
           title="Complete (removes the reminder)"
         >
           {completingThis ? (
-            <Check size={14} color="var(--rm-blue)" strokeWidth={3} />
+            <Check size={12} color="var(--rm-blue)" strokeWidth={3} />
           ) : null}
         </button>
         <div className="flex-1 min-w-0">
-          <div className="text-[17px] font-semibold leading-snug truncate"
+          <div className={cn('text-[13px] font-semibold leading-snug truncate transition-all', completingThis && 'line-through')}
             style={{ color: 'var(--rm-label)' }}>
             {reminder.text}
           </div>
-          <div className="text-[13px] mt-0.5"
-            style={{ color: overdue ? 'var(--rm-red)' : 'var(--rm-label2)' }}>
+          <div className="text-[11px] mt-0.5"
+            style={{ color: overdue ? 'var(--rm-red)' : 'var(--color-accent-orange)' }}>
             {isTodo ? 'No date' : reminder.label}
             {reminder.projectId !== project?.id && reminder.projectName && (
               <span className="opacity-70"> · {reminder.projectName}</span>
@@ -211,10 +211,17 @@ export function RemindersPanel({ project, onSendMessage }: RemindersPanelProps) 
   const tabBtn = (v: View, label: string, count: number) => (
     <button
       onClick={() => setView(v)}
-      className={cn('px-2.5 py-1.5 rounded-lg text-[12px] font-semibold transition-colors', view === v ? 'text-white' : 'opacity-60 hover:opacity-90')}
-      style={{ backgroundColor: view === v ? 'var(--rm-blue)' : 'transparent' }}
+      className={cn(
+        'flex flex-col items-start gap-1.5 p-3 rounded-xl border text-left transition-all',
+        view === v
+          ? 'bg-panel border-accent-blue/60'
+          : 'bg-panel border-border-faint opacity-70 hover:opacity-100',
+      )}
     >
-      {label} <span className="opacity-70">{count}</span>
+      <span className="text-[12px] font-semibold text-fg-muted">{label}</span>
+      <span className="px-1.5 py-0.5 rounded-full bg-accent-blue/15 text-accent-blue text-[11px] font-bold">
+        {count}
+      </span>
     </button>
   );
 
@@ -260,8 +267,8 @@ export function RemindersPanel({ project, onSendMessage }: RemindersPanelProps) 
           </div>
         )}
 
-        {/* View switcher — separate sections, no item repeats across views */}
-        <div className="flex gap-1 mb-3 rounded-lg p-1" style={{ backgroundColor: 'var(--rm-group-bg)' }}>
+        {/* Summary cards — each is a real switchable view; no item repeats across views */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-4">
           {tabBtn('today', 'Today', today.length)}
           {tabBtn('upcoming', 'Upcoming', upcoming.length)}
           {tabBtn('all', 'All', all.length)}

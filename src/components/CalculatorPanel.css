@@ -1,21 +1,13 @@
-/* Phase 6 Calculator panel — iOS Calculator design reference + Design Tokens Appendix.
-   The operator column (x - + =) is systemOrange-filled — the calculator's most recognizable
-   visual signature; function row (C +/- %) is systemGray; numbers are systemGray6. Scoped
-   under .calc-panel so no other component picks up these token overrides. */
+/* Phase 6 Calculator panel — iOS Calculator design reference, mapped onto the Stage A
+   theme tokens instead of a private hardcoded palette: number keys are --panel-strong,
+   the function row (C +/- %) is --overlay, the operator column is the theme-aware
+   accent-orange. All vars resolve through the :root tokens, so the [data-theme="light"]
+   flip needs no override here. Scoped under .calc-panel so no other component picks up
+   these names. */
 .calc-panel {
-  --calc-bg: #000000;
-  --calc-key: #1C1C1E;
-  --calc-func: #3A3A3C;
-  --calc-orange: #FF9F0A;
-  --calc-label: #FFFFFF;
-  --calc-dim: #EBEBF5;
-  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif;
-}
-:root[data-theme="light"] .calc-panel {
-  --calc-bg: #FFFFFF;
-  --calc-key: #F2F2F7;
-  --calc-func: #D1D1D6;
-  --calc-orange: #FF9500;
-  --calc-label: #000000;
-  --calc-dim: #3C3C43;
+  --calc-key: var(--color-panel-strong);
+  --calc-func: var(--color-overlay);
+  --calc-orange: var(--color-accent-orange);
+  --calc-label: var(--color-fg-strong);
+  --calc-dim: var(--color-fg-muted);
 }

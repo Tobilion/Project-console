@@ -1,23 +1,14 @@
-/* Phase 4 Reminders panel — Apple Reminders design reference + Design Tokens Appendix.
-   Scoped under .reminders-panel so no other component picks up these token overrides. */
+/* Phase 4 Reminders panel — Apple Reminders design reference, mapped onto the Stage A
+   theme tokens: group surfaces are --panel, labels use the fg ladder, accents use the
+   theme-aware named accents. All vars resolve through the :root tokens, so the
+   [data-theme="light"] flip needs no override here. Scoped under .reminders-panel so no
+   other component picks up these names. */
 .reminders-panel {
-  --rm-bg: #000000;
-  --rm-group-bg: #1C1C1E;
-  --rm-label: #FFFFFF;
-  --rm-label2: rgba(235, 235, 245, 0.6);
-  --rm-blue: #0A84FF;
-  --rm-sep: #545458;
-  --rm-gray4: #48484A;
-  --rm-red: #FF453A;
-  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif;
-}
-:root[data-theme="light"] .reminders-panel {
-  --rm-bg: #F2F2F7;
-  --rm-group-bg: #FFFFFF;
-  --rm-label: #000000;
-  --rm-label2: rgba(60, 60, 67, 0.6);
-  --rm-blue: #007AFF;
-  --rm-sep: rgba(60, 60, 67, 0.29);
-  --rm-gray4: #D1D1D6;
-  --rm-red: #FF3B30;
+  --rm-group-bg: var(--color-panel);
+  --rm-label: var(--color-fg-strong);
+  --rm-label2: var(--color-fg-muted);
+  --rm-blue: var(--color-accent-blue);
+  --rm-sep: var(--color-border-faint);
+  --rm-gray4: var(--color-border-strong);
+  --rm-red: var(--color-accent-red);
 }

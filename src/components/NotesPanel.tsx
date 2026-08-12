@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { StickyNote, RefreshCw, Send, CheckCircle2, Search } from 'lucide-react';
+import { StickyNote, RefreshCw, Send, Search, FileText } from 'lucide-react';
 import { apiFetchJson } from '../utils/apiFetch';
 import { cn } from '../lib/utils';
 import type { Project } from '../types';
@@ -9,6 +9,11 @@ import './NotesPanel.css';
 // list, no per-row card borders; each row = semibold first line, muted preview, timestamp).
 // Add/Search go through the normal WS trigger-command path so the terminal stays the single
 // source of truth.
+//
+// 2026-08-12 Stage C: true 2-column split — left list rail (240px, --overlay, flat rows on
+// --border-faint separators), right editor surface (--panel, borderless full-text view).
+// Selection + filter persist per project ID via localStorage so switching projects restores
+// each project's own view.
 
 interface NoteInfo {
   text: string;
@@ -21,6 +26,8 @@ interface NotesPanelProps {
 }
 
 const POLL_MS = 15000;
+const selKey = (projectId: string) => `console.notesSelection.${projectId}`;
+const filterKey = (projectId: string) => `console.notesFilter.${projectId}`;
 
 export function NotesPanel({ project, onSendMessage }: NotesPanelProps) {
   const [notes, setNotes] = useState<NoteInfo[]>([]);
@@ -28,8 +35,26 @@ export function NotesPanel({ project, onSendMessage }: NotesPanelProps) {
   const [error, setError] = useState<string | null>(null);
   const [newInput, setNewInput] = useState('');
   const [filter, setFilter] = useState('');
+  const [selectedIdx, setSelectedIdx] = useState<number | null>(null);
   const [lastSent, setLastSent] = useState<string | null>(null);
   const lastSentTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Persist selection + filter per project ID.
+  useEffect(() => {
+    if (!project?.id) return;
+    setSelectedIdx((() => {
+      const raw = localStorage.getItem(selKey(project.id));
+      return raw === null ? null : Number(raw);
+    })() ?? null);
+    setFilter(localStorage.getItem(filterKey(project.id)) ?? '');
+  }, [project?.id]);
+
+  useEffect(() => {
+    if (!project?.id) return;
+    if (selectedIdx !== null) localStorage.setItem(selKey(project.id), String(selectedIdx));
+    else localStorage.removeItem(selKey(project.id));
+    localStorage.setItem(filterKey(project.id), filter);
+  }, [project?.id, selectedIdx, filter]);
 
   const fetchNotes = useCallback(async () => {
     if (!project?.id) return;
@@ -76,125 +101,136 @@ export function NotesPanel({ project, onSendMessage }: NotesPanelProps) {
     return base.slice().reverse();
   }, [notes, filter]);
 
-  const inputCls = 'flex-1 bg-transparent text-[17px] outline-none placeholder:opacity-40';
-  const labelCls = 'text-[13px]';
+  // Clamp the persisted selection into the current (possibly refetched) list.
+  const selected = filtered.length === 0 ? null : filtered[Math.min(selectedIdx ?? 0, filtered.length - 1)] ?? null;
+
+  const titleOf = (n: NoteInfo) => n.text.split('\n')[0];
+  const previewOf = (n: NoteInfo) => n.text.split('\n').slice(1).join(' ');
 
   return (
-    <div className="notes-panel h-full overflow-y-auto p-4">
-      <div className="max-w-2xl mx-auto">
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-2">
-            <div className="p-2 rounded-lg" style={{ backgroundColor: 'var(--rm-blue)', opacity: 0.15, color: 'var(--rm-blue)' }}>
-              <StickyNote size={16} />
+    <div className="notes-panel h-full flex flex-col">
+      {/* Header row */}
+      <div className="flex items-center justify-between px-4 py-2 border-b border-border-faint shrink-0">
+        <div className="flex items-center gap-2">
+          <div className="p-1.5 rounded-lg bg-accent-blue/15 text-accent-blue">
+            <StickyNote size={16} />
+          </div>
+          <h2 className="text-sm font-semibold tracking-wide uppercase text-fg-strong">
+            Notes
+          </h2>
+          {project && (
+            <span className="text-xs font-normal normal-case text-fg-muted">— {project.name}</span>
+          )}
+        </div>
+        <button onClick={fetchNotes} className="p-1.5 rounded-md text-fg-muted hover:text-fg-strong transition-colors" title="Refresh">
+          <RefreshCw size={15} className={cn(loading && 'animate-spin')} />
+        </button>
+      </div>
+
+      {error && <p className="text-xs px-4 py-1.5 text-accent-red">{error}</p>}
+
+      <div className="flex-1 min-h-0 flex flex-col sm:flex-row">
+        {/* Left list rail — 240px, --overlay, flat rows on --border-faint separators */}
+        <div className="sm:w-[240px] shrink-0 sm:border-r border-b sm:border-b-0 border-border-faint bg-overlay flex flex-col min-h-0">
+          <div className="p-2 shrink-0">
+            <div className="flex items-center gap-2 px-2 py-1 min-h-[44px] rounded-xl bg-panel border border-border-faint">
+              <StickyNote size={15} className="text-accent-blue/60 ml-1 shrink-0" />
+              <input
+                value={newInput}
+                onChange={(e) => setNewInput(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') handleAdd(); }}
+                placeholder="New note — e.g. buy milk"
+                className="flex-1 bg-transparent text-[13px] outline-none placeholder:text-fg-faint text-fg-strong min-w-0"
+              />
+              <button
+                onClick={handleAdd}
+                disabled={!newInput.trim()}
+                className="shrink-0 p-1.5 rounded-lg text-accent-blue opacity-80 hover:opacity-100 disabled:opacity-30 transition-opacity"
+                title="Add note"
+              >
+                <Send size={15} />
+              </button>
             </div>
-            <h2 className="text-sm font-semibold tracking-wide uppercase" style={{ color: 'var(--rm-label)' }}>
-              Notes
-            </h2>
-            {project && (
-              <span className="text-xs font-normal normal-case" style={{ color: 'var(--rm-label2)' }}>— {project.name}</span>
-            )}
+            <div className="flex items-center gap-2 px-2 py-1 min-h-[40px] mt-2 rounded-xl bg-panel border border-border-faint">
+              <Search size={14} className="text-fg-muted ml-1 shrink-0" />
+              <input
+                value={filter}
+                onChange={(e) => setFilter(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') handleSearch(); }}
+                placeholder="Filter notes…"
+                className="flex-1 bg-transparent text-[13px] outline-none placeholder:text-fg-faint text-fg-strong min-w-0"
+              />
+            </div>
           </div>
-          <button onClick={fetchNotes} className="p-1.5 rounded-md hover:opacity-70 transition-opacity" title="Refresh" style={{ color: 'var(--rm-label2)' }}>
-            <RefreshCw size={15} className={cn(loading && 'animate-spin')} />
-          </button>
-        </div>
 
-        {error && <p className="text-xs mb-3" style={{ color: '#FF453A' }}>{error}</p>}
-
-        {/* Add-note input row */}
-        <div className="flex items-center gap-2 px-2 py-1 min-h-[44px] rounded-[10px] mb-2"
-          style={{ backgroundColor: 'var(--rm-group-bg)' }}>
-          <StickyNote size={16} style={{ color: 'var(--rm-blue)', opacity: 0.5, marginLeft: 2 }} />
-          <input
-            value={newInput}
-            onChange={(e) => setNewInput(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter') handleAdd(); }}
-            placeholder="New note — e.g. buy milk"
-            className={inputCls}
-            style={{ color: 'var(--rm-label)' }}
-          />
-          <button
-            onClick={handleAdd}
-            disabled={!newInput.trim()}
-            className="shrink-0 p-2 rounded-lg opacity-70 hover:opacity-100 disabled:opacity-30 transition-opacity"
-            style={{ color: 'var(--rm-blue)' }}
-            title="Add note"
-          >
-            <Send size={16} />
-          </button>
-        </div>
-
-        {/* Live search filter */}
-        <div className="flex items-center gap-2 px-2 py-1 min-h-[44px] rounded-[10px] mb-3"
-          style={{ backgroundColor: 'var(--rm-group-bg)' }}>
-          <Search size={15} style={{ color: 'var(--rm-label2)', marginLeft: 2 }} />
-          <input
-            value={filter}
-            onChange={(e) => setFilter(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter') handleSearch(); }}
-            placeholder="Filter notes instantly… (Enter searches in chat)"
-            className={inputCls}
-            style={{ color: 'var(--rm-label)' }}
-          />
-        </div>
-
-        {lastSent && (
-          <div className="mb-3 text-[12px] px-2" style={{ color: 'var(--rm-blue)' }}>
-            Sent: <code className="font-mono text-[11px]">{lastSent}</code> — follow the result in chat below.
-          </div>
-        )}
-
-        {/* Flat note feed, most-recent-first */}
-        {notes.length === 0 && !loading ? (
-          <div className="text-center py-10 text-[15px]" style={{ color: 'var(--rm-label2)' }}>
-            No notes yet. Add one above or type <code className="text-[13px]" style={{ color: 'var(--rm-blue)' }}>note: buy milk</code> in chat.
-          </div>
-        ) : (
-          <div className="rounded-[12px] overflow-hidden" style={{ backgroundColor: 'var(--rm-group-bg)' }}>
-            {filtered.length === 0 ? (
-              <div className="text-center py-8 text-[14px]" style={{ color: 'var(--rm-label2)' }}>
+          <div className="flex-1 overflow-y-auto">
+            {notes.length === 0 && !loading ? (
+              <div className="text-center py-8 px-3 text-[13px] text-fg-muted">
+                No notes yet. Add one above or type{' '}
+                <code className="text-[11px] text-accent-blue">note: buy milk</code> in chat.
+              </div>
+            ) : filtered.length === 0 ? (
+              <div className="text-center py-8 px-3 text-[13px] text-fg-muted">
                 No notes match "{filter.trim()}".
               </div>
             ) : (
               filtered.map((n, i) => (
                 <div key={i}>
-                  <div className="flex items-start gap-3 px-3 py-2 min-h-[44px]">
-                    <div className="flex-1 min-w-0">
-                      <div className="text-[17px] font-semibold leading-snug truncate" style={{ color: 'var(--rm-label)' }}>
-                        {n.text.split('\n')[0]}
-                      </div>
-                      {n.text.split('\n').length > 1 && (
-                        <div className={labelCls} style={{ color: 'var(--rm-label2)' }}>
-                          {n.text.split('\n').slice(1).join(' ')}
-                        </div>
-                      )}
-                    </div>
-                    {n.date && (
-                      <span className={cn(labelCls, 'shrink-0 mt-0.5')} style={{ color: 'var(--rm-label2)', opacity: 0.7 }}>
-                        {n.date}
-                      </span>
+                  <button
+                    onClick={() => setSelectedIdx(i)}
+                    className={cn(
+                      'w-full text-left px-3 py-2.5 min-h-[48px] transition-colors',
+                      i === selectedIdx ? 'bg-panel-strong' : 'hover:bg-panel-strong/60',
                     )}
-                  </div>
+                  >
+                    <div className="text-[13px] font-semibold leading-snug truncate text-fg-strong">
+                      {titleOf(n)}
+                    </div>
+                    <div className="text-[11px] text-fg-muted truncate mt-0.5">
+                      {previewOf(n) || n.date || ''}
+                    </div>
+                  </button>
                   {i < filtered.length - 1 && (
-                    <div className="border-b mx-2" style={{ borderColor: 'var(--rm-sep)' }} />
+                    <div className="border-b border-border-faint mx-3" />
                   )}
                 </div>
               ))
             )}
+            {loading && notes.length === 0 && (
+              <div className="flex items-center justify-center gap-2 py-8 text-sm text-fg-muted">
+                <RefreshCw size={14} className="animate-spin" /> Loading…
+              </div>
+            )}
           </div>
-        )}
+        </div>
 
-        {loading && notes.length === 0 && (
-          <div className="flex items-center justify-center gap-2 py-8 text-sm" style={{ color: 'var(--rm-label2)' }}>
-            <RefreshCw size={14} className="animate-spin" /> Loading…
-          </div>
-        )}
-
-        {filtered.length > 0 && notes.length > 20 && (
-          <p className="text-[12px] mt-3 px-2" style={{ color: 'var(--rm-label2)' }}>
-            Showing {filtered.length} of {notes.length} notes.
-          </p>
-        )}
+        {/* Right editor surface — --panel, borderless full-text view */}
+        <div className="flex-1 min-h-0 bg-panel flex flex-col">
+          {selected ? (
+            <>
+              <div className="px-5 pt-4 shrink-0 flex items-start justify-between gap-3">
+                <div className="text-[18px] font-bold text-fg-strong break-words min-w-0">{titleOf(selected)}</div>
+                {selected.date && (
+                  <span className="text-[11px] text-fg-muted shrink-0 mt-1.5">{selected.date}</span>
+                )}
+              </div>
+              <textarea
+                readOnly
+                value={selected.text}
+                className="flex-1 w-full bg-transparent border-none outline-none resize-none px-5 py-3 text-[13px] leading-[18px] text-fg-subtle"
+                spellCheck={false}
+              />
+              <div className="px-5 pb-3 shrink-0 text-[10px] text-fg-faint">
+                Read-only view — edits and new notes go through chat (the terminal is the single source of truth).
+              </div>
+            </>
+          ) : (
+            <div className="flex-1 flex flex-col items-center justify-center gap-2 text-fg-muted">
+              <FileText size={28} className="opacity-40" />
+              <p className="text-[13px]">Select a note to read it here.</p>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
