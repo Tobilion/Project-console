@@ -42,4 +42,13 @@ export const toolsHandlers = {
       openPanel: panel.id,
     }));
   },
+  'system.tools.open_file_tools': async (ws, action) => {
+    const panel = getToolPanel(TOOL_PANEL_INTENTS[action].opensPanel);
+    if (!panel) return false;
+    ws.send(JSON.stringify({
+      type: 'answer',
+      data: `The ${panel.name} panel is an interactive web-UI surface (project file browser + search + duplicate finder + tidy preview). From chat — including the CLI — the same features work as plain commands: \`find files matching X\` / \`tidy this folder\` / \`find duplicate files\`.`,
+      openPanel: panel.id,
+    }));
+  },
 };

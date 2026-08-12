@@ -28,6 +28,14 @@ export const TOOL_PANELS = [
     available: true,
     chatHint: 'remind me tomorrow at 9am to renew my license',
   },
+  {
+    id: 'file-tools',
+    name: 'File Tools',
+    description: 'Browse, search for files by name or content, find duplicates, and tidy this folder',
+    icon: 'folder-search',
+    available: true,
+    chatHint: 'find files matching invoice',
+  },
 ];
 
 export function getToolPanels() {

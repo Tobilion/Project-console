@@ -193,6 +193,10 @@ await handleBuiltinIntent(ws, 'system.tools.open_reminders', 'open reminders', p
 eq('tools leaf: open_reminders answers with openPanel + CLI-usable reminder list', ws.sent.length === 1 && ws.sent[0].type === 'answer' && ws.sent[0].openPanel === 'reminders' && /Current reminders/.test(ws.sent[0].data), true);
 
 sent.length = 0;
+await handleBuiltinIntent(ws, 'system.tools.open_file_tools', 'open file tools', proj, {});
+eq('tools leaf: open_file_tools answers with openPanel + CLI-usable text', ws.sent.length === 1 && ws.sent[0].type === 'answer' && ws.sent[0].openPanel === 'file-tools' && /find files matching/.test(ws.sent[0].data), true);
+
+sent.length = 0;
 const unknown = await handleBuiltinIntent(ws, 'no_such_intent', 'x', proj, {});
 eq('unknown intent -> false, nothing sent', unknown === false && ws.sent.length === 0, true);
 

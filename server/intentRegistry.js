@@ -115,6 +115,7 @@ export const BUILTIN_INTENTS = new Set([
   // the handler echoes it back as an `openPanel` field on the answer payload. Also not dev-only
   // — the Tools surface is reachable from the General tab by design.
   'system.tools.open_calculator', 'system.tools.open_pdf_tools', 'system.tools.open_reminders',
+  'system.tools.open_file_tools',
   // Phase 3 (UPGRADE-ROADMAP.md, 2026-08-11): the PDF toolkit trigger intents
   // (builtinPdfTools.js). Each carries the same `opensPanel: 'pdf-tools'` tag; handlers open
   // the panel only when the input lacks parameters, and full commands execute in chat (writes

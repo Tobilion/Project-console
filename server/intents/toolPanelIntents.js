@@ -23,4 +23,10 @@ export const TOOL_PANEL_INTENTS = {
       'open reminders', 'open the reminders', 'open reminders panel', 'open the reminders panel',
     ],
   },
+  'system.tools.open_file_tools': {
+    opensPanel: 'file-tools',
+    examples: [
+      'open file tools', 'open the file tools', 'open file tools panel',
+    ],
+  },
 };

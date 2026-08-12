@@ -83,7 +83,7 @@ export const PRE_SEMANTIC_OVERRIDES = [
   // the other open actions' territory: explorer/folder/directory (open_in_explorer),
   // site/url/link (run_project/open_site), github (open_github_page), and vs code/cursor/
   // editor/browser (open_in_vscode/open_in_cursor).
-  { intent: 'project.action.open_file', pattern: /^(?:open|open\s+up|open\s+me)\b(?!(?:.*\b(?:explorer|folder|directory|site|website|url|link|github|editor|browser|vs\s*c?ode|cursor)\b)).*\b(?:files?|readme|[\w./-]+\.[a-zA-Z0-9]{1,10})\b/i },
+  { intent: 'project.action.open_file', pattern: /^(?:open|open\s+up|open\s+me)\b(?!(?:.*\b(?:explorer|folder|directory|site|website|url|link|github|editor|browser|tools|vs\s*c?ode|cursor)\b)).*\b(?:files?|readme|[\w./-]+\.[a-zA-Z0-9]{1,10})\b/i },
   // Confirmed live (Phase 5, 2026-08-10, matcher probe): "serve the site on port 3040" fell
   // out of the embedding stage entirely (match: null) and landed on system.chit_chat.deploy
   // via a later stage — a bare "serve the site[ on port N]" never means deploy, it means
@@ -120,6 +120,11 @@ export const PRE_SEMANTIC_OVERRIDES = [
   // request, and the create handler asks for the when/what it's missing. Deliberately
   // anchored to the start; "set a reminder" shapes verified routing correctly without it.
   { intent: 'system.reminders.create', pattern: /^remind\s+me\b/i },
+  // Phase 2 catch-up (2026-08-12, probe-verified): "open file tools" / "open the file
+  // tools" is unambiguous in this app's domain — it opens the File Tools panel. Without
+  // this override the open_file literal rule below catches "file" and routes to
+  // project.action.open_file (which asks "Which file?"). Placed BEFORE the open_file rule.
+  { intent: 'system.tools.open_file_tools', pattern: /^open\s+(?:the\s+)?file\s+tools(?:\s+panel)?$/i },
 ];
 
 /**

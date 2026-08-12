@@ -349,7 +349,7 @@ npm run lint    # tsc --noEmit
   Eligible from every workspace type — deliberately NOT in WORKSPACE_DEV_ONLY_INTENTS.
 - `server/toolPanelRegistry.js` + `server/routes/toolPanelRoutes.js` — Phase 1.5 (2026-08-11,
   shared interactive Tool Panel architecture): the server-driven interactive-tools registry
-  (`TOOL_PANELS`: calculator, pdf-tools, reminders — `getToolPanels()`/`getToolPanel()`, REST
+  (`TOOL_PANELS`: calculator, pdf-tools, reminders, file-tools — `getToolPanels()`/`getToolPanel()`, REST
   `GET /api/tool-panels` mounted in server/index.js). PDF Tools is a real panel since Phase 3
   (see pdfKit.js entry below); Reminders is a real panel since Phase 4 (see builtinReminders.js);
   Calculator is still a placeholder (Phase 6 fills it in). Wire
@@ -368,7 +368,8 @@ npm run lint    # tsc --noEmit
   can't steal the documented "run the calculation" drift, plus the pdf-verb + pdf-mention
   rules below.
 - Frontend: `src/components/ToolsPanel.tsx` (card grid → dedicated panel view with a back
-  button — renders `PdfToolsPanel` for 'pdf-tools', `RemindersPanel` for 'reminders', placeholder for anything else),
+  button — renders `PdfToolsPanel` for 'pdf-tools', `RemindersPanel` for 'reminders',
+  `FileToolsPanel` for 'file-tools', placeholder for anything else),
   `useConsole.ts` toolPanel state cluster (`toolsOpen`/`activeToolPanel`/
   `toolPanels` + `fetchToolPanels`), `wsMessageCases.ts` answerCase reads `payload.openPanel`
   and opens the panel, App.tsx Tools view (header Tools button only when a General-workspace
@@ -1014,7 +1015,12 @@ time/date/calculate rows, 92/92).
    the archive" and one other; the open_reminders rows both routed correctly); check-intents
    unchanged at 1/5/82 (the open_reminders examples and opensPanel metadata added no near-dups);
    check-ws-cases 118/118 unchanged (no new WS types); check-docs 49/49 (+1 reminders catalog
-   entry, README rows synced).
+   entry, README rows synced). Phase 2 catch-up (2026-08-12, File Tools panel):
+   check-handlers 121/121 (baseline 120/120 + 1 open_file_tools opener row); check-matcher
+   221/223 (baseline 219/221 + 2 open_file_tools routing rows — the "open file tools" shape
+   was hijacked by the open_file literal rule until `tools` joined its lookahead exclusion;
+   same TWO PRE-EXISTING drifts); check-intents unchanged at 1/5/82; check-docs 50/50 (+1
+   file-tools catalog entry); check-ws-cases 118/118 unchanged.
    Run the relevant battery after ANY edit to the corresponding module.
 - **editFile** tolerates whitespace differences (normalized line-range fallback) but not
   wrong wording; on total failure the error names both attempts and tells the caller to
@@ -1271,6 +1277,13 @@ time/date/calculate rows, 92/92).
   `general_files_duplicates_delete` triggers) with checkpoint + `start` first, journaled
   through `appendAction` (`file_move` moves, `file_write` deletes with preContent), and fully
   undoable via `revert action <id>` (itself confirm-gated with trigger `revert_action`).
+- The File Tools panel (added 2026-08-12 as a Phase 2 catch-up) is registered in the same
+  Tools card grid (`file-tools` entry in toolPanelRegistry.js, `system.tools.open_file_tools`
+  opener in builtinTools.js) with a Finder-style file browser (file listing via
+  `GET /api/projects/:id/files`, search via `/api/projects/:id/search-files`, duplicates via
+  `/api/projects/:id/duplicates` — routes in `server/routes/fileToolsRoutes.js`), a tidy-plan
+  launcher, and a keep-newest checkbox duplicate-finder view. Rendered by
+  `src/components/FileToolsPanel.tsx`.
 - **Typed-command natural-language guard** (typedCommand.js): `find`/`sort`/`where` resolve
   to real Windows binaries, so plain-word sentences starting with them now reach the matcher
   instead of erroring in find.exe/sort.exe/where.exe (caught live by the Phase 2 WS driver on

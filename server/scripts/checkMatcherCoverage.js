@@ -247,6 +247,8 @@ const BATTERIES = [
       ['open the tools', 'BUILTIN=system.tools.open_calculator'],
       ['open pdf tools', 'BUILTIN=system.tools.open_pdf_tools'],
       ['open the pdf tools', 'BUILTIN=system.tools.open_pdf_tools'],
+      ['open file tools', 'BUILTIN=system.tools.open_file_tools'],
+      ['open the file tools', 'BUILTIN=system.tools.open_file_tools'],
     ],
   },
   {

@@ -28,7 +28,7 @@
 
 ### Tools panels (interactive web UI)
 
- - A **Tools** button (visible when a general-mode project is active) opens a card grid of interactive tools — Calculator, PDF Tools, and Reminders today, more later. Clicking a card opens that tool's dedicated panel in the same space the chat/dashboard use; no modal stacks.
+ - A **Tools** button (visible when a general-mode project is active) opens a card grid of interactive tools — Calculator, File Tools, PDF Tools, and Reminders today, more later. Clicking a card opens that tool's dedicated panel in the same space the chat/dashboard use; no modal stacks.
 - Tools are chat-addressable too: typing `open calculator` or `open pdf tools` lands you in the same panel state as clicking the card. The chat reply stays plain text (the CLI is deliberately text-only — from a terminal, these commands answer with a short note and the equivalent chat phrasings).
 - Panels are server-driven (registry + `GET /api/tool-panels`), so a tool can later report availability (e.g. "PDF Tools disabled — missing dependency") without a frontend change.
  - The PDF Tools panel is fully interactive: project PDF list with download/"show in folder", merge with multi-select + output name, split (per page / around a page), extract text, page-range extract, and watermark — every Run button composes the same trigger command chat uses, so confirmation, checkpointing, history and `revert action <id>` all work identically from either surface.
@@ -39,6 +39,7 @@
 - **`find files matching X` / `search for X in my files`** — filename + content search across the active folder (plain substring scan, no AI or embedding model required). Read-only, runs immediately.
 - **`tidy this folder` / `organize this folder by type`** — moves loose root files into category folders (Images/Documents/Spreadsheets/Archives/...), by date, or both. Shows the full move plan first, asks for confirmation, checkpoints, and journals every move so `revert action <id>` undoes it.
 - **`find duplicate files` / `find duplicates in this folder`** — hash-based duplicate groups with wasted-space estimate. Read-only; a separate confirm-gated `delete duplicates, keep newest` does the deletion (journaled, revertible).
+- An interactive **File Tools panel** is available from the Tools card grid (`open file tools`); it includes a Finder-style file browser with search, a tidy-preview launcher, and a dedicated duplicate-finder view with keep-newest checkbox conventions.
 
 ### Reminders
 
@@ -336,7 +337,7 @@ App-global identity (name/title/custom role) edited from the ⚙ Settings modal;
 | Command | What it does |
 |---|---|
 | `help` / `what can you do` / `how do I <anything>` | Full command guide; how-do-I answers come from the command catalog with the exact phrase, the real shell command, and a suggestion chip |
-| `open calculator` / `open pdf tools` / `open reminders` | Opens the interactive Tools panel (web UI); plain-text note + chat equivalents from the CLI |
+| `open calculator` / `open pdf tools` / `open reminders` / `open file tools` | Opens the interactive Tools panel (web UI); plain-text note + chat equivalents from the CLI |
 | `switch to developer mode` / `switch to general mode` / `what mode am I in` | Change/check a project's workspace type (persisted in console.config.json) |
 | `switch projects` / `change projects` | The project list in the left sidebar |
 | `dashboard` / `live sites` | The Dashboard tab: project overview + live-site status |
