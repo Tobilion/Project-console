@@ -19,7 +19,7 @@ export function TerminalEmptyState({ greeting, actions, onAction }: TerminalEmpt
             <button
               key={action}
               onClick={() => onAction(action)}
-              className="px-3 py-1.5 rounded-full bg-panel hover:bg-panel-strong border border-border-soft text-xs text-[#00d4a3] transition-colors"
+              className="px-3 py-1.5 rounded-full bg-panel hover:bg-panel-strong border border-border-faint hover:border-accent-blue text-xs text-accent-teal transition-colors"
             >
               {action}
             </button>

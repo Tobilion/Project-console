@@ -30,8 +30,8 @@ export const BentoGrid = ({ projects, activeProject, onSelect, workspaceProjects
             className="p-6 h-full flex flex-col"
           >
             <div className="flex items-center gap-3 mb-4">
-              <div className="p-2 bg-[#00d4a3]/10 rounded-lg">
-                <FolderGit2 className="text-[#00d4a3]" size={24} />
+              <div className="p-2 bg-accent-teal/10 rounded-lg">
+                <FolderGit2 className="text-accent-teal" size={24} />
               </div>
                <h3 className="text-lg font-bold text-fg-strong flex-1">{project.name}</h3>
                <WorkspaceToggleButton
@@ -47,12 +47,12 @@ export const BentoGrid = ({ projects, activeProject, onSelect, workspaceProjects
               {project.path}
             </p>
             
-            <div className="mt-auto pt-4 flex items-center gap-4 text-xs text-fg-dim">
-              <span className="flex items-center gap-1">
-                <BookOpen size={14} />
+            <div className="mt-auto pt-4 flex items-center gap-2 text-[11px]">
+              <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-panel-strong text-fg-muted">
+                <BookOpen size={11} />
                 {project.contextFiles?.length || 0} Docs
               </span>
-              <span>
+              <span className="px-2 py-0.5 rounded-full bg-panel-strong text-fg-muted">
                 {project.config?.entries?.length || 0} Triggers
               </span>
             </div>

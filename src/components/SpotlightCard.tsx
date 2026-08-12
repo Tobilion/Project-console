@@ -26,17 +26,17 @@ export const SpotlightCard = ({ children, className = '', active, onClick }: Spo
       onMouseEnter={() => setOpacity(1)}
       onMouseLeave={() => setOpacity(0)}
       onClick={onClick}
-      className={`relative rounded-2xl border overflow-hidden transition-all duration-200 cursor-pointer ${
+      className={`relative rounded-xl border overflow-hidden transition-all duration-200 cursor-pointer ${
         active
-          ? 'border-teal-500/60 bg-teal-500/10'
-          : 'border-border-soft bg-panel hover:border-teal-500/50'
+          ? 'border-accent-blue/60 bg-accent-blue/10'
+          : 'border-border-faint bg-panel hover:border-accent-blue/50'
       } ${className}`}
     >
       <div
         className="pointer-events-none absolute -inset-px opacity-0 transition duration-300"
         style={{
           opacity,
-          background: `radial-gradient(600px circle at ${position.x}px ${position.y}px, rgba(0,212,163,.1), transparent 40%)`,
+          background: `radial-gradient(600px circle at ${position.x}px ${position.y}px, rgba(100,210,255,.1), transparent 40%)`,
         }}
       />
       {children}

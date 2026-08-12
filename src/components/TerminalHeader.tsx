@@ -42,7 +42,7 @@ export function TerminalHeader({
   const [showSessionMenu, setShowSessionMenu] = useState(false);
   return (
     <div className="flex items-center gap-3 px-6 py-4 border-b border-border-soft bg-panel flex-wrap">
-      <TerminalIcon size={18} className="text-[#3d6bff]" />
+      <TerminalIcon size={18} className="text-accent-blue" />
       <span className="text-sm text-fg-muted flex-1">
         {activeProject ? `Connected: ${activeProject.name}` : 'No Project Selected'}
       </span>
@@ -63,9 +63,9 @@ export function TerminalHeader({
             <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-panel border border-border-soft">
               <span className="text-[10px] text-fg-dim">Workspace:</span>
               {workspaceProjects.map((p) => (
-                <span key={p.id} className="flex items-center gap-1 px-2 py-0.5 rounded bg-[#3d6bff]/10 border border-[#3d6bff]/30 text-xs text-[#3d6bff]">
+                <span key={p.id} className="flex items-center gap-1 px-2 py-0.5 rounded bg-accent-blue/10 border border-accent-blue/30 text-xs text-accent-blue">
                   {p.name}
-                  <button onClick={() => removeFromWorkspace(p.id)} className="text-[#3d6bff]/60 hover:text-[#3d6bff] transition-colors">×</button>
+                  <button onClick={() => removeFromWorkspace(p.id)} className="text-accent-blue/60 hover:text-accent-blue transition-colors">×</button>
                 </span>
               ))}
               <button onClick={clearWorkspace} className="text-fg-faint hover:text-red-400 transition-colors text-xs" title="Clear workspace">×</button>
@@ -82,7 +82,7 @@ export function TerminalHeader({
               <FileDown size={14} />
             </button>
           </div>
-          <button onClick={onToggleToolHistory} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs transition-colors border ${showToolHistory ? 'bg-[#3d6bff]/20 border-[#3d6bff]/40 text-[#3d6bff]' : 'bg-panel border-border-soft text-fg-dim hover:text-fg-muted'}`} title="Tool Call History">
+          <button onClick={onToggleToolHistory} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs transition-colors border ${showToolHistory ? 'bg-accent-blue/20 border-accent-blue/40 text-accent-blue' : 'bg-panel border-border-soft text-fg-dim hover:text-fg-muted'}`} title="Tool Call History">
             <ListChecks size={14} />
             {toolHistory.length > 0 && <span className="text-[10px]">{toolHistory.length}</span>}
           </button>

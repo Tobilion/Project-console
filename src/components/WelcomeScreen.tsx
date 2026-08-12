@@ -65,8 +65,8 @@ export function WelcomeScreen({ projects, activeProject, ollamaStatus, aiEnabled
   return (
     <div className="h-full overflow-y-auto">
       <div className="max-w-4xl mx-auto w-full px-6 py-8">
-        <div className="text-center mb-6">
-          <h1 className="text-4xl md:text-5xl font-semibold italic text-fg-strong mb-3">
+        <div className="text-left mb-6">
+          <h1 className="text-display text-fg-strong mb-3">
             <TextScramble text={greeting} />
           </h1>
           <p className="text-xs tracking-[0.2em] uppercase text-fg-dim font-bold">
@@ -76,27 +76,27 @@ export function WelcomeScreen({ projects, activeProject, ollamaStatus, aiEnabled
 
         <div className="flex flex-wrap items-center justify-center gap-2 mb-8">
           <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-panel border border-border-soft text-xs" title="Source files">
-            <span className="text-[#3d6bff]"><HardDrive size={14} /></span>
+            <span className="text-accent-blue"><HardDrive size={14} /></span>
             <span className="text-fg-strong font-bold">{totalFiles.toLocaleString()}</span>
             <span className="text-fg-dim">Files</span>
           </div>
           <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-panel border border-border-soft text-xs" title="Directories">
-            <span className="text-[#3d6bff]"><FolderSearch size={14} /></span>
+            <span className="text-accent-blue"><FolderSearch size={14} /></span>
             <span className="text-fg-strong font-bold">{totalDirs.toLocaleString()}</span>
             <span className="text-fg-dim">Dirs</span>
           </div>
           <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-panel border border-border-soft text-xs" title="Languages">
-            <span className="text-[#3d6bff]"><Code size={14} /></span>
+            <span className="text-accent-blue"><Code size={14} /></span>
             <span className="text-fg-strong font-bold">{langs.slice(0, 3).join(', ') || '—'}</span>
             <span className="text-fg-dim">Lang</span>
           </div>
           <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-panel border border-border-soft text-xs max-w-[220px]" title="Entry points">
-            <span className="text-[#3d6bff] flex-shrink-0"><Zap size={14} /></span>
+            <span className="text-accent-blue flex-shrink-0"><Zap size={14} /></span>
             <span className="text-fg-strong font-bold font-mono truncate">{entryPoints.slice(0, 2).join(', ') || '—'}</span>
             <span className="text-fg-dim flex-shrink-0">Entry</span>
           </div>
           {ollamaStatus && (
-            <button onClick={onAIToggle} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs transition-all border ${aiEnabled ? 'bg-teal-500/20 border-teal-500/40 text-teal-300' : 'bg-panel border-border-soft text-fg-subtle hover:text-fg-strong'}`}>
+            <button onClick={onAIToggle} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs transition-all border ${aiEnabled ? 'bg-accent-teal/20 border-accent-teal/40 text-accent-teal' : 'bg-panel border-border-soft text-fg-subtle hover:text-fg-strong'}`}>
               <Brain size={14} />
               AI {aiEnabled ? 'ON' : 'OFF'}
             </button>
@@ -109,13 +109,13 @@ export function WelcomeScreen({ projects, activeProject, ollamaStatus, aiEnabled
         </div>
 
         <div className="flex flex-wrap justify-center gap-3 mb-8">
-          <button onClick={onNewChat} className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-[#3d6bff] to-[#6366f1] text-white rounded-xl font-bold text-sm hover:opacity-90 transition-opacity shadow-lg">
+          <button onClick={onNewChat} className="flex items-center gap-2 px-5 py-2.5 bg-accent-blue text-white rounded-xl font-bold text-sm hover:opacity-90 transition-opacity shadow-card">
             <MessageSquare size={16} /> New Chat
           </button>
-          <button onClick={onQuickStart} className="flex items-center gap-2 px-5 py-2.5 bg-panel border border-border-soft text-fg-muted rounded-xl font-bold text-sm hover:bg-panel-strong transition-colors">
+          <button onClick={onQuickStart} className="flex items-center gap-2 px-5 py-2.5 bg-panel border border-border-faint text-fg-muted rounded-xl font-bold text-sm hover:bg-panel-strong transition-colors">
             <BookOpen size={16} /> Quick Start Guide
           </button>
-          <button onClick={() => setTourStep(1)} className="flex items-center gap-2 px-5 py-2.5 bg-panel border border-border-soft text-[#00d4a3] rounded-xl font-bold text-sm hover:bg-panel-strong transition-colors group">
+          <button onClick={() => setTourStep(1)} className="flex items-center gap-2 px-5 py-2.5 bg-panel border border-border-faint text-accent-teal rounded-xl font-bold text-sm hover:bg-panel-strong transition-colors group">
             <Sparkles size={16} className="group-hover:rotate-12 transition-transform" /> Take the Tour
           </button>
         </div>
@@ -140,7 +140,7 @@ export function WelcomeScreen({ projects, activeProject, ollamaStatus, aiEnabled
           <div className="relative z-10 w-full max-w-lg mx-4 bg-panel/90 backdrop-blur-xl border border-border-strong rounded-2xl shadow-modal overflow-hidden">
             <div className="flex items-center justify-between px-6 pt-6 pb-2">
               <div className="flex items-center gap-3">
-                <div className="p-2 bg-[#00d4a3]/10 rounded-lg text-[#00d4a3]">
+                <div className="p-2 bg-accent-teal/10 rounded-lg text-accent-teal">
                   {TOUR_STEPS[tourStep - 1].icon}
                 </div>
                 <div className="text-xs text-fg-dim">
@@ -160,7 +160,7 @@ export function WelcomeScreen({ projects, activeProject, ollamaStatus, aiEnabled
             <div className="flex items-center justify-between px-6 pb-6 pt-2">
               <div className="flex gap-1.5">
                 {TOUR_STEPS.map((_, i) => (
-                  <div key={i} className={`w-2 h-2 rounded-full transition-colors ${i + 1 === tourStep ? 'bg-[#00d4a3]' : 'bg-panel-strong'}`} />
+                  <div key={i} className={`w-2 h-2 rounded-full transition-colors ${i + 1 === tourStep ? 'bg-accent-teal' : 'bg-panel-strong'}`} />
                 ))}
               </div>
               <div className="flex items-center gap-2">
@@ -170,11 +170,11 @@ export function WelcomeScreen({ projects, activeProject, ollamaStatus, aiEnabled
                   </button>
                 )}
                 {tourStep < TOUR_STEPS.length ? (
-                  <button onClick={() => setTourStep(s => s + 1)} className="flex items-center gap-1.5 px-4 py-2 bg-[#00d4a3]/20 text-[#00d4a3] rounded-lg text-xs font-bold tracking-wider uppercase hover:bg-[#00d4a3]/30 transition-colors">
+                  <button onClick={() => setTourStep(s => s + 1)} className="flex items-center gap-1.5 px-4 py-2 bg-accent-teal/20 text-accent-teal rounded-lg text-xs font-bold tracking-wider uppercase hover:bg-accent-teal/30 transition-colors">
                     Next <ChevronRight size={14} />
                   </button>
                 ) : (
-                  <button onClick={() => setTourStep(0)} className="flex items-center gap-1.5 px-4 py-2 bg-gradient-to-r from-[#3d6bff] to-[#6366f1] text-white rounded-lg text-xs font-bold tracking-wider uppercase hover:opacity-90 transition-opacity">
+                  <button onClick={() => setTourStep(0)} className="flex items-center gap-1.5 px-4 py-2 bg-accent-blue text-white rounded-lg text-xs font-bold tracking-wider uppercase hover:opacity-90 transition-opacity">
                     Done <Check size={14} />
                   </button>
                 )}

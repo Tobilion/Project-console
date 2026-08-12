@@ -138,7 +138,7 @@ export function UserProfileModal({ open, profile, onClose, onSave }: UserProfile
     <ModalShell open={open} onClose={onClose} maxWidth="max-w-md">
       <div className="flex items-center justify-between px-6 pt-6 pb-2">
         <div className="flex items-center gap-3">
-          <div className="p-2 bg-[#3d6bff]/10 rounded-lg text-[#3d6bff]">
+          <div className="p-2 bg-accent-blue/10 rounded-lg text-accent-blue">
             <Settings size={18} />
           </div>
           <h2 className="text-xl font-bold text-fg-strong">User Profile</h2>
@@ -157,7 +157,7 @@ export function UserProfileModal({ open, profile, onClose, onSave }: UserProfile
             onChange={(e) => setName(e.target.value)}
             autoFocus
             placeholder="Your name"
-            className="w-full bg-surface border border-border-soft rounded-lg px-3 py-2 text-sm text-fg focus:outline-none focus:border-[#3d6bff] transition-colors"
+            className="w-full bg-surface border border-border-soft rounded-lg px-3 py-2 text-sm text-fg focus:outline-none focus:border-accent-blue transition-colors"
           />
         </div>
         <div>
@@ -168,7 +168,7 @@ export function UserProfileModal({ open, profile, onClose, onSave }: UserProfile
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             placeholder="e.g. Master (or 'none')"
-            className="w-full bg-surface border border-border-soft rounded-lg px-3 py-2 text-sm text-fg focus:outline-none focus:border-[#3d6bff] transition-colors"
+            className="w-full bg-surface border border-border-soft rounded-lg px-3 py-2 text-sm text-fg focus:outline-none focus:border-accent-blue transition-colors"
           />
           <datalist id="lpc-titles">
             <option value="Master" />
@@ -185,7 +185,7 @@ export function UserProfileModal({ open, profile, onClose, onSave }: UserProfile
             value={customRole}
             onChange={(e) => setCustomRole(e.target.value)}
             placeholder="e.g. Software Engineer"
-            className="w-full bg-surface border border-border-soft rounded-lg px-3 py-2 text-sm text-fg focus:outline-none focus:border-[#3d6bff] transition-colors"
+            className="w-full bg-surface border border-border-soft rounded-lg px-3 py-2 text-sm text-fg focus:outline-none focus:border-accent-blue transition-colors"
           />
         </div>
         <div className="flex items-start gap-3 pt-1">
@@ -194,7 +194,7 @@ export function UserProfileModal({ open, profile, onClose, onSave }: UserProfile
             role="switch"
             aria-checked={sandboxRiskyCommands}
             onClick={() => setSandboxRiskyCommands(!sandboxRiskyCommands)}
-            className={`relative shrink-0 mt-0.5 w-9 h-5 rounded-full transition-colors ${sandboxRiskyCommands ? 'bg-[#3d6bff]' : 'bg-panel border border-border-soft'}`}
+            className={`relative shrink-0 mt-0.5 w-9 h-5 rounded-full transition-colors ${sandboxRiskyCommands ? 'bg-accent-blue' : 'bg-panel border border-border-soft'}`}
             title={sandboxRiskyCommands ? 'Sandboxed execution is on' : 'Sandboxed execution is off'}
           >
             <span
@@ -217,7 +217,7 @@ export function UserProfileModal({ open, profile, onClose, onSave }: UserProfile
             role="switch"
             aria-checked={clipboardHistory}
             onClick={() => setClipboardHistory(!clipboardHistory)}
-            className={`relative shrink-0 mt-0.5 w-9 h-5 rounded-full transition-colors ${clipboardHistory ? 'bg-[#3d6bff]' : 'bg-panel border border-border-soft'}`}
+            className={`relative shrink-0 mt-0.5 w-9 h-5 rounded-full transition-colors ${clipboardHistory ? 'bg-accent-blue' : 'bg-panel border border-border-soft'}`}
             title={clipboardHistory ? 'Clipboard history is on' : 'Clipboard history is off'}
           >
             <span
@@ -240,7 +240,7 @@ export function UserProfileModal({ open, profile, onClose, onSave }: UserProfile
             role="switch"
             aria-checked={clipboardPersist}
             onClick={() => setClipboardPersist(!clipboardPersist)}
-            className={`relative shrink-0 mt-0.5 w-9 h-5 rounded-full transition-colors ${clipboardPersist ? 'bg-[#3d6bff]' : 'bg-panel border border-border-soft'}`}
+            className={`relative shrink-0 mt-0.5 w-9 h-5 rounded-full transition-colors ${clipboardPersist ? 'bg-accent-blue' : 'bg-panel border border-border-soft'}`}
             title={clipboardPersist ? 'Clipboard history persistence is on' : 'Clipboard history persistence is off'}
           >
             <span
@@ -336,7 +336,7 @@ export function UserProfileModal({ open, profile, onClose, onSave }: UserProfile
         <button
           onClick={handleSave}
           disabled={!canSave}
-          className="px-4 py-2 bg-gradient-to-r from-[#3d6bff] to-[#6366f1] text-white rounded-lg text-xs font-bold tracking-wider uppercase hover:opacity-90 transition-opacity disabled:opacity-40"
+          className="px-4 py-2 bg-accent-blue text-white rounded-lg text-xs font-bold tracking-wider uppercase hover:opacity-90 transition-opacity disabled:opacity-40"
         >
           Save
         </button>

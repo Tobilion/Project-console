@@ -51,7 +51,7 @@ export function TerminalInput({
     <>
       {ollamaStatus && (
         <div className={`${centerCol} flex items-center gap-2 px-4 py-1.5 bg-panel border-t border-border-soft flex-wrap`}>
-          <button onClick={onAIToggle} className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] transition-colors border flex-shrink-0 ${aiEnabled ? 'bg-teal-500/20 border-teal-500/40 text-teal-300' : 'bg-panel border-border-soft text-fg-dim hover:text-fg-muted'}`}>
+          <button onClick={onAIToggle} className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] transition-colors border flex-shrink-0 ${aiEnabled ? 'bg-accent-green/20 border-accent-green/40 text-accent-green' : 'bg-panel border-border-soft text-fg-muted hover:text-fg-strong'}`}>
             <Brain size={13} />
             <span>AI {aiEnabled ? 'ON' : 'OFF'}</span>
           </button>
@@ -61,7 +61,7 @@ export function TerminalInput({
                 value={aiModel}
                 onChange={(e) => onSetModel(e.target.value)}
                 title={ollamaStatus.cloudModels?.some(m => m.name === aiModel) ? 'Running on Ollama Cloud — needs internet + `ollama signin`' : 'Running locally'}
-                className="bg-surface border border-border-soft rounded-md px-1.5 py-1 text-[11px] text-fg-muted focus:outline-none focus:border-teal-500/40 flex-shrink-0 max-w-[220px]"
+                className="bg-surface border border-border-soft rounded-md px-1.5 py-1 text-[11px] text-fg-muted focus:outline-none focus:border-accent-teal/40 flex-shrink-0 max-w-[220px]"
               >
                 {(ollamaStatus.models?.length ?? 0) > 0 && (
                   <optgroup label="Local (offline)">
@@ -81,7 +81,7 @@ export function TerminalInput({
               <select
                 value={aiMode}
                 onChange={(e) => onSetMode(e.target.value)}
-                className="bg-surface border border-border-soft rounded-md px-1.5 py-1 text-[11px] text-fg-muted focus:outline-none focus:border-teal-500/40 flex-shrink-0"
+                className="bg-surface border border-border-soft rounded-md px-1.5 py-1 text-[11px] text-fg-muted focus:outline-none focus:border-accent-teal/40 flex-shrink-0"
               >
                 {AI_MODES.map(m => (
                   <option key={m.value} value={m.value}>{m.label}</option>
@@ -93,11 +93,11 @@ export function TerminalInput({
       )}
 
       {aiEnabled ? (
-        <div className={`${centerCol} p-3 bg-panel border-t border-border-soft`}>
+        <div className={`${centerCol} p-3 bg-panel border border-border-strong rounded-xl`}>
            <AIAssistantInterface onSend={onAISend} onSearch={(q) => { onSearch?.(q); }} onDeepResearch={(q) => { onDeepResearch?.(q); }} disabled={!activeProject || aiThinking || isBlocked || !connected} placeholder={isBlocked ? 'Resolve the pending confirmation first (Esc to cancel)...' : aiThinking ? 'AI is thinking...' : !connected ? 'Reconnecting…' : chatPrompt} getHistory={getHistory} />
         </div>
       ) : (
-        <form onSubmit={onSubmit} className={`${centerCol} p-4 bg-panel border-t border-border-soft`}>
+        <form onSubmit={onSubmit} className={`${centerCol} p-3 bg-panel border border-border-strong rounded-xl`}>
           <div className="relative flex items-center">
             <input
               ref={inputRef}
@@ -107,13 +107,13 @@ export function TerminalInput({
               onKeyDown={onInputKeyDown}
               disabled={!activeProject || aiThinking || commandPending || !connected}
               placeholder={!activeProject ? "Select a project to start..." : aiThinking ? "AI is thinking..." : commandPending ? "Running..." : !connected ? "Reconnecting…" : chatPrompt}
-              className="w-full bg-surface border border-border-soft rounded-xl py-3 pl-4 pr-12 text-fg text-sm focus:outline-none focus:border-[#3d6bff] transition-colors disabled:opacity-50"
+              className="w-full bg-surface border border-border-soft rounded-xl py-3 pl-4 pr-12 text-fg text-sm focus:outline-none focus:border-accent-blue transition-colors disabled:opacity-50"
             />
             <button
               type="submit"
                disabled={!input.trim() || !activeProject || aiThinking || commandPending || isBlocked || !connected}
                title={!connected ? 'WebSocket disconnected — reconnecting…' : isBlocked ? 'Resolve the pending confirmation first (Esc to cancel)' : undefined}
-              className="absolute right-2 p-2 text-fg-subtle hover:text-[#00d4a3] disabled:opacity-50 transition-colors"
+              className="absolute right-1.5 w-9 h-9 rounded-lg bg-accent-blue text-white hover:opacity-90 flex items-center justify-center disabled:opacity-50 transition-opacity"
             >
               <Send size={18} />
             </button>

@@ -23,10 +23,10 @@ interface HistoryPanelProps {
 }
 
 const TYPE_LABELS: Record<string, { label: string; className: string }> = {
-  file_write: { label: 'WRITE', className: 'bg-[#00d4a3]/15 text-[#00d4a3]' },
-  file_edit: { label: 'EDIT', className: 'bg-[#3d6bff]/15 text-[#3d6bff]' },
-  file_insert: { label: 'INSERT', className: 'bg-[#3d6bff]/15 text-[#3d6bff]' },
-  file_append: { label: 'APPEND', className: 'bg-[#3d6bff]/15 text-[#3d6bff]' },
+  file_write: { label: 'WRITE', className: 'bg-accent-teal/15 text-accent-teal' },
+  file_edit: { label: 'EDIT', className: 'bg-accent-blue/15 text-accent-blue' },
+  file_insert: { label: 'INSERT', className: 'bg-accent-blue/15 text-accent-blue' },
+  file_append: { label: 'APPEND', className: 'bg-accent-blue/15 text-accent-blue' },
   command: { label: 'CMD', className: 'bg-amber-400/15 text-amber-400' },
   git: { label: 'GIT', className: 'bg-amber-400/15 text-amber-400' },
   revert: { label: 'REVERT', className: 'bg-fg-dim/10 text-fg-dim' },
@@ -106,7 +106,7 @@ export function HistoryPanel({ projects, activeProjectId, onSendMessage }: Histo
                 <span className="truncate text-fg-muted min-w-0 flex-1" title={a.description}>{a.description}</span>
                 <button
                   onClick={() => onSendMessage(`revert action ${a.id}`)}
-                  className="text-fg-faint hover:text-[#00d4a3] transition-colors flex-shrink-0"
+                  className="text-fg-faint hover:text-accent-teal transition-colors flex-shrink-0"
                   title={`Revert action ${a.id}${a.type.startsWith('file_') ? ' (asks for confirmation)' : ' (answers with the git command)'}`}
                 >
                   <RotateCcw size={11} />

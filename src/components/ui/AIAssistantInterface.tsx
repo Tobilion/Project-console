@@ -163,7 +163,7 @@ export function AIAssistantInterface({ onSend, onSearch, onDeepResearch, disable
           <div className="px-4 pb-2 flex flex-wrap gap-2">
             {uploadedFiles.map((f, i) => (
               <div key={i} className="flex items-center gap-1.5 bg-panel border border-border-soft rounded-lg px-2 py-1">
-                <FileText size={12} className="text-[#3d6bff]" />
+                <FileText size={12} className="text-accent-blue" />
                 <span className="text-xs text-fg-subtle">{f.name}</span>
                 <span className="text-[10px] text-fg-faint">{f.content.length.toLocaleString()} chars</span>
                 <button onClick={() => setUploadedFiles(prev => prev.filter((_, j) => j !== i))} className="text-fg-faint hover:text-red-400 transition-colors">
@@ -195,7 +195,7 @@ export function AIAssistantInterface({ onSend, onSearch, onDeepResearch, disable
             <button
               onClick={handleSend}
               disabled={(!inputValue.trim() && uploadedFiles.length === 0) || !!disabled}
-              className={cn('w-8 h-8 flex items-center justify-center rounded-full transition-all', (inputValue.trim() || uploadedFiles.length > 0) && !disabled ? 'bg-[#3d6bff] text-white hover:bg-[#3d6bff]/80' : 'bg-panel text-fg-faint cursor-not-allowed')}
+              className={cn('w-8 h-8 flex items-center justify-center rounded-full transition-all', (inputValue.trim() || uploadedFiles.length > 0) && !disabled ? 'bg-accent-blue text-white hover:bg-accent-blue/80' : 'bg-panel text-fg-faint cursor-not-allowed')}
             >
               <ArrowUp size={16} />
             </button>
@@ -231,7 +231,7 @@ export function AIAssistantInterface({ onSend, onSearch, onDeepResearch, disable
           <button
             key={cat.key}
             onClick={() => setActiveCategory(activeCategory === cat.key ? null : cat.key)}
-            className={cn('flex items-center justify-center gap-2 py-2.5 rounded-xl border text-sm transition-all', activeCategory === cat.key ? 'bg-[#3d6bff]/10 border-[#3d6bff]/30 text-[#3d6bff]' : 'bg-panel border-border-soft text-fg-subtle hover:text-fg-strong hover:border-border-strong')}
+            className={cn('flex items-center justify-center gap-2 py-2.5 rounded-xl border text-sm transition-all', activeCategory === cat.key ? 'bg-accent-blue/10 border-accent-blue/30 text-accent-blue' : 'bg-panel border-border-soft text-fg-subtle hover:text-fg-strong hover:border-border-strong')}
           >
             {cat.icon}
             <span className="text-xs font-medium">{cat.label}</span>
@@ -252,7 +252,7 @@ export function AIAssistantInterface({ onSend, onSearch, onDeepResearch, disable
                     onClick={() => { setInputValue(s); setActiveCategory(null); }}
                     className="px-3 py-2.5 hover:bg-panel cursor-pointer transition-colors flex items-center gap-3"
                   >
-                    <BookOpen size={14} className="text-[#3d6bff]/60 flex-shrink-0" />
+                    <BookOpen size={14} className="text-accent-blue/60 flex-shrink-0" />
                     <span className="text-sm text-fg-muted">{s}</span>
                   </motion.li>
                 ))}
@@ -269,12 +269,12 @@ function ToggleButton({ icon, label, active, onClick }: { icon: React.ReactNode;
   return (
     <button
       onClick={onClick}
-      className={cn('flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs border transition-all', active ? 'bg-[#3d6bff]/20 border-[#3d6bff]/40 text-[#3d6bff]' : 'bg-panel border-border-soft text-fg-subtle hover:text-fg-strong hover:border-border-strong')}
+      className={cn('flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs border transition-all', active ? 'bg-accent-blue/20 border-accent-blue/40 text-accent-blue' : 'bg-panel border-border-soft text-fg-subtle hover:text-fg-strong hover:border-border-strong')}
     >
       {icon}
       <span>{label}</span>
       {active && (
-        <span className="w-1.5 h-1.5 rounded-full bg-[#3d6bff] animate-pulse" />
+        <span className="w-1.5 h-1.5 rounded-full bg-accent-blue animate-pulse" />
       )}
     </button>
   );

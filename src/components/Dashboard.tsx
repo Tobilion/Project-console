@@ -274,7 +274,7 @@ export const Dashboard = ({ onClose, refreshSignal = 0, projects, workspaceMode 
           >
             <div className="flex items-start justify-between gap-4 mb-3">
               <div className="flex items-center gap-2 min-w-0">
-                <FolderGit2 size={16} className="text-[#00d4a3] flex-shrink-0" />
+                <FolderGit2 size={16} className="text-accent-teal flex-shrink-0" />
                 <h3 className="text-sm font-bold text-fg-strong truncate">{entry.name}</h3>
                <span className="text-[10px] text-fg-dim font-mono truncate hidden lg:inline" title={entry.path}>
                    {formatPath(entry.path)}
@@ -401,7 +401,7 @@ export const Dashboard = ({ onClose, refreshSignal = 0, projects, workspaceMode 
                     {!isGeneral && !entry.runningCommand && (
                       <button
                         onClick={() => handleRun(entry)}
-                        className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg bg-teal-500/10 hover:bg-teal-500/20 text-[#00d4a3] border border-teal-500/20 transition-colors"
+                        className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg bg-accent-teal/10 hover:bg-accent-teal/20 text-accent-teal border border-accent-teal/20 transition-colors"
                       >
                         <Play size={12} />
                         Run

@@ -120,7 +120,7 @@ const MessageRowContent = React.memo(function MessageRowContent({
     <div
       className={`max-w-[85%] rounded-2xl px-5 py-3 ${
         msg.type === 'user'
-          ? 'bg-[#3d6bff] text-white rounded-br-none'
+          ? 'bg-accent-blue text-white rounded-br-none'
           : msg.type === 'error'
           ? 'bg-red-500/10 border border-red-500/20 text-red-400 rounded-bl-none font-mono text-sm'
           : msg.type === 'warning'
@@ -152,7 +152,7 @@ const MessageRowContent = React.memo(function MessageRowContent({
           target="_blank"
           rel="noreferrer"
           title={linkUrl!}
-          className="mt-3 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[#00d4a3]/10 border border-[#00d4a3]/30 text-xs text-[#00d4a3] hover:bg-[#00d4a3]/20 transition-colors"
+          className="mt-3 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-accent-teal/10 border border-accent-teal/30 text-xs text-accent-teal hover:bg-accent-teal/20 transition-colors"
         >
           Click here to open the site
           <ExternalLink size={11} />
@@ -175,7 +175,7 @@ const MessageRowContent = React.memo(function MessageRowContent({
                     }
                   }
                 }}
-                className="px-3 py-1 rounded-full bg-panel hover:bg-panel-strong border border-border-soft text-xs text-[#00d4a3] transition-colors"
+                className="px-3 py-1 rounded-full bg-panel hover:bg-panel-strong border border-border-faint hover:border-accent-blue text-xs text-accent-teal transition-colors"
               >
                 {sug}
               </button>
@@ -192,7 +192,7 @@ const MessageRowContent = React.memo(function MessageRowContent({
               onClick={() => {
                 if (!isBlocked) (onDidYouMeanPick as any)(msg.didYouMean!.intent);
               }}
-              className="px-3 py-1 rounded-full bg-panel hover:bg-panel-strong border border-border-soft text-xs text-[#00d4a3] transition-colors"
+              className="px-3 py-1 rounded-full bg-panel hover:bg-panel-strong border border-border-faint hover:border-accent-blue text-xs text-accent-teal transition-colors"
             >
               {msg.didYouMean.label || msg.didYouMean.intent}
             </button>
@@ -366,7 +366,7 @@ const TerminalMessagesComponent = ({
           sign the console was still working on a slow-starting command (e.g. a dev server
           still booting), leaving no way to tell "still running" from "silently done". */}
       {commandPending && !aiThinking && (
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex items-center gap-3 text-[#00d4a3]/60 text-xs">
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex items-center gap-3 text-accent-teal/60 text-xs">
           <Loader2 size={14} className="animate-spin" />
           Running...
           {onCancel && (

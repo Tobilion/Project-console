@@ -118,7 +118,7 @@ export const SidebarDrawer = ({
           />
           <button
             type="submit"
-            className="px-2 py-0.5 bg-[#00d4a3]/20 text-[#00d4a3] rounded-md text-[9px] font-bold tracking-wider uppercase hover:bg-[#00d4a3]/30 transition-colors flex-shrink-0"
+            className="px-2 py-0.5 bg-accent-teal/20 text-accent-teal rounded-md text-[9px] font-bold tracking-wider uppercase hover:bg-accent-teal/30 transition-colors flex-shrink-0"
           >
             Scan
           </button>
@@ -128,7 +128,7 @@ export const SidebarDrawer = ({
       <div className="p-2.5 flex-shrink-0">
         <button
           onClick={() => createSession(activeProject?.id, activeProject?.name)}
-          className="w-full flex items-center justify-center gap-1.5 py-1.5 bg-[#00d4a3]/20 text-[#00d4a3] rounded-lg text-[10px] font-bold tracking-wider uppercase hover:bg-[#00d4a3]/30 transition-colors"
+          className="w-full flex items-center justify-center gap-1.5 py-1.5 bg-accent-teal/20 text-accent-teal rounded-lg text-[10px] font-bold tracking-wider uppercase hover:bg-accent-teal/30 transition-colors"
         >
           <Plus size={12} /> New Chat
         </button>
@@ -207,7 +207,7 @@ export const SidebarDrawer = ({
               key={p.id}
               onClick={() => handleSelectProject(p)}
               className={`relative flex items-center gap-2 pl-2.5 pr-2 h-9 rounded-lg cursor-pointer text-xs transition-colors group ${
-                activeProject?.id === p.id ? 'bg-panel-strong text-fg-strong' : 'text-fg-subtle hover:bg-panel-strong/60'
+                activeProject?.id === p.id ? 'bg-panel-strong text-fg-strong' : 'text-fg-subtle hover:bg-panel-strong'
               }`}
             >
               {activeProject?.id === p.id && (

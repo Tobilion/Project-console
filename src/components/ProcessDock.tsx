@@ -124,7 +124,7 @@ export function ProcessDock({
                                 <span className="truncate text-fg-muted hover:text-fg-strong">{proj.name}</span>
                                 {running ? (
                                   <>
-                                    <span className="w-1.5 h-1.5 rounded-full bg-[#22C55E] animate-pulse flex-shrink-0" />
+                                    <span className="w-1.5 h-1.5 rounded-full bg-accent-green animate-pulse flex-shrink-0" />
                                     <span className="font-mono text-[10px] text-fg-subtle truncate">{shortCommand(running.command)}</span>
                                     {port && <span className="font-mono text-[10px] text-fg-faint flex-shrink-0">:{port}</span>}
                                   </>
@@ -185,7 +185,7 @@ export function ProcessDock({
               className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] text-fg-subtle hover:text-fg-strong hover:bg-panel transition-colors flex-shrink-0"
               title={expanded ? 'Collapse dock' : 'Expand dock'}
             >
-              <TerminalIcon size={12} className="text-[#3d6bff]" />
+              <TerminalIcon size={12} className="text-accent-blue" />
               <span>{processes.length} running</span>
               {expanded ? <ChevronDown size={12} className="text-fg-dim" /> : <ChevronUp size={12} className="text-fg-dim" />}
             </button>
@@ -208,7 +208,7 @@ export function ProcessDock({
               }`}
               title="All projects + where they're running"
             >
-              <LayoutGrid size={12} className="text-[#00d4a3]" />
+              <LayoutGrid size={12} className="text-accent-teal" />
               <span>Projects</span>
             </button>
 
@@ -229,7 +229,7 @@ export function ProcessDock({
               }`}
               title="Action history + revert (file writes, edits, confirmed commands)"
             >
-              <HistoryIcon size={12} className="text-[#6366f1]" />
+              <HistoryIcon size={12} className="text-indigo" />
               <span>History</span>
             </button>
 
@@ -241,7 +241,7 @@ export function ProcessDock({
                   key={`${p.projectId}:${p.pid ?? p.command}`}
                   className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-mono transition-colors flex-shrink-0 ${
                     selected
-                      ? 'bg-[#3d6bff]/20 border border-[#3d6bff]/40 text-[#3d6bff]'
+                      ? 'bg-accent-blue/20 border border-accent-blue/40 text-accent-blue'
                       : 'bg-panel border border-border-soft text-fg-subtle hover:text-fg-strong'
                   }`}
                 >
@@ -254,10 +254,10 @@ export function ProcessDock({
                     className="flex items-center gap-1.5"
                     title={`${p.command}${p.startedAt ? ` — started ${new Date(p.startedAt).toLocaleTimeString()}` : ''}`}
                   >
-                    <span className="w-1.5 h-1.5 rounded-full bg-[#22C55E] animate-pulse flex-shrink-0" />
+                    <span className="w-1.5 h-1.5 rounded-full bg-accent-green animate-pulse flex-shrink-0" />
                     <span>{shortCommand(p.command)}</span>
                     {p.url && (
-                      <span className={`text-[10px] ${selected ? 'text-[#3d6bff]/70' : 'text-fg-faint'}`}>
+                      <span className={`text-[10px] ${selected ? 'text-accent-blue/70' : 'text-fg-faint'}`}>
                         :{port}
                       </span>
                     )}
