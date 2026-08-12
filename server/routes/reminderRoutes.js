@@ -23,6 +23,7 @@ export function registerReminderRoutes(app) {
         projectId: s.projectId,
         lastFiredAt: s.lastFiredAt ?? null,
         createdAt: s.createdAt ?? null,
+        createdBy: s.createdBy ?? 'local',
       }));
     res.json({ reminders });
   });

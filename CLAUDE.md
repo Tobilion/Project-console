@@ -844,6 +844,16 @@ collapsed header.
 - File tools cannot resolve outside the active project's directory. Server binds to
   `127.0.0.1` by default (`HOST=0.0.0.0` env var to change — it executes shell commands with
   no auth, so don't do that on an untrusted network).
+- **Identity/attribution (Phase 19, 2026-08-12)**: when the server is LAN-bound
+  (`HOST=0.0.0.0` — the user's explicit trusted-network opt-in), each WS connection may
+  claim a display name via the `set_display_name` message (web: the profile name is claimed
+  automatically; CLI: a @clack prompt on connect). That label feeds `createdBy` on
+  action-history entries, notes (`· by <name>` suffix), and reminders, plus a
+  `GET /api/connected-users` endpoint the Dashboard renders when 2+ users are connected.
+  **This is attribution, not auth** — no passwords, no permissions, no per-user AI grants,
+  and one LAN user can still read another's action history (a real security boundary between
+  users is explicitly OUT of scope and would be its own phase). Default single-user installs
+  (127.0.0.1) never prompt and everything stays `"local"` — zero behavior change.
 - **`sandboxRiskyCommands` (Phase 3, 2026-08-10)**: opt-in global setting (default `false`,
   persisted in `data/user-profile.json` via `profileRoutes.js`, toggled in `UserProfileModal.tsx`).
   When ON, commands that went through the confirm gate because they're `risky: true` /
@@ -1242,6 +1252,11 @@ time/date/calculate rows, 92/92).
    280/282 (baseline 276/278 + 2 open_marketplace opener rows, same TWO PRE-EXISTING drifts);
    check-intents unchanged at 1/7/82; check-docs 57/57 (+1 pack-registry catalog entry);
    check-ws-cases 118/118 unchanged.
+   Phase 19 (2026-08-12): no harness deltas (attribution fields default to "local", so the
+   existing reminder/notes/history row shapes are unchanged — lint + live WS verify only).
+   Live-verified: set_display_name round-trip, connected-users lists both connections,
+   note gains "· by Tobi", reminder createdBy=Tobi. The two-machine LAN manual test (different
+   display names attributing correctly) needs HOST=0.0.0.0 on a real network — flagged manual.
    Run the relevant battery after ANY edit to the corresponding module.
 - **editFile** tolerates whitespace differences (normalized line-range fallback) but not
   wrong wording; on total failure the error names both attempts and tells the caller to

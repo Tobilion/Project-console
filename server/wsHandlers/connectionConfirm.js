@@ -9,7 +9,7 @@ import { trackCommand, trackFileEdit } from '../projectMemory.js';
 import { appendAction, revertAction } from '../actionHistory.js';
 import { performTidy, performDuplicateDeletes } from './builtinGeneralFiles.js';
 import { mergePdfs, splitPdf, extractPages, watermarkPdf } from '../pdfKit.js';
-import { state, pendingConfirmations, pendingToolConfirmations } from '../state.js';
+import { state, pendingConfirmations, pendingToolConfirmations, connectionRegistry } from '../state.js';
 import { pendingMemorySuggestions } from './connectionState.js';
 
 /** User reply to a risky-command / AI-tool confirm card (routeMessage 'confirm_response'). */
@@ -270,10 +270,14 @@ export async function handleConfirmResponse(ws, parsed) {
   // exactly the ones that shouldn't pollute the history. git commands are flagged so `revert
   // action` can give them checkpoint-aware git advice instead of the generic answer.
   if (pending.sandbox !== false) {
+    // Phase 19: attribute the action to the confirming connection's display name ("local"
+    // default — single-user history shape unchanged).
+    const ownerCtx = connectionRegistry.get(pending.owner);
     appendAction(project.path, {
       type: /^git\s/i.test(pending.command.trim()) ? 'git' : 'command',
       description: `Ran: ${pending.command}`,
       command: pending.command,
+      createdBy: ownerCtx?.displayName || 'local',
     });
   }
 

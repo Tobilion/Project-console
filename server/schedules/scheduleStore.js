@@ -62,7 +62,7 @@ export function getSchedules(projectId) {
  * exactly on firstFireAt for aligned intervals, else on the creation time so interval
  * schedules wait a full period and daily/weekly schedules fire at the NEXT occurrence.
  */
-export function addSchedule({ projectId, projectName, spec, command, text, kind = 'command', fireAt = null, weekday = null, firstFireAt = null, intentId = null, createdAt = Date.now() }) {
+export function addSchedule({ projectId, projectName, spec, command, text, kind = 'command', fireAt = null, weekday = null, firstFireAt = null, intentId = null, createdAt = Date.now(), createdBy = 'local' }) {
   const id = `s${++idCounter}`;
   const schedule = {
     id,
@@ -80,6 +80,8 @@ export function addSchedule({ projectId, projectName, spec, command, text, kind 
     text: text ?? null,
     intentId,
     createdAt,
+    // Phase 19: attribution label ("local" default — single-user schedules unchanged).
+    createdBy,
     lastFiredAt: firstFireAt ? firstFireAt - spec.everyMs : createdAt,
   };
   schedules.push(schedule);

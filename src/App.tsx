@@ -110,7 +110,7 @@ function App() {
     aiModel, aiMode, showWelcome, setShowWelcome, pendingToolConfirm,
     pendingMemorySuggestion, handleMemorySuggestionRespond,
     handleSendMessage, handleCancel, handleConfirm, handleToolConfirm, handleApproveTask, handleAIToggle,
-    handleSetModel, handleSetMode, handleSelectProject,
+    handleSetModel, handleSetMode, handleSelectProject, setDisplayName,
     handleSearch, handleDeepResearch, handleNewChat, handleQuickStart, handleScan,
     createSession, switchSession, deleteSession, renameSession, handleSwitchToProject,
     toolHistory, showToolHistory, setShowToolHistory, rerunToolCall,
@@ -169,6 +169,23 @@ function App() {
       setToolsOpen(true);
     }
   }, [workspaceTab, showDashboard, activeToolPanel, chatFullscreen]);
+
+  // Phase 19 (2026-08-12): LAN display-name attribution — when the server is bound to
+  // 0.0.0.0 (HOST env), claim the profile name so action-history/notes/reminders attribute
+  // to this person. Single-user 127.0.0.1 installs never trigger this (lanBound is false) —
+  // everything stays "local", zero behavior change.
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/connected-users')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (cancelled || !data?.lanBound) return;
+        if (profile.name?.trim()) setDisplayName(profile.name);
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [profile.name, setDisplayName]);
 
   // Phase 1.5: the Tools surface (shared interactive tool panels). Clicking a card opens that
   // tool's dedicated panel in the same top-level view space Terminal/Dashboard use; the

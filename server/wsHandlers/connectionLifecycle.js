@@ -113,6 +113,11 @@ function onConnection(ws) {
   const sessionContext = {
     lastTriggeredEntry: null,
     activeProjectId: null,
+    // Phase 19 (2026-08-12): per-connection attribution label — "local" for the single-user
+    // default (bound to 127.0.0.1 only: never prompted, always "local", zero behavior change).
+    // When the server is LAN-bound the client/CLI may set a display name via set_display_name;
+    // it's an attribution label, not an account (no auth, no permissions — LAN trust only).
+    displayName: 'local',
     workspaceProjectIds: [],
     currentSessionId: null,
     aiEnabled: false,

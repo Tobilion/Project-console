@@ -250,6 +250,23 @@ export function useConsole() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Phase 19 (2026-08-12): LAN display-name attribution. App.tsx calls this with the profile
+  // name when /api/connected-users reports lanBound — the server then attributes
+  // action-history/notes/reminders to this connection. Bound-to-127.0.0.1 installs never
+  // call it, so everything stays "local" — zero behavior change single-user.
+  const setDisplayName = useCallback((name: string) => {
+    const trimmed = name.trim();
+    if (!trimmed || !wsHandler.wsRef.current) return;
+    const trySend = () => {
+      if (wsHandler.wsRef.current?.readyState === WebSocket.OPEN) {
+        wsHandler.wsRef.current.send(JSON.stringify({ type: 'set_display_name', payload: { name: trimmed.slice(0, 40) } }));
+      } else {
+        setTimeout(trySend, 1000);
+      }
+    };
+    trySend();
+  }, [wsHandler.wsRef]);
+
   // A brand-new chat with zero messages sent isn't "committed" to anything yet — deleting it
   // when the user navigates away (new chat / picks a different project) avoids piling up empty
   // orphaned sessions every time someone opens "New Chat" and then changes their mind before
@@ -436,6 +453,7 @@ export function useConsole() {
     pendingToolConfirm: terminal.pendingToolConfirm,
     pendingMemorySuggestion: terminal.pendingMemorySuggestion,
     handleSendMessage: terminal.handleSendMessage,
+  setDisplayName,
     handleCancel,
     handleConfirm: terminal.handleConfirm,
     handleToolConfirm: terminal.handleToolConfirm,

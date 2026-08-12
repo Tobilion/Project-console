@@ -105,10 +105,23 @@ export function fireSchedule(schedule) {
 function deliverReminder(schedule) {
   const text = `🔔 Reminder ("${schedule.label}"): ${schedule.text}`;
   let target = null;
-  for (const [ws, ctx] of connectionRegistry) {
-    if (ctx.activeProjectId === schedule.projectId && ws.readyState === 1) {
-      target = ws;
-      break;
+  // Phase 19: when a multi-user reminder names its creator and that user is connected,
+  // deliver to THEIR session specifically (the roadmap's explicit attribution rule); the
+  // creator's session wins over the generic project-session preference below.
+  if (schedule.createdBy && schedule.createdBy !== 'local') {
+    for (const [ws, ctx] of connectionRegistry) {
+      if (ctx.displayName === schedule.createdBy && ws.readyState === 1) {
+        target = ws;
+        break;
+      }
+    }
+  }
+  if (!target) {
+    for (const [ws, ctx] of connectionRegistry) {
+      if (ctx.activeProjectId === schedule.projectId && ws.readyState === 1) {
+        target = ws;
+        break;
+      }
     }
   }
   if (!target) {

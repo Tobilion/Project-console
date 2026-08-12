@@ -12,6 +12,17 @@ import { handleToolCall } from './connectionToolCall.js';
 /** WebSocket message dispatch — one case per message type, delegating to the leaf handlers. */
 async function routeMessage(ws, parsed, sessionContext) {
   switch (parsed.type) {
+    case 'set_display_name': {
+      // Phase 19 (2026-08-12): attribution label only. No auth, no permissions — trust is
+      // established by being on the same local network (HOST=0.0.0.0 is the explicit opt-in).
+      // Sanitized to a short plain label; "local" reserved for the default single-user case.
+      const raw = String(parsed.payload?.name || '').trim().replace(/[\u0000-\u001f\u007f]/g, '');
+      sessionContext.displayName = raw && raw.length <= 40 ? raw.slice(0, 40) : 'local';
+      if (ws.readyState === 1) {
+        ws.send(JSON.stringify({ type: 'display_name_set', data: sessionContext.displayName }));
+      }
+      return;
+    }
     case 'execute':
       await handleExecute(ws, parsed, sessionContext);
       return;

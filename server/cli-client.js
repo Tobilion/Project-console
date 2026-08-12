@@ -301,6 +301,28 @@ async function main() {
   console.log(`${C.gray}Type a message, 'projects' to switch/rescan, or 'quit' to exit.${C.reset}\n`);
 
   const ws = new WebSocket(`ws://${HOST}:${PORT}/stream`);
+  // Phase 19 (2026-08-12): LAN display-name attribution — when the server is bound to
+  // 0.0.0.0 (HOST env), the CLI asks for a display name on connect exactly like the web UI.
+  // When the server is 127.0.0.1-only the prompt is skipped entirely and attribution stays
+  // "local" — single-user behavior completely unchanged (per the roadmap's explicit rule).
+  try {
+    const usersRes = await fetch(`http://${HOST}:${PORT}/api/connected-users`);
+    const usersData = await usersRes.json();
+    if (usersData?.lanBound && isTTY) {
+      const name = await p.text({
+        message: 'Other people are on this console (LAN mode). What should others see as your name?',
+        placeholder: 'local',
+        validate: (v) => (v.trim().length <= 40 ? undefined : 'Keep it under 40 characters.'),
+      }).catch(() => null);
+      if (name && name.trim()) {
+        ws.on('open', () => {
+          ws.send(JSON.stringify({ type: 'set_display_name', payload: { name: name.trim() } }));
+        });
+      }
+    }
+  } catch {
+    // endpoint unreachable — attribution stays "local", no prompt
+  }
   let rl;
   let waitingForInput = false;
   // Confirmed live 2026-07-29: the server sends a 'confirm_prompt' AND (for that same turn) an

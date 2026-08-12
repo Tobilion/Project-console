@@ -64,6 +64,9 @@ export function appendAction(projectPath, entry) {
     ts: Date.now(),
     ...entry,
   };
+  // Phase 19: default attribution to "local" when the caller didn't supply one — a single-
+  // user install's history shape is unchanged (the field simply reads "local").
+  if (!record.createdBy) record.createdBy = 'local';
   try {
     fs.appendFileSync(file, JSON.stringify(record) + '\n', 'utf-8');
     // Trim when the log is well past the cap: only then pay for a full read+rewrite.

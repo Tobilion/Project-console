@@ -11,14 +11,14 @@ const answer = (ws, data) => ws.send(JSON.stringify({ type: 'answer', data }));
 const CREATE_PREFIX_RE = /^(?:note|add\s+a\s+note|write\s+a\s+note|jot\s+down)\s*:\s*(.+)$/is;
 
 export const noteHandlers = {
-  'system.notes.create': async (ws, action, input, project) => {
+  'system.notes.create': async (ws, action, input, project, sessionContext) => {
     const m = input.match(CREATE_PREFIX_RE);
     const text = m ? m[1].trim() : '';
     if (!text) {
       ws.send(JSON.stringify({ type: 'answer', data: 'What should the note say? Try `note: buy milk` — you can also use the Notes panel (Tools > Notes).', openPanel: 'notes' }));
       return;
     }
-    const result = await appendNote(project.path, text);
+    const result = await appendNote(project.path, text, sessionContext?.displayName || 'local');
     answer(ws, result.success ? `📝 ${result.data}` : result.error);
   },
 

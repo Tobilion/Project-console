@@ -42,6 +42,8 @@ export const Dashboard = ({ onClose, refreshSignal = 0, projects, workspaceMode 
   const [filter, setFilter] = useState('');
   const [refreshing, setRefreshing] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  // Phase 19: connected users (LAN attribution labels — hidden for the single-user case).
+  const [users, setUsers] = useState<{ name: string }[]>([]);
 
   // Phase 1: a card in general mode hides git/npm/dev-server panels and actions behind a
   // placeholder — file tools/notes/reminders cards arrive in later phases (the roadmap
@@ -59,6 +61,18 @@ export const Dashboard = ({ onClose, refreshSignal = 0, projects, workspaceMode 
     const id = setInterval(fetchDashboard, 5000);
     return () => clearInterval(id);
   }, [fetchDashboard]);
+
+  // Phase 19: poll connected users (same cadence as the dashboard refresh).
+  useEffect(() => {
+    let cancelled = false;
+    const fetchUsers = async () => {
+      const data = await apiFetchJson<{ users: { name: string }[] }>('/api/connected-users');
+      if (!cancelled && data) setUsers(data.users || []);
+    };
+    fetchUsers();
+    const id = setInterval(fetchUsers, 5000);
+    return () => { cancelled = true; clearInterval(id); };
+  }, []);
 
   // Re-fetch immediately when the server signals a state change via WebSocket
   useEffect(() => {
@@ -176,6 +190,11 @@ export const Dashboard = ({ onClose, refreshSignal = 0, projects, workspaceMode 
           {totalRunning > 0 && (
             <span className="text-xs text-green-400 bg-green-500/10 px-2 py-0.5 rounded">
               {totalRunning} running
+            </span>
+          )}
+          {users.length > 1 && (
+            <span className="text-xs text-accent bg-accent/10 px-2 py-0.5 rounded" title="Connected users (LAN mode — attribution labels, no accounts)">
+              {users.length} connected: {users.map((u) => u.name).join(', ')}
             </span>
           )}
         </div>

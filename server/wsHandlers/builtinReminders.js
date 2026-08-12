@@ -9,7 +9,7 @@ import { parseReminderInput } from '../schedules/reminderParser.js';
 import { addSchedule, getSchedules, getScheduleById, removeScheduleById } from '../schedules/scheduleStore.js';
 
 export const reminderHandlers = {
-  'system.reminders.create': async (ws, action, input, project) => {
+  'system.reminders.create': async (ws, action, input, project, sessionContext) => {
     const parsed = parseReminderInput(input);
     if (!parsed.ok) {
       ws.send(JSON.stringify({ type: 'answer', data: parsed.reason, openPanel: 'reminders' }));
@@ -24,6 +24,7 @@ export const reminderHandlers = {
       fireAt: parsed.fireAt ?? null,
       weekday: parsed.weekday ?? null,
       firstFireAt: parsed.firstFireAt ?? null,
+      createdBy: sessionContext?.displayName || 'local',
     });
     ws.send(JSON.stringify({
       type: 'answer',

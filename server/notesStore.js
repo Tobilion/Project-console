@@ -54,8 +54,9 @@ export async function listNotes(projectPath) {
 }
 
 /** Append one user-authored note. Exact-duplicate lines (whitespace/case-normalized) are
- *  skipped; the list is capped at MAX_ENTRIES, oldest dropped first. */
-export async function appendNote(projectPath, content) {
+ *  skipped; the list is capped at MAX_ENTRIES, oldest dropped first. Phase 19: `createdBy`
+ *  defaults to "local" (single-user notes are unchanged). */
+export async function appendNote(projectPath, content, createdBy = 'local') {
   const trimmed = (content || '').trim();
   if (!trimmed) return { success: false, error: 'Nothing to note — write some text after "note:".' };
   if (trimmed.length > MAX_ENTRY_CHARS) {
@@ -79,7 +80,8 @@ export async function appendNote(projectPath, content) {
     }
 
     const date = new Date().toISOString().slice(0, 10);
-    lines.push(`- ${trimmed} (${date})`);
+    const author = createdBy && createdBy !== 'local' ? ` · by ${createdBy}` : '';
+    lines.push(`- ${trimmed} (${date})${author}`);
     const capped = lines.slice(-MAX_ENTRIES);
 
     await fs.mkdir(path.dirname(filePath), { recursive: true });
