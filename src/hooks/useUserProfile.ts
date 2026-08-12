@@ -12,6 +12,10 @@ export interface UserProfile {
   // Phase 3 (2026-08-10): opt-in restricted context for confirmed risky commands (server:
   // executorSandbox.js). Default false; toggled from the UserProfileModal.
   sandboxRiskyCommands: boolean;
+  // Phase 8 (2026-08-12): opt-in OS clipboard history polling + separate opt-in to persist
+  // history to disk. Defaults false — both are explicit privacy decisions.
+  clipboardHistory: boolean;
+  clipboardPersist: boolean;
 }
 
 // Neutral defaults, not a hardcoded person's name/title — matches server/routes/profileRoutes.js's
@@ -26,6 +30,8 @@ const DEFAULT_PROFILE: UserProfile = {
   customRole: '',
   setupComplete: false,
   sandboxRiskyCommands: false,
+  clipboardHistory: false,
+  clipboardPersist: false,
 };
 
 /** Client state for the user profile persisted to the server (GET/POST /api/profile).

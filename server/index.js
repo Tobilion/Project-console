@@ -20,6 +20,7 @@ import { loadDevUrls } from './devUrlStore.js';
 import { initScheduler } from './schedules/scheduler.js';
 import { initNotifications } from './notify.js';
 import { loadAutoStart, initAutoStart } from './autoStartProjects.js';
+import { syncClipboardPolling } from './clipboardHistory.js';
 import { checkCollisionBaseline } from './collisions.js';
 import { checkForUpdates } from './updateChecker.js';
 import { wss, broadcast } from './wsServer.js';
@@ -37,6 +38,7 @@ import { registerReminderRoutes } from './routes/reminderRoutes.js';
 import { registerFileToolsRoutes } from './routes/fileToolsRoutes.js';
 import { registerNoteRoutes } from './routes/noteRoutes.js';
 import { registerCsvRoutes } from './routes/csvRoutes.js';
+import { registerClipboardRoutes } from './routes/clipboardRoutes.js';
 import { loadTuning } from './tuningStore.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -65,6 +67,7 @@ registerReminderRoutes(app);
 registerFileToolsRoutes(app);
 registerNoteRoutes(app);
 registerCsvRoutes(app);
+registerClipboardRoutes(app);
 // Tuning overrides (data/tuning.json) must be in memory before any consumer reads a knob —
 // the first Fuse build happens during semanticMatcher.initialize() a few lines below.
 loadTuning();
@@ -141,6 +144,10 @@ async function init() {
   // for its launch-phrase re-match; loadAutoStart runs before any connection can configure).
   loadAutoStart();
   initAutoStart();
+
+  // Phase 8: sync clipboard polling with the profile (default off — no polling, no OS calls
+  // until the user opts in via the profile modal).
+  syncClipboardPolling();
 
   // Phase 7: baseline intent-collision sweep — fire-and-forget, never blocks boot. Alerts
   // via the opt-in 'collision-found' notification event when new overlaps appeared since

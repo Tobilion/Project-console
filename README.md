@@ -60,6 +60,12 @@
 - **`count rows in data.csv where status equals done`** / **`filter data.csv where price greater than 50`** — row filtering with a fixed operator set (equals / contains / greater than / less than). Filter is read-only; a future filter-to-file write would go through the normal confirm + revert path.
 - The Spreadsheet panel (Tools > Spreadsheet, or `open spreadsheet`) picks a CSV + column, and renders filter results as a real sortable table with sticky headers and zebra striping.
 
+### Clipboard & snippets
+
+- **`show clipboard history`** / **`copy clipboard item 2`** / **`clear clipboard history`** — in-memory OS clipboard history (most recent 25 entries, deduped). History polling is **opt-in** (Settings → Advanced → "Track clipboard history") — nothing reads your clipboard by default, since passwords and tokens routinely pass through it. A separate "Persist clipboard history to disk" opt-in writes it to a local plaintext file so it survives restarts.
+- **`save this as a snippet: welcome`** / **`copy snippet welcome`** / **`delete snippet welcome`** — named text blocks, global and persistent.
+- Every copy goes through a server-side OS clipboard write (Set-Clipboard/pbcopy/xclip), so the CLI copies for real too — no browser needed. The Clipboard panel (Tools > Clipboard, or `open clipboard`) shows both lists with copy/delete actions; when history is off the panel still renders and explains how to enable it.
+
 ### PDF toolkit
 
 - **`merge these pdfs into combined.pdf`** — merges several PDFs into one new file (never overwrites an existing output).
@@ -329,6 +335,8 @@ App-global identity (name/title/custom role) edited from the ⚙ Settings modal;
 | `show my notes` / `search my notes for wifi` | List or search notes (also via the Notes panel) |
 | `sum column sales in data.csv` / `average column price in data.csv` | Read-only CSV aggregates (quoted-field aware, no AI) |
 | `count rows in data.csv where status equals done` / `filter data.csv where price greater than 50` | CSV row filtering — fixed ops: equals/contains/greater than/less than (filter table also via the Spreadsheet panel) |
+| `show clipboard history` / `copy clipboard item 2` / `clear clipboard history` | Opt-in OS clipboard history (Settings → Advanced) — copy re-writes to the OS clipboard server-side |
+| `save this as a snippet: welcome` / `copy snippet welcome` / `delete snippet welcome` | Named text snippets (global, persistent) |
 | `notify me when dev-server-crash` / `stop notifying me about ...` | Desktop/webhook alerts per event — all off until you opt in |
 | `webhook add <url>` / `webhook remove <url>` / `list notifications` / `test notification` | Webhook channels and verification |
 
@@ -355,7 +363,7 @@ App-global identity (name/title/custom role) edited from the ⚙ Settings modal;
 |---|---|
 | `help` / `what can you do` / `how do I <anything>` | Full command guide; how-do-I answers come from the command catalog with the exact phrase, the real shell command, and a suggestion chip |
 | `what is 12 times 7` / `convert 5 km to miles` / `whats 18% tip on 64.50` | Safe arithmetic + offline unit conversion + percentage/tip/tax (also via the Calculator panel) |
-| `open calculator` / `open pdf tools` / `open reminders` / `open file tools` / `open notes` / `open spreadsheet` | Opens the interactive Tools panel (web UI); plain-text note + chat equivalents from the CLI |
+| `open calculator` / `open pdf tools` / `open reminders` / `open file tools` / `open notes` / `open spreadsheet` / `open clipboard` | Opens the interactive Tools panel (web UI); plain-text note + chat equivalents from the CLI |
 | `switch to developer mode` / `switch to general mode` / `what mode am I in` | Change/check a project's workspace type (persisted in console.config.json) |
 | `switch projects` / `change projects` | The project list in the left sidebar |
 | `dashboard` / `live sites` | The Dashboard tab: project overview + live-site status |

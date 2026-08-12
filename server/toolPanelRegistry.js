@@ -52,6 +52,14 @@ export const TOOL_PANELS = [
     available: true,
     chatHint: 'sum column sales in data.csv',
   },
+  {
+    id: 'clipboard',
+    name: 'Clipboard',
+    description: 'Clipboard history and saved snippets (history is opt-in)',
+    icon: 'clipboard-copy',
+    available: true,
+    chatHint: 'show clipboard history',
+  },
 ];
 
 export function getToolPanels() {

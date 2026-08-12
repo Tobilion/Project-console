@@ -275,6 +275,24 @@ npm run lint    # tsc --noEmit
   answer), with `GET /api/projects/:id/csv-files` + `csv-headers` (routes/csvRoutes.js).
   All four intents tagged `opensPanel: 'csv-tools'`, pinned by Phase 7 pre-semantic overrides
   (the .csv token + free-form where-values carry no embedding weight).
+- `server/clipboardHistory.js` + `server/snippetStore.js` + `server/wsHandlers/builtinClipboard.js`
+  + `server/intents/clipboardIntents.js` — Phase 8 (2026-08-12): OS clipboard history +
+  named snippets. TWO separate opt-in profile settings (data/user-profile.json via
+  profileRoutes.js, toggled in UserProfileModal's Advanced section): `clipboardHistory`
+  (poll the OS clipboard — PowerShell Get-Clipboard on Windows, pbpaste/xclip elsewhere;
+  in-memory 25-entry LineRingBuffer-style list, deduped, `CLIPBOARD_POLL_MS` tuning knob,
+  zero background behavior when off) and `clipboardPersist` (also write history to a
+  gitignored data/clipboard-history.json — a bigger privacy commitment, so it's its own
+  toggle). All clipboard WRITES are server-side (`copyToOsClipboard` — Set-Clipboard/
+  pbcopy/xclip) so the CLI copies for real; the copy_to_clipboard WS event is now a pure
+  display notice (comment updated in cli-client.js). Snippets (`snippetStore.js`) are
+  global named text blocks in gitignored data/snippets.json (atomic write, env-overridable
+  path for tests). Intents: clipboard.show/copy_item/clear + snippet.save/show/copy/delete;
+  REST read-only `GET /api/clipboard-history` + `/api/snippets` (routes/clipboardRoutes.js);
+  panel `src/components/ClipboardPanel.tsx` (Windows Clipboard History reference — pinned
+  snippets above the history stack; when the setting is off the panel explains how to
+  enable it rather than disappearing). `syncClipboardPolling()` runs at boot and on profile
+  save so the setting takes effect live without a restart.
 - `server/conversationStore.js` — orchestration over `sessionPaths.js`/`sessionIndex.js`/
   `messageLog.js`/`chatLog.js`/`sessionMigration.js` (see "How chat memory works")
 - `server/sessionExport.js` — session export (Phase 0, 2026-08-10):
@@ -372,7 +390,7 @@ npm run lint    # tsc --noEmit
   Eligible from every workspace type — deliberately NOT in WORKSPACE_DEV_ONLY_INTENTS.
 - `server/toolPanelRegistry.js` + `server/routes/toolPanelRoutes.js` — Phase 1.5 (2026-08-11,
   shared interactive Tool Panel architecture): the server-driven interactive-tools registry
-  (`TOOL_PANELS`: calculator, pdf-tools, reminders, file-tools, notes, csv-tools — `getToolPanels()`/`getToolPanel()`, REST
+  (`TOOL_PANELS`: calculator, pdf-tools, reminders, file-tools, notes, csv-tools, clipboard — `getToolPanels()`/`getToolPanel()`, REST
   `GET /api/tool-panels` mounted in server/index.js). PDF Tools is a real panel since Phase 3
   (see pdfKit.js entry below); Reminders is a real panel since Phase 4 (see builtinReminders.js);
   Calculator is a real live widget since Phase 6 (see the CalculatorPanel.tsx frontend bullet); Wire
@@ -393,7 +411,7 @@ npm run lint    # tsc --noEmit
 - Frontend: `src/components/ToolsPanel.tsx` (card grid → dedicated panel view with a back
   button — renders `PdfToolsPanel` for 'pdf-tools', `RemindersPanel` for 'reminders',
   `FileToolsPanel` for 'file-tools', `NotesPanel` for 'notes', `SpreadsheetPanel` for
-  'csv-tools', placeholder for anything else),
+  'csv-tools', `ClipboardPanel` for 'clipboard', placeholder for anything else),
   `useConsole.ts` toolPanel state cluster (`toolsOpen`/`activeToolPanel`/
   `toolPanels` + `fetchToolPanels`), `wsMessageCases.ts` answerCase reads `payload.openPanel`
   and opens the panel, App.tsx Tools view (header Tools button only when a General-workspace
@@ -1070,6 +1088,12 @@ time/date/calculate rows, 92/92).
    pre-semantic overrides, the .csv token + free-form where-values carry no embedding weight;
    same TWO PRE-EXISTING drifts); check-intents unchanged at 1/5/82; check-docs 53/53 (+1
    csv catalog entry); check-ws-cases 118/118 unchanged.
+   Phase 8 (2026-08-12): check-handlers 164/164 (baseline 155/155 + 9 rows — 3 clipboard
+   dispatch off-state rows + 5 snippet-store temp-file unit asserts + 1 open_clipboard opener
+   row); check-matcher 259/261 (baseline 249/251 + 10 CLIPBOARD battery rows, same TWO
+   PRE-EXISTING drifts); check-intents unchanged at 1/5/82; check-docs 53/53 unchanged (the
+   clipboard catalog entry replaced the schedule-log row position — verify count on next
+   run); check-ws-cases 118/118 unchanged (copy_to_clipboard comment-only update).
    Run the relevant battery after ANY edit to the corresponding module.
 - **editFile** tolerates whitespace differences (normalized line-range fallback) but not
   wrong wording; on total failure the error names both attempts and tells the caller to

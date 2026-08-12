@@ -44,6 +44,7 @@ const { pdfHandlers } = await import(pathToFileURL(base + 'wsHandlers/builtinPdf
 const { reminderHandlers } = await import(pathToFileURL(base + 'wsHandlers/builtinReminders.js').href);
 const { noteHandlers } = await import(pathToFileURL(base + 'wsHandlers/builtinNotes.js').href);
 const { csvHandlers } = await import(pathToFileURL(base + 'wsHandlers/builtinCsvTools.js').href);
+const { clipboardHandlers } = await import(pathToFileURL(base + 'wsHandlers/builtinClipboard.js').href);
 const { parseReminderInput } = await import(pathToFileURL(base + 'schedules/reminderParser.js').href);
 const {
   parsePdfNames, parsePdfOutput, parsePageSpec, extractWatermarkText,
@@ -68,7 +69,7 @@ function eq(label, got, expect) {
   else if (!ok) console.log(`  FAIL ${label}\n    expected: ${e}\n    got:      ${g}`);
 }
 
-const merged = { ...gitHandlers, ...chitChatHandlers, ...fileNpmHandlers, ...projectKnowledgeHandlers, ...projectContextHandlers, ...projectActionHandlers, ...diagnosticsHandlers, ...generalFileHandlers, ...toolsHandlers, ...pdfHandlers, ...reminderHandlers, ...noteHandlers, ...csvHandlers };
+const merged = { ...gitHandlers, ...chitChatHandlers, ...fileNpmHandlers, ...projectKnowledgeHandlers, ...projectContextHandlers, ...projectActionHandlers, ...diagnosticsHandlers, ...generalFileHandlers, ...toolsHandlers, ...pdfHandlers, ...reminderHandlers, ...noteHandlers, ...csvHandlers, ...clipboardHandlers };
 const handlerKeys = Object.keys(merged).sort();
 const builtinKeys = [...BUILTIN_INTENTS].sort();
 const intentKeys = Object.keys(INTENTS).sort();
@@ -205,6 +206,10 @@ eq('tools leaf: open_notes answers with openPanel + CLI-usable text', ws.sent.le
 sent.length = 0;
 await handleBuiltinIntent(ws, 'system.tools.open_csv_tools', 'open spreadsheet', proj, {});
 eq('tools leaf: open_csv_tools answers with openPanel + CLI-usable text', ws.sent.length === 1 && ws.sent[0].type === 'answer' && ws.sent[0].openPanel === 'csv-tools' && /sum column sales/.test(ws.sent[0].data), true);
+
+sent.length = 0;
+await handleBuiltinIntent(ws, 'system.tools.open_clipboard', 'open clipboard', proj, {});
+eq('tools leaf: open_clipboard answers with openPanel + CLI-usable text', ws.sent.length === 1 && ws.sent[0].type === 'answer' && ws.sent[0].openPanel === 'clipboard' && /show clipboard history/.test(ws.sent[0].data), true);
 
 sent.length = 0;
 const unknown = await handleBuiltinIntent(ws, 'no_such_intent', 'x', proj, {});
@@ -544,6 +549,33 @@ sent.length = 0;
 await handleBuiltinIntent(ws, 'csv.sum', 'sum column amount in nowhere.csv', csvProj, {});
 eq('csv leaf: missing file named', ws.sent.length === 1 && ws.sent[0].type === 'answer' && /not found/.test(ws.sent[0].data), true);
 fs.rmSync(csvRoot, { recursive: true, force: true });
+
+// --- CLIPBOARD + SNIPPETS (Phase 8, 2026-08-12) --------------------------------
+// Dispatch shapes with the default profile (clipboardHistory OFF): show/clear answer the
+// off-state honestly; snippet store is redirected to a temp file via SNIPPETS_FILE so the
+// harness never touches the real data/snippets.json.
+sent.length = 0;
+await handleBuiltinIntent(ws, 'clipboard.show', 'show clipboard history', proj, {});
+eq('clipboard leaf: show answers off-state', ws.sent.length === 1 && ws.sent[0].type === 'answer' && /off/.test(ws.sent[0].data), true);
+sent.length = 0;
+await handleBuiltinIntent(ws, 'clipboard.copy_item', 'copy clipboard item 2', proj, {});
+eq('clipboard leaf: copy item on empty history asks which', ws.sent.length === 1 && ws.sent[0].type === 'answer' && /Which item/.test(ws.sent[0].data), true);
+sent.length = 0;
+await handleBuiltinIntent(ws, 'snippet.show', 'show my snippets', proj, {});
+eq('snippet leaf: show answers empty state', ws.sent.length === 1 && ws.sent[0].type === 'answer' && /No snippets yet/.test(ws.sent[0].data), true);
+
+const snippetsTmp = path.join(os.tmpdir(), `console-snippets-${Date.now()}.json`);
+process.env.SNIPPETS_FILE = snippetsTmp;
+const { saveSnippet, getSnippet, deleteSnippet, listSnippets } = await import(pathToFileURL(base + 'snippetStore.js').href + `?t=${Date.now()}`);
+const s1 = saveSnippet('greeting', 'hello world');
+eq('snippet store: save ok', s1.ok === true, true);
+const s2 = saveSnippet('greeting', 'updated text');
+eq('snippet store: re-save same name overwrites', s2.ok === true && getSnippet('greeting').text === 'updated text', true);
+eq('snippet store: list has 1', listSnippets().length === 1, true);
+eq('snippet store: delete ok', deleteSnippet('greeting').name === 'greeting' && listSnippets().length === 0, true);
+eq('snippet store: delete missing -> null', deleteSnippet('nope'), null);
+delete process.env.SNIPPETS_FILE;
+try { fs.unlinkSync(snippetsTmp); } catch {}
 
 console.log(`check-handlers: ${total} checks, ${failed} failed`);
 process.exit(failed ? 1 : 0);

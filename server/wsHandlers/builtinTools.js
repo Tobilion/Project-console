@@ -69,4 +69,13 @@ export const toolsHandlers = {
       openPanel: panel.id,
     }));
   },
+  'system.tools.open_clipboard': async (ws, action) => {
+    const panel = getToolPanel(TOOL_PANEL_INTENTS[action].opensPanel);
+    if (!panel) return false;
+    ws.send(JSON.stringify({
+      type: 'answer',
+      data: `The ${panel.name} panel is an interactive web-UI list (history + saved snippets). From chat — including the CLI — the same features work as plain commands: \`show clipboard history\` / \`copy clipboard item 2\` / \`save this as a snippet: welcome\` / \`copy snippet welcome\`.`,
+      openPanel: panel.id,
+    }));
+  },
 };

@@ -41,4 +41,10 @@ export const TOOL_PANEL_INTENTS = {
       'open spreadsheet', 'open the spreadsheet', 'open csv tools', 'open the csv tools',
     ],
   },
+  'system.tools.open_clipboard': {
+    opensPanel: 'clipboard',
+    examples: [
+      'open clipboard', 'open the clipboard', 'open clipboard panel',
+    ],
+  },
 };

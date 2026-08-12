@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import { syncClipboardPolling } from '../clipboardHistory.js';
 
 // App-global user profile (identity used in greetings), NOT per-project config.
 // Lives in data/ — the app's own runtime-state home — so writes never trigger the
@@ -28,6 +29,13 @@ const DEFAULT_PROFILE = {
   // executorSandbox.js). Default false by spec — never silently enabled; toggling this ON is
   // an explicit user decision in the profile modal.
   sandboxRiskyCommands: false,
+  // Phase 8 (2026-08-12): opt-in OS clipboard READ polling (clipboardHistory.js). Default
+  // false — an always-on clipboard reader is a real privacy surface (passwords, tokens,
+  // personal data routinely pass through a clipboard), so it must never be silently on.
+  clipboardHistory: false,
+  // Phase 8: a SECOND, separate opt-in — persisting clipboard history to disk is a materially
+  // bigger privacy commitment than an in-memory buffer that clears on restart.
+  clipboardPersist: false,
 };
 
 // Only plain, trimmed strings up to a sane length — mirrors the conservative
@@ -54,6 +62,8 @@ function readProfile() {
       customRole: sanitizeField(p.customRole, DEFAULT_PROFILE.customRole),
       setupComplete: sanitizeBool(p.setupComplete, DEFAULT_PROFILE.setupComplete),
       sandboxRiskyCommands: sanitizeBool(p.sandboxRiskyCommands, DEFAULT_PROFILE.sandboxRiskyCommands),
+      clipboardHistory: sanitizeBool(p.clipboardHistory, DEFAULT_PROFILE.clipboardHistory),
+      clipboardPersist: sanitizeBool(p.clipboardPersist, DEFAULT_PROFILE.clipboardPersist),
     };
   } catch {
     // Missing or corrupt file — serve defaults without touching disk.
@@ -91,12 +101,17 @@ export function registerProfileRoutes(app) {
       customRole: sanitizeField(body.customRole, current.customRole),
       setupComplete: sanitizeBool(body.setupComplete, current.setupComplete),
       sandboxRiskyCommands: sanitizeBool(body.sandboxRiskyCommands, current.sandboxRiskyCommands),
+      clipboardHistory: sanitizeBool(body.clipboardHistory, current.clipboardHistory),
+      clipboardPersist: sanitizeBool(body.clipboardPersist, current.clipboardPersist),
     };
     const err = writeProfile(updated);
     if (err) {
       res.status(500).json({ error: `Failed to save profile: ${err.message}` });
       return;
     }
+    // Phase 8: clipboard polling state follows the setting live (off -> on starts the
+    // background poll without a restart; on -> off stops it).
+    syncClipboardPolling();
     res.json({ userProfile: updated });
   });
 }

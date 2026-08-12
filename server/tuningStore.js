@@ -26,6 +26,8 @@ export const TUNING_DEFAULTS = {
   STDERR_SUMMARY_CAP: 2000,
   // verifyHarness: background type-check debounce
   DEBOUNCE_MS: 2000,
+  // clipboardHistory (Phase 8): OS clipboard poll interval
+  CLIPBOARD_POLL_MS: 2500,
 };
 
 // Per-key numeric bounds; anything outside [min, max] (or non-finite) is rejected rather than
@@ -43,6 +45,7 @@ const BOUNDS = {
   STDOUT_SUMMARY_CAP: { min: 200, max: 100000 },
   STDERR_SUMMARY_CAP: { min: 200, max: 100000 },
   DEBOUNCE_MS: { min: 100, max: 60000 },
+  CLIPBOARD_POLL_MS: { min: 500, max: 60000 },
 };
 
 let overrides = {};

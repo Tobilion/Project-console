@@ -556,7 +556,7 @@ async function main() {
       case 'thinking': break; // reasoning-model trace — an italic panel in the web UI
       case 'task_granted': break; // "approved" acknowledgement — the CLI already saw the y/N prompt
       case 'workspace_updated': break; // workspace-project set — UI-only (SidebarDrawer)
-      case 'copy_to_clipboard': break; // browser clipboard write — no browser here; the copy intent's own answer text is the CLI's confirmation
+      case 'copy_to_clipboard': break; // display notice only since Phase 8 — the server-side OS clipboard write happens inside the intent handler, so the CLI copies for real without a browser
       case 'dashboard_update': break; // dashboard refresh signal — no dashboard in the CLI
       case 'processes_update': break; // dock refresh signal — no dock in the CLI
       default:

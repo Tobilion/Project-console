@@ -518,6 +518,21 @@ const BATTERIES = [
       ['open the csv tools', 'BUILTIN=system.tools.open_csv_tools'],
     ],
   },
+  {
+    name: 'CLIPBOARD (Phase 8 clipboard + snippet intents)',
+    items: [
+      ['show clipboard history', 'BUILTIN=clipboard.show'],
+      ['clipboard history', 'BUILTIN=clipboard.show'],
+      ['copy clipboard item 2', 'BUILTIN=clipboard.copy_item'],
+      ['clear clipboard history', 'BUILTIN=clipboard.clear'],
+      ['save this as a snippet: welcome', 'BUILTIN=snippet.save'],
+      ['show my snippets', 'BUILTIN=snippet.show'],
+      ['copy snippet welcome', 'BUILTIN=snippet.copy'],
+      ['delete snippet welcome', 'BUILTIN=snippet.delete'],
+      ['open clipboard', 'BUILTIN=system.tools.open_clipboard'],
+      ['open the clipboard panel', 'BUILTIN=system.tools.open_clipboard'],
+    ],
+  },
 ];
 
 await semanticMatcher.initialize();

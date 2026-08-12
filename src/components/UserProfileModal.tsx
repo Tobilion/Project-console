@@ -53,6 +53,8 @@ export function UserProfileModal({ open, profile, onClose, onSave }: UserProfile
   const [title, setTitle] = useState(profile.title);
   const [customRole, setCustomRole] = useState(profile.customRole);
   const [sandboxRiskyCommands, setSandboxRiskyCommands] = useState(profile.sandboxRiskyCommands);
+  const [clipboardHistory, setClipboardHistory] = useState(profile.clipboardHistory);
+  const [clipboardPersist, setClipboardPersist] = useState(profile.clipboardPersist);
 
   // Phase 8 (2026-08-11): runtime tuning-constant editor (server-side shadowing via
   // data/tuning.json — see server/tuningStore.js). Loaded as overrides+defaults when the modal
@@ -70,6 +72,8 @@ export function UserProfileModal({ open, profile, onClose, onSave }: UserProfile
       setTitle(profile.title);
       setCustomRole(profile.customRole);
       setSandboxRiskyCommands(profile.sandboxRiskyCommands);
+  setClipboardHistory(profile.clipboardHistory);
+  setClipboardPersist(profile.clipboardPersist);
       setAdvancedOpen(false);
       setTuningSaved(false);
       apiFetchJson<TuningState>('/api/tuning').then((t) => {
@@ -86,7 +90,7 @@ export function UserProfileModal({ open, profile, onClose, onSave }: UserProfile
   const canSave = name.trim() && title.trim() && customRole.trim();
 
   const handleSave = () => {
-    onSave({ name: name.trim(), title: title.trim(), customRole: customRole.trim(), sandboxRiskyCommands });
+    onSave({ name: name.trim(), title: title.trim(), customRole: customRole.trim(), sandboxRiskyCommands, clipboardHistory, clipboardPersist });
     onClose();
   };
 
@@ -202,6 +206,52 @@ export function UserProfileModal({ open, profile, onClose, onSave }: UserProfile
               When on, confirmed risky commands run with an environment allowlist and a
               project-restricted cwd (not a container — see the docs for exact guarantees).
               Off by default.
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-start gap-3 pt-1">
+          <button
+            type="button"
+            role="switch"
+            aria-checked={clipboardHistory}
+            onClick={() => setClipboardHistory(!clipboardHistory)}
+            className={`relative shrink-0 mt-0.5 w-9 h-5 rounded-full transition-colors ${clipboardHistory ? 'bg-[#3d6bff]' : 'bg-panel border border-border-soft'}`}
+            title={clipboardHistory ? 'Clipboard history is on' : 'Clipboard history is off'}
+          >
+            <span
+              className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white transition-transform ${clipboardHistory ? 'translate-x-4' : ''}`}
+            />
+          </button>
+          <div>
+            <p className="text-sm text-fg">Track clipboard history</p>
+            <p className="text-[11px] text-fg-faint mt-0.5">
+              When on, the console polls the OS clipboard in the background (in-memory, most
+              recent 25 entries, deduped). Off by default — your clipboard can hold passwords
+              and tokens, so nothing reads it without your say-so.
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-start gap-3 pt-3">
+          <button
+            type="button"
+            role="switch"
+            aria-checked={clipboardPersist}
+            onClick={() => setClipboardPersist(!clipboardPersist)}
+            className={`relative shrink-0 mt-0.5 w-9 h-5 rounded-full transition-colors ${clipboardPersist ? 'bg-[#3d6bff]' : 'bg-panel border border-border-soft'}`}
+            title={clipboardPersist ? 'Clipboard history persistence is on' : 'Clipboard history persistence is off'}
+          >
+            <span
+              className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white transition-transform ${clipboardPersist ? 'translate-x-4' : ''}`}
+            />
+          </button>
+          <div>
+            <p className="text-sm text-fg">Persist clipboard history to disk</p>
+            <p className="text-[11px] text-fg-faint mt-0.5">
+              A separate opt-in on top of tracking: writes the in-memory history to a local
+              plaintext file so it survives restarts. Persisting clipboard content is a bigger
+              privacy commitment than an in-memory buffer — off by default.
             </p>
           </div>
         </div>

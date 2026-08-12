@@ -109,8 +109,12 @@ export const projectActionHandlers = {
     ws.send(JSON.stringify({ type: 'answer', data: `Opening **${url}** in your browser...` }));
   },
 
-  'project.action.copy_path'(ws, _action, _input, project) {
+  async 'project.action.copy_path'(ws, _action, _input, project) {
     // Phase 3 (2026-08-03): emit copy_to_clipboard WS event — frontend handles clipboard write.
+    // Phase 8 (2026-08-12): ALSO write server-side so the CLI (no browser to hand the event
+    // to) copies for real; the WS event stays as a display notice for the web client.
+    const { copyToOsClipboard } = await import('../clipboardHistory.js');
+    copyToOsClipboard(project.path);
     ws.send(JSON.stringify({ type: 'copy_to_clipboard', data: project.path }));
     ws.send(JSON.stringify({ type: 'answer', data: `Copied **[${project.name}]** path to clipboard:\n\`${project.path}\`` }));
   },

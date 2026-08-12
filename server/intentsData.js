@@ -17,6 +17,7 @@ import { PDF_INTENTS } from './intents/pdfIntents.js';
 import { REMINDER_INTENTS } from './intents/reminderIntents.js';
 import { NOTE_INTENTS } from './intents/noteIntents.js';
 import { CSV_INTENTS } from './intents/csvIntents.js';
+import { CLIPBOARD_INTENTS } from './intents/clipboardIntents.js';
 
 export const INTENTS = {
   ...CHIT_CHAT_INTENTS,
@@ -32,4 +33,5 @@ export const INTENTS = {
   ...REMINDER_INTENTS,
   ...NOTE_INTENTS,
   ...CSV_INTENTS,
+  ...CLIPBOARD_INTENTS,
 };
