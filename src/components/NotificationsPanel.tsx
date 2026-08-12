@@ -26,9 +26,9 @@ interface NotificationsPanelProps {
 const POLL_MS = 10000;
 
 const EVENT_COLORS: Record<string, string> = {
-  'file-changed': '#0A84FF',
-  'file-added': '#30D158',
-  'folder-stale': '#FF9F0A',
+  'file-changed': 'var(--color-accent-blue)',
+  'file-added': 'var(--color-accent-green)',
+  'folder-stale': 'var(--color-accent-orange)',
 };
 
 const EVENT_LABEL: Record<string, string> = {
@@ -92,15 +92,15 @@ export function NotificationsPanel({ project, onSendMessage }: NotificationsPane
     send(on ? `notify me when ${event}` : `stop notifying me about ${event}`);
   };
 
-  const cardCls = 'bg-panel rounded-xl border border-border-soft p-4';
-  const inputCls = 'text-xs bg-panel-strong border border-border-soft rounded-lg px-2.5 py-2 text-fg-strong focus:outline-none focus:border-accent/50';
+  const cardCls = 'bg-panel rounded-xl border border-border-faint p-4';
+  const inputCls = 'text-xs bg-panel-strong border border-border-soft rounded-lg px-2.5 py-2 text-fg-strong focus:outline-none focus:border-accent-blue/50';
 
   return (
     <div className="h-full overflow-y-auto p-4">
       <div className="max-w-2xl mx-auto">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2">
-            <div className="p-2 bg-scrim-faint rounded-lg text-accent">
+            <div className="p-1.5 rounded-lg bg-accent-orange/15 text-accent-orange">
               <Bell size={16} />
             </div>
             <h2 className="text-sm font-semibold text-fg-strong tracking-wide uppercase">Notifications</h2>
@@ -112,8 +112,8 @@ export function NotificationsPanel({ project, onSendMessage }: NotificationsPane
 
         {lastSent && (
           <div className="mb-3 flex items-start gap-2 text-[11px] text-fg-muted bg-scrim-faint border border-border-soft rounded-lg p-2.5">
-            <CheckCircle2 size={13} className="text-accent mt-0.5 shrink-0" />
-            <span>Sent <code className="font-mono text-accent">{lastSent}</code> — follow the result in the chat below.</span>
+            <CheckCircle2 size={13} className="text-accent-teal mt-0.5 shrink-0" />
+            <span>Sent <code className="font-mono text-accent-teal">{lastSent}</code> — follow the result in the chat below.</span>
           </div>
         )}
 
@@ -140,7 +140,7 @@ export function NotificationsPanel({ project, onSendMessage }: NotificationsPane
                 title="days without changes"
               />
             )}
-            <button onClick={addRule} disabled={!folder.trim()} className="flex items-center gap-1.5 text-xs font-medium rounded-lg px-3 py-2 bg-accent/90 text-white hover:bg-accent transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
+            <button onClick={addRule} disabled={!folder.trim()} className="flex items-center gap-1.5 text-xs font-bold rounded-lg px-3 py-2 bg-accent-blue text-white hover:opacity-90 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed">
               <Plus size={12} /> Add rule
             </button>
           </div>
@@ -155,14 +155,16 @@ export function NotificationsPanel({ project, onSendMessage }: NotificationsPane
           <h3 className="text-xs font-semibold text-fg-strong mb-2">Events & channels</h3>
           <div className="space-y-1.5">
             {Object.entries(events).map(([event, on]) => (
-              <div key={event} className="flex items-center justify-between gap-2 py-0.5">
+              <div key={event} className="flex items-center justify-between gap-2 py-1">
                 <span className="text-xs text-fg-muted font-mono">{event}</span>
                 <button
                   onClick={() => toggleEvent(event, !on)}
-                  className={`relative w-9 h-5 rounded-full transition-colors ${on ? 'bg-[#30D158]' : 'bg-panel-strong border border-border-soft'}`}
+                  role="switch"
+                  aria-checked={on}
+                  className={`relative w-11 h-6 rounded-full transition-colors ${on ? 'bg-accent-green' : 'bg-panel-strong border border-border-strong'}`}
                   title={on ? `${event} on` : `${event} off`}
                 >
-                  <span className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white transition-transform ${on ? 'translate-x-4' : ''}`} />
+                  <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow-float transition-transform ${on ? 'translate-x-5' : ''}`} />
                 </button>
               </div>
             ))}
@@ -178,13 +180,13 @@ export function NotificationsPanel({ project, onSendMessage }: NotificationsPane
           <h3 className="text-xs font-semibold text-fg-strong mb-2">Watched folders ({rules.length})</h3>
           {rules.length === 0 ? (
             <p className="text-xs text-fg-dim italic">
-              No rules yet — add one above, or type <code className="font-mono text-accent">notify me when files change in C:\Users\you\Documents</code> in chat.
+              No rules yet — add one above, or type <code className="font-mono text-accent-teal">notify me when files change in C:\Users\you\Documents</code> in chat.
             </p>
           ) : (
             <div className="space-y-2">
               {rules.map((r) => (
-                <div key={r.id} className="flex items-center gap-3 rounded-lg border border-border-soft bg-surface px-3 py-2.5">
-                  <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: EVENT_COLORS[r.event] || '#0A84FF' }} />
+                <div key={r.id} className="bg-panel rounded-xl border border-border-faint p-4 flex items-center gap-3">
+                  <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: EVENT_COLORS[r.event] || 'var(--color-accent-blue)' }} />
                   <span className="flex-1 text-xs text-fg-subtle min-w-0 truncate" title={r.folder}>{ruleSentence(r)}</span>
                   <button onClick={() => send(`stop watching ${r.folder}`)} className="p-1 text-fg-dim hover:text-red-400 rounded transition-colors" title="Remove rule">
                     <Trash2 size={13} />

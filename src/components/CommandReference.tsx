@@ -90,7 +90,7 @@ export function CommandReference({ onClose }: CommandReferenceProps) {
       <div className="max-w-5xl mx-auto h-full flex flex-col">
         <div className="flex items-center justify-between mb-4 shrink-0">
           <div className="flex items-center gap-2">
-            <div className="p-2 bg-scrim-faint rounded-lg text-accent">
+            <div className="p-1.5 rounded-lg bg-accent-teal/15 text-accent-teal">
               <BookOpen size={16} />
             </div>
             <h2 className="text-sm font-semibold text-fg-strong tracking-wide uppercase">Command Reference</h2>
@@ -104,11 +104,11 @@ export function CommandReference({ onClose }: CommandReferenceProps) {
         {error && <p className="text-xs text-red-400 mb-3">{error}</p>}
 
         <div className="flex gap-4 flex-1 min-h-0">
-          {/* Left category sidebar */}
-          <aside className="w-44 shrink-0 border border-border-soft rounded-xl bg-panel p-2 overflow-y-auto">
+          {/* Left category rail — 220px, --overlay */}
+          <aside className="w-[220px] shrink-0 bg-overlay border-r border-border-faint p-3 overflow-y-auto">
             <button
               onClick={() => setActiveCategory(null)}
-              className={cn('w-full text-left px-2.5 py-1.5 text-xs rounded-lg transition-colors mb-0.5', !activeCategory ? 'bg-accent/15 text-accent font-semibold' : 'text-fg-muted hover:text-fg-strong')}
+              className={cn('w-full text-left px-2.5 py-1.5 text-xs rounded-lg transition-colors mb-0.5', !activeCategory ? 'bg-accent-blue/15 text-accent-blue font-semibold' : 'text-fg-muted hover:text-fg-strong hover:bg-panel-strong/60')}
             >
               All commands
             </button>
@@ -116,7 +116,7 @@ export function CommandReference({ onClose }: CommandReferenceProps) {
               <button
                 key={c.label}
                 onClick={() => setActiveCategory(c.label)}
-                className={cn('w-full text-left px-2.5 py-1.5 text-xs rounded-lg transition-colors mb-0.5', activeCategory === c.label ? 'bg-accent/15 text-accent font-semibold' : 'text-fg-muted hover:text-fg-strong')}
+                className={cn('w-full text-left px-2.5 py-1.5 text-xs rounded-lg transition-colors mb-0.5', activeCategory === c.label ? 'bg-accent-blue/15 text-accent-blue font-semibold' : 'text-fg-muted hover:text-fg-strong hover:bg-panel-strong/60')}
               >
                 {c.label}
                 <span className="text-fg-faint ml-1">({c.items.length})</span>
@@ -124,8 +124,8 @@ export function CommandReference({ onClose }: CommandReferenceProps) {
             ))}
           </aside>
 
-          {/* Right searchable list */}
-          <div className="flex-1 min-w-0 flex flex-col">
+          {/* Right searchable list on --background */}
+          <div className="flex-1 min-w-0 bg-background flex flex-col">
             <div className="flex items-center gap-2 mb-3 shrink-0">
               <div className="relative flex-1">
                 <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-fg-faint" />
@@ -133,7 +133,7 @@ export function CommandReference({ onClose }: CommandReferenceProps) {
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
                   placeholder="Search commands…"
-                  className="w-full pl-8 pr-3 py-2 text-xs bg-panel-strong border border-border-soft rounded-lg text-fg-strong focus:outline-none focus:border-accent/50"
+                  className="w-full pl-8 pr-3 py-2 text-xs bg-panel-strong border border-border-soft rounded-lg text-fg-strong focus:outline-none focus:border-accent-blue/50"
                 />
               </div>
             </div>
@@ -151,10 +151,10 @@ export function CommandReference({ onClose }: CommandReferenceProps) {
                         <div className="text-xs font-semibold text-fg-strong mb-1">“{entry.command}”</div>
                         {entry.shell && (
                           <div className="relative group">
-                            <pre className="bg-scrim rounded-md px-3 py-2 text-[11px] font-mono text-fg-subtle overflow-x-auto">{entry.shell}</pre>
+                            <pre className="bg-background border border-border-faint rounded-md px-3 py-2 text-[11px] font-mono text-fg-subtle overflow-x-auto">{entry.shell}</pre>
                             <button
                               onClick={() => copy(entry.shell)}
-                              className="absolute top-1.5 right-1.5 p-1 text-fg-dim hover:text-fg-strong rounded bg-scrim opacity-0 group-hover:opacity-100 transition-opacity"
+                              className="absolute top-1.5 right-1.5 p-1 text-fg-dim hover:text-accent-blue rounded bg-background border border-border-faint transition-colors"
                               title="Copy command"
                             >
                               <TerminalSquare size={12} />

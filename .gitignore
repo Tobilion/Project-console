@@ -28,6 +28,8 @@ data/schedules.json
 data/schedule-log.md
 # Phase 2: notification rules + webhook URLs (bearer secrets — never git-tracked, see notify/notifyStore.js)
 data/notifications.json
+# Phase 8: OS clipboard history when clipboardPersist is on (privacy — never git-tracked)
+data/clipboard-history.json
 
 # Local Project Console chat memory (not for git)
 .console/

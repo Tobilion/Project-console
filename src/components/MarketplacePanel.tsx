@@ -70,7 +70,7 @@ export function MarketplacePanel({ project, onSendMessage }: MarketplacePanelPro
       <div className="max-w-4xl mx-auto">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2">
-            <div className="p-2 bg-scrim-faint rounded-lg text-accent">
+            <div className="p-1.5 rounded-lg bg-accent-teal/15 text-accent-teal">
               <Store size={16} />
             </div>
             <h2 className="text-sm font-semibold text-fg-strong tracking-wide uppercase">Pack Marketplace</h2>
@@ -82,8 +82,8 @@ export function MarketplacePanel({ project, onSendMessage }: MarketplacePanelPro
 
         {lastSent && (
           <div className="mb-3 flex items-start gap-2 text-[11px] text-fg-muted bg-scrim-faint border border-border-soft rounded-lg p-2.5">
-            <CheckCircle2 size={13} className="text-accent mt-0.5 shrink-0" />
-            <span>Sent <code className="font-mono text-accent">{lastSent}</code> — the preview and confirm appear in the chat below.</span>
+            <CheckCircle2 size={13} className="text-accent-teal mt-0.5 shrink-0" />
+            <span>Sent <code className="font-mono text-accent-teal">{lastSent}</code> — the preview and confirm appear in the chat below.</span>
           </div>
         )}
 
@@ -95,10 +95,10 @@ export function MarketplacePanel({ project, onSendMessage }: MarketplacePanelPro
               value={urlInput}
               onChange={(e) => setUrlInput(e.target.value)}
               placeholder="https://example.com/pack-registry.json (no registry configured by default)"
-              className="w-full pl-8 pr-3 py-2 text-xs bg-panel-strong border border-border-soft rounded-lg text-fg-strong font-mono focus:outline-none focus:border-accent/50"
+              className="w-full pl-8 pr-3 py-2 text-xs bg-panel-strong border border-border-soft rounded-lg text-fg-strong font-mono focus:outline-none focus:border-accent-blue/50"
             />
           </div>
-          <button onClick={saveUrl} disabled={!urlInput.trim()} className="text-xs font-medium rounded-lg px-3 py-2 bg-accent/90 text-white hover:bg-accent transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
+          <button onClick={saveUrl} disabled={!urlInput.trim()} className="text-xs font-bold rounded-lg px-4 py-2 bg-accent-blue text-white hover:opacity-90 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed">
             Set registry
           </button>
         </div>
@@ -126,9 +126,9 @@ export function MarketplacePanel({ project, onSendMessage }: MarketplacePanelPro
         {status === 'ready' && packs.length > 0 && (
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {packs.map((p) => (
-              <div key={p.name} className="bg-panel rounded-[19px] border border-border-soft p-4 flex flex-col">
+              <div key={p.name} className="bg-panel rounded-2xl border border-border-faint p-4 flex flex-col">
                 <div className="flex items-start gap-3 mb-2">
-                  <div className="w-14 h-14 rounded-[12px] bg-gradient-to-br from-[#3d6bff] to-[#6366f1] flex items-center justify-center text-white text-lg font-bold shrink-0">
+                  <div className="w-12 h-12 rounded-[10px] bg-panel-strong text-accent-blue flex items-center justify-center text-lg font-bold shrink-0">
                     {(p.name || '?')[0].toUpperCase()}
                   </div>
                   <div className="min-w-0">
@@ -139,7 +139,7 @@ export function MarketplacePanel({ project, onSendMessage }: MarketplacePanelPro
                 <p className="text-[11px] text-fg-muted leading-relaxed mb-3 line-clamp-2 flex-1">{p.description || 'No description.'}</p>
                 <button
                   onClick={() => install(p.name)}
-                  className="flex items-center justify-center gap-1.5 text-xs font-bold rounded-full px-3 py-1.5 bg-accent/90 text-white hover:bg-accent transition-colors"
+                  className="flex items-center justify-center gap-1.5 text-xs font-bold rounded-full px-3 py-1.5 bg-accent-blue text-white hover:opacity-90 transition-opacity"
                 >
                   <Download size={12} /> Install
                 </button>
