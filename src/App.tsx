@@ -10,10 +10,11 @@ import { CommandDeck } from './components/CommandDeck';
 import { useConsole } from './hooks/useConsole';
 import { useUserProfile } from './hooks/useUserProfile';
 import { getRandomGreeting } from './utils/greetings';
-import { Home, LayoutDashboard, LayoutGrid, Search, Settings, Loader2, X } from 'lucide-react';
+import { Home, LayoutDashboard, LayoutGrid, Search, Settings, Loader2, X, BookOpen } from 'lucide-react';
 import { ThemeToggle } from './components/ui/ThemeToggle';
 import { UserProfileModal } from './components/UserProfileModal';
 import { FirstRunSetup } from './components/FirstRunSetup';
+import { CommandReference } from './components/CommandReference';
 import { GENERAL_PROJECT_ID } from './types';
 import type { Project } from './types';
 
@@ -70,6 +71,7 @@ function App() {
   // doesn't touch any chat state, so switching in and out of it never loses anything.
   const [chatFullscreen, setChatFullscreen] = React.useState(false);
   const [showDashboard, setShowDashboard] = React.useState(false);
+  const [showCommandRef, setShowCommandRef] = React.useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = React.useState(false);
   const [deckOpen, setDeckOpen] = React.useState(false);
   const [profileOpen, setProfileOpen] = React.useState(false);
@@ -135,6 +137,7 @@ function App() {
 
   const handleWorkspaceTabChange = (mode: 'dev' | 'general') => {
     setWorkspaceTab(mode);
+    setShowCommandRef(false);
     // 2026-08-12: the General tab is tools-first — landing on the Tools card grid (chat stays
     // reachable via the grid's close/back or the header Tools button). Developer stays chat.
     if (mode === 'general') {
@@ -293,17 +296,20 @@ function App() {
               :{window.location.port}
             </span>
           )}
-          <button onClick={() => { setShowDashboard(false); setToolsOpen(false); setChatFullscreen(false); setShowWelcome(true); }} className="p-2 text-fg-dim hover:text-fg-strong transition-colors" title="Home">
+          <button onClick={() => { setShowDashboard(false); setToolsOpen(false); setChatFullscreen(false); setShowCommandRef(false); setShowWelcome(true); }} className="p-2 text-fg-dim hover:text-fg-strong transition-colors" title="Home">
             <Home size={18} />
           </button>
           <button onClick={() => setDeckOpen(v => !v)} className="p-2 text-fg-dim hover:text-fg-strong transition-colors" title="Command deck (Ctrl+K)">
             <Search size={18} />
           </button>
+          <button onClick={() => { setShowDashboard(false); setToolsOpen(false); setShowCommandRef(v => !v); }} className={`p-2 transition-colors ${showCommandRef ? 'text-accent' : 'text-fg-dim hover:text-fg-strong'}`} title="Command reference (all commands)">
+            <BookOpen size={18} />
+          </button>
           <button onClick={() => { setToolsOpen(false); setShowDashboard(v => !v); }} className={`p-2 transition-colors ${showDashboard ? 'text-accent' : 'text-fg-dim hover:text-fg-strong'}`} title="Dashboard">
             <LayoutDashboard size={18} />
           </button>
           {workspaceTab === 'general' && (
-            <button onClick={() => { setShowDashboard(false); setToolsOpen(v => !v); }} className={`p-2 transition-colors ${toolsOpen ? 'text-accent' : 'text-fg-dim hover:text-fg-strong'}`} title="Interactive tools (General workspace)">
+            <button onClick={() => { setShowDashboard(false); setShowCommandRef(false); setToolsOpen(v => !v); }} className={`p-2 transition-colors ${toolsOpen ? 'text-accent' : 'text-fg-dim hover:text-fg-strong'}`} title="Interactive tools (General workspace)">
               <LayoutGrid size={18} />
             </button>
           )}
@@ -335,8 +341,12 @@ function App() {
         </div>
       )}
 
-      <main className={`relative z-10 flex-1 min-h-0 overflow-hidden ${showDashboard || toolsOpen ? '' : chatFullscreen ? 'block' : 'flex flex-col lg:flex-row gap-6'}`}>
-        {toolsOpen ? (
+      <main className={`relative z-10 flex-1 min-h-0 overflow-hidden ${showDashboard || toolsOpen || showCommandRef ? '' : chatFullscreen ? 'block' : 'flex flex-col lg:flex-row gap-6'}`}>
+        {showCommandRef ? (
+          <div className="h-full p-4">
+            <CommandReference onClose={() => setShowCommandRef(false)} />
+          </div>
+        ) : toolsOpen ? (
           <div className="h-full p-4">
             <ToolsPanel
               panels={toolPanels}
@@ -472,7 +482,7 @@ function App() {
         onSelectProject={handleSelectProject}
         onDirectCommand={handleDirectCommand}
         onSendMessage={handleSendMessage}
-        onHome={() => { setShowDashboard(false); setToolsOpen(false); setChatFullscreen(false); setShowWelcome(true); }}
+        onHome={() => { setShowDashboard(false); setToolsOpen(false); setChatFullscreen(false); setShowCommandRef(false); setShowWelcome(true); }}
         onToggleDashboard={() => { setToolsOpen(false); setShowDashboard(v => !v); }}
         onNewChat={handleNewChat}
         sidebarCollapsed={sidebarCollapsed}

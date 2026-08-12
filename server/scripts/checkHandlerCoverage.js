@@ -217,6 +217,10 @@ await handleBuiltinIntent(ws, 'system.tools.open_backup', 'open backup', proj, {
 eq('tools leaf: open_backup answers with openPanel + CLI-usable text', ws.sent.length === 1 && ws.sent[0].type === 'answer' && ws.sent[0].openPanel === 'backup' && /backup this folder/.test(ws.sent[0].data), true);
 
 sent.length = 0;
+await handleBuiltinIntent(ws, 'system.chit_chat.list_commands', 'list commands', proj, {});
+eq('chit-chat leaf: list_commands answers the full catalog', ws.sent.length === 1 && ws.sent[0].type === 'answer' && /Command reference/.test(ws.sent[0].data) && /entries/.test(ws.sent[0].data), true);
+
+sent.length = 0;
 const unknown = await handleBuiltinIntent(ws, 'no_such_intent', 'x', proj, {});
 eq('unknown intent -> false, nothing sent', unknown === false && ws.sent.length === 0, true);
 

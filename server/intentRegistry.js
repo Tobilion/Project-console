@@ -63,7 +63,7 @@ export const OPEN_PROJECT_RE = /^(?:open|launch|run|start)\s+(?:the\s+|this\s+)?
 // both the existing fast path and the new router tier can actually reach them.
 export const BUILTIN_INTENTS = new Set([
   'system.chit_chat.greeting', 'system.chit_chat.status', 'system.chit_chat.gratitude',
-  'system.chit_chat.clear', 'system.chit_chat.help', 'system.chit_chat.git_status',
+  'system.chit_chat.clear', 'system.chit_chat.help', 'system.chit_chat.list_commands', 'system.chit_chat.git_status',
   'system.chit_chat.explain_followup', 'system.chit_chat.undo', 'system.chit_chat.deploy',
   'system.chit_chat.yes_no', 'system.chit_chat.farewell', 'system.chit_chat.identity',
   'system.chit_chat.needs_ai_mode', 'system.chit_chat.ack', 'system.chit_chat.joke',

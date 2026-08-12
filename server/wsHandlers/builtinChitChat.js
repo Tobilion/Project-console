@@ -236,6 +236,21 @@ export const chitChatHandlers = {
     ws.send(JSON.stringify({ type: 'suggestions', data: chips }));
   },
 
+  'system.chit_chat.list_commands': async (ws) => {
+    // Phase 10 (2026-08-12): the full catalog as plain text — the CLI's equivalent of the web
+    // Command Reference tab. Same data as how_do_i's lookup, no filtering: every entry, one
+    // line each (phrase -> shell command when one exists). No new WS type — a normal answer.
+    const { COMMAND_DOCS } = await import('../consoleCommandDocs.js');
+    const lines = COMMAND_DOCS.map((e) => {
+      const shell = e.shell ? ` → \`${e.shell}\`` : '';
+      return `- \`${e.command}\`${shell}`;
+    });
+    ws.send(JSON.stringify({
+      type: 'answer',
+      data: `### Command reference (${COMMAND_DOCS.length} entries)\n\n${lines.join('\n')}\n\nAsk "how do i <thing>" about any of them for the full explanation.`,
+    }));
+  },
+
   'system.chit_chat.yes_no': async (ws, action, input, project, sessionContext) => {
     // Inline yes/no handled at the confirmation prompt level — this is a fallback
     // in case someone types "yes" or "no" when no confirmation is pending.

@@ -237,6 +237,20 @@ const BATTERIES = [
     ],
   },
   {
+    // Phase 10 (2026-08-12): full-catalog command list — "list commands" / "help all" render
+    // every consoleCommandDocs entry (CLI equivalent of the web Command Reference tab).
+    // "list all commands"/"show all commands" still route to help (its compact summary is a
+    // fine answer for those — both are command-list requests, no behavior loss).
+    name: 'PHASE10 (command reference list)',
+    items: [
+      ['list commands', 'BUILTIN=system.chit_chat.list_commands'],
+      ['help all', 'BUILTIN=system.chit_chat.list_commands'],
+      ['list all commands', 'BUILTIN=system.chit_chat.help'],
+      ['show all commands', 'BUILTIN=system.chit_chat.help'],
+      ['help', 'BUILTIN=system.chit_chat.help'],
+    ],
+  },
+  {
     // Phase 6 (2026-08-12): expanded calculator grammar — unit conversion + percentage/tax/tip
     // stay on the same calculate intent; the percent sign / unit words carry little embedding
     // weight, so these shapes are pinned by pre-semantic overrides.

@@ -110,7 +110,7 @@ export const CHIT_CHAT_INTENTS = {
   },
   'system.chit_chat.help': {
     examples: [
-      'help', 'what can you do', 'list commands', 'show me what you can do',
+      'help', 'what can you do', 'show me what you can do',
       'how do i use this', 'commands list', 'available commands',
       'what commands', 'show commands', 'how does this work',
       'show available commands', 'help me',
@@ -126,6 +126,18 @@ export const CHIT_CHAT_INTENTS = {
       'what can i say to you', 'list everything you can do',
       'im lost help', 'i dont know what to do', 'confused, help',
       'need assistance', 'assist me', 'point me in the right direction',
+    ],
+  },
+  // Phase 10 (2026-08-12): the full catalog printed as plain text — "list commands" /
+  // "help all" render EVERY consoleCommandDocs.js entry (grouped by category), the CLI's
+  // equivalent of the web Command Reference tab. Kept separate from 'help' so the one-word
+  // help keeps its compact buildHelpMessage summary. Deliberately NO "show ..." shapes
+  // ("show everything you can do" is status-shaped and drifted off the status intent —
+  // same corpus-collision lesson as Phase 1.5's openers).
+  'system.chit_chat.list_commands': {
+    examples: [
+      'list commands', 'help all', 'list all commands', 'show all commands',
+      'full command list',
     ],
   },
   'system.chit_chat.git_status': {

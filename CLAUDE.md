@@ -624,7 +624,11 @@ npm run lint    # tsc --noEmit
   re-exports), `regexUtils.js`, `markdownUtils.js`, `webSearch.js` (DuckDuckGo, decodes
   `uddg` redirects, deep-research SSRF guard), `consoleCommandDocs.js` (reference catalog for
   the `system.chit_chat.how_do_i` intent — keyword-matched entries rendered by builtinChitChat;
-  keep keywords narrow, "push"/"port" alone hijack adjacent docs), `pluginTools.js`
+  keep keywords narrow, "push"/"port" alone hijack adjacent docs. Phase 10, 2026-08-12: also
+  served as JSON at `GET /api/command-docs` (routes/commandDocsRoutes.js) for the web Command
+  Reference tab (`src/components/CommandReference.tsx` — category sidebar + search +
+  phrase/shell code blocks, header book icon), and `system.chit_chat.list_commands` prints the
+  ENTIRE catalog as plain text from the CLI ("list commands" / "help all")), `pluginTools.js`
   (console.tools.json manifest
   parsing + sanitizePermissions + injection-safe substitution), `contextInjector.js`
   (codebase-index snippets appended to some trigger replies), `contextResolver.js`
@@ -1124,7 +1128,14 @@ time/date/calculate rows, 92/92).
    opener row + 3 temp-dir backup-store asserts: zip created/list/missing-subfolder-refused);
    check-matcher 264/266 (baseline 259/261 + 5 BACKUP battery rows, same TWO PRE-EXISTING
    drifts); check-intents unchanged at 1/5/82; check-docs 54/54 (+1 backup catalog entry);
-   check-ws-cases 118/118 unchanged.
+   check-ws-cases 118/118 unchanged. Phase 10 (2026-08-12): check-handlers 169/169 (baseline
+   168/168 + 1 list_commands dispatch row); check-matcher 269/271 (baseline 264/266 + 5
+   PHASE10 rows — "list commands"/"help all" route to the new list_commands intent, while
+   "list all commands"/"show all commands" stay on help (both answer fine; no override forced);
+   the list_commands examples deliberately carry NO "show ..." shapes after "show everything
+   you can do" drifted the status intent's didYouMean — same corpus-collision lesson as
+   Phase 1.5; same TWO PRE-EXISTING drifts); check-intents unchanged at 1/5/82; check-docs
+   55/55 (+1 list-commands catalog entry); check-ws-cases 118/118 unchanged.
    Run the relevant battery after ANY edit to the corresponding module.
 - **editFile** tolerates whitespace differences (normalized line-range fallback) but not
   wrong wording; on total failure the error names both attempts and tells the caller to
