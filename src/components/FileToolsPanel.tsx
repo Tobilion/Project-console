@@ -185,9 +185,9 @@ export function FileToolsPanel({ project, onSendMessage }: FileToolsPanelProps) 
     lastSentTimer.current = setTimeout(() => setLastSent(null), 8000);
   };
 
-  const runBtn = 'flex items-center justify-center gap-1.5 text-xs font-medium rounded-lg px-3 py-2 bg-accent/90 text-white hover:bg-accent transition-colors disabled:opacity-40 disabled:cursor-not-allowed';
+  const runBtn = 'flex items-center justify-center gap-1.5 text-xs font-bold rounded-lg px-3 py-2 bg-accent-blue text-white hover:opacity-90 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed';
   const tabBtn = (v: string, label: string) => (
-    <button onClick={() => setView(v as typeof view)} className={cn('px-3 py-1.5 text-xs rounded-lg transition-colors', view === v ? 'bg-accent/15 text-accent font-semibold' : 'text-fg-muted hover:text-fg-strong')}>{label}</button>
+    <button onClick={() => setView(v as typeof view)} className={cn('w-full text-left px-3 py-2 text-xs rounded-lg transition-colors', view === v ? 'bg-accent-blue/15 text-accent-blue font-semibold' : 'text-fg-muted hover:text-fg-strong hover:bg-panel-strong/60')}>{label}</button>
   );
 
   const Row = ({ name, path, size, modifiedAt, isDir, onClick }: FileEntry & { onClick?: () => void }) => (
@@ -208,7 +208,7 @@ export function FileToolsPanel({ project, onSendMessage }: FileToolsPanelProps) 
           onChange={(e) => setSearchQuery(e.target.value)}
           onKeyDown={handleSearchKeyDown}
           placeholder="Search by name or content (press Enter)"
-          className="flex-1 text-xs bg-panel-strong border border-border-soft rounded-lg px-2.5 py-2 text-fg-strong focus:outline-none focus:border-accent/50"
+          className="flex-1 text-xs bg-panel-strong border border-border-soft rounded-lg px-2.5 py-2 text-fg-strong focus:outline-none focus:border-accent-blue/50"
         />
         <button onClick={() => runSearch(searchQuery)} disabled={!searchQuery.trim()} className={runBtn}>
           Search
@@ -239,13 +239,13 @@ export function FileToolsPanel({ project, onSendMessage }: FileToolsPanelProps) 
         <div className="flex items-center gap-1 bg-panel-strong rounded-lg p-0.5 border border-border-soft">
           <button
             onClick={() => fetchTidyPlan(false)}
-            className={cn('px-3 py-1.5 text-xs rounded-md transition-colors', !tidyByDate ? 'bg-accent/15 text-accent font-semibold' : 'text-fg-muted hover:text-fg-strong')}
+            className={cn('px-3 py-1.5 text-xs rounded-md transition-colors', !tidyByDate ? 'bg-accent-blue/15 text-accent-blue font-semibold' : 'text-fg-muted hover:text-fg-strong')}
           >
             By type
           </button>
           <button
             onClick={() => fetchTidyPlan(true)}
-            className={cn('px-3 py-1.5 text-xs rounded-md transition-colors', tidyByDate ? 'bg-accent/15 text-accent font-semibold' : 'text-fg-muted hover:text-fg-strong')}
+            className={cn('px-3 py-1.5 text-xs rounded-md transition-colors', tidyByDate ? 'bg-accent-blue/15 text-accent-blue font-semibold' : 'text-fg-muted hover:text-fg-strong')}
           >
             By date
           </button>
@@ -277,10 +277,10 @@ export function FileToolsPanel({ project, onSendMessage }: FileToolsPanelProps) 
                     if (next.has(m.from)) next.delete(m.from); else next.add(m.from);
                     return next;
                   })}
-                  className={cn('shrink-0 w-[18px] h-[18px] rounded border-2 flex items-center justify-center transition-colors', on ? 'border-accent bg-accent/15' : 'border-border-soft')}
+                  className={cn('shrink-0 w-[18px] h-[18px] rounded border-2 flex items-center justify-center transition-colors', on ? 'border-accent-blue bg-accent-blue/15' : 'border-border-soft')}
                   title={on ? 'Exclude this move' : 'Include this move'}
                 >
-                  {on && <CheckCircle2 size={12} className="text-accent" />}
+                  {on && <CheckCircle2 size={12} className="text-accent-blue" />}
                 </button>
                 {fileIcon(m.from)}
                 <span className="text-fg-strong truncate flex-1 font-mono" title={m.from}>{m.from}</span>
@@ -301,7 +301,7 @@ export function FileToolsPanel({ project, onSendMessage }: FileToolsPanelProps) 
           <RefreshCw size={12} className={cn(loading && 'animate-spin')} /> Scan for duplicates
         </button>
         {dupeGroups.length > 0 && (
-          <button onClick={runDupDelete} disabled={dupSelected.size === 0} className={cn(runBtn, 'w-auto !bg-[#FF3B30]/15 !text-[#FF3B30] !border !border-[#FF3B30]/30 hover:!bg-[#FF3B30]/20')}>
+          <button onClick={runDupDelete} disabled={dupSelected.size === 0} className={cn(runBtn, 'w-auto !bg-accent-red/15 !text-accent-red !border !border-accent-red/30 hover:!bg-accent-red/20')}>
             Delete {dupSelected.size} selected older cop{dupSelected.size === 1 ? 'y' : 'ies'}
           </button>
         )}
@@ -311,37 +311,50 @@ export function FileToolsPanel({ project, onSendMessage }: FileToolsPanelProps) 
         always kept and cannot be selected.
       </p>
       {dupeGroups.length > 0 && (
-        <div className="rounded-xl border border-border-soft overflow-hidden">
+        <div className="space-y-4">
           {dupeGroups.map((g, gi) => (
-            <div key={g.hash} className={gi > 0 ? 'border-t border-border-soft' : ''}>
-              <div className="flex items-center gap-2 px-3 py-2 text-xs font-semibold bg-scrim-faint text-fg-muted">
+            <div key={g.hash}>
+              <div className="flex items-center gap-2 px-1 py-1 text-xs font-semibold text-fg-muted">
                 <span>{g.files.length} copies — {formatSize(g.waste)} wasted</span>
               </div>
-              {g.files.map((f) => {
-                const isKeep = f.path === g.keepPath;
-                const on = !isKeep && dupSelected.has(f.path);
-                return (
-                  <div key={f.path} className="flex items-center gap-2 px-3 py-1.5 text-xs border-t border-border-faint min-h-[30px]">
-                    <button
-                      onClick={() => { if (isKeep) return; setDupSelected((prev) => {
-                        const next = new Set(prev);
-                        if (next.has(f.path)) next.delete(f.path); else next.add(f.path);
-                        return next;
-                      }); }}
-                      disabled={isKeep}
-                      className={cn('shrink-0 w-[18px] h-[18px] rounded border-2 flex items-center justify-center transition-colors', on ? 'border-accent bg-accent/15' : isKeep ? 'border-border-soft opacity-40' : 'border-border-soft')}
-                      title={isKeep ? 'Newest copy — always kept' : on ? 'Exclude from delete' : 'Select for delete'}
-                    >
-                      {on && <CheckCircle2 size={12} className="text-accent" />}
-                      {isKeep && <Check size={12} className="text-fg-faint" />}
-                    </button>
-                    {fileIcon(f.path)}
-                    <span className="text-fg-strong truncate flex-1 font-mono" title={f.path}>{f.path}</span>
-                    <span className="text-fg-dim text-[11px]">{formatSize(f.size)}</span>
-                    <span className={cn('text-[11px]', isKeep ? 'text-accent font-semibold' : 'text-fg-faint')}>{isKeep ? 'keep newest' : 'older copy'}</span>
-                  </div>
-                );
-              })}
+              <div className="flex gap-2 flex-wrap">
+                {g.files.map((f) => {
+                  const isKeep = f.path === g.keepPath;
+                  const on = !isKeep && dupSelected.has(f.path);
+                  return (
+                    <div key={f.path} className={cn('w-[230px] rounded-xl border p-3 flex flex-col gap-1.5', isKeep ? 'border-accent-blue/40 bg-accent-blue/5' : 'bg-panel-strong border-border-faint')}>
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        {fileIcon(f.path)}
+                        <span className="text-fg-strong truncate font-mono text-[11px]" title={f.path}>{f.path.split('/').pop()}</span>
+                      </div>
+                      <div className="text-[10px] text-fg-dim font-mono truncate" title={f.path}>{f.path}</div>
+                      <div className="flex items-center justify-between text-[10px] text-fg-dim">
+                        <span>{formatSize(f.size)}</span>
+                        <span>{formatDate(f.modifiedAt)}</span>
+                      </div>
+                      <div className="mt-1.5">
+                        {isKeep ? (
+                          <span className="flex items-center justify-center gap-1 text-[11px] font-semibold text-accent-blue">
+                            <Check size={12} /> keep newest
+                          </span>
+                        ) : (
+                          <button
+                            onClick={() => setDupSelected((prev) => {
+                              const next = new Set(prev);
+                              if (next.has(f.path)) next.delete(f.path); else next.add(f.path);
+                              return next;
+                            })}
+                            className={cn('w-full flex items-center justify-center gap-1.5 rounded-lg border px-2 py-1.5 text-[11px] font-semibold transition-colors',
+                              on ? 'border-accent-blue bg-accent-blue text-white' : 'border-border-strong text-fg-muted hover:border-accent-blue/60 hover:text-fg-strong')}
+                          >
+                            {on && <Check size={12} />} {on ? 'will delete' : 'select for delete'}
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           ))}
         </div>
@@ -361,54 +374,62 @@ export function FileToolsPanel({ project, onSendMessage }: FileToolsPanelProps) 
   }
 
   return (
-    <div className="h-full overflow-y-auto p-4">
-      <div className="max-w-5xl mx-auto">
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-2">
-            <div className="p-2 bg-scrim-faint rounded-lg text-accent">
-              <FolderSearch size={16} />
-            </div>
-            <h2 className="text-sm font-semibold text-fg-strong tracking-wide uppercase">File Tools</h2>
-            <span className="text-xs text-fg-dim font-normal normal-case">— {project.name}</span>
+    <div className="h-full flex flex-col">
+      {/* Header row */}
+      <div className="flex items-center justify-between px-4 py-2 border-b border-border-faint shrink-0">
+        <div className="flex items-center gap-2">
+          <div className="p-1.5 rounded-lg bg-accent-teal/15 text-accent-teal">
+            <FolderSearch size={16} />
           </div>
-          <button onClick={() => fetchFiles(currentPath)} className="p-1.5 text-fg-dim hover:text-fg-strong rounded-md transition-colors" title="Refresh">
-            <RefreshCw size={15} className={cn(loading && 'animate-spin')} />
-          </button>
+          <h2 className="text-sm font-semibold text-fg-strong tracking-wide uppercase">File Tools</h2>
+          <span className="text-xs text-fg-dim font-normal normal-case">— {project.name}</span>
         </div>
+        <button onClick={() => fetchFiles(currentPath)} className="p-1.5 text-fg-dim hover:text-fg-strong rounded-md transition-colors" title="Refresh">
+          <RefreshCw size={15} className={cn(loading && 'animate-spin')} />
+        </button>
+      </div>
 
-        {error && <p className="text-xs text-red-400 mb-3">{error}</p>}
+      {error && <p className="text-xs text-red-400 px-4 py-1.5">{error}</p>}
 
-        <div className="flex items-center gap-1 mb-4">
+      <div className="flex-1 min-h-0 flex">
+        {/* Left filter sidebar — Finder-style rail */}
+        <div className="w-[190px] shrink-0 bg-overlay border-r border-border-faint p-3 flex flex-col gap-1 overflow-y-auto">
+          <p className="text-[10px] uppercase tracking-wider text-fg-faint font-bold mb-1">Views</p>
           {tabBtn('search', 'Search & Browse')}
           {tabBtn('tidy', 'Tidy')}
           {tabBtn('duplicates', 'Duplicates')}
         </div>
 
-        {lastSent && (
-          <div className="mb-3 flex items-start gap-2 text-[11px] text-fg-muted bg-scrim-faint border border-border-soft rounded-lg p-2.5">
-            <CheckCircle2 size={13} className="text-accent mt-0.5 shrink-0" />
-            <span>Sent <code className="font-mono text-accent">{lastSent}</code> — confirm or follow the result in the chat below.</span>
-          </div>
-        )}
+        {/* Right file browser */}
+        <div className="flex-1 min-w-0 bg-panel overflow-y-auto p-4">
+          <div className="max-w-4xl mx-auto">
+            {lastSent && (
+              <div className="mb-3 flex items-start gap-2 text-[11px] text-fg-muted bg-scrim-faint border border-border-soft rounded-lg p-2.5">
+                <CheckCircle2 size={13} className="text-accent-blue mt-0.5 shrink-0" />
+                <span>Sent <code className="font-mono text-accent-blue">{lastSent}</code> — confirm or follow the result in the chat below.</span>
+              </div>
+            )}
 
-        {view === 'search' && SearchView}
-        {view === 'tidy' && TidyView}
-        {view === 'duplicates' && DuplicatesView}
+            {view === 'search' && SearchView}
+            {view === 'tidy' && TidyView}
+            {view === 'duplicates' && DuplicatesView}
 
-        {view === 'search' && (
-          <div className="mt-4 rounded-xl border border-border-soft overflow-hidden">
-            <div className="text-[11px] text-fg-dim px-3 py-1 bg-scrim-faint flex items-center gap-1">
-              <FolderOpen size={12} /> {currentPath}
-            </div>
-            {fileEntries.length === 0 && !loading ? (
-              <div className="px-3 py-6 text-xs text-fg-dim italic text-center">This folder is empty.</div>
-            ) : (
-              fileEntries.map((f) => (
-                <Row key={f.path} {...f} onClick={f.isDir ? () => { setCurrentPath(f.path); fetchFiles(f.path); } : undefined} />
-              ))
+            {view === 'search' && (
+              <div className="mt-4 rounded-xl border border-border-soft overflow-hidden">
+                <div className="text-[11px] text-fg-dim px-3 py-1 bg-scrim-faint flex items-center gap-1">
+                  <FolderOpen size={12} /> {currentPath}
+                </div>
+                {fileEntries.length === 0 && !loading ? (
+                  <div className="px-3 py-6 text-xs text-fg-dim italic text-center">This folder is empty.</div>
+                ) : (
+                  fileEntries.map((f) => (
+                    <Row key={f.path} {...f} onClick={f.isDir ? () => { setCurrentPath(f.path); fetchFiles(f.path); } : undefined} />
+                  ))
+                )}
+              </div>
             )}
           </div>
-        )}
+        </div>
       </div>
     </div>
   );

@@ -57,6 +57,35 @@ export function PdfToolsPanel({ project, onSendMessage }: PdfToolsPanelProps) {
   const [pageTo, setPageTo] = useState('2');
   const [extractOutput, setExtractOutput] = useState('');
   const [watermarkText, setWatermarkText] = useState('confidential');
+  // Stage D: extract-text and extract-pages share one 2x2 grid cell (text | pages sub-mode).
+  const [extractMode, setExtractMode] = useState<'text' | 'pages'>('text');
+
+  // Stage D: drag-and-drop upload zone with a file-picker fallback. The file is POSTed to
+  // /api/projects/:id/pdf-upload (project-scoped, journaled) and the list refreshes so the
+  // existing operation pickers work on it immediately.
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [dragging, setDragging] = useState(false);
+  const [uploading, setUploading] = useState(false);
+
+  const uploadFile = async (file: File) => {
+    if (!project?.id) return;
+    if (!/\.pdf$/i.test(file.name)) { setError('Only .pdf files can be dropped here.'); return; }
+    setUploading(true);
+    setError(null);
+    try {
+      const res = await fetch(
+        `/api/projects/${encodeURIComponent(project.id)}/pdf-upload?file=${encodeURIComponent(file.name)}`,
+        { method: 'POST', headers: { 'Content-Type': 'application/pdf' }, body: file }
+      );
+      const data = await res.json();
+      if (!res.ok) { setError(data?.error || 'Upload failed.'); return; }
+      await fetchFiles();
+    } catch {
+      setError('Could not reach the server.');
+    } finally {
+      setUploading(false);
+    }
+  };
 
   const fetchFiles = useCallback(async () => {
     if (!project?.id) return;
@@ -160,8 +189,8 @@ export function PdfToolsPanel({ project, onSendMessage }: PdfToolsPanelProps) {
 
   const card = 'bg-panel rounded-xl border border-border-soft p-4';
   const label = 'block text-[11px] uppercase tracking-wider text-fg-dim mb-1.5';
-  const inputCls = 'w-full text-xs bg-panel-strong border border-border-soft rounded-lg px-2.5 py-2 text-fg-strong focus:outline-none focus:border-accent/50';
-  const runBtn = 'mt-3 w-full flex items-center justify-center gap-1.5 text-xs font-medium rounded-lg px-3 py-2 bg-accent/90 text-white hover:bg-accent transition-colors disabled:opacity-40 disabled:cursor-not-allowed';
+  const inputCls = 'w-full text-xs bg-panel-strong border border-border-soft rounded-lg px-2.5 py-2 text-fg-strong focus:outline-none focus:border-accent-blue/50';
+  const runBtn = 'mt-3 w-full min-h-11 flex items-center justify-center gap-1.5 text-xs font-bold rounded-lg px-3 py-2 bg-accent-blue text-white hover:opacity-90 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed';
   const smallBtn = 'p-1.5 text-fg-dim hover:text-fg-strong transition-colors rounded-md hover:bg-scrim-faint';
 
   return (
@@ -187,9 +216,45 @@ export function PdfToolsPanel({ project, onSendMessage }: PdfToolsPanelProps) {
             Select a project to work with its PDFs.
           </div>
         ) : (
-          <div className="grid gap-4 lg:grid-cols-5">
-            {/* File list */}
-            <div className={cn(card, 'lg:col-span-2')}>
+          <>
+            {/* Drag-and-drop upload zone — dashed --border-strong, file-picker fallback */}
+            <div
+              onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
+              onDragLeave={() => setDragging(false)}
+              onDrop={(e) => {
+                e.preventDefault();
+                setDragging(false);
+                const f = e.dataTransfer.files?.[0];
+                if (f) uploadFile(f);
+              }}
+              className={`border-2 border-dashed rounded-xl p-5 mb-4 text-center transition-colors cursor-pointer ${dragging ? 'border-accent-blue bg-accent-blue/5' : 'border-border-strong bg-background hover:border-accent-blue/50'}`}
+              onClick={() => fileInputRef.current?.click()}
+            >
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".pdf"
+                className="hidden"
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  if (f) uploadFile(f);
+                  e.target.value = '';
+                }}
+              />
+              <p className="text-[13px] text-fg-muted">
+                {uploading ? 'Uploading…' : dragging ? 'Drop it to upload' : 'Drag & drop a PDF into this project'}
+              </p>
+              <button
+                onClick={(e) => { e.stopPropagation(); fileInputRef.current?.click(); }}
+                className="mt-1.5 text-[11px] text-accent-blue hover:underline"
+              >
+                or pick a file…
+              </button>
+            </div>
+
+            <div className="grid gap-4 lg:grid-cols-5">
+              {/* File list */}
+              <div className={cn(card, 'lg:col-span-2')}>
               <h3 className="text-xs font-semibold text-fg-strong mb-2">Project PDFs</h3>
               {error && <p className="text-xs text-red-400 mb-2">{error}</p>}
               {files.length === 0 ? (
@@ -226,8 +291,8 @@ export function PdfToolsPanel({ project, onSendMessage }: PdfToolsPanelProps) {
               )}
             </div>
 
-            {/* Operations */}
-            <div className="lg:col-span-3 space-y-4">
+            {/* Operations — 2x2 card grid */}
+            <div className="lg:col-span-3 grid grid-cols-1 sm:grid-cols-2 gap-4">
               {/* Merge */}
               <div className={card}>
                 <h3 className="text-xs font-semibold text-fg-strong mb-3">Merge PDFs</h3>
@@ -249,8 +314,8 @@ export function PdfToolsPanel({ project, onSendMessage }: PdfToolsPanelProps) {
                         className={cn(
                           'text-[11px] px-2 py-1 rounded-lg border transition-colors',
                           on
-                            ? 'bg-accent/15 border-accent/50 text-accent'
-                            : 'bg-scrim-faint border-border-soft text-fg-muted hover:border-accent/30'
+                            ? 'bg-accent-blue/15 border-accent-blue/50 text-accent-blue'
+                            : 'bg-scrim-faint border-border-soft text-fg-muted hover:border-accent-blue/30'
                         )}
                       >
                         {f.name}
@@ -284,7 +349,7 @@ export function PdfToolsPanel({ project, onSendMessage }: PdfToolsPanelProps) {
                       type="radio"
                       checked={splitMode === 'perPage'}
                       onChange={() => setSplitMode('perPage')}
-                      className="accent-accent"
+                      className="accent-accent-blue"
                     />
                     One file per page
                   </label>
@@ -293,7 +358,7 @@ export function PdfToolsPanel({ project, onSendMessage }: PdfToolsPanelProps) {
                       type="radio"
                       checked={splitMode === 'at'}
                       onChange={() => setSplitMode('at')}
-                      className="accent-accent"
+                      className="accent-accent-blue"
                     />
                     Two parts around page
                   </label>
@@ -311,41 +376,52 @@ export function PdfToolsPanel({ project, onSendMessage }: PdfToolsPanelProps) {
                 </button>
               </div>
 
-              {/* Extract text */}
+              {/* Extract — text | pages sub-mode in one card */}
               <div className={card}>
-                <h3 className="text-xs font-semibold text-fg-strong mb-3">Extract text</h3>
+                <h3 className="text-xs font-semibold text-fg-strong mb-3">Extract from a PDF</h3>
                 {FilePicker}
-                <button onClick={sendExtractText} disabled={!selected} className={runBtn}>
-                  <Send size={12} /> Extract text (preview in chat)
-                </button>
-              </div>
-
-              {/* Extract pages */}
-              <div className={card}>
-                <h3 className="text-xs font-semibold text-fg-strong mb-3">Extract a page range</h3>
-                {FilePicker}
-                <div className="flex items-center gap-2 mt-2.5">
-                  <span className="text-xs text-fg-dim">Pages</span>
-                  <input
-                    value={pageFrom}
-                    onChange={(e) => setPageFrom(e.target.value.replace(/[^\d]/g, ''))}
-                    className={cn(inputCls, '!w-14')}
-                  />
-                  <span className="text-xs text-fg-dim">to</span>
-                  <input
-                    value={pageTo}
-                    onChange={(e) => setPageTo(e.target.value.replace(/[^\d]/g, ''))}
-                    className={cn(inputCls, '!w-14')}
-                  />
-                  <input
-                    value={extractOutput}
-                    onChange={(e) => setExtractOutput(e.target.value)}
-                    placeholder="output.pdf (optional)"
-                    className={cn(inputCls, 'flex-1')}
-                  />
+                <div className="flex gap-1 mt-2.5 rounded-lg p-1 bg-scrim-faint border border-border-soft">
+                  {(['text', 'pages'] as const).map((m) => (
+                    <button
+                      key={m}
+                      onClick={() => setExtractMode(m)}
+                      className={cn(
+                        'flex-1 py-1 rounded-md text-[11px] font-semibold transition-colors',
+                        extractMode === m ? 'bg-accent-blue text-white' : 'text-fg-muted hover:text-fg-strong',
+                      )}
+                    >
+                      {m === 'text' ? 'Text' : 'Pages'}
+                    </button>
+                  ))}
                 </div>
-                <button onClick={sendExtractPages} disabled={!selected} className={runBtn}>
-                  <Send size={12} /> Extract pages
+                {extractMode === 'pages' && (
+                  <div className="flex items-center gap-2 mt-2.5">
+                    <span className="text-xs text-fg-dim">Pages</span>
+                    <input
+                      value={pageFrom}
+                      onChange={(e) => setPageFrom(e.target.value.replace(/[^\d]/g, ''))}
+                      className={cn(inputCls, '!w-14')}
+                    />
+                    <span className="text-xs text-fg-dim">to</span>
+                    <input
+                      value={pageTo}
+                      onChange={(e) => setPageTo(e.target.value.replace(/[^\d]/g, ''))}
+                      className={cn(inputCls, '!w-14')}
+                    />
+                    <input
+                      value={extractOutput}
+                      onChange={(e) => setExtractOutput(e.target.value)}
+                      placeholder="output.pdf (optional)"
+                      className={cn(inputCls, 'flex-1')}
+                    />
+                  </div>
+                )}
+                <button
+                  onClick={extractMode === 'text' ? sendExtractText : sendExtractPages}
+                  disabled={!selected}
+                  className={runBtn}
+                >
+                  <Send size={12} /> {extractMode === 'text' ? 'Extract text (preview in chat)' : 'Extract pages'}
                 </button>
               </div>
 
@@ -367,7 +443,8 @@ export function PdfToolsPanel({ project, onSendMessage }: PdfToolsPanelProps) {
               </div>
             </div>
           </div>
-        )}
+        </>
+      )}
       </div>
     </div>
   );

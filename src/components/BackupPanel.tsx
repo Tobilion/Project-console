@@ -101,7 +101,7 @@ export function BackupPanel({ project, onSendMessage }: BackupPanelProps) {
       <div className="max-w-2xl mx-auto">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2">
-            <div className="p-2 bg-scrim-faint rounded-lg text-accent">
+            <div className="p-1.5 rounded-lg bg-accent-teal/15 text-accent-teal">
               <Archive size={16} />
             </div>
             <h2 className="text-sm font-semibold text-fg-strong tracking-wide uppercase">Backup</h2>
@@ -122,7 +122,7 @@ export function BackupPanel({ project, onSendMessage }: BackupPanelProps) {
               <select
                 value={subFolder}
                 onChange={(e) => setSubFolder(e.target.value)}
-                className="flex-1 text-xs bg-panel-strong border border-border-soft rounded-lg px-2.5 py-2 text-fg-strong focus:outline-none focus:border-accent/50"
+                className="flex-1 text-xs bg-panel-strong border border-border-soft rounded-lg px-2.5 py-2 text-fg-strong focus:outline-none focus:border-accent-blue/50"
                 title="Subfolder to back up (defaults to the whole project)"
               >
                 <option value="">Whole project</option>
@@ -130,7 +130,7 @@ export function BackupPanel({ project, onSendMessage }: BackupPanelProps) {
               </select>
               <button
                 onClick={() => send(subFolder ? `backup the ${subFolder} folder` : 'backup this folder')}
-                className="flex items-center justify-center gap-1.5 text-xs font-medium rounded-lg px-4 py-2.5 bg-accent/90 text-white hover:bg-accent transition-colors"
+                className="flex items-center justify-center gap-1.5 text-xs font-bold min-h-11 rounded-xl px-5 bg-accent-blue text-white hover:opacity-90 transition-opacity"
               >
                 <Send size={12} /> Backup now{subFolder ? ` (${subFolder}/)` : ''}
               </button>
@@ -143,28 +143,36 @@ export function BackupPanel({ project, onSendMessage }: BackupPanelProps) {
               </div>
             )}
 
-            <div className={cn(cardCls, 'mb-3')}>
-              <h3 className="text-xs font-semibold text-fg-strong mb-1.5">Previous backups</h3>
+            <div>
+              <h3 className="text-xs font-semibold text-fg-strong mb-2.5 px-1">Previous backups</h3>
               {backups.length === 0 ? (
-                <p className="text-xs text-fg-dim italic">
-                  No backups yet. Hit "Backup now" above, or type <code className="font-mono text-accent">backup this folder</code> in chat.
+                <p className="text-xs text-fg-dim italic px-1">
+                  No backups yet. Hit "Backup now" above, or type <code className="font-mono text-accent-teal">backup this folder</code> in chat.
                 </p>
               ) : (
-                <div className="space-y-1">
+                <div className="space-y-2">
                   {backups.map((b) => (
-                    <div key={b.name} className="group flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-scrim-faint transition-colors text-xs">
-                      <Archive size={13} className="text-fg-dim shrink-0" />
-                      <span className="text-fg-strong truncate flex-1 font-mono" title={b.name}>{b.name}</span>
-                      <span className="text-fg-dim text-[11px] shrink-0">{formatSize(b.size)}</span>
-                      <span className="text-fg-faint text-[11px] shrink-0 hidden sm:block">
-                        {new Date(b.mtime).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
-                      </span>
-                      <a href={downloadUrl(b.name)} download={b.name} className="p-1 text-fg-dim hover:text-fg-strong rounded transition-colors opacity-0 group-hover:opacity-100" title="Download">
-                        <Download size={13} />
-                      </a>
-                      <button onClick={() => reveal(b.name)} className="p-1 text-fg-dim hover:text-fg-strong rounded transition-colors opacity-0 group-hover:opacity-100" title="Show in folder">
-                        <FolderOpen size={13} />
-                      </button>
+                    <div key={b.name} className="bg-panel rounded-xl border border-border-faint p-3 flex items-center gap-3">
+                      <Archive size={15} className="text-accent-teal shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="text-fg-strong truncate font-mono text-xs" title={b.name}>{b.name}</span>
+                          <span className="px-2 py-0.5 rounded-full bg-panel-strong text-fg-muted text-[10px] shrink-0">
+                            {formatSize(b.size)}
+                          </span>
+                        </div>
+                        <div className="text-[11px] text-fg-dim mt-0.5">
+                          {new Date(b.mtime).toLocaleString([], { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1 shrink-0">
+                        <a href={downloadUrl(b.name)} download={b.name} className="p-1.5 text-fg-dim hover:text-accent-blue rounded transition-colors" title="Download">
+                          <Download size={14} />
+                        </a>
+                        <button onClick={() => reveal(b.name)} className="p-1.5 text-fg-dim hover:text-accent-blue rounded transition-colors" title="Show in folder">
+                          <FolderOpen size={14} />
+                        </button>
+                      </div>
                     </div>
                   ))}
                 </div>

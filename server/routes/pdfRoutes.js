@@ -10,6 +10,9 @@ import { resolveProject } from '../state.js';
 import { asyncHandler } from '../asyncHandler.js';
 import { listPdfFiles } from '../pdfKit.js';
 import { createResolveSafe } from '../toolSandbox.js';
+import { appendAction } from '../actionHistory.js';
+
+const MAX_PDF_UPLOAD_BYTES = 50 * 1024 * 1024;
 
 function findProject(req) {
   return resolveProject(req.params.id) || null;
@@ -78,4 +81,39 @@ export function registerPdfRoutes(app) {
     }
     res.json({ success: true });
   }));
+
+  // Upload a PDF into the project folder — the PDF Tools panel's drag-and-drop / file-picker
+  // target (Stage D). Explicit user action with the file already in hand; the write is
+  // journaled as file_write (existed:false) so `revert action <id>` deletes it. Name is
+  // basename-sanitized + project-scoped via createResolveSafe; an existing file is refused
+  // (never overwrite — same rule as the PDF operations themselves). Cap 50 MB.
+  app.post('/api/projects/:id/pdf-upload', (req, res) => {
+    const project = findProject(req);
+    if (!project) return res.status(404).json({ error: 'Project not found' });
+    const rawName = typeof req.query.file === 'string' ? req.query.file : '';
+    if (!rawName || !/\.pdf$/i.test(rawName)) return res.status(400).json({ error: 'Missing ?file= (a .pdf name).' });
+    const name = path.basename(rawName);
+    let abs;
+    try { abs = createResolveSafe(project.path)(name); } catch { return res.status(400).json({ error: 'Invalid file name.' }); }
+    if (fs.existsSync(abs)) return res.status(409).json({ error: `${name} already exists in the project folder.` });
+    const chunks = [];
+    let total = 0;
+    let tooBig = false;
+    req.on('data', (c) => {
+      total += c.length;
+      if (total <= MAX_PDF_UPLOAD_BYTES) chunks.push(c);
+      else tooBig = true;
+    });
+    req.on('end', async () => {
+      if (tooBig) return res.status(413).json({ error: 'PDF must be under 50 MB.' });
+      try {
+        fs.writeFileSync(abs, Buffer.concat(chunks));
+        await appendAction(project.path, { type: 'file_write', path: name, existed: false, preContent: null });
+        res.json({ path: name, name, size: total });
+      } catch {
+        res.status(500).json({ error: 'Could not write the file.' });
+      }
+    });
+    req.on('error', () => { res.status(500).json({ error: 'Upload failed.' }); });
+  });
 }
