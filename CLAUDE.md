@@ -1003,16 +1003,34 @@ time/date/calculate rows, 92/92).
 - `@/*` → `./src/*` in BOTH tsconfig `paths` and Vite `resolve.alias`. `components.json`
   documents the shadcn CLI config (Tailwind v4 CSS-first; theme lives in `src/index.css`'s
   `@theme` block). `cn()` is `twMerge(clsx(inputs))`, not bare clsx.
-- **Theme**: dark-first zinc palette in `:root` (background #121212, surface #18181b,
-  overlay #1e1e20); light is a `:root[data-theme="light"]` override block (bg #f4f4f5, fg
-  #18181B) — no `dark:` utilities anywhere, utilities compile via `@theme inline` to var
-  refs. Toggle: `ui/ThemeToggle.tsx` in App's header cluster (only switch point); `useTheme`
-  persists to localStorage, `index.html` has a pre-paint script. Tokens: fg-strong/fg/
-  fg-muted/fg-subtle/fg-dim/fg-faint ladder, border-faint/soft/strong, scrim/panel/
-  panel-strong, surface/overlay/background/foreground. Accent/status colors (teal #00d4a3,
-  blue #3d6bff, indigo #6366f1 + Tailwind status classes) are CONSTANT across themes —
-  do not tokenize. Typography: `--font-sans` Inter (all UI text), `--font-mono` JetBrains
-  Mono (reserved strictly for code/log/path/port). `.prose` maps typography vars to theme
+- **Theme**: dark-first zinc palette in `:root` (background #0D0D0E, surface/overlay
+  #161618, panel #1C1C1E, panel-strong #2C2C2E); light is a `:root[data-theme="light"]`
+  override block (bg #F2F2F7, panel #FFFFFF, overlay #E5E5EA) — no `dark:` utilities
+  anywhere, utilities compile via `@theme inline` to var refs. Toggle:
+  `ui/ThemeToggle.tsx` in App's header cluster (only switch point); `useTheme` persists to
+  localStorage, `index.html` has a pre-paint script. Tokens: fg-strong/fg/fg-muted/
+  fg-subtle/fg-dim/fg-faint ladder, border-faint/soft/strong, scrim/panel/panel-strong,
+  surface/overlay/background/foreground.
+- **Accent colors are THEME-AWARE (2026-08-12 redesign Stage A)** — no longer constant
+  across themes. Named accents carry light/dark pairs matching the iOS system palette:
+  `accent-blue` #0A84FF dark / #007AFF light, `accent-teal` #64D2FF / #5AC8FA,
+  `accent-orange` #FF9F0A / #FF9500, `accent-green` #30D158 / #34C759,
+  `accent-red` #FF453A / #FF3B30. `accent` stays as the generic teal alias (old #00d4a3
+  hardcodes across components were/are being swept to the named tokens — see Stage F).
+  Use the named accent utilities (`text-accent-blue`, `bg-accent-green`, ...) for anything
+  semantically tied to a specific color; the old `text-accent`/`bg-accent` still work and
+  now resolve to the theme-aware teal.
+- **Type scale (2026-08-12 redesign Stage A)**: `--font-sans` Inter + `--font-mono`
+  JetBrains Mono kept exactly as-is (not switching to SF Pro — not licensed web fonts).
+  Semantic utilities via `@theme inline`: `text-display` 24/30 bold, `text-h1` 18/24
+  semibold, `text-h2` 15/20 semibold, `text-subhead` 13/18 medium, `text-body` 13/18,
+  `text-caption` 11/14, `text-code` 12/16 mono. Spacing is an 8px grid
+  (4/8/16/24/32/48), 44px minimum interactive target, container padding 24px, card padding
+  16px, element gap 12px. Radii: pills `rounded-full`, `rounded-lg` 8px, `rounded-xl`
+  12px, `rounded-2xl` 18px (Marketplace cards + Command Palette shell). Shadows:
+  `shadow-card` 0 2px 8px rgba(0,0,0,0.2), `shadow-float` 0 8px 24px rgba(0,0,0,0.35),
+  `shadow-modal` 0 20px 40px rgba(0,0,0,0.5) + backdrop blur(20px) on the palette/modals.
+  `.prose` maps typography vars to theme
   tokens (no `prose-invert` — it hardcodes a light palette); `prose-pre:bg-scrim` supplies
   the code-block background (an unlayered rule would beat it — don't set `--tw-prose-pre-bg`).
 - Gray-family class mapping conventions: `text-white/x → fg-*`, `bg-white/x → bg-panel*`,

@@ -9,73 +9,86 @@
 
 /* Dark-first identity: these tokens are the app's default (dark) palette — matte zinc
    (redesign Phase 1), replacing the old midnight navy. The [data-theme="light"] block
-   further down overrides them. Accent colors (teal/blue/indigo) stay constant across
-   themes — see CLAUDE.md theme entry. */
+   further down overrides them. Accent colors are theme-aware (2026-08-12 redesign Stage A):
+   each named accent (blue/teal/orange/green/red) carries a light/dark pair matching the
+   iOS system palette; `--color-accent` stays as the generic teal alias so existing
+   `text-accent`/`bg-accent` usages keep working. */
 :root {
-  --color-background: #121212;
+  --color-background: #0D0D0E;
   --color-foreground: #E4E4E7;
   --color-primary: #27272A;
   --color-primary-on: #FFFFFF;
   --color-secondary: #3F3F46;
-  --color-accent: #00d4a3;
-  --color-accent-dim: #00d4a366;
-  --color-blue: #3d6bff;
+  --color-accent: #64D2FF;
+  --color-accent-dim: #64D2FF66;
+  --color-accent-blue: #0A84FF;
+  --color-accent-teal: #64D2FF;
+  --color-accent-orange: #FF9F0A;
+  --color-accent-green: #30D158;
+  --color-accent-red: #FF453A;
   --color-indigo: #6366f1;
-  --color-surface: #18181b;
+  --color-surface: #161618;
   --color-muted: #27272a;
   --color-muted-foreground: #A1A1AA;
-  --color-border: #3F3F46;
-  --color-input: #3F3F46;
-  --color-destructive: #EF4444;
-  --color-success: #22C55E;
-  --color-ring: #00d4a3;
-  --color-panel: #ffffff0a;
-  --color-panel-strong: #ffffff1a;
+  --color-border: #3A3A3C;
+  --color-input: #3A3A3C;
+  --color-destructive: #FF453A;
+  --color-success: #30D158;
+  --color-ring: #0A84FF;
+  --color-panel: #1C1C1E;
+  --color-panel-strong: #2C2C2E;
   --color-fg-strong: #FFFFFF;
   --color-fg: #E4E4E7;
-  --color-fg-muted: #D4D4D8;
+  --color-fg-muted: #8E8E93;
   --color-fg-subtle: #A1A1AA;
-  --color-fg-dim: #71717A;
-  --color-fg-faint: #52525B;
-  --color-border-faint: #ffffff0d;
-  --color-border-soft: #ffffff1a;
-  --color-border-strong: #ffffff33;
+  --color-fg-dim: #636366;
+  --color-fg-faint: #636366;
+  --color-border-faint: #2C2C2E;
+  --color-border-soft: #2C2C2E;
+  --color-border-strong: #3A3A3C;
   --color-scrim: #00000080;
   --color-scrim-soft: #0000004d;
   --color-scrim-faint: #00000033;
   --color-scrim-strong: #00000099;
-  --color-overlay: #1e1e20;
+  --color-overlay: #161618;
 }
 
 /* Light theme — attribute override, mirrors the portfolio's inverted .dark block.
    Set by useTheme.ts + the index.html pre-paint script; default follows OS prefs. */
 :root[data-theme="light"] {
-  --color-background: #f4f4f5;
+  --color-background: #F2F2F7;
   --color-foreground: #18181B;
   --color-primary: #F4F4F5;
   --color-primary-on: #18181B;
   --color-secondary: #E4E4E7;
+  --color-accent: #5AC8FA;
+  --color-accent-dim: #5AC8FA66;
+  --color-accent-blue: #007AFF;
+  --color-accent-teal: #5AC8FA;
+  --color-accent-orange: #FF9500;
+  --color-accent-green: #34C759;
+  --color-accent-red: #FF3B30;
   --color-surface: #FFFFFF;
   --color-muted: #F4F4F5;
   --color-muted-foreground: #71717A;
-  --color-border: #D4D4D8;
-  --color-input: #D4D4D8;
-  --color-panel: #ffffff;
-  --color-panel-strong: #F4F4F5;
-  --color-fg-strong: #18181B;
+  --color-border: #D1D1D6;
+  --color-input: #D1D1D6;
+  --color-panel: #FFFFFF;
+  --color-panel-strong: #EFEFF4;
+  --color-fg-strong: #000000;
   --color-fg: #27272A;
-  --color-fg-muted: #3F3F46;
+  --color-fg-muted: #8E8E93;
   --color-fg-subtle: #52525B;
   --color-fg-dim: #71717A;
   --color-fg-faint: #A1A1AA;
-  --color-border-faint: #F4F4F5;
-  --color-border-soft: #E4E4E7;
-  --color-border-strong: #D4D4D8;
+  --color-border-faint: #D1D1D6;
+  --color-border-soft: #D1D1D6;
+  --color-border-strong: #C7C7CC;
   --color-scrim: rgba(24, 24, 27, 0.06);
   --color-scrim-soft: rgba(24, 24, 27, 0.04);
   --color-scrim-faint: rgba(24, 24, 27, 0.03);
   --color-scrim-strong: rgba(24, 24, 27, 0.08);
-  --color-overlay: #FFFFFF;
+  --color-overlay: #E5E5EA;
   color-scheme: light;
 }
 
@@ -86,6 +99,39 @@
   --font-sans: 'Inter', ui-sans-serif, system-ui, sans-serif;
   --font-mono: 'JetBrains Mono', monospace;
 
+  /* Redesign Stage A type scale (sizes only — fonts stay Inter/JetBrains Mono).
+     text-display/h1/h2/subhead/body/caption/code generate the matching utilities. */
+  --text-display: 24px;
+  --text-display--line-height: 30px;
+  --text-display--font-weight: 700;
+  --text-h1: 18px;
+  --text-h1--line-height: 24px;
+  --text-h1--font-weight: 600;
+  --text-h2: 15px;
+  --text-h2--line-height: 20px;
+  --text-h2--font-weight: 600;
+  --text-subhead: 13px;
+  --text-subhead--line-height: 18px;
+  --text-subhead--font-weight: 500;
+  --text-body: 13px;
+  --text-body--line-height: 18px;
+  --text-caption: 11px;
+  --text-caption--line-height: 14px;
+  --text-code: 12px;
+  --text-code--line-height: 16px;
+  --text-code--font-family: 'JetBrains Mono', monospace;
+
+  /* Redesign Stage A radii: pills use rounded-full; the three step sizes below override
+     Tailwind's defaults so rounded-lg/xl/2xl match the spec (8/12/18px). */
+  --radius-lg: 8px;
+  --radius-xl: 12px;
+  --radius-2xl: 18px;
+
+  /* Redesign Stage A shadows: cards / floating / command-palette-main-modals. */
+  --shadow-card: 0 2px 8px rgba(0, 0, 0, 0.2);
+  --shadow-float: 0 8px 24px rgba(0, 0, 0, 0.35);
+  --shadow-modal: 0 20px 40px rgba(0, 0, 0, 0.5);
+
   --color-background: var(--color-background);
   --color-foreground: var(--color-foreground);
   --color-primary: var(--color-primary);
@@ -93,7 +139,11 @@
   --color-secondary: var(--color-secondary);
   --color-accent: var(--color-accent);
   --color-accent-dim: var(--color-accent-dim);
-  --color-blue: var(--color-blue);
+  --color-accent-blue: var(--color-accent-blue);
+  --color-accent-teal: var(--color-accent-teal);
+  --color-accent-orange: var(--color-accent-orange);
+  --color-accent-green: var(--color-accent-green);
+  --color-accent-red: var(--color-accent-red);
   --color-indigo: var(--color-indigo);
   --color-surface: var(--color-surface);
   --color-muted: var(--color-muted);
