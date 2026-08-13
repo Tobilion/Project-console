@@ -20,6 +20,9 @@ export interface UserProfile {
   defaultWorkspaceType: 'dev' | 'general';
   // Phase 14 (2026-08-12): phrase-matching locale ('en' default; 'de' is the POC).
   locale: string;
+  // Stage H (2026-08-12): accent-color override for --color-accent-blue. 'auto' follows
+  // the theme's per-theme blue; a #RRGGBB hex overrides it in both themes.
+  accentColor: string;
 }
 
 // Neutral defaults, not a hardcoded person's name/title — matches server/routes/profileRoutes.js's
@@ -38,6 +41,7 @@ const DEFAULT_PROFILE: UserProfile = {
   clipboardPersist: false,
   defaultWorkspaceType: 'dev',
   locale: 'en',
+  accentColor: 'auto',
 };
 
 /** Client state for the user profile persisted to the server (GET/POST /api/profile).

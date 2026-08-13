@@ -57,6 +57,23 @@ export function UserProfileModal({ open, profile, onClose, onSave }: UserProfile
   const [clipboardHistory, setClipboardHistory] = useState(profile.clipboardHistory);
   const [clipboardPersist, setClipboardPersist] = useState(profile.clipboardPersist);
 
+  // Stage H: accent-color presets + custom-hex draft. The chosen value persists through the
+  // existing profile-write path (onSave) and App.tsx applies it as an inline
+  // --color-accent-blue override — semantic accents (teal/orange/green/red) are untouched.
+  const ACCENT_PRESETS: { label: string; value: string }[] = [
+    { label: 'Blue', value: '#0A84FF' },
+    { label: 'Purple', value: '#BF5AF2' },
+    { label: 'Pink', value: '#FF375F' },
+    { label: 'Red', value: '#FF453A' },
+    { label: 'Orange', value: '#FF9F0A' },
+    { label: 'Yellow', value: '#FFD60A' },
+    { label: 'Green', value: '#30D158' },
+    { label: 'Graphite', value: '#8E8E93' },
+  ];
+  const [hexDraft, setHexDraft] = useState('');
+  const hexValid = /^[0-9a-fA-F]{6}$/.test(hexDraft);
+  const applyAccent = (value: string) => onSave({ accentColor: value });
+
   // Phase 8 (2026-08-11): runtime tuning-constant editor (server-side shadowing via
   // data/tuning.json — see server/tuningStore.js). Loaded as overrides+defaults when the modal
   // opens; the draft starts at defaults merged over overrides so every knob is visible, and
@@ -187,6 +204,55 @@ export function UserProfileModal({ open, profile, onClose, onSave }: UserProfile
             placeholder="e.g. Software Engineer"
             className="w-full bg-surface border border-border-soft rounded-lg px-3 py-2 text-sm text-fg focus:outline-none focus:border-accent-blue transition-colors"
           />
+        </div>
+
+        {/* Stage H: accent-color picker — macOS-style, affects only accent-blue */}
+        <div>
+          <label className="block text-xs text-fg-dim mb-1.5">Accent Color</label>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => applyAccent('auto')}
+              title="Auto — follows the theme (dark / light blue)"
+              className={`w-8 h-8 rounded-full border-2 transition-transform hover:scale-110 ${profile.accentColor === 'auto' ? 'border-fg-strong' : 'border-border-soft'}`}
+              style={{ background: 'linear-gradient(135deg, #0D0D0E 50%, #F2F2F7 50%)' }}
+            >
+              <span className="block w-2.5 h-2.5 mx-auto rounded-full" style={{ background: 'var(--color-accent-blue)' }} />
+            </button>
+            {ACCENT_PRESETS.map((p) => (
+              <button
+                key={p.value}
+                type="button"
+                onClick={() => applyAccent(p.value)}
+                title={p.label}
+                className={`w-8 h-8 rounded-full border-2 transition-transform hover:scale-110 ${profile.accentColor === p.value ? 'border-fg-strong' : 'border-border-soft'}`}
+                style={{ backgroundColor: p.value }}
+              />
+            ))}
+          </div>
+          <div className="flex items-center gap-2 mt-2">
+            <input
+              type="text"
+              value={hexDraft ? `#${hexDraft}` : ''}
+              onChange={(e) => setHexDraft(e.target.value.replace(/[^0-9a-fA-F]/g, '').slice(0, 6))}
+              onKeyDown={(e) => { if (e.key === 'Enter' && hexValid) applyAccent(`#${hexDraft}`); }}
+              placeholder="#RRGGBB — custom color"
+              className="w-40 bg-surface border border-border-soft rounded-lg px-3 py-1.5 text-xs font-mono text-fg focus:outline-none focus:border-accent-blue transition-colors"
+            />
+            <button
+              type="button"
+              onClick={() => applyAccent(`#${hexDraft}`)}
+              disabled={!hexValid}
+              className="px-3 py-1.5 text-[10px] font-bold tracking-wider uppercase rounded-lg bg-accent-blue text-white hover:opacity-90 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              Apply
+            </button>
+            <span className="text-[10px] text-fg-faint">6 hex digits</span>
+          </div>
+          <p className="text-[10px] text-fg-faint mt-1.5">
+            Applies everywhere accent-blue is used (active tab, buttons, selection). Semantic
+            colors — teal/orange/green/red — are not affected, like macOS.
+          </p>
         </div>
         <div className="flex items-start gap-3 pt-1">
           <button

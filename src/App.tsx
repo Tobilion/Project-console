@@ -93,6 +93,21 @@ function App() {
   // not on every render, and not on every keystroke.
   const heroGreeting = useMemo(() => getRandomGreeting(getFormattedName()), [profile]);
 
+  // Stage H: accent-color override. An inline --color-accent-blue on the root element beats
+  // the theme stylesheet's :root / :root[data-theme] values. 'auto' removes the override so
+  // the cascade re-links to whatever the current theme defines (works across theme toggles
+  // with no extra wiring); a hex applies identically in both themes. Lives here rather than
+  // in useTheme — ThemeToggle owns the theme state but has no profile access.
+  useEffect(() => {
+    const root = document.documentElement;
+    const accent = profile.accentColor;
+    if (!accent || accent === 'auto' || !/^#[0-9A-Fa-f]{6}$/.test(accent)) {
+      root.style.removeProperty('--color-accent-blue');
+    } else {
+      root.style.setProperty('--color-accent-blue', accent);
+    }
+  }, [profile.accentColor]);
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {

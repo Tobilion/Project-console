@@ -44,6 +44,11 @@ const DEFAULT_PROFILE = {
   // phrases ADD to English — never a replacement. Answer text/UI strings are NOT translated
   // (scope boundary, see localeIntents.js).
   locale: 'en',
+  // Stage H (2026-08-12): accent-color override for --color-accent-blue. 'auto' (default)
+  // follows the theme's per-theme blue; any other value must be a #RRGGBB hex the frontend
+  // applies as an inline --color-accent-blue override. Semantic accents (teal/orange/green/
+  // red) are deliberately NOT covered by this setting — same separation as macOS.
+  accentColor: 'auto',
 };
 
 // Only plain, trimmed strings up to a sane length — mirrors the conservative
@@ -57,6 +62,16 @@ function sanitizeField(value, fallback) {
 
 function sanitizeBool(value, fallback) {
   return typeof value === 'boolean' ? value : fallback;
+}
+
+// Stage H: accent override — only 'auto' or an exact #RRGGBB hex is accepted; anything else
+// falls back to 'auto' (the theme-linked default) with a warn, the same defensive pattern as
+// the other profile fields.
+function sanitizeAccentColor(value) {
+  if (value === 'auto') return 'auto';
+  if (typeof value === 'string' && /^#[0-9A-Fa-f]{6}$/.test(value)) return value;
+  console.warn(`Ignoring invalid accentColor "${value}" — expected "auto" or a #RRGGBB hex.`);
+  return 'auto';
 }
 
 function readProfile() {
@@ -74,6 +89,7 @@ function readProfile() {
       clipboardPersist: sanitizeBool(p.clipboardPersist, DEFAULT_PROFILE.clipboardPersist),
       defaultWorkspaceType: p.defaultWorkspaceType === 'general' ? 'general' : 'dev',
       locale: typeof p.locale === 'string' && p.locale.length <= 8 ? p.locale : 'en',
+      accentColor: sanitizeAccentColor(p.accentColor),
     };
   } catch {
     // Missing or corrupt file — serve defaults without touching disk.
@@ -115,6 +131,7 @@ export function registerProfileRoutes(app) {
       clipboardPersist: sanitizeBool(body.clipboardPersist, current.clipboardPersist),
       defaultWorkspaceType: body.defaultWorkspaceType === 'general' ? 'general' : 'dev',
       locale: typeof body.locale === 'string' && body.locale.length <= 8 ? body.locale : 'en',
+      accentColor: sanitizeAccentColor(body.accentColor ?? current.accentColor),
     };
     const err = writeProfile(updated);
     if (err) {
