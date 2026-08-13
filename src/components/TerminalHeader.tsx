@@ -47,8 +47,8 @@ export function TerminalHeader({
         {activeProject ? `Connected: ${activeProject.name}` : 'No Project Selected'}
       </span>
       {!connected && (
-        <span className="flex-shrink-0 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-500/10 border border-amber-500/30 text-xs text-amber-400">
-          <span className="w-1.5 h-1.5 rounded-full bg-amber-400 inline-block animate-pulse" />
+        <span className="flex-shrink-0 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-accent-orange/10 border border-accent-orange/30 text-xs text-accent-orange">
+          <span className="w-1.5 h-1.5 rounded-full bg-accent-orange inline-block animate-pulse" />
           Reconnecting…
         </span>
       )}
@@ -68,17 +68,17 @@ export function TerminalHeader({
                   <button onClick={() => removeFromWorkspace(p.id)} className="text-accent-blue/60 hover:text-accent-blue transition-colors">×</button>
                 </span>
               ))}
-              <button onClick={clearWorkspace} className="text-fg-faint hover:text-red-400 transition-colors text-xs" title="Clear workspace">×</button>
+              <button onClick={clearWorkspace} className="text-fg-faint hover:text-accent-red transition-colors text-xs" title="Clear workspace">×</button>
             </div>
           )}
           <div className="flex items-center gap-1">
             <button onClick={onExportMarkdown} className="p-1.5 text-fg-dim hover:text-fg-strong transition-colors" title="Export session as Markdown">
               <Download size={14} />
             </button>
-            <button onClick={onExportJson} className="p-1.5 flex items-center gap-0.5 text-fg-dim hover:text-teal-400 transition-colors" title="Export session as JSON">
+            <button onClick={onExportJson} className="p-1.5 flex items-center gap-0.5 text-fg-dim hover:text-accent-teal transition-colors" title="Export session as JSON">
               <Download size={11} /><span className="text-[9px]">JSON</span>
             </button>
-            <button onClick={onExportPdf} className="p-1.5 text-fg-dim hover:text-teal-400 transition-colors" title="Export session as PDF">
+            <button onClick={onExportPdf} className="p-1.5 text-fg-dim hover:text-accent-teal transition-colors" title="Export session as PDF">
               <FileDown size={14} />
             </button>
           </div>

@@ -190,7 +190,7 @@ export function ClipboardPanel({ onSendMessage }: ClipboardPanelProps) {
                     <button onClick={() => copySnippet(s.name)} className="flex items-center gap-1 text-[11px] text-accent-blue hover:opacity-80 transition-opacity" title="Copy snippet">
                       <Copy size={12} /> Copy
                     </button>
-                    <button onClick={() => deleteSnippet(s.name)} className="ml-auto p-1 text-fg-dim hover:text-red-400 rounded transition-colors" title="Delete snippet">
+                    <button onClick={() => deleteSnippet(s.name)} className="ml-auto p-1 text-fg-dim hover:text-accent-red rounded transition-colors" title="Delete snippet">
                       <Trash2 size={12} />
                     </button>
                   </div>
@@ -224,7 +224,7 @@ export function ClipboardPanel({ onSendMessage }: ClipboardPanelProps) {
         </div>
 
         {enabled && history.length > 0 && (
-          <button onClick={() => send('clear clipboard history')} className="mt-3 text-[11px] text-fg-dim hover:text-red-400 transition-colors">
+          <button onClick={() => send('clear clipboard history')} className="mt-3 text-[11px] text-fg-dim hover:text-accent-red transition-colors">
             Clear clipboard history
           </button>
         )}

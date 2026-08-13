@@ -269,7 +269,7 @@ function App() {
   };
 
   return (
-    <div className={`h-screen relative flex flex-col ${chatFullscreen ? '' : 'p-6'}`}>
+    <div className="h-screen relative flex flex-col">
       <GlowOrbs />
 
       {!chatFullscreen && (
@@ -282,7 +282,7 @@ function App() {
             Local Project Engine
           </p>
           {indexingProjectId && (
-            <span className="text-xs text-yellow-400 animate-pulse"><Loader2 size={12} className="inline-block mr-1 animate-spin" />Indexing...</span>
+            <span className="text-xs text-accent-orange animate-pulse"><Loader2 size={12} className="inline-block mr-1 animate-spin" />Indexing...</span>
           )}
         </div>
         <div className="flex items-center gap-2 ml-auto flex-shrink-0">
@@ -362,11 +362,11 @@ function App() {
 
       <main className={`relative z-10 flex-1 min-h-0 overflow-hidden ${showDashboard || toolsOpen || showCommandRef ? '' : chatFullscreen ? 'block' : 'flex flex-col lg:flex-row gap-6'}`}>
         {showCommandRef ? (
-          <div className="h-full p-4">
+          <div className="h-full p-6">
             <CommandReference onClose={() => setShowCommandRef(false)} />
           </div>
         ) : toolsOpen ? (
-          <div className="h-full p-4">
+          <div className="h-full p-6">
             <ToolsPanel
               panels={toolPanels}
               activePanel={activeToolPanel}
@@ -378,7 +378,7 @@ function App() {
             />
           </div>
         ) : showDashboard ? (
-          <div className="h-full p-4">
+          <div className="h-full p-6">
             <Dashboard
               onClose={() => setShowDashboard(false)}
               refreshSignal={dashboardUpdateSignal}

@@ -188,7 +188,7 @@ export function NotificationsPanel({ project, onSendMessage }: NotificationsPane
                 <div key={r.id} className="bg-panel rounded-xl border border-border-faint p-4 flex items-center gap-3">
                   <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: EVENT_COLORS[r.event] || 'var(--color-accent-blue)' }} />
                   <span className="flex-1 text-xs text-fg-subtle min-w-0 truncate" title={r.folder}>{ruleSentence(r)}</span>
-                  <button onClick={() => send(`stop watching ${r.folder}`)} className="p-1 text-fg-dim hover:text-red-400 rounded transition-colors" title="Remove rule">
+                  <button onClick={() => send(`stop watching ${r.folder}`)} className="p-1 text-fg-dim hover:text-accent-red rounded transition-colors" title="Remove rule">
                     <Trash2 size={13} />
                   </button>
                 </div>

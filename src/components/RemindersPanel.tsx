@@ -247,7 +247,7 @@ export function RemindersPanel({ project, onSendMessage }: RemindersPanelProps) 
         )}
 
         {/* New reminder input row — time is optional: bare text becomes a dateless todo */}
-        <div className="flex items-center gap-2 px-2 py-1 min-h-[44px] rounded-[10px] mb-2"
+        <div className="flex items-center gap-2 px-2 py-1 min-h-[44px] rounded-lg mb-2"
           style={{ backgroundColor: 'var(--rm-group-bg)' }}>
           <Plus size={18} style={{ color: 'var(--rm-blue)', opacity: 0.5, marginLeft: 2 }} />
           <input
@@ -284,7 +284,7 @@ export function RemindersPanel({ project, onSendMessage }: RemindersPanelProps) 
             Nothing in {view === 'nodate' ? 'No Date' : view[0].toUpperCase() + view.slice(1)}.
           </div>
         ) : (
-          <div className="rounded-[12px] overflow-hidden" style={{ backgroundColor: 'var(--rm-group-bg)' }}>
+          <div className="rounded-xl overflow-hidden" style={{ backgroundColor: 'var(--rm-group-bg)' }}>
             <div className="px-3">
               <SectionHeader title={view === 'nodate' ? 'No Date' : view[0].toUpperCase() + view.slice(1)} count={shown.length} />
             </div>

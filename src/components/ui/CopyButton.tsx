@@ -27,7 +27,7 @@ export function CopyButton({ text, title, size = 12, label, className = '', feed
       title={title}
     >
       {feedback && copied ? (
-        <span className="text-[10px] text-teal-400">Copied</span>
+        <span className="text-[10px] text-accent-teal">Copied</span>
       ) : label ? (
         <>
           <Copy size={size} /> {label}

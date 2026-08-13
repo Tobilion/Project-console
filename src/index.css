@@ -42,7 +42,10 @@
   --color-fg-muted: #8E8E93;
   --color-fg-subtle: #A1A1AA;
   --color-fg-dim: #636366;
-  --color-fg-faint: #636366;
+  /* fg-faint is a distinct, dimmer rung than fg-dim in dark mode (iOS systemGray3) —
+     dark previously shared #636366 for both while light mode already diverged
+     (#71717A vs #A1A1AA); this restores the same gap in dark. */
+  --color-fg-faint: #48484A;
   --color-border-faint: #2C2C2E;
   --color-border-soft: #2C2C2E;
   --color-border-strong: #3A3A3C;
@@ -68,6 +71,7 @@
   --color-accent-orange: #FF9500;
   --color-accent-green: #34C759;
   --color-accent-red: #FF3B30;
+  --color-indigo: #5856D6;
   --color-surface: #FFFFFF;
   --color-muted: #F4F4F5;
   --color-muted-foreground: #71717A;

@@ -112,7 +112,7 @@ export function BackupPanel({ project, onSendMessage }: BackupPanelProps) {
           </button>
         </div>
 
-        {error && <p className="text-xs text-red-400 mb-3">{error}</p>}
+        {error && <p className="text-xs text-accent-red mb-3">{error}</p>}
 
         {!project ? (
           <div className={cn(cardCls, 'text-sm text-fg-muted')}>Select a project to back up.</div>

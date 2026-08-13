@@ -35,7 +35,7 @@ export function StructuredJsonBlock({ content, onSendMessage }: { content: strin
         <div className="flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
            <CopyButton text={content} title="Copy JSON" size={12} className="p-1 text-fg-dim hover:text-fg-strong transition-colors" />
           {parsed && (
-            <button onClick={handleApply} className="p-1 text-fg-dim hover:text-teal-400 transition-colors" title={parsed?.data && typeof parsed.data === 'object' && (parsed.data as any).path ? `Apply to ${(parsed.data as any).path}` : 'Apply to project'}>
+            <button onClick={handleApply} className="p-1 text-fg-dim hover:text-accent-teal transition-colors" title={parsed?.data && typeof parsed.data === 'object' && (parsed.data as any).path ? `Apply to ${(parsed.data as any).path}` : 'Apply to project'}>
               <FileDown size={12} />
             </button>
           )}

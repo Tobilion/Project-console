@@ -1,1 +1,13 @@
-{"userProfile":{"name":"Jagz","title":"Master","customRole":"Software Engineer","setupComplete":true,"sandboxRiskyCommands":true,"clipboardHistory":false,"clipboardPersist":false,"defaultWorkspaceType":"dev","locale":"en"}}
+{
+  "userProfile": {
+    "name": "jagz",
+    "title": "Master",
+    "customRole": "Software Engineer",
+    "setupComplete": true,
+    "sandboxRiskyCommands": true,
+    "clipboardHistory": true,
+    "clipboardPersist": true,
+    "defaultWorkspaceType": "dev",
+    "locale": "en"
+  }
+}

@@ -389,7 +389,7 @@ export function FileToolsPanel({ project, onSendMessage }: FileToolsPanelProps) 
         </button>
       </div>
 
-      {error && <p className="text-xs text-red-400 px-4 py-1.5">{error}</p>}
+      {error && <p className="text-xs text-accent-red px-4 py-1.5">{error}</p>}
 
       <div className="flex-1 min-h-0 flex">
         {/* Left filter sidebar — Finder-style rail */}

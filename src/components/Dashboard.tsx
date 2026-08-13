@@ -178,17 +178,17 @@ export const Dashboard = ({ onClose, refreshSignal = 0, projects, workspaceMode 
             </button>
           </div>
           {totalUncommitted > 0 && (
-            <span className="text-xs text-yellow-400 bg-yellow-400/10 px-2 py-0.5 rounded">
+            <span className="text-xs text-accent-orange bg-accent-orange/10 px-2 py-0.5 rounded">
               {totalUncommitted} uncommitted
             </span>
           )}
           {totalUnpushed > 0 && (
-            <span className="text-xs text-orange-400 bg-orange-400/10 px-2 py-0.5 rounded">
+            <span className="text-xs text-accent-orange bg-accent-orange/10 px-2 py-0.5 rounded">
               {totalUnpushed} unpushed
             </span>
           )}
           {totalRunning > 0 && (
-            <span className="text-xs text-green-400 bg-green-500/10 px-2 py-0.5 rounded">
+            <span className="text-xs text-accent-green bg-accent-green/10 px-2 py-0.5 rounded">
               {totalRunning} running
             </span>
           )}
@@ -239,7 +239,7 @@ export const Dashboard = ({ onClose, refreshSignal = 0, projects, workspaceMode 
                       NOT runningCommand — there'd otherwise always be tracked-process absence for the
                       console's own card and for servers started outside this console (reported live
                       2026-08-11: both showed "process not currently running" while answering). */}
-                  <span className={`w-2 h-2 rounded-full flex-shrink-0 ${entry.running ? 'bg-green-400 animate-pulse' : 'bg-fg-dim'}`} />
+                  <span className={`w-2 h-2 rounded-full flex-shrink-0 ${entry.running ? 'bg-accent-green animate-pulse' : 'bg-fg-dim'}`} />
                   <div className="min-w-0">
                     <div className="text-sm font-bold text-fg-strong truncate">{entry.name}</div>
                     <div className="text-[10px] text-fg-dim">
@@ -251,7 +251,7 @@ export const Dashboard = ({ onClose, refreshSignal = 0, projects, workspaceMode 
                   href={entry.devUrl!}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="flex items-center gap-1 text-xs text-green-400 hover:text-green-300 flex-shrink-0 font-mono"
+                  className="flex items-center gap-1 text-xs text-accent-green hover:text-accent-green/80 flex-shrink-0 font-mono"
                 >
                   <Globe size={12} />
                   {entry.devUrl}
@@ -284,25 +284,25 @@ export const Dashboard = ({ onClose, refreshSignal = 0, projects, workspaceMode 
                 {!isGeneral && (
                 <>
                 {entry.uncommitted.length > 0 && (
-                  <span className="flex items-center gap-1 text-[10px] text-yellow-400 bg-yellow-400/10 px-1.5 py-0.5 rounded">
+                  <span className="flex items-center gap-1 text-[10px] text-accent-orange bg-accent-orange/10 px-1.5 py-0.5 rounded">
                     <FileWarning size={12} />
                     {entry.uncommitted.length}
                   </span>
                 )}
                 {entry.aheadCount > 0 && (
-                  <span className="flex items-center gap-1 text-[10px] text-orange-400 bg-orange-400/10 px-1.5 py-0.5 rounded">
+                  <span className="flex items-center gap-1 text-[10px] text-accent-orange bg-accent-orange/10 px-1.5 py-0.5 rounded">
                     <UploadCloud size={12} />
                     {entry.aheadCount} unpushed
                   </span>
                 )}
                 {entry.runningCommand && (
-                  <span className="flex items-center gap-1 text-[10px] text-blue-400 bg-blue-500/10 px-1.5 py-0.5 rounded">
+                  <span className="flex items-center gap-1 text-[10px] text-accent-blue bg-accent-blue/10 px-1.5 py-0.5 rounded">
                     <Terminal size={12} />
                     running
                   </span>
                 )}
                 {entry.devUrl && (
-                  <span className="flex items-center gap-1 text-[10px] text-green-400 bg-green-500/10 px-1.5 py-0.5 rounded">
+                  <span className="flex items-center gap-1 text-[10px] text-accent-green bg-accent-green/10 px-1.5 py-0.5 rounded">
                     <Globe size={12} />
                     live
                   </span>
@@ -322,7 +322,7 @@ export const Dashboard = ({ onClose, refreshSignal = 0, projects, workspaceMode 
               <div className="col-span-3">
                 <span className="text-[10px] tracking-wider uppercase text-fg-dim font-bold">Uncommitted</span>
                 {entry.uncommitted.length > 0 ? (
-                  <div className="mt-1 max-h-20 overflow-y-auto space-y-0.5 font-mono text-yellow-300/70">
+                  <div className="mt-1 max-h-20 overflow-y-auto space-y-0.5 font-mono text-accent-orange/70">
                     {entry.uncommitted.slice(0, 10).map((line, j) => (
                       <div key={j} className="truncate">{line}</div>
                     ))}
@@ -355,7 +355,7 @@ export const Dashboard = ({ onClose, refreshSignal = 0, projects, workspaceMode 
                 <span className="text-[10px] tracking-wider uppercase text-fg-dim font-bold">Status</span>
                 <div className="mt-1 space-y-1 font-mono">
                   {entry.runningCommand ? (
-                    <div className="text-blue-400 truncate" title={entry.runningCommand}>
+                    <div className="text-accent-blue truncate" title={entry.runningCommand}>
                       <Terminal size={12} className="inline mr-1" />
                       {entry.runningCommand}
                     </div>
@@ -366,7 +366,7 @@ export const Dashboard = ({ onClose, refreshSignal = 0, projects, workspaceMode 
                       target="_blank"
                       rel="noopener noreferrer"
                       onClick={(e) => e.stopPropagation()}
-                      className="text-green-400 hover:text-green-300 truncate block"
+                      className="text-accent-green hover:text-accent-green/80 truncate block"
                     >
                       <Globe size={12} className="inline mr-1" />
                       {entry.devUrl}
@@ -410,7 +410,7 @@ export const Dashboard = ({ onClose, refreshSignal = 0, projects, workspaceMode 
                     {!isGeneral && (entry.runningCommand || entry.devUrl) && (
                       <button
                         onClick={() => handleStop(entry)}
-                        className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 transition-colors"
+                        className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg bg-accent-red/10 hover:bg-accent-red/20 text-accent-red border border-accent-red/20 transition-colors"
                       >
                         <Square size={12} />
                         Stop
@@ -430,7 +430,7 @@ export const Dashboard = ({ onClose, refreshSignal = 0, projects, workspaceMode 
                         href={entry.devUrl}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg bg-green-500/10 hover:bg-green-500/20 text-green-400 border border-green-500/20 transition-colors"
+                        className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg bg-accent-green/10 hover:bg-accent-green/20 text-accent-green border border-accent-green/20 transition-colors"
                       >
                         <Globe size={12} />
                         Open site

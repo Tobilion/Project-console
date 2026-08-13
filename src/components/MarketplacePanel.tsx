@@ -103,7 +103,7 @@ export function MarketplacePanel({ project, onSendMessage }: MarketplacePanelPro
           </button>
         </div>
 
-        {error && <p className="text-xs text-red-400 mb-3">{error}</p>}
+        {error && <p className="text-xs text-accent-red mb-3">{error}</p>}
 
         {status === 'idle' && (
           <div className="text-xs text-fg-dim italic bg-panel rounded-2xl border border-border-soft p-6 text-center">
@@ -114,7 +114,7 @@ export function MarketplacePanel({ project, onSendMessage }: MarketplacePanelPro
           </div>
         )}
         {status === 'error' && (
-          <div className="text-xs text-red-400 bg-panel rounded-2xl border border-border-soft p-6 text-center">{error}</div>
+          <div className="text-xs text-accent-red bg-panel rounded-2xl border border-border-soft p-6 text-center">{error}</div>
         )}
         {status === 'ready' && packs.length === 0 && (
           <div className="text-xs text-fg-dim italic bg-panel rounded-2xl border border-border-soft p-6 text-center">
@@ -128,7 +128,7 @@ export function MarketplacePanel({ project, onSendMessage }: MarketplacePanelPro
             {packs.map((p) => (
               <div key={p.name} className="bg-panel rounded-2xl border border-border-faint p-4 flex flex-col">
                 <div className="flex items-start gap-3 mb-2">
-                  <div className="w-12 h-12 rounded-[10px] bg-panel-strong text-accent-blue flex items-center justify-center text-lg font-bold shrink-0">
+                  <div className="w-12 h-12 rounded-xl bg-panel-strong text-accent-blue flex items-center justify-center text-lg font-bold shrink-0">
                     {(p.name || '?')[0].toUpperCase()}
                   </div>
                   <div className="min-w-0">

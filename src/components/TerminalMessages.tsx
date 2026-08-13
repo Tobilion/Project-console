@@ -122,9 +122,9 @@ const MessageRowContent = React.memo(function MessageRowContent({
         msg.type === 'user'
           ? 'bg-accent-blue text-white rounded-br-none'
           : msg.type === 'error'
-          ? 'bg-red-500/10 border border-red-500/20 text-red-400 rounded-bl-none font-mono text-sm'
+          ? 'bg-accent-red/10 border border-accent-red/20 text-accent-red rounded-bl-none font-mono text-sm'
           : msg.type === 'warning'
-          ? 'bg-amber-500/10 border border-amber-500/30 text-amber-400 rounded-bl-none'
+          ? 'bg-accent-orange/10 border border-accent-orange/30 text-accent-orange rounded-bl-none'
           : 'bg-panel border border-border-soft text-fg rounded-bl-none'
       }`}
     >
@@ -201,10 +201,10 @@ const MessageRowContent = React.memo(function MessageRowContent({
       )}
 
       {msg.switchProjectAction && onSwitchToProject && (
-        <div className="mt-3 pt-3 border-t border-red-500/20">
+        <div className="mt-3 pt-3 border-t border-accent-red/20">
           <button
             onClick={() => onSwitchToProject(msg.switchProjectAction!.projectId)}
-            className="px-3 py-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-xs text-red-300 transition-colors"
+            className="px-3 py-1.5 rounded-lg bg-accent-red/10 hover:bg-accent-red/20 border border-accent-red/30 text-xs text-accent-red transition-colors"
           >
             Switch to "{msg.switchProjectAction.projectName}"
           </button>
@@ -298,7 +298,7 @@ const TerminalMessagesComponent = ({
             resetKeys={[msg.id || i]}
             fallback={
               <div
-                className={`${rowClass} px-3 py-2 text-xs text-red-400/80 bg-red-500/5 border border-red-500/20 rounded-lg`}
+                className={`${rowClass} px-3 py-2 text-xs text-accent-red/80 bg-accent-red/5 border border-accent-red/20 rounded-lg`}
               >
                 <AlertTriangle size={12} className="inline-block mr-1" />
                 Couldn't render this message — malformed or removed.
@@ -336,14 +336,14 @@ const TerminalMessagesComponent = ({
           turn's final 'end', so the panel can't linger after the turn either. */}
       {(aiThinking || aiThinkingText) && (
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex flex-col gap-1.5">
-          <div className="flex items-center gap-3 text-teal-400/60 text-xs">
+          <div className="flex items-center gap-3 text-accent-teal/60 text-xs">
             <Loader2 size={14} className="animate-spin" />
             AI is thinking...
             {/* M16: a live cancel affordance exists while any turn is in flight. */}
             {onCancel && (
               <button
                 onClick={onCancel}
-                className="flex items-center gap-1 px-2 py-0.5 rounded border border-red-500/30 text-red-400/80 hover:text-red-300 hover:border-red-500/60 hover:bg-red-500/10 transition-colors"
+                className="flex items-center gap-1 px-2 py-0.5 rounded border border-accent-red/30 text-accent-red/80 hover:text-accent-red hover:border-accent-red/60 hover:bg-accent-red/10 transition-colors"
                 title="Cancel this request"
               >
                 <Square size={10} /> Stop
@@ -355,7 +355,7 @@ const TerminalMessagesComponent = ({
               spinner above was the only signal anything was happening. Capped height + scroll so a long
               reasoning trace doesn't push the input bar off-screen; only rendered once there's text. */}
           {aiThinkingText && (
-            <div className="max-h-24 overflow-y-auto text-teal-400/40 text-xs font-mono italic whitespace-pre-wrap pl-6 border-l border-teal-400/20">
+            <div className="max-h-24 overflow-y-auto text-accent-teal/40 text-xs font-mono italic whitespace-pre-wrap pl-6 border-l border-accent-teal/20">
               {aiThinkingText}
             </div>
           )}
@@ -372,7 +372,7 @@ const TerminalMessagesComponent = ({
           {onCancel && (
             <button
               onClick={onCancel}
-              className="flex items-center gap-1 px-2 py-0.5 rounded border border-red-500/30 text-red-400/80 hover:text-red-300 hover:border-red-500/60 hover:bg-red-500/10 transition-colors"
+              className="flex items-center gap-1 px-2 py-0.5 rounded border border-accent-red/30 text-accent-red/80 hover:text-accent-red hover:border-accent-red/60 hover:bg-accent-red/10 transition-colors"
               title="Cancel this command"
             >
               <Square size={10} /> Stop

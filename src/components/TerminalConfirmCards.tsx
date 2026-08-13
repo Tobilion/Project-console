@@ -32,8 +32,8 @@ export function TerminalConfirmCards({
           animate={{ opacity: 1, y: 0 }}
           className="flex flex-col items-start"
         >
-          <div className="bg-orange-500/10 border border-orange-500/20 text-orange-200 rounded-xl px-4 py-3 max-w-[85%]">
-            <div className="flex items-center gap-2 text-orange-400">
+          <div className="bg-accent-orange/10 border border-accent-orange/20 text-accent-orange rounded-xl px-4 py-3 max-w-[85%]">
+            <div className="flex items-center gap-2 text-accent-orange">
               <Search size={13} />
               <span className="font-bold text-[10px] tracking-wider uppercase">Safety Confirmation</span>
             </div>
@@ -43,7 +43,7 @@ export function TerminalConfirmCards({
             <div className="flex flex-wrap gap-2 mt-3">
               <button
                 onClick={() => onConfirm(true)}
-                className="flex items-center gap-1.5 px-3 py-1 bg-red-500/20 hover:bg-red-500/40 text-red-400 rounded-md border border-red-500/30 transition-colors text-xs font-bold"
+                className="flex items-center gap-1.5 px-3 py-1 bg-accent-red/20 hover:bg-accent-red/40 text-accent-red rounded-md border border-accent-red/30 transition-colors text-xs font-bold"
               >
                 <CheckCircle size={13} /> Execute
               </button>
@@ -64,8 +64,8 @@ export function TerminalConfirmCards({
           animate={{ opacity: 1, y: 0 }}
           className="flex flex-col items-start"
         >
-          <div className="bg-orange-500/10 border border-orange-500/20 text-orange-200 rounded-xl px-4 py-3 max-w-[85%]">
-            <div className="flex items-center gap-2 text-orange-400">
+          <div className="bg-accent-orange/10 border border-accent-orange/20 text-accent-orange rounded-xl px-4 py-3 max-w-[85%]">
+            <div className="flex items-center gap-2 text-accent-orange">
               <Brain size={13} />
               <span className="font-bold text-[10px] tracking-wider uppercase">AI wants to run: {pendingToolConfirm.tool}</span>
             </div>
@@ -80,13 +80,13 @@ export function TerminalConfirmCards({
                 </div>
                 <pre className="font-mono text-xs whitespace-pre-wrap break-all bg-scrim px-2 py-1.5 rounded border border-border-soft max-h-40 overflow-y-auto">
                   {pendingToolConfirm.preview.removed.map((l) => (
-                    <span key={`r${l}`} className="block text-red-400">- {l}</span>
+                    <span key={`r${l}`} className="block text-accent-red">- {l}</span>
                   ))}
                   {pendingToolConfirm.preview.removedMore > 0 && (
                     <span className="block text-fg-dim">… {pendingToolConfirm.preview.removedMore} more removed</span>
                   )}
                   {pendingToolConfirm.preview.added.map((l) => (
-                    <span key={`a${l}`} className="block text-emerald-400">+ {l}</span>
+                    <span key={`a${l}`} className="block text-accent-green">+ {l}</span>
                   ))}
                   {pendingToolConfirm.preview.addedMore > 0 && (
                     <span className="block text-fg-dim">… {pendingToolConfirm.preview.addedMore} more added</span>
@@ -97,7 +97,7 @@ export function TerminalConfirmCards({
             <div className="flex flex-wrap gap-2">
               <button
                 onClick={() => onToolConfirm(true)}
-                className="flex items-center gap-1.5 px-3 py-1 bg-red-500/20 hover:bg-red-500/40 text-red-400 rounded-md border border-red-500/30 transition-colors text-xs font-bold"
+                className="flex items-center gap-1.5 px-3 py-1 bg-accent-red/20 hover:bg-accent-red/40 text-accent-red rounded-md border border-accent-red/30 transition-colors text-xs font-bold"
               >
                 <CheckCircle size={13} /> Approve
               </button>
@@ -111,7 +111,7 @@ export function TerminalConfirmCards({
             {onApproveTask && pendingToolConfirm.tool !== 'executeCommand' && (
               <button
                 onClick={onApproveTask}
-                className="mt-2 flex items-center gap-1.5 px-3 py-1 bg-emerald-500/20 hover:bg-emerald-500/40 text-emerald-300 rounded-md border border-emerald-500/30 transition-colors text-xs"
+                className="mt-2 flex items-center gap-1.5 px-3 py-1 bg-accent-green/20 hover:bg-accent-green/40 text-accent-green rounded-md border border-accent-green/30 transition-colors text-xs"
                 title="Approves this edit AND lets the rest of this task's file edits run without asking. Commands and tests still confirm every time."
               >
                 <CheckCircle size={13} /> Approve + auto-approve file edits this conversation
@@ -127,8 +127,8 @@ export function TerminalConfirmCards({
           animate={{ opacity: 1, y: 0 }}
           className="flex flex-col items-start"
         >
-          <div className="bg-teal-500/10 border border-teal-500/20 text-teal-200 rounded-xl px-4 py-3 max-w-[85%]">
-            <div className="flex items-center gap-2 text-teal-400">
+          <div className="bg-accent-teal/10 border border-accent-teal/20 text-accent-teal rounded-xl px-4 py-3 max-w-[85%]">
+            <div className="flex items-center gap-2 text-accent-teal">
               <Brain size={13} />
               <span className="font-bold text-[10px] tracking-wider uppercase">Memory suggestion</span>
             </div>
@@ -136,7 +136,7 @@ export function TerminalConfirmCards({
             <div className="flex flex-wrap gap-2 mt-3">
               <button
                 onClick={() => onMemorySuggestionRespond?.(true)}
-                className="flex items-center gap-1.5 px-3 py-1 bg-teal-500/20 hover:bg-teal-500/40 text-teal-300 rounded-md border border-teal-500/30 transition-colors text-xs font-bold"
+                className="flex items-center gap-1.5 px-3 py-1 bg-accent-teal/20 hover:bg-accent-teal/40 text-accent-teal rounded-md border border-accent-teal/30 transition-colors text-xs font-bold"
               >
                 <CheckCircle size={13} /> Add to CLAUDE.md
               </button>

@@ -256,7 +256,7 @@ export function PdfToolsPanel({ project, onSendMessage }: PdfToolsPanelProps) {
               {/* File list */}
               <div className={cn(card, 'lg:col-span-2')}>
               <h3 className="text-xs font-semibold text-fg-strong mb-2">Project PDFs</h3>
-              {error && <p className="text-xs text-red-400 mb-2">{error}</p>}
+              {error && <p className="text-xs text-accent-red mb-2">{error}</p>}
               {files.length === 0 ? (
                 <p className="text-xs text-fg-dim italic">
                   No .pdf files found in this project{loading ? ' — scanning…' : ''}. Drop some in

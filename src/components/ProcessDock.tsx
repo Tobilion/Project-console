@@ -135,7 +135,7 @@ export function ProcessDock({
                               {running && (
                                 <button
                                   onClick={() => onStopProcess(proj.id)}
-                                  className="text-fg-faint hover:text-red-400 transition-colors flex-shrink-0"
+                                  className="text-fg-faint hover:text-accent-red transition-colors flex-shrink-0"
                                   title={`Stop ${running.command}`}
                                 >
                                   <Square size={10} />
@@ -267,7 +267,7 @@ export function ProcessDock({
                       e.stopPropagation();
                       onStopProcess(p.projectId);
                     }}
-                    className="text-fg-faint hover:text-red-400 transition-colors flex-shrink-0"
+                    className="text-fg-faint hover:text-accent-red transition-colors flex-shrink-0"
                     title={`Stop ${p.command}`}
                   >
                     <Square size={10} />

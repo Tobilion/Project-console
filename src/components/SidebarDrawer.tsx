@@ -82,7 +82,7 @@ export const SidebarDrawer = ({
         <button onClick={() => onSetCollapsed(false)} className="p-2 text-fg-subtle hover:text-fg-strong transition-colors" title="Scan a folder">
           <FolderSearch size={16} />
         </button>
-        <button onClick={() => { onSetCollapsed(false); createSession(activeProject?.id, activeProject?.name); }} className="p-2 text-fg-subtle hover:text-teal-400 transition-colors" title="New chat">
+        <button onClick={() => { onSetCollapsed(false); createSession(activeProject?.id, activeProject?.name); }} className="p-2 text-fg-subtle hover:text-accent-teal transition-colors" title="New chat">
           <Plus size={16} />
         </button>
         <button onClick={() => onSetCollapsed(false)} className="p-2 text-fg-subtle hover:text-fg-strong transition-colors" title="Discovered projects">
@@ -156,7 +156,7 @@ export const SidebarDrawer = ({
             key={s.id}
             onClick={() => switchSession(s.id)}
             className={`flex items-center gap-2 px-2 py-2 rounded-lg cursor-pointer text-xs transition-colors group ${
-              activeSessionId === s.id ? 'bg-teal-500/15 text-teal-300' : 'text-fg-subtle hover:bg-panel'
+              activeSessionId === s.id ? 'bg-accent-teal/15 text-accent-teal' : 'text-fg-subtle hover:bg-panel'
             }`}
           >
             <MessageSquare size={14} className="flex-shrink-0" />
@@ -184,11 +184,11 @@ export const SidebarDrawer = ({
               )}
             </span>
             {editingId !== s.id && (
-              <button onClick={(e) => { e.stopPropagation(); setEditingId(s.id); setDraftTitle(s.title); }} className="opacity-0 group-hover:opacity-100 text-fg-dim hover:text-teal-400 transition-all flex-shrink-0" title="Rename chat">
+              <button onClick={(e) => { e.stopPropagation(); setEditingId(s.id); setDraftTitle(s.title); }} className="opacity-0 group-hover:opacity-100 text-fg-dim hover:text-accent-teal transition-all flex-shrink-0" title="Rename chat">
                 <Pencil size={12} />
               </button>
             )}
-            <button onClick={(e) => { e.stopPropagation(); deleteSession(s.id); }} className="opacity-0 group-hover:opacity-100 text-fg-dim hover:text-red-400 transition-all flex-shrink-0">
+            <button onClick={(e) => { e.stopPropagation(); deleteSession(s.id); }} className="opacity-0 group-hover:opacity-100 text-fg-dim hover:text-accent-red transition-all flex-shrink-0">
               <Trash2 size={12} />
             </button>
           </div>
@@ -217,6 +217,10 @@ export const SidebarDrawer = ({
                  <span className="truncate flex-1 min-w-0">{p.name}</span>
                  <button
                    onClick={(e) => { e.stopPropagation(); togglePin(p.id); }}
+                   // Icon-convention exception (Stage G, documented): the pinned-star stays
+                   // yellow — a yellow star is the universal "pinned/bookmarked" convention
+                   // (browser bookmarks, iOS favorites) and is not a warning, so accent-orange
+                   // would misread. This is the deliberate exception, not a missed sweep.
                    className="opacity-0 group-hover:opacity-100 p-0.5 flex-shrink-0 text-fg-dim hover:text-yellow-400 transition-all"
                    title={pinned.includes(p.id) ? 'Unpin project' : 'Pin project to the top'}
                  >
@@ -240,8 +244,8 @@ export const SidebarDrawer = ({
           {aiEnabled ? (aiModel ?? 'AI on') : 'AI off'}
         </span>
         {activeServersCount > 0 && (
-          <span className="flex items-center gap-1 text-[10px] text-green-400 whitespace-nowrap flex-shrink-0" title={`${activeServersCount} running`}>
-            <span className="w-1.5 h-1.5 rounded-full bg-green-400 inline-block animate-pulse" />
+          <span className="flex items-center gap-1 text-[10px] text-accent-green whitespace-nowrap flex-shrink-0" title={`${activeServersCount} running`}>
+            <span className="w-1.5 h-1.5 rounded-full bg-accent-green inline-block animate-pulse" />
             {activeServersCount}
           </span>
         )}

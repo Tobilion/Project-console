@@ -146,7 +146,7 @@ export function AIAssistantInterface({ onSend, onSearch, onDeepResearch, disable
 
   return (
     <div className="w-full">
-      <div className="bg-surface/80 border border-border-soft rounded-2xl overflow-hidden backdrop-blur-sm">
+      <div className="bg-panel border border-border-strong rounded-xl overflow-hidden">
         <div className="px-4 py-3">
           <input
             type="text"
@@ -166,7 +166,7 @@ export function AIAssistantInterface({ onSend, onSearch, onDeepResearch, disable
                 <FileText size={12} className="text-accent-blue" />
                 <span className="text-xs text-fg-subtle">{f.name}</span>
                 <span className="text-[10px] text-fg-faint">{f.content.length.toLocaleString()} chars</span>
-                <button onClick={() => setUploadedFiles(prev => prev.filter((_, j) => j !== i))} className="text-fg-faint hover:text-red-400 transition-colors">
+                <button onClick={() => setUploadedFiles(prev => prev.filter((_, j) => j !== i))} className="text-fg-faint hover:text-accent-red transition-colors">
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
                 </button>
               </div>
@@ -176,9 +176,9 @@ export function AIAssistantInterface({ onSend, onSearch, onDeepResearch, disable
 
         {uploadError && (
           <div className="px-4 pb-2">
-            <div className="flex items-start gap-2 bg-red-500/10 border border-red-500/20 rounded-lg px-2.5 py-1.5">
-              <span className="text-xs text-red-400 flex-1">{uploadError}</span>
-              <button onClick={() => setUploadError(null)} className="text-red-400/60 hover:text-red-400 transition-colors flex-shrink-0">
+            <div className="flex items-start gap-2 bg-accent-red/10 border border-accent-red/20 rounded-lg px-2.5 py-1.5">
+              <span className="text-xs text-accent-red flex-1">{uploadError}</span>
+              <button onClick={() => setUploadError(null)} className="text-accent-red/60 hover:text-accent-red transition-colors flex-shrink-0">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
               </button>
             </div>
@@ -195,7 +195,7 @@ export function AIAssistantInterface({ onSend, onSearch, onDeepResearch, disable
             <button
               onClick={handleSend}
               disabled={(!inputValue.trim() && uploadedFiles.length === 0) || !!disabled}
-              className={cn('w-8 h-8 flex items-center justify-center rounded-full transition-all', (inputValue.trim() || uploadedFiles.length > 0) && !disabled ? 'bg-accent-blue text-white hover:bg-accent-blue/80' : 'bg-panel text-fg-faint cursor-not-allowed')}
+              className={cn('w-9 h-9 flex items-center justify-center rounded-full transition-all', (inputValue.trim() || uploadedFiles.length > 0) && !disabled ? 'bg-accent-blue text-white hover:bg-accent-blue/80' : 'bg-panel text-fg-faint cursor-not-allowed')}
             >
               <ArrowUp size={16} />
             </button>

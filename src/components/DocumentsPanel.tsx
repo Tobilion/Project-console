@@ -32,9 +32,9 @@ interface DocumentsPanelProps {
 
 function fileIcon(path: string) {
   const lower = path.toLowerCase();
-  if (lower.endsWith('.pdf')) return <FileText size={14} className="text-red-400/80 shrink-0" />;
-  if (lower.endsWith('.docx')) return <FileText size={14} className="text-blue-400/80 shrink-0" />;
-  if (lower.endsWith('.md')) return <StickyNote size={14} className="text-teal-400/80 shrink-0" />;
+  if (lower.endsWith('.pdf')) return <FileText size={14} className="text-accent-red/80 shrink-0" />;
+  if (lower.endsWith('.docx')) return <FileText size={14} className="text-accent-blue/80 shrink-0" />;
+  if (lower.endsWith('.md')) return <StickyNote size={14} className="text-accent-teal/80 shrink-0" />;
   return <FileIcon size={14} className="text-fg-dim shrink-0" />;
 }
 
@@ -154,7 +154,7 @@ export function DocumentsPanel({ project, onSendMessage, aiEnabled }: DocumentsP
               </div>
             )}
             {status === 'error' && (
-              <div className="text-xs text-red-400 bg-scrim-faint border border-border-soft rounded-lg p-3 mb-3">
+              <div className="text-xs text-accent-red bg-scrim-faint border border-border-soft rounded-lg p-3 mb-3">
                 Search failed — is the server up?
               </div>
             )}

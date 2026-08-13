@@ -38,6 +38,9 @@ export const ThemeToggle = ({ className }: ThemeToggleProps) => {
           {isDark ? (
             <Moon size={14} className="text-foreground" strokeWidth={1.5} />
           ) : (
+            // Icon-convention exception (Stage G, documented): the sun stays yellow — the
+            // universal "sun" glyph convention; mapping it to accent-orange would read as
+            // a warning color. Deliberate exception, not a missed sweep.
             <Sun size={14} className="text-yellow-500" strokeWidth={1.5} />
           )}
         </div>

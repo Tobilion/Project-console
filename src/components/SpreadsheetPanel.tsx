@@ -196,7 +196,7 @@ export function SpreadsheetPanel({ project, onSendMessage }: SpreadsheetPanelPro
           </button>
         </div>
 
-        {error && <p className="text-xs text-red-400 mb-3">{error}</p>}
+        {error && <p className="text-xs text-accent-red mb-3">{error}</p>}
 
         {!project ? (
           <div className="text-sm text-fg-muted bg-panel rounded-xl border border-border-soft p-6">

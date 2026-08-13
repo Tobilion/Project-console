@@ -27,8 +27,8 @@ const TYPE_LABELS: Record<string, { label: string; className: string }> = {
   file_edit: { label: 'EDIT', className: 'bg-accent-blue/15 text-accent-blue' },
   file_insert: { label: 'INSERT', className: 'bg-accent-blue/15 text-accent-blue' },
   file_append: { label: 'APPEND', className: 'bg-accent-blue/15 text-accent-blue' },
-  command: { label: 'CMD', className: 'bg-amber-400/15 text-amber-400' },
-  git: { label: 'GIT', className: 'bg-amber-400/15 text-amber-400' },
+  command: { label: 'CMD', className: 'bg-accent-orange/15 text-accent-orange' },
+  git: { label: 'GIT', className: 'bg-accent-orange/15 text-accent-orange' },
   revert: { label: 'REVERT', className: 'bg-fg-dim/10 text-fg-dim' },
 };
 

@@ -101,7 +101,7 @@ export function CommandReference({ onClose }: CommandReferenceProps) {
           </button>
         </div>
 
-        {error && <p className="text-xs text-red-400 mb-3">{error}</p>}
+        {error && <p className="text-xs text-accent-red mb-3">{error}</p>}
 
         <div className="flex gap-4 flex-1 min-h-0">
           {/* Left category rail — 220px, --overlay */}

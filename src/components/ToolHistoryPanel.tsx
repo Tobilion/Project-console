@@ -36,9 +36,9 @@ className="border-t border-border-soft bg-surface/60 overflow-hidden"
                       onClick={() => setExpandedId(isExpanded ? null : entry.id)}
                       className="w-full flex items-center gap-2 px-3 py-2 hover:bg-panel transition-colors text-left"
                     >
-                      <TerminalIcon size={12} className={hasError ? 'text-red-400' : 'text-accent-blue'} />
+                      <TerminalIcon size={12} className={hasError ? 'text-accent-red' : 'text-accent-blue'} />
                       <span className="text-xs font-mono text-fg-muted flex-1">{entry.tool}</span>
-                      {entry.gated && <span className="text-[10px] text-orange-400/60">gated</span>}
+                      {entry.gated && <span className="text-[10px] text-accent-orange/60">gated</span>}
                       <span className="text-[10px] text-fg-faint">
                         {new Date(entry.timestamp).toLocaleTimeString()}
                       </span>
@@ -54,7 +54,7 @@ className="border-t border-border-soft bg-surface/60 overflow-hidden"
                         </div>
                         <div>
                           <p className="text-[10px] text-fg-faint mb-1 uppercase">Result</p>
-                          <pre className={`text-[11px] font-mono bg-scrim-faint rounded p-2 overflow-x-auto whitespace-pre-wrap ${hasError ? 'text-red-400' : 'text-fg-subtle'}`}>
+                          <pre className={`text-[11px] font-mono bg-scrim-faint rounded p-2 overflow-x-auto whitespace-pre-wrap ${hasError ? 'text-accent-red' : 'text-fg-subtle'}`}>
                             {typeof entry.result === 'string' ? entry.result : JSON.stringify(entry.result, null, 2)}
                           </pre>
                         </div>
@@ -69,7 +69,7 @@ className="border-t border-border-soft bg-surface/60 overflow-hidden"
                           />
                           <button
                             onClick={() => onRerun(entry)}
-                            className="flex items-center gap-1 px-2 py-1 rounded bg-panel hover:bg-panel-strong text-fg-dim hover:text-teal-400 transition-colors text-[10px]"
+                            className="flex items-center gap-1 px-2 py-1 rounded bg-panel hover:bg-panel-strong text-fg-dim hover:text-accent-teal transition-colors text-[10px]"
                           >
                             <RotateCcw size={10} /> {entry.gated ? 'Switch to AI' : 'Re-run'}
                           </button>
