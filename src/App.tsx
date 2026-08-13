@@ -283,6 +283,11 @@ function App() {
     e.target.value = '';
   };
 
+  // The chat (Terminal) is the active view only when no other top-level view is open.
+  // When it is, confirm cards render inline in the thread; the fixed overlay below
+  // exists solely for the non-chat views where this thread is unmounted.
+  const chatViewActive = !showCommandRef && !toolsOpen && !showDashboard && !(showWelcome && !chatFullscreen);
+
   return (
     <div className="h-screen relative flex flex-col">
       <GlowOrbs />
@@ -460,6 +465,9 @@ function App() {
               onConfirm={handleConfirm}
               pendingToolConfirm={pendingToolConfirm}
               onToolConfirm={handleToolConfirm}
+              onApproveTask={handleApproveTask}
+              pendingMemorySuggestion={pendingMemorySuggestion}
+              onMemorySuggestionRespond={handleMemorySuggestionRespond}
               aiEnabled={aiEnabled}
               aiThinking={aiThinking}
               aiThinkingText={aiThinkingText}
@@ -508,7 +516,11 @@ function App() {
 
       {/* 2026-08-12 audit fix: confirm cards render as a fixed overlay so they are visible
           regardless of which top-level view is active (chat, Tools panels, dashboard) — a
-          confirm-gated action triggered from a panel must never strand the user. */}
+          confirm-gated action triggered from a panel must never strand the user. When the
+          chat itself IS the active view, the cards render inline in the thread instead
+          (TerminalMessages) — the overlay only covers the views where that thread is
+          unmounted. */}
+      {!chatViewActive && (
       <ConfirmCardsOverlay
         pendingConfirm={pendingConfirm}
         onConfirm={handleConfirm}
@@ -518,6 +530,7 @@ function App() {
         pendingMemorySuggestion={pendingMemorySuggestion}
         onMemorySuggestionRespond={handleMemorySuggestionRespond}
       />
+      )}
 
       <CommandDeck
         open={deckOpen}

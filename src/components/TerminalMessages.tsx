@@ -1,10 +1,11 @@
 import React, { useMemo, useRef, useEffect, useCallback, ErrorInfo, ReactNode } from 'react';
-import { TerminalMessage } from '../types';
+import { TerminalMessage, PendingToolConfirm, PendingMemorySuggestion } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
 import ReactMarkdown from 'react-markdown';
 import { Loader2, Square, AlertTriangle, ExternalLink } from 'lucide-react';
 import { OutputBlock } from './TerminalOutputBlock';
 import { StructuredJsonBlock } from './StructuredJsonBlock';
+import { TerminalConfirmCards } from './TerminalConfirmCards';
 import { TerminalEmptyState } from './TerminalEmptyState';
 
 /** M23: a message-level boundary (local, NOT the app's shared ErrorBoundary) so a single
@@ -76,6 +77,16 @@ interface TerminalMessagesProps {
   aiThinkingText?: string;
   commandPending: boolean;
   onCancel?: () => void;
+  // Confirm cards render inline in the thread when the chat is the active view (the
+  // App-level ConfirmCardsOverlay covers the panel/dashboard views where this thread
+  // is unmounted — see App.tsx).
+  pendingConfirm: { token: string; command: string } | null;
+  onConfirm: (confirmed: boolean) => void;
+  pendingToolConfirm: PendingToolConfirm | null;
+  onToolConfirm: (confirmed: boolean) => void;
+  onApproveTask?: () => void;
+  pendingMemorySuggestion?: PendingMemorySuggestion | null;
+  onMemorySuggestionRespond?: (accept: boolean) => void;
   emptyStatePrompt: string;
   emptyStateActions: string[];
   onDidYouMeanPick?: (intent: string) => void;
@@ -239,6 +250,13 @@ const TerminalMessagesComponent = ({
   aiThinkingText,
   commandPending,
   onCancel,
+  pendingConfirm,
+  onConfirm,
+  pendingToolConfirm,
+  onToolConfirm,
+  onApproveTask,
+  pendingMemorySuggestion,
+  onMemorySuggestionRespond,
   emptyStatePrompt,
   emptyStateActions,
   onDidYouMeanPick,
@@ -276,13 +294,26 @@ const TerminalMessagesComponent = ({
       // the natural cadence of discrete user/system/error message arrivals.
       endRef.current?.scrollIntoView({ behavior: aiThinking ? 'auto' : 'smooth' });
     }
-  }, [messages, endRef]);
+  }, [messages, pendingConfirm, pendingToolConfirm, pendingMemorySuggestion, endRef]);
 
   return (
     <div ref={containerRef} onScroll={handleContainerScroll} className="flex-1 overflow-y-auto p-4">
       {messages.length === 0 ? (
         <div className={`${centerCol} min-h-full flex flex-col items-center justify-center`}>
           <TerminalEmptyState greeting={emptyStatePrompt} actions={emptyStateActions} onAction={onSendMessage} />
+          {/* An empty thread still needs its confirm cards — a confirm-gated action can
+              arrive with a fresh session (panel-triggered, then the user comes back here). */}
+          <div className="w-full max-w-[85%] mt-4 space-y-3">
+            <TerminalConfirmCards
+              pendingConfirm={pendingConfirm}
+              onConfirm={onConfirm}
+              pendingToolConfirm={pendingToolConfirm}
+              onToolConfirm={onToolConfirm}
+              onApproveTask={onApproveTask}
+              pendingMemorySuggestion={pendingMemorySuggestion}
+              onMemorySuggestionRespond={onMemorySuggestionRespond}
+            />
+          </div>
         </div>
       ) : (
       <div className={`${centerCol} space-y-3`}>
@@ -326,6 +357,16 @@ const TerminalMessagesComponent = ({
         );
         })}
       </AnimatePresence>
+
+      <TerminalConfirmCards
+        pendingConfirm={pendingConfirm}
+        onConfirm={onConfirm}
+        pendingToolConfirm={pendingToolConfirm}
+        onToolConfirm={onToolConfirm}
+        onApproveTask={onApproveTask}
+        pendingMemorySuggestion={pendingMemorySuggestion}
+        onMemorySuggestionRespond={onMemorySuggestionRespond}
+      />
 
       <div ref={endRef} />
 

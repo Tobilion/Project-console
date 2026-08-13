@@ -8,6 +8,7 @@
     "clipboardHistory": true,
     "clipboardPersist": true,
     "defaultWorkspaceType": "dev",
-    "locale": "en"
+    "locale": "en",
+    "accentColor": "#8E8E93"
   }
 }

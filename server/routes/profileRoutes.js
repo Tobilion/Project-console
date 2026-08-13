@@ -68,7 +68,9 @@ function sanitizeBool(value, fallback) {
 // falls back to 'auto' (the theme-linked default) with a warn, the same defensive pattern as
 // the other profile fields.
 function sanitizeAccentColor(value) {
-  if (value === 'auto') return 'auto';
+  // `undefined`/`null` means the field is absent (profiles saved before the Stage H
+  // accent field existed) — that is the default, not an invalid value, so no warn.
+  if (value == null || value === 'auto') return 'auto';
   if (typeof value === 'string' && /^#[0-9A-Fa-f]{6}$/.test(value)) return value;
   console.warn(`Ignoring invalid accentColor "${value}" — expected "auto" or a #RRGGBB hex.`);
   return 'auto';
