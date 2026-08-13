@@ -25,6 +25,7 @@ import {
 } from './executorProcesses.js';
 import { ANSI_RE, URL_PATTERN, collapseLfCrlfWarnings, createBufferedSender } from './executorOutput.js';
 import { buildPortPromptConfirmation, offerPortRetry } from './executorPorts.js';
+import { offerUpstreamRetry } from './executorGitRetry.js';
 import { isDevServerCommand, buildDetachMessage } from './executorDevServer.js';
 import { notify } from './notify.js';
 import { getTuning } from './tuningStore.js';
@@ -341,6 +342,10 @@ export function executeCommand(command, cwd, ws, projectId, opts = {}) {
         // one-click retry on the next port through the normal confirm-before-run flow, same as any
         // other command — this never runs anything without the user approving it.
         offerPortRetry({ ws, projectId, command: finalCommand, stdout, stderr, isDev, exitCode: code });
+
+        // First push of a never-pushed branch — git exits 128 with "no upstream branch". Offer
+        // the `--set-upstream` retry git itself suggests, confirm-gated like the port retry.
+        offerUpstreamRetry({ ws, projectId, command: finalCommand, stdout, stderr, exitCode: code });
 
         sendEvent('end', `\nProcess exited with code ${code}`);
         resolve({

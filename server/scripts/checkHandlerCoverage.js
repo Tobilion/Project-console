@@ -741,5 +741,30 @@ if (profileBackup !== null) fs.writeFileSync(profilePath, profileBackup, 'utf-8'
 const notOnboarding = await handleOnboardingCommand(ws, 'run the tests');
 eq('onboarding: unrelated input not consumed', notOnboarding === false, true);
 
+// --- EXECUTOR GIT RETRY (Phase 20, 2026-08-13) ---------------------------------
+// The "no upstream branch" push failure recovery (executorGitRetry.js): branch extraction
+// from git's fatal + the confirm-gated --set-upstream retry offer, all pure unit rows.
+const { extractBranchWithoutUpstream, offerUpstreamRetry } = await import(pathToFileURL(base + 'executorGitRetry.js').href);
+const fatalText = 'fatal: The current branch ui-redesign has no upstream branch.\nTo push the current branch and set the remote as upstream, use\n\n    git push --set-upstream origin ui-redesign\n\n';
+eq('git retry: branch extracted from fatal', extractBranchWithoutUpstream(fatalText), 'ui-redesign');
+eq('git retry: slash-namespace branch extracted', extractBranchWithoutUpstream('fatal: The current branch feature/auth-x1 has no upstream branch.'), 'feature/auth-x1');
+eq('git retry: unrelated error yields null', extractBranchWithoutUpstream('fatal: could not read Username for https://github.com'), null);
+eq('git retry: shell-hostile branch name refused', extractBranchWithoutUpstream('fatal: The current branch foo;rm -rf x has no upstream branch.'), null);
+sent.length = 0;
+const retryOffered = offerUpstreamRetry({
+  ws, projectId: 'p1', command: 'git add -A && git commit -m "x" && git push',
+  stdout: '[ui-redesign 3dc6c41] Massive UI UX Upgrades\n5 files changed, 76 insertions(+)',
+  stderr: fatalText, exitCode: 128,
+});
+eq('git retry: failed push offers a confirm-gated retry', retryOffered === true && ws.sent.length === 1 && ws.sent[0].type === 'confirm_prompt' && ws.sent[0].trigger === 'git_no_upstream_retry' && /--set-upstream origin ui-redesign/.test(ws.sent[0].command), true);
+const retryQueued = [...pendingConfirmations.entries()].find(([, p]) => p.command === 'git push --set-upstream origin ui-redesign');
+eq('git retry: pending record carries the retry command', !!retryQueued && retryQueued[1].projectId === 'p1', true);
+if (retryQueued) pendingConfirmations.delete(retryQueued[0]);
+sent.length = 0;
+eq('git retry: non-push command not offered', offerUpstreamRetry({ ws, projectId: 'p1', command: 'npm run deploy', stdout: '', stderr: fatalText, exitCode: 128 }), false);
+eq('git retry: success exit not offered', offerUpstreamRetry({ ws, projectId: 'p1', command: 'git push', stdout: '', stderr: fatalText, exitCode: 0 }), false);
+eq('git retry: no fatal in output not offered', offerUpstreamRetry({ ws, projectId: 'p1', command: 'git push', stdout: '', stderr: 'fatal: other error', exitCode: 128 }), false);
+eq('git retry: no project not offered', offerUpstreamRetry({ ws, projectId: null, command: 'git push', stdout: '', stderr: fatalText, exitCode: 128 }), false);
+
 console.log(`check-handlers: ${total} checks, ${failed} failed`);
 process.exit(failed ? 1 : 0);

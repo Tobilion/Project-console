@@ -209,7 +209,13 @@ npm run lint    # tsc --noEmit
   leaves: `executorOutput.js` (ANSI/URL regexes, `collapseLfCrlfWarnings`, `createBufferedSender`
   150ms coalescing; stderr batches may reroute to a `warning` WS channel),
   `executorPorts.js` (PORT_PROMPT_RE interactive-port detection → stdinWrite confirm flow;
-  `extractBusyPort`/`buildPortRetryCommand` EADDRINUSE retry),   `executorProcesses.js`
+  `extractBusyPort`/`buildPortRetryCommand` EADDRINUSE retry), `executorGitRetry.js`
+  (Phase 20, 2026-08-13: `NO_UPSTREAM_RE`/`extractBranchWithoutUpstream` +
+  `offerUpstreamRetry` — a `git push` on a never-pushed branch exits 128 with "The current
+  branch X has no upstream branch"; the close handler then offers the confirm-gated
+  `git push --set-upstream origin <branch>` retry git itself suggests, same one-click shape
+  as offerPortRetry, branch name validated against the safe refname charset before being
+  interpolated into the command),   `executorProcesses.js`
   (`runningProcesses` is MULTI-SLOT per project — `Map<projectId, Map<pid, entry>>` since the
   2026-08-10 NetPulse serve+watch fix, so several commands can run concurrently and each owns
   its own slot; `processLogs` LineRingBuffer 2000-line cap is per-project shared; `stopTrackedProcess`
@@ -1300,6 +1306,9 @@ no dispatch or matching logic). Notable functional additions made during the sty
    Live-verified: set_display_name round-trip, connected-users lists both connections,
    note gains "· by Tobi", reminder createdBy=Tobi. The two-machine LAN manual test (different
    display names attributing correctly) needs HOST=0.0.0.0 on a real network — flagged manual.
+   Phase 20 (2026-08-13): check-handlers 200/200 (baseline 190 + 10 EXECUTOR-GIT-RETRY rows —
+   extractBranchWithoutUpstream unit shapes incl. the shell-hostile refusal + the
+   offerUpstreamRetry offer/no-offer matrix).
    Run the relevant battery after ANY edit to the corresponding module.
 - **editFile** tolerates whitespace differences (normalized line-range fallback) but not
   wrong wording; on total failure the error names both attempts and tells the caller to
