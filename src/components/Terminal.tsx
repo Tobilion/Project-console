@@ -325,7 +325,6 @@ export const Terminal = ({ messages, onSendMessage, onSearch, onDeepResearch, ac
         aiThinking={aiThinking}
         commandPending={commandPending}
         isBlocked={isBlocked}
-        activeProject={activeProject}
         ollamaStatus={ollamaStatus}
          aiModel={aiModel}
          aiMode={aiMode}

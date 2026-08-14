@@ -1,5 +1,5 @@
 import React from 'react';
-import { AIStatus, Project } from '../types';
+import { AIStatus } from '../types';
 import { Send, Brain } from 'lucide-react';
 import { AIAssistantInterface } from './ui/AIAssistantInterface';
 
@@ -18,7 +18,6 @@ interface TerminalInputProps {
   aiThinking: boolean;
   commandPending: boolean;
   isBlocked: boolean;
-  activeProject: Project | null;
   ollamaStatus: AIStatus | null;
   aiModel: string;
   aiMode: string;
@@ -42,7 +41,7 @@ interface TerminalInputProps {
  *  (AIAssistantInterface when AI is on, the plain command form otherwise). Pure presentation —
  *  all state and handlers stay in Terminal.tsx. */
 export function TerminalInput({
-  centerCol, aiEnabled, aiThinking, commandPending, isBlocked, activeProject, ollamaStatus,
+  centerCol, aiEnabled, aiThinking, commandPending, isBlocked, ollamaStatus,
   aiModel, aiMode, onAIToggle, onSetModel, onSetMode, chatPrompt, input,   onInputChange,
   onInputKeyDown, onSubmit, inputRef, onAISend, onSearch, onDeepResearch, getHistory,
   connected,
@@ -94,7 +93,7 @@ export function TerminalInput({
 
       {aiEnabled ? (
         <div className={`${centerCol} p-3 bg-panel border border-border-strong rounded-xl`}>
-           <AIAssistantInterface onSend={onAISend} onSearch={(q) => { onSearch?.(q); }} onDeepResearch={(q) => { onDeepResearch?.(q); }} disabled={!activeProject || aiThinking || isBlocked || !connected} placeholder={isBlocked ? 'Resolve the pending confirmation first (Esc to cancel)...' : aiThinking ? 'AI is thinking...' : !connected ? 'Reconnecting…' : chatPrompt} getHistory={getHistory} />
+           <AIAssistantInterface onSend={onAISend} onSearch={(q) => { onSearch?.(q); }} onDeepResearch={(q) => { onDeepResearch?.(q); }} disabled={aiThinking || isBlocked || !connected} placeholder={isBlocked ? 'Resolve the pending confirmation first (Esc to cancel)...' : aiThinking ? 'AI is thinking...' : !connected ? 'Reconnecting…' : chatPrompt} getHistory={getHistory} />
         </div>
       ) : (
         <form onSubmit={onSubmit} className={`${centerCol} p-3 bg-panel border border-border-strong rounded-xl`}>
@@ -105,13 +104,13 @@ export function TerminalInput({
               value={input}
               onChange={(e) => { onInputChange(e.target.value); }}
               onKeyDown={onInputKeyDown}
-              disabled={!activeProject || aiThinking || commandPending || !connected}
-              placeholder={!activeProject ? "Select a project to start..." : aiThinking ? "AI is thinking..." : commandPending ? "Running..." : !connected ? "Reconnecting…" : chatPrompt}
+              disabled={aiThinking || commandPending || !connected}
+              placeholder={aiThinking ? "AI is thinking..." : commandPending ? "Running..." : !connected ? "Reconnecting…" : chatPrompt}
               className="w-full bg-surface border border-border-soft rounded-xl py-3 pl-4 pr-12 text-fg text-sm focus:outline-none focus:border-accent-blue transition-colors disabled:opacity-50"
             />
             <button
               type="submit"
-               disabled={!input.trim() || !activeProject || aiThinking || commandPending || isBlocked || !connected}
+               disabled={!input.trim() || aiThinking || commandPending || isBlocked || !connected}
                title={!connected ? 'WebSocket disconnected — reconnecting…' : isBlocked ? 'Resolve the pending confirmation first (Esc to cancel)' : undefined}
               className="absolute right-1.5 w-11 h-11 rounded-lg bg-accent-blue text-white hover:opacity-90 flex items-center justify-center disabled:opacity-50 transition-opacity"
             >

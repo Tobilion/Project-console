@@ -229,11 +229,19 @@ The UI is dark-first with an additive light theme (sliding sun/moon pill in the 
 ### CLI chat (no browser)
 
 ```powershell
-node server/cli-client.js --dir "C:\path\to\project"   # jump straight to a project
-node server/cli-client.js --project "<name>"           # or by name/folder
+# Any install type (installed globally, or from this repo after npm install):
+local-project-console cli                          # starts the server, then chats in this terminal
+local-project-console cli --dir "C:\path\to\project"   # jump straight to a project
+local-project-console cli --project "<name>"           # or by name/folder
+
+# One-off without installing (also works from this repo's bin/):
+npx local-project-console cli
+
+# From this repo (source mode), the direct client also works as before:
+node server/cli-client.js --dir "C:\path\to\project"
 ```
 
-Without `--dir`/`--project` you get an interactive arrow-key picker (numbered fallback in non-interactive terminals). Type `projects` in chat to switch projects or rescan.
+Without `--dir`/`--project` you get an interactive arrow-key picker (numbered fallback in non-interactive terminals). Type `projects` in chat to switch projects or rescan. The server boots in the background and stops when the chat exits.
 
 ### AI setup
 
@@ -405,6 +413,7 @@ App-global identity (name/title/custom role) edited from the ⚙ Settings modal;
 | `how do i fix the sharp download timeout` | Retry `npm install`; sharp is optional and only affects semantic search |
 | `how do i fix an eperm permission error` | Close locked files / elevated terminal / clear cache; remove the partial `AppData\Roaming\npm\node_modules` folder first |
 | `how do i build the desktop app` | `cd desktop && npm install && npm run dist` — NSIS `.exe` (Windows), `.dmg` (macOS), `.AppImage` (Linux) |
+| `npx local-project-console cli` | Launch the console in CLI chat mode — the server boots in the background and the terminal becomes the interactive chat agent (same mode as start.bat's [C] option; installed users run `local-project-console cli`) |
 
 ---
 
@@ -508,6 +517,14 @@ local-project-console
 
 # Option B — no install, one-off run:
 npx local-project-console
+```
+
+Both open the web UI. For the interactive terminal chat instead of the browser (the same
+[CLI mode](README.md#cli-chat-no-browser) `start.bat`'s [C] option reaches):
+
+```powershell
+npx local-project-console cli           # one-off
+local-project-console cli               # global install
 ```
 
 Either way it opens the same setup flow as running from source: pick or type a folder to scan,

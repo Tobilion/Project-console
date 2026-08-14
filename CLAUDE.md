@@ -36,6 +36,13 @@ npm run lint    # tsc --noEmit
   (a process-global integer set by `server/index.js` once the port-fallback loop binds).
   This avoids ESM module-realm duplication (the esbuild bundle inlines `server/` modules).
   The wrapper auto-opens the browser on detection.
+- **CLI chat via the launcher (2026-08-14)**: `node bin/cli.js cli` (or `npx
+  local-project-console cli`, or `local-project-console cli` when globally installed) starts
+  the server in-process exactly like the web mode, then spawns `server/cli-client.js`
+  (`stdio: inherit`) instead of opening the browser — the same chat mode `start.bat`'s [C]
+  option reaches, now available to npm installers who never see the batch file. Extra args
+  (`--dir`/`--project`) are forwarded to the client; when the client exits, the parent calls
+  `process.exit(code)` so the in-process server dies with it (no orphan).
 - **Background daemon mode**: `scripts/start-daemon.ps1` starts the server hidden and writes
   the bound port to `logs/daemon.port`; `scripts/stop-daemon.ps1` kills by port (not PID —
   robust even when the cmd.exe wrapper exits before npm); `scripts/add-to-startup.ps1`
