@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback, useMemo } from 'react';
+import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { X, GitCommit, FileWarning, Globe, Terminal, FolderGit2, MessageSquare, UploadCloud, Copy, RefreshCw, Search, Radio, Play, Square } from 'lucide-react';
 import { formatPath } from '../utils/formatPath';
@@ -29,19 +29,32 @@ interface DashboardProps {
    *  Per-card rendering is driven by the entry's OWN workspaceType — the server persists the
    *  switch in console.config.json, so each card reflects its project's real mode. */
   workspaceMode?: 'dev' | 'general';
+  /** Server's current scan directory (used to shorten project paths for display). */
+  scanPath?: string;
   onSelectProject: (p: Project) => Promise<void> | void;
   onSendMessage: (content: string) => Promise<void> | void;
 }
 
 type DashboardTab = 'projects' | 'live';
 
-export const Dashboard = ({ onClose, refreshSignal = 0, projects, workspaceMode = 'dev', onSelectProject, onSendMessage }: DashboardProps) => {
+export const Dashboard = ({ onClose, refreshSignal = 0, projects, workspaceMode = 'dev', scanPath, onSelectProject, onSendMessage }: DashboardProps) => {
   const [entries, setEntries] = useState<DashboardEntry[]>([]);
   const [tab, setTab] = useState<DashboardTab>('projects');
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [filter, setFilter] = useState('');
   const [refreshing, setRefreshing] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  // True once the first dashboard fetch has resolved — the tab's empty states say "no
+  // projects/URLs" which is misleading while the initial fetch is still in flight.
+  const [loaded, setLoaded] = useState(false);
+  const refreshingTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const copiedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Clear the transient-state timers on unmount so their delayed setState can't fire on a
+  // dead dashboard (and hold its closures alive after it unmounted).
+  useEffect(() => () => {
+    if (refreshingTimer.current) clearTimeout(refreshingTimer.current);
+    if (copiedTimer.current) clearTimeout(copiedTimer.current);
+  }, []);
   // Phase 19: connected users (LAN attribution labels — hidden for the single-user case).
   const [users, setUsers] = useState<{ name: string }[]>([]);
 
@@ -53,7 +66,10 @@ export const Dashboard = ({ onClose, refreshSignal = 0, projects, workspaceMode 
 
   const fetchDashboard = useCallback(async () => {
     const data = await apiFetchJson<DashboardEntry[]>('/api/dashboard');
-    if (data) setEntries(data);
+    if (data) {
+      setEntries(data);
+      setLoaded(true);
+    }
   }, []);
 
   useEffect(() => {
@@ -82,7 +98,8 @@ export const Dashboard = ({ onClose, refreshSignal = 0, projects, workspaceMode 
   const handleManualRefresh = async () => {
     setRefreshing(true);
     await fetchDashboard();
-    setTimeout(() => setRefreshing(false), 400);
+    if (refreshingTimer.current) clearTimeout(refreshingTimer.current);
+    refreshingTimer.current = setTimeout(() => setRefreshing(false), 400);
   };
 
   // Dirty/running projects surface first — the ones that actually need attention shouldn't be
@@ -149,7 +166,8 @@ export const Dashboard = ({ onClose, refreshSignal = 0, projects, workspaceMode 
     try {
       await navigator.clipboard.writeText(entry.path);
       setCopiedId(entry.id);
-      setTimeout(() => setCopiedId((id) => (id === entry.id ? null : id)), 1500);
+      if (copiedTimer.current) clearTimeout(copiedTimer.current);
+      copiedTimer.current = setTimeout(() => setCopiedId((id) => (id === entry.id ? null : id)), 1500);
     } catch {
       // Clipboard API unavailable (non-HTTPS/non-localhost context) — silently no-op, nothing
       // sensitive is at stake and there's no good fallback UI for a stray copy button.
@@ -164,13 +182,13 @@ export const Dashboard = ({ onClose, refreshSignal = 0, projects, workspaceMode 
           <div className="flex items-center gap-1 bg-scrim-faint rounded-lg p-0.5 border border-border-soft">
             <button
               onClick={() => setTab('projects')}
-              className={`px-2.5 py-1 text-xs rounded-md transition-colors ${tab === 'projects' ? 'bg-panel-strong text-fg-strong' : 'text-fg-dim hover:text-fg-muted'}`}
+              className={`px-2.5 py-1 text-xs rounded-lg transition-colors ${tab === 'projects' ? 'bg-panel-strong text-fg-strong' : 'text-fg-dim hover:text-fg-muted'}`}
             >
               Projects
             </button>
             <button
               onClick={() => setTab('live')}
-              className={`flex items-center gap-1 px-2.5 py-1 text-xs rounded-md transition-colors ${tab === 'live' ? 'bg-panel-strong text-fg-strong' : 'text-fg-dim hover:text-fg-muted'}`}
+              className={`flex items-center gap-1 px-2.5 py-1 text-xs rounded-lg transition-colors ${tab === 'live' ? 'bg-panel-strong text-fg-strong' : 'text-fg-dim hover:text-fg-muted'}`}
             >
               <Radio size={11} />
               Live Sites
@@ -210,17 +228,19 @@ export const Dashboard = ({ onClose, refreshSignal = 0, projects, workspaceMode 
               />
             </div>
           )}
-          <button onClick={handleManualRefresh} className="p-1 text-fg-dim hover:text-fg-strong transition-colors" title="Refresh">
+          <button onClick={handleManualRefresh} className="p-2 text-fg-dim hover:text-fg-strong transition-colors" title="Refresh">
             <RefreshCw size={15} className={refreshing ? 'animate-spin' : ''} />
           </button>
-          <button onClick={onClose} className="p-1 text-fg-dim hover:text-fg-muted transition-colors">
+          <button onClick={onClose} className="p-2 text-fg-dim hover:text-fg-muted transition-colors">
             <X size={18} />
           </button>
         </div>
       </div>
 
       <div className="flex-1 overflow-y-auto space-y-2 pr-1">
-        {tab === 'live' ? (
+        {!loaded && entries.length === 0 ? (
+          <div className="text-sm text-fg-dim italic text-center py-12">Loading…</div>
+        ) : tab === 'live' ? (
           liveEntries.length === 0 ? (
             <div className="text-sm text-fg-dim italic text-center py-12">
               No projects have a known dev URL yet — start a dev server from a project's chat to record one.
@@ -269,6 +289,11 @@ export const Dashboard = ({ onClose, refreshSignal = 0, projects, workspaceMode 
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: i * 0.03 }}
+            role="button"
+            tabIndex={0}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setExpandedId((id) => (id === entry.id ? null : entry.id)); }
+            }}
             className="bg-panel rounded-xl border border-border-soft p-4 cursor-pointer"
             onClick={() => setExpandedId((id) => (id === entry.id ? null : entry.id))}
           >
@@ -277,7 +302,7 @@ export const Dashboard = ({ onClose, refreshSignal = 0, projects, workspaceMode 
                 <FolderGit2 size={16} className="text-accent-teal flex-shrink-0" />
                 <h3 className="text-sm font-bold text-fg-strong truncate">{entry.name}</h3>
                <span className="text-[10px] text-fg-dim font-mono truncate hidden lg:inline" title={entry.path}>
-                   {formatPath(entry.path)}
+                   {formatPath(entry.path, scanPath)}
                  </span>
               </div>
               <div className="flex items-center gap-2 flex-shrink-0">
@@ -323,8 +348,9 @@ export const Dashboard = ({ onClose, refreshSignal = 0, projects, workspaceMode 
                 <span className="text-[10px] tracking-wider uppercase text-fg-dim font-bold">Uncommitted</span>
                 {entry.uncommitted.length > 0 ? (
                   <div className="mt-1 max-h-20 overflow-y-auto space-y-0.5 font-mono text-accent-orange/70">
-                    {entry.uncommitted.slice(0, 10).map((line, j) => (
-                      <div key={j} className="truncate">{line}</div>
+                    {entry.uncommitted.slice(0, 10).map((line) => (
+                      // git short-status lines are unique per path — content is the stable identity.
+                      <div key={line} className="truncate">{line}</div>
                     ))}
                     {entry.uncommitted.length > 10 && (
                       <div className="text-fg-dim italic">+{entry.uncommitted.length - 10} more</div>
@@ -342,8 +368,9 @@ export const Dashboard = ({ onClose, refreshSignal = 0, projects, workspaceMode 
                 </span>
                 {entry.recentCommits.length > 0 ? (
                   <div className="mt-1 space-y-0.5 font-mono text-fg-subtle">
-                    {entry.recentCommits.map((line, j) => (
-                      <div key={j} className="truncate">{line}</div>
+                    {entry.recentCommits.map((line) => (
+                      // commit one-liners are unique (hash + message) — content is the stable identity.
+                      <div key={line} className="truncate">{line}</div>
                     ))}
                   </div>
                 ) : (

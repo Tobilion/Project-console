@@ -7,10 +7,7 @@ export function useSessions() {
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [messages, setMessages] = useState<TerminalMessage[]>([]);
-  const [showSessions, setShowSessions] = useState(true);
   const [showWelcome, setShowWelcome] = useState(true);
-  const draftMessages = { current: messages };
-  const draftSetMessages = setMessages;
 
   const fetchSessions = async () => {
     try {
@@ -108,8 +105,8 @@ export function useSessions() {
 
   return {
     sessions, setSessions, activeSessionId, setActiveSessionId,
-    messages, setMessages, showSessions, setShowSessions,
-    showWelcome, setShowWelcome, draftMessages, draftSetMessages,
+    messages, setMessages,
+    showWelcome, setShowWelcome,
     fetchSessions, createSession, switchSession, deleteSession, renameSession, linkSessionToProject,
   };
 }

@@ -89,19 +89,3 @@ export async function streamWithToolDetection(model, messages, ws, signal) {
 
   return { visibleText: visible, toolCalls };
 }
-
-/** Plain streaming pass with no tool-call parsing — used for the post-tool follow-up answer.
- *  Same content/thinking split as streamWithToolDetection above — only content chunks count as
- *  the visible answer. */
-export async function streamPlain(model, messages, ws, signal) {
-  let visible = '';
-  for await (const chunk of chatStream(model, messages, signal)) {
-    if (chunk.type === 'thinking') {
-      if (ws.readyState === 1) ws.send(JSON.stringify({ type: 'thinking', data: chunk.text }));
-      continue;
-    }
-    visible += chunk.text;
-    if (ws.readyState === 1) ws.send(JSON.stringify({ type: 'token', data: chunk.text }));
-  }
-  return visible;
-}

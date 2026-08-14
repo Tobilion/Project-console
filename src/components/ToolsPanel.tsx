@@ -35,6 +35,10 @@ const ICONS: Record<string, React.ComponentType<{ size?: number; className?: str
 
 interface ToolsPanelProps {
   panels: ToolPanelDef[];
+  /** Set when GET /api/tool-panels failed — lets the grid show a real error instead of an
+   *  empty card list that looks like "no tools exist". */
+  panelsError?: string | null;
+  onRetryPanels?: () => void;
   activePanel: string | null;
   onOpenPanel: (id: string) => void;
   onClose: () => void;
@@ -45,7 +49,7 @@ interface ToolsPanelProps {
   aiEnabled?: boolean;
 }
 
-export function ToolsPanel({ panels, activePanel, onOpenPanel, onClose, project, onSendMessage, aiEnabled }: ToolsPanelProps) {
+export function ToolsPanel({ panels, panelsError, onRetryPanels, activePanel, onOpenPanel, onClose, project, onSendMessage, aiEnabled }: ToolsPanelProps) {
   const active = activePanel ? panels.find(p => p.id === activePanel) : null;
 
   if (active) {
@@ -278,11 +282,7 @@ export function ToolsPanel({ panels, activePanel, onOpenPanel, onClose, project,
                 <>
                   This panel is wired up in a later update. The same feature already works
                   from chat — try{' '}
-                  <code className="font-mono text-accent text-xs bg-panel-strong px-1.5 py-0.5 rounded">{
-                    active.chatHint === 'none yet — the PDF trigger commands land in a later update'
-                      ? 'waiting for its chat triggers to ship'
-                      : active.chatHint
-                  }</code>
+                  <code className="font-mono text-accent text-xs bg-panel-strong px-1.5 py-0.5 rounded">{active.chatHint}</code>
                   {' '}right here instead.
                 </>
               ) : (
@@ -311,6 +311,17 @@ export function ToolsPanel({ panels, activePanel, onOpenPanel, onClose, project,
           Interactive utilities that open in their own panel. You can also open them from
           chat — type <code className="font-mono text-accent text-xs bg-scrim-faint px-1.5 py-0.5 rounded">open calculator</code> and the panel opens here.
         </p>
+        {panels.length === 0 && panelsError ? (
+          <div className="text-sm text-fg-muted bg-panel rounded-xl border border-border-soft p-6 text-center">
+            <p>{panelsError}</p>
+            <button
+              onClick={onRetryPanels}
+              className="mt-3 px-3 py-2 text-xs font-bold rounded-lg bg-accent-blue text-white hover:opacity-90 transition-opacity"
+            >
+              Retry
+            </button>
+          </div>
+        ) : (
         <div className="grid gap-3 sm:grid-cols-2">
           {panels.map(p => {
             const Icon = ICONS[p.icon] || LayoutGrid;
@@ -340,6 +351,7 @@ export function ToolsPanel({ panels, activePanel, onOpenPanel, onClose, project,
             );
           })}
         </div>
+        )}
       </div>
     </div>
   );

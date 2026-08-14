@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { PendingToolConfirm, PendingMemorySuggestion } from '../types';
 import { TerminalConfirmCards } from './TerminalConfirmCards';
 
@@ -21,6 +21,21 @@ interface ConfirmCardsOverlayProps {
  *  active. Rendered once at App level; TerminalMessages no longer renders its own copy. */
 export function ConfirmCardsOverlay(props: ConfirmCardsOverlayProps) {
   const hasPending = !!props.pendingConfirm || !!props.pendingToolConfirm || !!props.pendingMemorySuggestion;
+
+  // Escape rejects whatever card is pending — the keyboard path out of a panel-triggered
+  // confirm (a panel click can otherwise leave the card with no cancel affordance).
+  useEffect(() => {
+    if (!hasPending) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      if (props.pendingToolConfirm) props.onToolConfirm(false);
+      else if (props.pendingConfirm) props.onConfirm(false);
+      else if (props.pendingMemorySuggestion) props.onMemorySuggestionRespond?.(false);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [hasPending, props.pendingConfirm, props.pendingToolConfirm, props.pendingMemorySuggestion, props.onConfirm, props.onToolConfirm, props.onMemorySuggestionRespond]);
+
   if (!hasPending) return null;
   return (
     <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[70] w-full max-w-xl px-4 pointer-events-none">

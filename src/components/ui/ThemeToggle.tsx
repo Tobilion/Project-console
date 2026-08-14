@@ -13,7 +13,7 @@ export const ThemeToggle = ({ className }: ThemeToggleProps) => {
   return (
     <div
       className={cn(
-        'flex w-16 h-8 p-1 rounded-full cursor-pointer transition-colors duration-300 flex-shrink-0',
+        'flex w-16 h-11 p-1 items-center rounded-full cursor-pointer transition-colors duration-300 flex-shrink-0',
         isDark ? 'bg-surface border border-border' : 'bg-panel border border-border',
         className
       )}

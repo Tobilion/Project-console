@@ -9,6 +9,7 @@ import { ToolsPanel } from './components/ToolsPanel';
 import { CommandDeck } from './components/CommandDeck';
 import { useConsole } from './hooks/useConsole';
 import { useUserProfile } from './hooks/useUserProfile';
+import { useTheme } from './hooks/useTheme';
 import { getRandomGreeting } from './utils/greetings';
 import { Home, LayoutDashboard, LayoutGrid, Search, Settings, Loader2, X, BookOpen } from 'lucide-react';
 import { ThemeToggle } from './components/ui/ThemeToggle';
@@ -84,6 +85,9 @@ function App() {
   // workspace (chat + Tools grid) is the landing surface before any project is picked.
   const [workspaceTab, setWorkspaceTab] = React.useState<'dev' | 'general'>('dev');
   const { profile, updateProfile, getFormattedName, loaded: profileLoaded } = useUserProfile();
+  // 2026-08-13: the Ctrl+K deck owns a theme toggle too (shared store with the header
+  // ThemeToggle via useTheme's module-level pub/sub, so both stay in sync).
+  const { theme, toggleTheme } = useTheme();
   // Gate on `loaded` too, not just `!profile.setupComplete` — the hook's DEFAULT_PROFILE (used
   // before the /api/profile fetch resolves) also has setupComplete: false, so without this the
   // wizard would flash open for every returning user for one render before their real,
@@ -138,7 +142,7 @@ function App() {
      handleDidYouMeanPick, connected,
      updateNotice, onDismissUpdate,
      toolsOpen, setToolsOpen, activeToolPanel, setActiveToolPanel,
-     toolPanels, fetchToolPanels,
+     toolPanels, toolPanelsError, fetchToolPanels,
    } = useConsole();
 
   // Phase 1: restore the active project's last-selected tab. Runs only when the active
@@ -192,14 +196,18 @@ function App() {
   // everything stays "local", zero behavior change.
   useEffect(() => {
     let cancelled = false;
+    let cancelDisplayName: (() => void) | null = null;
     fetch('/api/connected-users')
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
         if (cancelled || !data?.lanBound) return;
-        if (profile.name?.trim()) setDisplayName(profile.name);
+        if (profile.name?.trim()) cancelDisplayName = setDisplayName(profile.name);
       })
       .catch(() => {});
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+      cancelDisplayName?.();
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [profile.name, setDisplayName]);
 
@@ -298,7 +306,7 @@ function App() {
           <h1 className="text-[18px] leading-6 font-semibold italic text-fg-strong whitespace-nowrap">
             <TextScramble text="Project Console" />
           </h1>
-          <p className="text-[10px] tracking-[0.2em] uppercase text-fg-dim font-bold hidden sm:inline">
+          <p className="text-caption tracking-[0.2em] uppercase text-fg-dim font-bold hidden sm:inline">
             Local Project Engine
           </p>
           {indexingProjectId && (
@@ -335,24 +343,24 @@ function App() {
               :{window.location.port}
             </span>
           )}
-          <button onClick={() => { setShowDashboard(false); setToolsOpen(false); setChatFullscreen(false); setShowCommandRef(false); setShowWelcome(true); }} className="p-2 text-fg-dim hover:text-fg-strong transition-colors" title="Home">
+          <button onClick={() => { setShowDashboard(false); setToolsOpen(false); setChatFullscreen(false); setShowCommandRef(false); setShowWelcome(true); }} className="p-3 text-fg-dim hover:text-fg-strong transition-colors" title="Home">
             <Home size={18} />
           </button>
-          <button onClick={() => setDeckOpen(v => !v)} className="p-2 text-fg-dim hover:text-fg-strong transition-colors" title="Command deck (Ctrl+K)">
+          <button onClick={() => setDeckOpen(v => !v)} className="p-3 text-fg-dim hover:text-fg-strong transition-colors" title="Command deck (Ctrl+K)">
             <Search size={18} />
           </button>
-          <button onClick={() => { setShowDashboard(false); setToolsOpen(false); setShowCommandRef(v => !v); }} className={`p-2 transition-colors ${showCommandRef ? 'text-accent' : 'text-fg-dim hover:text-fg-strong'}`} title="Command reference (all commands)">
+          <button onClick={() => { setShowDashboard(false); setToolsOpen(false); setShowCommandRef(v => !v); }} className={`p-3 transition-colors ${showCommandRef ? 'text-accent-blue' : 'text-fg-dim hover:text-fg-strong'}`} title="Command reference (all commands)">
             <BookOpen size={18} />
           </button>
-          <button onClick={() => { setToolsOpen(false); setShowDashboard(v => !v); }} className={`p-2 transition-colors ${showDashboard ? 'text-accent' : 'text-fg-dim hover:text-fg-strong'}`} title="Dashboard">
+          <button onClick={() => { setToolsOpen(false); setShowDashboard(v => !v); }} className={`p-3 transition-colors ${showDashboard ? 'text-accent-blue' : 'text-fg-dim hover:text-fg-strong'}`} title="Dashboard">
             <LayoutDashboard size={18} />
           </button>
           {/* Stage B: the Tools icon is visible in BOTH Developer and General modes — a
               functional fix, not just visual (the panels were previously General-only). */}
-          <button onClick={() => { setShowDashboard(false); setShowCommandRef(false); setToolsOpen(v => !v); }} className={`p-2 transition-colors ${toolsOpen ? 'text-accent' : 'text-fg-dim hover:text-fg-strong'}`} title="Interactive tools">
+          <button onClick={() => { setShowDashboard(false); setShowCommandRef(false); setToolsOpen(v => !v); }} className={`p-3 transition-colors ${toolsOpen ? 'text-accent-blue' : 'text-fg-dim hover:text-fg-strong'}`} title="Interactive tools">
             <LayoutGrid size={18} />
           </button>
-          <button onClick={() => setProfileOpen(true)} className="p-2 text-fg-dim hover:text-fg-strong transition-colors" title="User profile">
+          <button onClick={() => setProfileOpen(true)} className="p-3 text-fg-dim hover:text-fg-strong transition-colors" title="User profile">
             <Settings size={18} />
           </button>
           <ThemeToggle />
@@ -374,7 +382,7 @@ function App() {
           <span>
             Update available: <span className="font-mono">{updateNotice.current}</span> → <span className="font-mono">{updateNotice.latest}</span>. Type <span className="font-mono">"update console"</span> in chat to install it.
           </span>
-          <button onClick={onDismissUpdate} className="ml-auto p-1 text-fg-dim hover:text-fg-strong transition-colors" title="Dismiss">
+          <button onClick={onDismissUpdate} className="ml-auto p-2 text-fg-dim hover:text-fg-strong transition-colors" title="Dismiss">
             <X size={14} />
           </button>
         </div>
@@ -389,6 +397,8 @@ function App() {
           <div className="h-full p-6">
             <ToolsPanel
               panels={toolPanels}
+              panelsError={toolPanelsError}
+              onRetryPanels={fetchToolPanels}
               activePanel={activeToolPanel}
               onOpenPanel={handleOpenToolPanel}
               onClose={handleCloseTools}
@@ -404,6 +414,7 @@ function App() {
               refreshSignal={dashboardUpdateSignal}
               projects={projects}
               workspaceMode={workspaceTab}
+              scanPath={scanPath}
               onSelectProject={handleSelectProject}
               onSendMessage={handleSendMessage}
             />
@@ -537,14 +548,39 @@ function App() {
         onClose={() => setDeckOpen(false)}
         projects={projects}
         activeProject={activeProject}
+        sessions={sessions}
         onSelectProject={handleSelectProject}
+        onSwitchSession={switchSession}
         onDirectCommand={handleDirectCommand}
         onSendMessage={handleSendMessage}
         onHome={() => { setShowDashboard(false); setToolsOpen(false); setChatFullscreen(false); setShowCommandRef(false); setShowWelcome(true); }}
         onToggleDashboard={() => { setToolsOpen(false); setShowDashboard(v => !v); }}
+        onOpenCommandRef={() => { setShowDashboard(false); setToolsOpen(false); setShowCommandRef(true); }}
         onNewChat={handleNewChat}
         sidebarCollapsed={sidebarCollapsed}
         onSetSidebarCollapsed={setSidebarCollapsed}
+        theme={theme}
+        onToggleTheme={toggleTheme}
+        onOpenProfile={() => setProfileOpen(true)}
+        chatFullscreen={chatFullscreen}
+        onToggleFullscreen={() => setChatFullscreen(v => !v)}
+        onOpenTools={() => { setShowDashboard(false); setShowCommandRef(false); setToolsOpen(true); }}
+        onOpenPanel={handleOpenToolPanel}
+        toolPanels={toolPanels}
+        workspaceTab={workspaceTab}
+        onSetWorkspaceTab={handleWorkspaceTabChange}
+        aiEnabled={aiEnabled}
+        onToggleAI={handleAIToggle}
+        onExportMarkdown={exportAsMarkdown}
+        onExportJson={exportAsJson}
+        onExportPdf={exportAsPdf}
+        onExportProjectChatLog={exportProjectChatLog}
+        dockExpanded={dockExpanded}
+        onToggleDock={() => setDockExpanded(v => !v)}
+        dockTab={dockTab}
+        onSetDockTab={setDockTab}
+        showToolHistory={showToolHistory}
+        onToggleToolHistory={() => setShowToolHistory(v => !v)}
       />
 
       <UserProfileModal

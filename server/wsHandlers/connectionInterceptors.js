@@ -4,6 +4,7 @@ import { handleBuiltinIntent } from './builtinIntents.js';
 import { runCommandEntry } from './matchedEntry.js';
 import { addToClaudeMd } from '../projectMemory.js';
 import { pendingMemorySuggestions } from './connectionState.js';
+import { parseFileNameOnly } from './builtinHelpers.js';
 
 // The four "this message is a reply to a pending question" interceptors from handleExecute —
 // each returns true when it consumed the message. They must be called in this order (param,
@@ -134,6 +135,38 @@ export async function handlePendingDisambiguationReply(ws, project, projectId, i
   // means treating it as a brand-new input through the normal pipeline rather than getting
   // stuck insisting on an answer to a question nobody's addressing anymore.
   return false;
+}
+
+export async function handlePendingFileQuestionReply(ws, project, projectId, input, sessionContext) {
+  // "Which file?" follow-up for the file-relations / open-file handlers (Matchday-Exchange
+  // live session, 2026-08-14): the handlers answered with a plain "Which file?" and no
+  // pending state, so the user's next message ("app.tsx") re-matched and dead-ended in the
+  // generic fallback. This interceptor picks up a filename reply and re-dispatches the
+  // original intent with it — same interception point and rationale as pendingParam.
+  const pending = sessionContext.pendingFileQuestion;
+  if (!pending || pending.projectId !== projectId) return false;
+  const lower = input.trim().toLowerCase();
+  if (/^(cancel|nevermind|never mind|none|skip|dont|don't)\b/.test(lower)) {
+    sessionContext.pendingFileQuestion = null;
+    ws.send(JSON.stringify({ type: 'answer', data: 'Cancelled.\n' }));
+    ws.send(JSON.stringify({ type: 'end' }));
+    return true;
+  }
+  const trimmed = input.trim();
+  // A single bare token is treated as the filename; longer replies must actually contain a
+  // parseable file mention ("show me the imports of app.tsx" works, "what is the time" does
+  // not — that's a fresh question, not an answer).
+  const hasFilename = !/\s/.test(trimmed) || !!parseFileNameOnly(trimmed);
+  if (!hasFilename) {
+    // The user moved on to a new, unrelated message — drop the pending question and let the
+    // normal pipeline handle it (same backtracking rule as pendingDisambiguation).
+    sessionContext.pendingFileQuestion = null;
+    return false;
+  }
+  sessionContext.pendingFileQuestion = null;
+  await handleBuiltinIntent(ws, pending.intent, trimmed, project, sessionContext);
+  ws.send(JSON.stringify({ type: 'end' }));
+  return true;
 }
 
 export async function handlePendingMemorySuggestionReply(ws, project, lowerInput) {

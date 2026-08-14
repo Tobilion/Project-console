@@ -30,14 +30,20 @@ export function ClipboardPanel({ onSendMessage }: ClipboardPanelProps) {
   const [persist, setPersist] = useState(false);
   const [lastSent, setLastSent] = useState<string | null>(null);
   const [saveName, setSaveName] = useState('');
+  const [loading, setLoading] = useState(false);
   const lastSentTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Clear the pending "last sent" timer on unmount so its delayed setState can't fire on a
+  // dead panel (and hold the panel's closure alive after it unmounted).
+  useEffect(() => () => { if (lastSentTimer.current) clearTimeout(lastSentTimer.current); }, []);
 
   const fetchState = useCallback(async () => {
+    setLoading(true);
     const [prof, hist, snips] = await Promise.all([
       apiFetchJson<{ userProfile?: { clipboardHistory?: boolean; clipboardPersist?: boolean } }>('/api/profile'),
       apiFetchJson<{ history?: string[] }>('/api/clipboard-history'),
       apiFetchJson<{ snippets?: SnippetInfo[] }>('/api/snippets'),
     ]);
+    setLoading(false);
     setEnabled(prof?.userProfile?.clipboardHistory ?? false);
     setPersist(prof?.userProfile?.clipboardPersist ?? false);
     setHistory(hist?.history || []);
@@ -96,7 +102,7 @@ export function ClipboardPanel({ onSendMessage }: ClipboardPanelProps) {
             </div>
             <h2 className="text-sm font-semibold text-fg-strong tracking-wide uppercase">Clipboard</h2>
           </div>
-          <button onClick={fetchState} className="p-1.5 text-fg-dim hover:text-fg-strong rounded-md transition-colors" title="Refresh">
+          <button onClick={fetchState} className="p-1.5 text-fg-dim hover:text-fg-strong rounded-lg transition-colors" title="Refresh">
             <RefreshCw size={15} />
           </button>
         </div>
@@ -204,15 +210,21 @@ export function ClipboardPanel({ onSendMessage }: ClipboardPanelProps) {
         <div className="flex items-center gap-1.5 text-[11px] uppercase tracking-wider text-fg-dim mb-2">
           <ClipboardCopy size={11} /> History ({history.length})
         </div>
-        {enabled && history.length === 0 && (
+        {loading && history.length === 0 && (
+          <div className="text-xs text-fg-dim italic bg-panel border border-border-soft rounded-xl p-4 text-center">
+            Loading…
+          </div>
+        )}
+        {enabled && history.length === 0 && !loading && (
           <div className="text-xs text-fg-dim italic bg-panel border border-border-soft rounded-xl p-4 text-center">
             Copy something on this machine and it shows up here (most recent first, deduped).
           </div>
         )}
         <div className="space-y-1.5">
           {history.map((h, i) => (
-            <div key={`${i}-${h.slice(0, 24)}`} className={cn(cardCls, 'group flex items-center gap-2 px-3 py-2.5')}>
-              <span className="text-[11px] text-fg-faint w-5 shrink-0 text-right">{i + 1}</span>
+            // The history is deduped server-side, so the entry text is its stable identity.
+            <div key={h} className={cn(cardCls, 'group flex items-center gap-2 px-3 py-2.5')}>
+              <span className="text-[11px] text-fg-dim w-5 shrink-0 text-right">{i + 1}</span>
               <span className="flex-1 min-w-0 text-xs text-fg-muted font-mono truncate" title={h}>
                 {h.length > MAX_PREVIEW ? h.slice(0, MAX_PREVIEW) + '…' : h}
               </span>

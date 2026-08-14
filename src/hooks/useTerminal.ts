@@ -4,28 +4,10 @@ import { Project, TerminalMessage, PendingMemorySuggestion, PendingToolConfirm }
 export function useTerminal(
   wsRef: React.MutableRefObject<WebSocket | null>,
   activeProject: Project | null,
-  activeSessionId: string | null,
-  setMessages: React.Dispatch<React.SetStateAction<TerminalMessage[]>>,
 ) {
   const [pendingConfirm, setPendingConfirm] = useState<{ token: string; command: string } | null>(null);
   const [pendingToolConfirm, setPendingToolConfirm] = useState<PendingToolConfirm | null>(null);
   const [pendingMemorySuggestion, setPendingMemorySuggestion] = useState<PendingMemorySuggestion | null>(null);
-
-  const handleSendMessage = async (content: string) => {
-    if (!activeProject || !wsRef.current) return;
-    if (wsRef.current.readyState !== WebSocket.OPEN) {
-      for (let i = 0; i < 30; i++) {
-        await new Promise(r => setTimeout(r, 100));
-        if (wsRef.current?.readyState === WebSocket.OPEN) break;
-      }
-    }
-    if (wsRef.current?.readyState !== WebSocket.OPEN) return;
-    setMessages(prev => [...prev, { id: Date.now().toString(), type: 'user', content }]);
-    wsRef.current.send(JSON.stringify({
-      type: 'execute',
-      payload: { projectId: activeProject.id, input: content, sessionId: activeSessionId }
-    }));
-  };
 
   const handleConfirm = (confirmed: boolean) => {
     if (!pendingConfirm || !wsRef.current) return;
@@ -64,6 +46,6 @@ export function useTerminal(
     pendingConfirm, setPendingConfirm,
     pendingToolConfirm, setPendingToolConfirm,
     pendingMemorySuggestion, setPendingMemorySuggestion,
-    handleSendMessage, handleConfirm, handleToolConfirm, handleApproveTask, handleMemorySuggestionRespond,
+    handleConfirm, handleToolConfirm, handleApproveTask, handleMemorySuggestionRespond,
   };
 }

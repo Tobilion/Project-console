@@ -22,7 +22,7 @@ export function registerSearchRoutes(app) {
     res.json(result);
   }));
 
-  app.get('/api/ollama/status', async (req, res) => {
+  app.get('/api/ollama/status', asyncHandler(async (req, res) => {
     const running = await checkOllama();
     const models = running ? await listModels() : [];
     // Cloud models are listed regardless of whether the local daemon is running elsewhere on
@@ -34,9 +34,9 @@ export function registerSearchRoutes(app) {
     const binary = findOllamaBinary();
     const host = process.env.OLLAMA_HOST || 'http://localhost:11434';
     res.json({ running, models, cloudModels, internetReachable, binaryFound: !!binary, host });
-  });
+  }));
 
-  app.post('/api/ollama/start', async (req, res) => {
+  app.post('/api/ollama/start', asyncHandler(async (req, res) => {
     const started = await startOllama();
     if (started) {
       const models = await listModels();
@@ -52,7 +52,7 @@ export function registerSearchRoutes(app) {
         res.json({ success: false, running: false, error: 'Ollama not found. Set OLLAMA_HOST to a remote server URL, or install Ollama locally from ollama.com.' });
       }
     }
-  });
+  }));
 
   app.post('/api/ollama/pull', asyncHandler(async (req, res) => {
     const { model } = req.body || {};

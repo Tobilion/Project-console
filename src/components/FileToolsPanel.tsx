@@ -191,12 +191,18 @@ export function FileToolsPanel({ project, onSendMessage }: FileToolsPanelProps) 
   );
 
   const Row = ({ name, path, size, modifiedAt, isDir, onClick }: FileEntry & { onClick?: () => void }) => (
-    <div className={cn('flex items-center gap-2 px-2 py-1.5 hover:bg-scrim-faint rounded transition-colors text-xs min-h-[30px]', onClick && 'cursor-pointer')} onClick={onClick}>
+    <div
+      role={onClick ? 'button' : undefined}
+      tabIndex={onClick ? 0 : undefined}
+      onKeyDown={onClick ? (e) => {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick(); }
+      } : undefined}
+      className={cn('flex items-center gap-2 px-2 py-1.5 hover:bg-scrim-faint rounded transition-colors text-xs min-h-[30px]', onClick && 'cursor-pointer')} onClick={onClick}>
       {isDir ? <FolderOpen size={14} className="text-accent shrink-0" /> : fileIcon(name)}
       <span className="text-fg-strong truncate flex-1 font-mono">{name}</span>
       <span className="text-fg-dim text-[11px] hidden sm:block truncate max-w-[180px]" title={path}>{path}</span>
-      {!isDir && <span className="text-fg-faint text-[11px] text-right w-[60px] shrink-0">{formatSize(size)}</span>}
-      {!isDir && <span className="text-fg-faint text-[11px] text-right w-[100px] shrink-0 hidden sm:block">{formatDate(modifiedAt)}</span>}
+      {!isDir && <span className="text-fg-dim text-[11px] text-right w-[60px] shrink-0">{formatSize(size)}</span>}
+      {!isDir && <span className="text-fg-dim text-[11px] text-right w-[100px] shrink-0 hidden sm:block">{formatDate(modifiedAt)}</span>}
     </div>
   );
 
@@ -239,13 +245,13 @@ export function FileToolsPanel({ project, onSendMessage }: FileToolsPanelProps) 
         <div className="flex items-center gap-1 bg-panel-strong rounded-lg p-0.5 border border-border-soft">
           <button
             onClick={() => fetchTidyPlan(false)}
-            className={cn('px-3 py-1.5 text-xs rounded-md transition-colors', !tidyByDate ? 'bg-accent-blue/15 text-accent-blue font-semibold' : 'text-fg-muted hover:text-fg-strong')}
+            className={cn('px-3 py-1.5 text-xs rounded-lg transition-colors', !tidyByDate ? 'bg-accent-blue/15 text-accent-blue font-semibold' : 'text-fg-muted hover:text-fg-strong')}
           >
             By type
           </button>
           <button
             onClick={() => fetchTidyPlan(true)}
-            className={cn('px-3 py-1.5 text-xs rounded-md transition-colors', tidyByDate ? 'bg-accent-blue/15 text-accent-blue font-semibold' : 'text-fg-muted hover:text-fg-strong')}
+            className={cn('px-3 py-1.5 text-xs rounded-lg transition-colors', tidyByDate ? 'bg-accent-blue/15 text-accent-blue font-semibold' : 'text-fg-muted hover:text-fg-strong')}
           >
             By date
           </button>
@@ -384,7 +390,7 @@ export function FileToolsPanel({ project, onSendMessage }: FileToolsPanelProps) 
           <h2 className="text-sm font-semibold text-fg-strong tracking-wide uppercase">File Tools</h2>
           <span className="text-xs text-fg-dim font-normal normal-case">— {project.name}</span>
         </div>
-        <button onClick={() => fetchFiles(currentPath)} className="p-1.5 text-fg-dim hover:text-fg-strong rounded-md transition-colors" title="Refresh">
+        <button onClick={() => fetchFiles(currentPath)} className="p-1.5 text-fg-dim hover:text-fg-strong rounded-lg transition-colors" title="Refresh">
           <RefreshCw size={15} className={cn(loading && 'animate-spin')} />
         </button>
       </div>
@@ -394,7 +400,7 @@ export function FileToolsPanel({ project, onSendMessage }: FileToolsPanelProps) 
       <div className="flex-1 min-h-0 flex">
         {/* Left filter sidebar — Finder-style rail */}
         <div className="w-[190px] shrink-0 bg-overlay border-r border-border-faint p-3 flex flex-col gap-1 overflow-y-auto">
-          <p className="text-[10px] uppercase tracking-wider text-fg-faint font-bold mb-1">Views</p>
+          <p className="text-[10px] uppercase tracking-wider text-fg-dim font-bold mb-1">Views</p>
           {tabBtn('search', 'Search & Browse')}
           {tabBtn('tidy', 'Tidy')}
           {tabBtn('duplicates', 'Duplicates')}

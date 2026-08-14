@@ -4,7 +4,7 @@
 // no confirmation needed, nothing journaled.
 import path from 'path';
 import { isSafeParamValue } from '../paramCommand.js';
-import { loadCsv, findColumn, cellToNumber, matchOp, aggregateColumn } from '../csvTools.js';
+import { loadCsv, findColumn, matchOp, aggregateColumn } from '../csvTools.js';
 
 const answer = (ws, data) => ws.send(JSON.stringify({ type: 'answer', data }));
 

@@ -4,7 +4,7 @@
 // handler's under-specified reply carries the additive `openPanel: 'notes'` field so the web
 // client lands in the Notes panel (CLI ignores openPanel per Phase 1.5 — the text stays
 // self-sufficient).
-import { appendNote, listNotes, readNotes } from '../notesStore.js';
+import { appendNote, listNotes } from '../notesStore.js';
 
 const answer = (ws, data) => ws.send(JSON.stringify({ type: 'answer', data }));
 

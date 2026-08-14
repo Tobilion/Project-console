@@ -94,10 +94,10 @@ npm run lint    # tsc --noEmit
   telemetry/dev-urls; hosts the opt-in `sandboxRiskyCommands` Phase 3 setting, read per
   sandbox-flagged execution via its exported `readProfile`)
 - `server/wsHandlers/` — `connection.js` is a ~14-line re-export shim; real logic lives in
-   eleven leaves (see Phase 11): `connectionLifecycle.js` (heartbeat, WS init + connect-time
+   21 leaves (58 files total in `server/wsHandlers/`, see Phase 11): `connectionLifecycle.js` (heartbeat, WS init + connect-time
    `ai_status` push so the client's AI toggle syncs to the fresh per-connection defaults after
-   a reconnect, the ws.send persistence interceptor with the command-output buffer), `connectionRoutes.js` (14 WS
-   cases incl. `stop_process`/`did_you_mean_pick`/`approve_task`/`ai_toggle`/`ai_set_model`/
+   a reconnect, the ws.send persistence interceptor with the command-output buffer), `connectionRoutes.js` (16 WS
+   cases incl. `set_display_name`/`tool_call`/`execute_tool`/`stop_process`/`did_you_mean_pick`/`approve_task`/`ai_toggle`/`ai_set_model`/
    `workspace_set`/`learning_*`/`memory_suggestion_respond` + `abort_ai` +
    `sendAiStatus`),
   `connectionExecute.js` (`handleExecute` orchestrator: session-lock check, four pending-ask
@@ -111,7 +111,8 @@ npm run lint    # tsc --noEmit
   (`DEV_URL_*` regexes — exported, used by builtinIntents/readmeRunParser; stop-server
   handling incl. bare "stop it" only when `runningProcesses.has(project.id)`),
   `connectionTelemetry.js`, `connectionAdminCommands.js`, `connectionInterceptors.js`
-  (pendingParam/pendingFollowUp/pendingDisambiguation/pendingMemorySuggestion),
+  (pendingParam/pendingFollowUp/pendingDisambiguation/pendingFileQuestion — the "Which
+  file?" follow-up for file_relations/open_file, 2026-08-14 — /pendingMemorySuggestion),
   `connectionHistoryAdmin.js` (Phase 4: `show history`/`recent actions [n]`/`revert action
   <id>` — file restores are confirm-gated via a `pendingConfirmations` entry of shape
   `revert: {actionId}` (consumed in connectionConfirm.js); git/command/revert entries are
@@ -687,7 +688,16 @@ npm run lint    # tsc --noEmit
   served as JSON at `GET /api/command-docs` (routes/commandDocsRoutes.js) for the web Command
   Reference tab (`src/components/CommandReference.tsx` — category sidebar + search +
   phrase/shell code blocks, header book icon), and `system.chit_chat.list_commands` prints the
-  ENTIRE catalog as plain text from the CLI ("list commands" / "help all")), `pluginTools.js`
+  curated COMMAND_DOCS catalog as plain text from the CLI ("list commands" / "help all"; the
+  auto-generated intent layer stays web-only in the Command Reference)), `commandCatalog.js`
+  (Phase 21, 2026-08-13: the FULL command catalog — `buildCommandCatalog()` merges the curated
+  COMMAND_DOCS with an auto-generated entry per dispatchable intent (first example as command,
+  capped 8 phrases, `opensPanel` tag, group label from the id prefix via `intentGroup`, panel
+  name wins when tagged). Canned chit-chat stays out via `CANNED_CHITCHAT_INTENTS`
+  (PURE_CHITCHAT_INTENTS minus time/date/calculate — those are utilities). `GET /api/command-docs`
+  now returns `{ commands, intents }` — `commands` unchanged for backward compatibility; the
+  Ctrl+K deck and the Command Reference tab both render the intent layer, and checkDocsSync
+  fails when an eligible BUILTIN_INTENTS member has no generated entry), `pluginTools.js`
   (console.tools.json manifest
   parsing + sanitizePermissions + injection-safe substitution), `contextInjector.js`
   (codebase-index snippets appended to some trigger replies), `contextResolver.js`
@@ -755,7 +765,15 @@ first-render state in a case handler. `App.tsx` is render-only. Components: `Ter
 (hero + BentoGrid + 4-step tour overlay, z-50), `Dashboard.tsx` (polls `/api/dashboard` 5s +
 immediate on `dashboard_update`), `ProcessDock.tsx` (logs + projects overview tabs + Phase 4 History tab — API routes, see
 `actionHistory.js` — rendered by `HistoryPanel.tsx`, revert via the normal chat flow),
-`CommandDeck.tsx` (Ctrl+K palette; nothing bypasses the confirm flows), `AIAssistantInterface.tsx`
+`CommandDeck.tsx` (Ctrl+K palette; nothing bypasses the confirm flows; Phase 21, 2026-08-13:
+searches the FULL site — Navigation + Actions (theme via the shared useTheme store, profile,
+fullscreen, workspace switch, AI toggle, session exports, dock tabs, tool history) + Tools
+(each registered panel) + Commands (curated docs + every non-canned chat intent from
+`/api/command-docs`; panel-tagged intents open their panel, the rest run through
+`onSendMessage`) + Sessions (resume by title) + Projects. Tokenized relevance scoring
+(label > hint > keywords > group), Recent/Frequent ranking kept for empty queries, result
+caps with a "keep typing" footer; the fetch is cached for the palette's lifetime),
+`AIAssistantInterface.tsx`
 (file upload, Search/Reason/Deep Research toggles; ↑/↓ navigates the same per-project history
 as the trigger input via `getHistory`, shared `pushHistory` in Terminal), `ui/ThemeToggle.tsx`,
 `ui/UserProfileModal.tsx`. The "Click here to open the site" chip in `TerminalMessages.tsx`
@@ -901,8 +919,8 @@ time/date/calculate rows, 92/92).
   keyword tier (hardcoded 0.4-0.55 confidences) becomes unreachable.
 - **`BUILTIN_INTENTS` membership is the gate that has silently killed intents 6+ times**
   (missing from the Set → unreachable from any stage, despite real handlers/examples).
-  Every new intent goes in `intentRegistry.js`'s Set AND gets a check-handlers row. 83
-  members today; `npm run check-handlers` (15+ checks) verifies bidirectionally.
+  Every new intent goes in `intentRegistry.js`'s Set AND gets a check-handlers row. 141
+  members today; `npm run check-handlers` (200 checks) verifies bidirectionally.
 - **`PRE_SEMANTIC_OVERRIDES`**: deliberately narrow literal rules for CONFIRMED embedding
   traps (git init / gitignore / deploy-push-live / add-file-without-git-context /
   git-remote-url / file_relations "who uses X" / run-start-launch+server|backend|api /
@@ -1013,7 +1031,9 @@ time/date/calculate rows, 92/92).
   #161618, panel #1C1C1E, panel-strong #2C2C2E); light is a `:root[data-theme="light"]`
   override block (bg #F2F2F7, panel #FFFFFF, overlay #E5E5EA) — no `dark:` utilities
   anywhere, utilities compile via `@theme inline` to var refs. Toggle:
-  `ui/ThemeToggle.tsx` in App's header cluster (only switch point); `useTheme` persists to
+  `ui/ThemeToggle.tsx` in App's header cluster (+ the Ctrl+K deck since Phase 21 — both use
+  the same `useTheme`, which is a module-level pub/sub shared store so the two instances
+  never drift); `useTheme` persists to
   localStorage, `index.html` has a pre-paint script. Tokens: fg-strong/fg/fg-muted/
   fg-subtle/fg-dim/fg-faint ladder, border-faint/soft/strong, scrim/panel/panel-strong,
   surface/overlay/background/foreground.
@@ -1298,7 +1318,7 @@ no dispatch or matching logic). Notable functional additions made during the sty
    opener row + 3 packRegistry unit rows: non-HTTPS manifest URL rejected, private-host SSRF
    gate, unreachable-manifest clean error; the checksum-mismatch path needs a live HTTPS
    registry — harness covers the gates, live browse/install is flagged manual); check-matcher
-   280/282 (baseline 276/278 + 2 open_marketplace opener rows, same TWO PRE-EXISTING drifts);
+   280/282 (baseline 278/280 + 2 open_marketplace opener rows, same TWO PRE-EXISTING drifts);
    check-intents unchanged at 1/7/82; check-docs 57/57 (+1 pack-registry catalog entry);
    check-ws-cases 118/118 unchanged.
    Phase 19 (2026-08-12): no harness deltas (attribution fields default to "local", so the
@@ -1306,9 +1326,21 @@ no dispatch or matching logic). Notable functional additions made during the sty
    Live-verified: set_display_name round-trip, connected-users lists both connections,
    note gains "· by Tobi", reminder createdBy=Tobi. The two-machine LAN manual test (different
    display names attributing correctly) needs HOST=0.0.0.0 on a real network — flagged manual.
-   Phase 20 (2026-08-13): check-handlers 200/200 (baseline 190 + 10 EXECUTOR-GIT-RETRY rows —
+   Phase 20 (2026-08-13): check-handlers 200/200 (Phase 17 closed at 183/183 and Phase 19
+   documents no deltas, so the +17 rows behind this number are the 10 EXECUTOR-GIT-RETRY rows —
    extractBranchWithoutUpstream unit shapes incl. the shell-hostile refusal + the
-   offerUpstreamRetry offer/no-offer matrix).
+   offerUpstreamRetry offer/no-offer matrix — plus 7 rows added during Phase 18 that were never
+   recorded in a per-phase delta; the 10 retry rows live at checkHandlerCoverage.js:749-767).
+   Phase 21 (2026-08-13): check-docs 57 catalog entries + 131 generated intent entries, 0
+   unmapped README rows (the new coverage assertion fails when an eligible BUILTIN_INTENTS
+   member lacks a generated entry; live-verified endpoint: 57 commands + 131 intents, 36
+   panel-tagged). No other harness deltas (deck/reference are frontend rendering).
+   2026-08-14 (Matchday-Exchange chat crosscheck — see the bug-fix section below):
+   check-matcher 288/292 (baseline 285 + 7 new MATCHDAY-2026-08-14 rows: site-question →
+   overview, typo'd time → time, "what files do i have" → structure; the SAME TWO pre-existing
+   drifts remain); check-indexer 103/103 (+5 typo-resolver rows); check-handlers 200/200
+   (the mode-admin rows now assert the trailing `end` — they were calibrated against the
+   pre-fix handler that omitted it); check-intents unchanged at 1/7/82; check-ws-cases 122/122.
    Run the relevant battery after ANY edit to the corresponding module.
 - **editFile** tolerates whitespace differences (normalized line-range fallback) but not
   wrong wording; on total failure the error names both attempts and tells the caller to
@@ -1336,8 +1368,12 @@ no dispatch or matching logic). Notable functional additions made during the sty
   an actual newer version exists (not testable against the live registry at 1.0.1).
 
 - **requestedPort.js** — "run the site on port 3010" / "serve the site on port 3040":
-  `extractRequestedPort`/`applyRequestedPort`. Replaces an existing `--port`/`-p` flag;
-  uses `npm run dev -- --port=N` for vite-shaped scripts (vite ignores PORT env); falls
+  `extractRequestedPort`/`applyRequestedPort`. Replaces an existing `--port`/`-p` flag —
+  in the resolved command AND, since 2026-08-14, INSIDE the package.json script itself
+  (a script's own `vite --port=3001 ...` is rewritten and run through the project's local
+  `node_modules/.bin` binary, so the executed line carries exactly one port flag; without a
+  local binary it falls back to the append, which vite's last-wins CLI honors); uses
+  `npm run dev -- --port=N` for vite-shaped scripts (vite ignores PORT env); falls
   back to `set PORT=N&& ` / `PORT=N ` env prefix. Wired into `npm_run`/`run_project`
   (incl. the npm start|serve shortcuts and the run/serve-the-site branch). When a port is
   requested the duplicate-dev-server guard is skipped deliberately (explicit re-run on a
@@ -1625,6 +1661,108 @@ no dispatch or matching logic). Notable functional additions made during the sty
   `..` escapes. The panel's exact composed command shapes are the same inputs the driver
   exercised. Browser-click verification of the panel (drag/drop, in-panel confirm) still
   needs one manual pass on a live page.
+
+## Bug fix (2026-08-14) — mode-switch left the terminal stuck on "Running..."
+
+- **Symptom** (reported live, NetPulse): every "switch to developer mode" / "switch to
+  general mode" — whether typed, clicked as a suggestion chip, or fired by the header
+  Developer/General tab switcher (`handleWorkspaceTabChange` in App.tsx) — left the web
+  terminal spinning "Running..." forever. The mode change itself worked (the `answer`
+  bubble showed correctly and `console.config.json` was written), but the UI never
+  recovered.
+- **Root cause**: `handleModeCommand` (connectionModeAdmin.js) sent its `type: 'answer'`
+  bubble but never followed it with `type: 'end'`. Every sibling admin-command handler in
+  the same pre-matcher tier (connectionTelemetry.js, connectionNotifyAdmin.js, etc.) sends
+  `end` right after `answer` — the client's `commandPending` flag (wsMessageCases.ts) is
+  only cleared on `end`, so skipping it left the spinner (and the disabled input) stuck
+  indefinitely.
+- **Fix**: both branches of `handleModeCommand` (the `switch to X mode` match and the
+  `what mode am I in` match) now send `ws.send(JSON.stringify({ type: 'end' }))` right
+  after their `answer` send, matching every other admin handler's contract.
+- **Lesson**: any new pre-matcher admin handler added to connectionExecute.js's chain
+  MUST send a trailing `end` — there's no wrapper that does it for you once a handler
+  returns `true`. Worth a check-handlers assert if this class of bug recurs.
+
+## Bug fix (2026-08-14) — accent-color picker (Stage H) didn't reach every "primary" control
+
+- **Symptom** (reported directly): the Settings accent-color override only visibly changed
+  the Developer/General header pill and the sidebar's active-project marker — the New Chat
+  button, the Scan button, the active-chat highlight, and the header's Command
+  reference/Dashboard/Tools icon toggles stayed a fixed light-blue no matter what custom
+  color was picked.
+- **Root cause**: Stage H's accent-color override (`App.tsx`, the `profile.accentColor`
+  effect) only ever sets `--color-accent-blue` as an inline style on `documentElement`. But
+  several "primary/selected" controls in `SidebarDrawer.tsx` (New Chat, Scan, active-chat
+  row, rename-hover, collapsed-rail new-chat/AI-brain icons) and three header toggle icons
+  in `App.tsx` were still on the old generic `text-accent`/`bg-accent`/`accent-teal`
+  tokens — which render as a similar-looking light blue (`--color-accent-teal:
+  #64D2FF`/`#5AC8FA`, the iOS "systemTeal") but are a SEPARATE CSS variable never touched by
+  the override. They looked "hardcoded" because, relative to the picker, they were.
+- **Fix**: swept those controls from `accent`/`accent-teal` to `accent-blue` so they key off
+  the same customizable token as the header pill and the active-project marker. Left the
+  genuinely semantic uses alone on purpose: `accent-green` (running-server badges),
+  `accent-red` (delete/danger hover), and the yellow pinned-star (documented Stage G
+  exception) are not "primary selection" indicators and shouldn't move.
+- **Lesson**: `accent`/`accent-teal` and `accent-blue` are NOT interchangeable even though
+  they render near-identically in the default palette — only `accent-blue` is wired to the
+  Settings accent-color picker. Any new "this control is currently active/selected/primary"
+  affordance must use `accent-blue`, never the bare `accent` alias, or it'll silently ignore
+  the user's chosen color. Worth revisiting: extending the Stage H override to also patch
+  `--color-accent`/`--color-accent-teal` so a stray future `text-accent` isn't a landmine.
+
+## Bug fix pass (2026-08-14) — Matchday-Exchange chat crosscheck
+
+Live-session review of an exported chat (Matchday Exchange) surfaced five wrong-reply classes,
+all fixed + harness-pinned. Crosscheck notes per class:
+
+- **"What is the site about" triggered the deploy confirm ("Cancelled: git push")** — the
+  deploy example cluster is saturated with "the site" phrases (chitChatIntents.js), so a
+  read-only question about the site landed on deploy by embedding. Fixed with two
+  PRE_SEMANTIC_OVERRIDES pinning `what is/are (the) (site|app|project) about/details/for` and
+  `what is the details of the site` → project.knowledge.overview (plus overview example
+  additions). Same "the site" collision had routed "what is the details of the site" to
+  dev_server_status — the pin covers that too.
+- **Typo'd time questions drifted into unrelated clusters** — "What is the tme" answered the
+  tech stack; "What as time\" executed `git status`. Two fixes: a pre-semantic pin for
+  `what (is|'s|as|are) (the) t?ime/clock` → system.chit_chat.time, and matcher.js input
+  normalization that strips trailing punctuation/backslashes ("What as time\" → time). Quotes
+  are deliberately NOT stripped — they close comment strings, and stripping them shifted
+  embeddings enough to flip closeSecond markers on git/deploy rows (measured in the harness).
+- **"What files do I have" dead-ended in the fallback** — structure examples gained the
+  whole-tree listing phrasings ('what files do i have', 'list all my files', ...).
+- **"show me imports" + "app.tsx" follow-up dead-ended** — file_relations and open_file now
+  stage `sessionContext.pendingFileQuestion` when they answer "Which file?", and a new
+  handlePendingFileQuestionReply interceptor (connectionInterceptors.js, called from
+  handleExecute after the disambiguation interceptor) picks up the filename reply and
+  re-dispatches the original intent with it. Cancel words clear it; anything else clears and
+  falls through to normal matching (same backtracking rule as pendingDisambiguation).
+- **"Show my the imports of app.tx" — no typo tolerance** — resolveTargetFile
+  (codebaseGraph.js) gained an extension-tolerant pass: a dot-bearing stem ("app.tx") retries
+  against the known source/document extensions from 2 chars up; a dot-free stem needs >= 4
+  chars so "app"/"main" stay null. file_relations now uses the same resolver and appends a
+  "_ (matched `src\App.tsx` — did you mean this file?)_" note on fuzzy hits. This is the
+  resolver the AI context slice already used, so both paths agree.
+- **"run the site on port 3003" ran vite with BOTH --port=3001 and --port=3003** — the
+  script's own port flag was never rewritten (only the `npm run dev` command string was).
+  applyRequestedPort now rewrites a `--port`/`-p` inside the script and runs it through the
+  project's node_modules/.bin binary directly (single, unambiguous flag; falls back to the
+  vite last-wins append when no local binary exists).
+- **"Push my site" committed console.config.json** — the console's own mode-switch bookkeeping
+  was swept into the user's commit by `git add -A`. New ensureConsoleConfigGitignored
+  (sessionMigration.js, same serialized-lock pattern as ensureGitignored) appends
+  `console.config.json` to the project's .gitignore when the console writes it — UNLESS the
+  user already tracks it deliberately (`git ls-files` check, synchronous execSync so a
+  fire-and-forget call can't race a directory teardown — it crashed the check-handlers temp
+  fixture with EPERM when async). Wired into connectionModeAdmin's setWorkspaceType.
+- **Harness recalibration**: the mode-admin rows in checkHandlerCoverage.js expected
+  `ws.sent.length === 1` — calibrated against the pre-"end"-fix handler; they now assert
+  answer + trailing `end`, doubling as the regression guard the mode-switch bug note's lesson
+  asked for. New batteries/rows: check-matcher MATCHDAY-2026-08-14 (7 rows), check-indexer
+  typo-resolver rows (+5). Numbers: check-matcher 288/292 (2 pre-existing drifts unchanged),
+  check-indexer 103/103, check-handlers 200/200, check-intents 1/7/82, check-ws-cases 122/122.
+- Live-verified (temp fixtures, raw WS): the follow-up "app.tsx" resolves with imports; the
+  "app.tx" typo answers with the matched-file note; the mode switch writes
+  `console.config.json` to .gitignore; applyRequestedPort emits exactly one port flag.
 
 ## Conventions
 

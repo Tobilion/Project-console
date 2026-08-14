@@ -10,6 +10,7 @@ import { broadcast } from '../wsServer.js';
 import { asyncHandler } from '../asyncHandler.js';
 import { projectChatLogPath } from '../sessionExport.js';
 import { listActions } from '../actionHistory.js';
+import { syncProjectWatchers } from '../codeIndex/codeIndexBuilder.js';
 
 // A plain browser tab (not Electron/Tauri) can never receive an absolute host filesystem path
 // from <input type="file" webkitdirectory> — that's a deliberate File API restriction, not a
@@ -96,6 +97,8 @@ export function registerProjectRoutes(app, dirname) {
       await projectsMutex.runExclusive(async () => {
         state.activeProjectsCache = projects;
       });
+      // Close code-index watchers for projects that left the scan set (codeIndexBuilder).
+      syncProjectWatchers(projects);
 
       res.json({
         success: true,
@@ -107,7 +110,8 @@ export function registerProjectRoutes(app, dirname) {
         console.error('Background NLP retrain failed:', err.message);
       });
       semanticMatcher.clearProjectIntents().catch(() => {});
-      semanticMatcher.addProjectIntents(projects).catch(() => {});
+      semanticMatcher.addProjectIntents(projects).catch((err) =>
+        console.warn('Project-intent refresh failed after rescan:', err?.message || err));
     } catch (err) {
       res.status(500).json({ success: false, error: err.message });
     }

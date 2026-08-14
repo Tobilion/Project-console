@@ -54,6 +54,9 @@ export function NotificationsPanel({ project, onSendMessage }: NotificationsPane
   const [days, setDays] = useState('7');
   const [lastSent, setLastSent] = useState<string | null>(null);
   const lastSentTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Clear the pending "last sent" timer on unmount so its delayed setState can't fire on a
+  // dead panel (and hold the panel's closure alive after it unmounted).
+  useEffect(() => () => { if (lastSentTimer.current) clearTimeout(lastSentTimer.current); }, []);
 
   const fetchState = useCallback(async () => {
     const data = await apiFetchJson<{ rules: WatchRule[]; events: Record<string, boolean>; desktop: boolean; webhooks: string[] }>('/api/notifications');
@@ -105,7 +108,7 @@ export function NotificationsPanel({ project, onSendMessage }: NotificationsPane
             </div>
             <h2 className="text-sm font-semibold text-fg-strong tracking-wide uppercase">Notifications</h2>
           </div>
-          <button onClick={fetchState} className="p-1.5 text-fg-dim hover:text-fg-strong rounded-md transition-colors" title="Refresh">
+          <button onClick={fetchState} className="p-1.5 text-fg-dim hover:text-fg-strong rounded-lg transition-colors" title="Refresh">
             <RefreshCw size={15} />
           </button>
         </div>
@@ -144,7 +147,7 @@ export function NotificationsPanel({ project, onSendMessage }: NotificationsPane
               <Plus size={12} /> Add rule
             </button>
           </div>
-          <p className="text-[11px] text-fg-faint mt-2">
+          <p className="text-[11px] text-fg-dim mt-2">
             Rules are notification-only — they never run commands. Each rule also needs its event
             enabled below to actually fire.
           </p>

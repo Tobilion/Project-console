@@ -56,8 +56,6 @@ export function useConsole() {
   const terminal = useTerminal(
     wsHandler.wsRef,
     projects.activeProject,
-    sessions.activeSessionId,
-    sessions.setMessages,
   );
 
   const activeProjectRef = useRef(projects.activeProject);
@@ -109,9 +107,15 @@ export function useConsole() {
   const [toolsOpen, setToolsOpen] = useState(false);
   const [activeToolPanel, setActiveToolPanel] = useState<string | null>(null);
   const [toolPanels, setToolPanels] = useState<ToolPanelDef[]>([]);
+  const [toolPanelsError, setToolPanelsError] = useState<string | null>(null);
   const fetchToolPanels = useCallback(async () => {
     const data = await apiFetchJson<{ panels: ToolPanelDef[] }>('/api/tool-panels');
-    if (data?.panels) setToolPanels(data.panels);
+    if (data?.panels) {
+      setToolPanels(data.panels);
+      setToolPanelsError(null);
+    } else {
+      setToolPanelsError('Could not load the tools list.');
+    }
   }, []);
 
   const fetchActiveServers = useCallback(async () => {
@@ -203,6 +207,7 @@ export function useConsole() {
   // markdownComponents useMemo inside it) does not churn on every render — the old plain
   // `terminal.handleSendMessage = fn` reassigned a new function each render, which rebuilt
   // markdownComponents on every 16ms token frame and forced the whole thread to re-render.
+  // (The useTerminal copy this replaces was dead code — see useTerminal.ts.)
   // 2026-08-12: no longer bails without an active project — the server resolves the reserved
   // '__general__' pseudo-workspace so a user can chat (and use personal tools) before picking
   // a project. The session lock is unaffected: a General-workspace session is created with
@@ -230,8 +235,6 @@ export function useConsole() {
     }));
   }, [projects.activeProject, wsHandler.wsRef, sessions.setMessages, sessions.activeSessionId, ai.aiEnabled, setCommandPending]);
 
-  terminal.handleSendMessage = handleSendMessage;
-
   useEffect(() => {
     projects.fetchProjects();
     sessions.fetchSessions();
@@ -257,14 +260,21 @@ export function useConsole() {
   const setDisplayName = useCallback((name: string) => {
     const trimmed = name.trim();
     if (!trimmed || !wsHandler.wsRef.current) return;
+    // Cancellable + bounded retry: the socket may still be opening (cold boot) — retry until
+    // OPEN, but give up after 30s instead of retrying every second forever if it never opens
+    // (the caller can also cancel via the returned cleanup, matching App.tsx's own pattern).
+    let cancelled = false;
+    let attempts = 0;
     const trySend = () => {
+      if (cancelled) return;
       if (wsHandler.wsRef.current?.readyState === WebSocket.OPEN) {
         wsHandler.wsRef.current.send(JSON.stringify({ type: 'set_display_name', payload: { name: trimmed.slice(0, 40) } }));
-      } else {
+      } else if (attempts++ < 30) {
         setTimeout(trySend, 1000);
       }
     };
     trySend();
+    return () => { cancelled = true; };
   }, [wsHandler.wsRef]);
 
   // A brand-new chat with zero messages sent isn't "committed" to anything yet — deleting it
@@ -425,8 +435,6 @@ export function useConsole() {
     pendingConfirm: terminal.pendingConfirm,
     sessions: sessions.sessions,
     activeSessionId: sessions.activeSessionId,
-    showSessions: sessions.showSessions,
-    setShowSessions: sessions.setShowSessions,
     aiEnabled: ai.aiEnabled,
     ollamaStatus: ai.ollamaStatus,
     aiThinking: ai.aiThinking,
@@ -452,8 +460,8 @@ export function useConsole() {
     setShowWelcome: sessions.setShowWelcome,
     pendingToolConfirm: terminal.pendingToolConfirm,
     pendingMemorySuggestion: terminal.pendingMemorySuggestion,
-    handleSendMessage: terminal.handleSendMessage,
-  setDisplayName,
+    handleSendMessage,
+    setDisplayName,
     handleCancel,
     handleConfirm: terminal.handleConfirm,
     handleToolConfirm: terminal.handleToolConfirm,
@@ -475,8 +483,6 @@ export function useConsole() {
     handleAIToggle: ai.handleAIToggle,
     handleSetModel: ai.handleSetModel,
     handleSetMode: ai.handleSetMode,
-    handlePullModel: ai.handlePullModel,
-    fetchOllamaStatus: ai.fetchOllamaStatus,
     handleSelectProject,
     handleSearch: search.handleSearch,
     handleDeepResearch: search.handleDeepResearch,
@@ -496,6 +502,7 @@ export function useConsole() {
     activeToolPanel,
     setActiveToolPanel,
     toolPanels,
+    toolPanelsError,
     fetchToolPanels,
   };
 }

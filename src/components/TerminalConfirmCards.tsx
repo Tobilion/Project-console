@@ -43,13 +43,13 @@ export function TerminalConfirmCards({
             <div className="flex flex-wrap gap-2 mt-3">
               <button
                 onClick={() => onConfirm(true)}
-                className="flex items-center gap-1.5 px-3 py-1 bg-accent-red/20 hover:bg-accent-red/40 text-accent-red rounded-md border border-accent-red/30 transition-colors text-xs font-bold"
+                className="flex items-center gap-1.5 px-3.5 py-2 bg-accent-red/20 hover:bg-accent-red/40 text-accent-red rounded-lg border border-accent-red/30 transition-colors text-xs font-bold"
               >
                 <CheckCircle size={13} /> Execute
               </button>
               <button
                 onClick={() => onConfirm(false)}
-                className="flex items-center gap-1.5 px-3 py-1 bg-panel hover:bg-panel-strong text-fg-muted rounded-md border border-border-soft transition-colors text-xs"
+                className="flex items-center gap-1.5 px-3.5 py-2 bg-panel hover:bg-panel-strong text-fg-muted rounded-lg border border-border-soft transition-colors text-xs"
               >
                 <XCircle size={13} /> Cancel
               </button>
@@ -97,13 +97,13 @@ export function TerminalConfirmCards({
             <div className="flex flex-wrap gap-2">
               <button
                 onClick={() => onToolConfirm(true)}
-                className="flex items-center gap-1.5 px-3 py-1 bg-accent-red/20 hover:bg-accent-red/40 text-accent-red rounded-md border border-accent-red/30 transition-colors text-xs font-bold"
+                className="flex items-center gap-1.5 px-3.5 py-2 bg-accent-red/20 hover:bg-accent-red/40 text-accent-red rounded-lg border border-accent-red/30 transition-colors text-xs font-bold"
               >
                 <CheckCircle size={13} /> Approve
               </button>
               <button
                 onClick={() => onToolConfirm(false)}
-                className="flex items-center gap-1.5 px-3 py-1 bg-panel hover:bg-panel-strong text-fg-muted rounded-md border border-border-soft transition-colors text-xs"
+                className="flex items-center gap-1.5 px-3.5 py-2 bg-panel hover:bg-panel-strong text-fg-muted rounded-lg border border-border-soft transition-colors text-xs"
               >
                 <XCircle size={13} /> Reject
               </button>
@@ -111,7 +111,7 @@ export function TerminalConfirmCards({
             {onApproveTask && pendingToolConfirm.tool !== 'executeCommand' && (
               <button
                 onClick={onApproveTask}
-                className="mt-2 flex items-center gap-1.5 px-3 py-1 bg-accent-green/20 hover:bg-accent-green/40 text-accent-green rounded-md border border-accent-green/30 transition-colors text-xs"
+                className="mt-2 flex items-center gap-1.5 px-3.5 py-2 bg-accent-green/20 hover:bg-accent-green/40 text-accent-green rounded-lg border border-accent-green/30 transition-colors text-xs"
                 title="Approves this edit AND lets the rest of this task's file edits run without asking. Commands and tests still confirm every time."
               >
                 <CheckCircle size={13} /> Approve + auto-approve file edits this conversation
@@ -136,13 +136,13 @@ export function TerminalConfirmCards({
             <div className="flex flex-wrap gap-2 mt-3">
               <button
                 onClick={() => onMemorySuggestionRespond?.(true)}
-                className="flex items-center gap-1.5 px-3 py-1 bg-accent-teal/20 hover:bg-accent-teal/40 text-accent-teal rounded-md border border-accent-teal/30 transition-colors text-xs font-bold"
+                className="flex items-center gap-1.5 px-3.5 py-2 bg-accent-teal/20 hover:bg-accent-teal/40 text-accent-teal rounded-lg border border-accent-teal/30 transition-colors text-xs font-bold"
               >
                 <CheckCircle size={13} /> Add to CLAUDE.md
               </button>
               <button
                 onClick={() => onMemorySuggestionRespond?.(false)}
-                className="flex items-center gap-1.5 px-3 py-1 bg-panel hover:bg-panel-strong text-fg-muted rounded-md border border-border-soft transition-colors text-xs"
+                className="flex items-center gap-1.5 px-3.5 py-2 bg-panel hover:bg-panel-strong text-fg-muted rounded-lg border border-border-soft transition-colors text-xs"
               >
                 <XCircle size={13} /> Not now
               </button>

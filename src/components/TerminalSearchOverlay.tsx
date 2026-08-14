@@ -57,11 +57,12 @@ export function TerminalSearchOverlay({
                 }
               }}
               placeholder="Search command history..."
-              className="flex-1 bg-transparent text-fg text-sm outline-none placeholder:text-fg-faint"
+              className="flex-1 bg-transparent text-fg text-sm outline-none placeholder:text-fg-dim"
               autoFocus
             />
             <button
               onClick={onClose}
+              aria-label="Close search"
               className="text-fg-faint hover:text-fg-muted transition-colors"
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
@@ -69,7 +70,7 @@ export function TerminalSearchOverlay({
           </div>
           <div className="max-h-48 overflow-y-auto">
             {history.length === 0 ? (
-              <div className="px-4 py-6 text-center text-fg-faint text-sm">
+              <div className="px-4 py-6 text-center text-fg-dim text-sm">
                 {query.trim() ? 'No matching commands found' : 'No command history yet'}
               </div>
             ) : (

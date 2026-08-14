@@ -96,8 +96,3 @@ export function takeUpdateNotice() {
   noticeSent = true;
   return { current: cachedResult.current, latest: cachedResult.latest };
 }
-
-/** Last cached check result (for the admin command's message without a forced re-check). */
-export function peekUpdateInfo() {
-  return cachedResult;
-}

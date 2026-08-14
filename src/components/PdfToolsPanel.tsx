@@ -45,6 +45,9 @@ export function PdfToolsPanel({ project, onSendMessage }: PdfToolsPanelProps) {
   const [error, setError] = useState<string | null>(null);
   const [lastSent, setLastSent] = useState<string | null>(null);
   const lastSentTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Clear the pending "last sent" timer on unmount so its delayed setState can't fire on a
+  // dead panel (and hold the panel's closure alive after it unmounted).
+  useEffect(() => () => { if (lastSentTimer.current) clearTimeout(lastSentTimer.current); }, []);
 
   // Single-file picker used by split / extract-text / extract-pages / watermark.
   const [selected, setSelected] = useState<string>('');
@@ -191,7 +194,7 @@ export function PdfToolsPanel({ project, onSendMessage }: PdfToolsPanelProps) {
   const label = 'block text-[11px] uppercase tracking-wider text-fg-dim mb-1.5';
   const inputCls = 'w-full text-xs bg-panel-strong border border-border-soft rounded-lg px-2.5 py-2 text-fg-strong focus:outline-none focus:border-accent-blue/50';
   const runBtn = 'mt-3 w-full min-h-11 flex items-center justify-center gap-1.5 text-xs font-bold rounded-lg px-3 py-2 bg-accent-blue text-white hover:opacity-90 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed';
-  const smallBtn = 'p-1.5 text-fg-dim hover:text-fg-strong transition-colors rounded-md hover:bg-scrim-faint';
+  const smallBtn = 'p-1.5 text-fg-dim hover:text-fg-strong transition-colors rounded-lg hover:bg-scrim-faint';
 
   return (
     <div className="h-full overflow-y-auto p-4">
@@ -269,7 +272,7 @@ export function PdfToolsPanel({ project, onSendMessage }: PdfToolsPanelProps) {
                     <li key={f.path} className="flex items-center gap-1.5 text-xs bg-scrim-faint rounded-lg px-2 py-1.5">
                       <FileText size={13} className="text-fg-dim shrink-0" />
                       <span className="text-fg-strong truncate flex-1" title={f.path}>{f.name}</span>
-                      <span className="text-fg-faint text-[10px] shrink-0">{formatSize(f.size)}</span>
+                      <span className="text-fg-dim text-[10px] shrink-0">{formatSize(f.size)}</span>
                       <a href={fileUrl(f.path)} download={f.name} className={smallBtn} title="Download">
                         <Download size={13} />
                       </a>
@@ -386,7 +389,7 @@ export function PdfToolsPanel({ project, onSendMessage }: PdfToolsPanelProps) {
                       key={m}
                       onClick={() => setExtractMode(m)}
                       className={cn(
-                        'flex-1 py-1 rounded-md text-[11px] font-semibold transition-colors',
+                        'flex-1 py-1 rounded-lg text-[11px] font-semibold transition-colors',
                         extractMode === m ? 'bg-accent-blue text-white' : 'text-fg-muted hover:text-fg-strong',
                       )}
                     >

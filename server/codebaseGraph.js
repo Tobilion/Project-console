@@ -90,7 +90,18 @@ export function computeSymbolReferences(entries, contents) {
  * "app" don't over-match. Sentence queries ("how does src/server.js start up?") are handled
  * by pulling out the path-like tokens (containing '.' or '/') and trying them longest-first —
  * whole-query matching cannot see a path embedded in a question.
+ *
+ * Typo tolerance (Matchday-Exchange live session, 2026-08-14): after the three passes above,
+ * a 4+ char filename stem with a wrong extension ("app.tx") or none at all ("readme") is
+ * retried against the known source/document extensions, so a typo still resolves to the real
+ * file instead of dead-ending in "Couldn't find X".
  */
+const TARGET_FILE_EXTENSIONS = [
+  '.tsx', '.ts', '.js', '.jsx', '.py', '.json', '.css', '.html', '.md', '.vue', '.svelte',
+  '.go', '.rs', '.java', '.c', '.cpp', '.h', '.cs', '.rb', '.php', '.sql', '.yml', '.yaml',
+  '.sh', '.txt', '.csv', '.pdf', '.docx',
+];
+
 export function resolveTargetFile(idx, query) {
   const repoMap = idx?.repoMap || [];
   if (!repoMap.length || !query) return null;
@@ -114,6 +125,22 @@ export function resolveTargetFile(idx, query) {
     return null;
   };
 
+  const tryTypoTolerant = (q) => {
+    const qBase = pathParts(q).at(-1) || '';
+    // A wrong or missing extension. Two different floors: a dot-bearing token ("app.tx") is
+    // unambiguously a filename, so even a 2-char stem is worth retrying — the reported case
+    // was exactly "app.tx" -> App.tsx (Matchday-Exchange live session 2026-08-14); a dot-free
+    // query needs >= 4 chars so generic nouns like "app"/"main" don't over-match.
+    const stem = qBase.replace(/\.[a-zA-Z0-9]{1,6}$/, '');
+    const wrongExt = stem !== qBase;
+    if (stem.length < (wrongExt ? 2 : 4)) return null;
+    for (const ext of TARGET_FILE_EXTENSIONS) {
+      const hit = repoMap.find((e) => pathParts(e.path).at(-1).toLowerCase() === (stem + ext).toLowerCase());
+      if (hit) return hit.path;
+    }
+    return null;
+  };
+
   if (q.includes(' ')) {
     const tokens = (q.match(/[\w./-]+/g) || [])
       .filter((t) => t.includes('.') || t.includes('/'))
@@ -122,9 +149,13 @@ export function resolveTargetFile(idx, query) {
       const hit = tryResolve(t);
       if (hit) return hit;
     }
+    for (const t of tokens) {
+      const hit = tryTypoTolerant(t);
+      if (hit) return hit;
+    }
     return null;
   }
-  return tryResolve(q);
+  return tryResolve(q) ?? tryTypoTolerant(q);
 }
 
 /**

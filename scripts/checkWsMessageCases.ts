@@ -124,7 +124,7 @@ async function main() {
     'tool_confirm_prompt', 'task_granted', 'memory_suggestion', 'tool_result',
     'workspace_updated', 'server_url', 'copy_to_clipboard', 'dashboard_update',
     'processes_update', 'learning_suggestion', 'stream_start', 'token', 'stream_end',
-    'update_available',
+    'update_available', 'semantic_matcher_progress', 'display_name_set',
   ];
   for (const t of ALL_TYPES) check(`case registered: ${t}`, typeof WS_MESSAGE_CASES[t] === 'function');
 

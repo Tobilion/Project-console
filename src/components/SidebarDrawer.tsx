@@ -76,20 +76,20 @@ export const SidebarDrawer = ({
   if (collapsed) {
     return (
       <aside className="hidden lg:flex flex-col items-center gap-2 w-14 flex-shrink-0 h-full bg-panel rounded-2xl border border-border-soft p-2">
-        <button onClick={() => onSetCollapsed(false)} className="p-2 text-fg-dim hover:text-fg-strong transition-colors" title="Expand sidebar">
+        <button onClick={() => onSetCollapsed(false)} className="p-3 text-fg-dim hover:text-fg-strong transition-colors" title="Expand sidebar">
           <ChevronRight size={16} />
         </button>
-        <button onClick={() => onSetCollapsed(false)} className="p-2 text-fg-subtle hover:text-fg-strong transition-colors" title="Scan a folder">
+        <button onClick={() => onSetCollapsed(false)} className="p-3 text-fg-subtle hover:text-fg-strong transition-colors" title="Expand to scan a folder">
           <FolderSearch size={16} />
         </button>
-        <button onClick={() => { onSetCollapsed(false); createSession(activeProject?.id, activeProject?.name); }} className="p-2 text-fg-subtle hover:text-accent-teal transition-colors" title="New chat">
+        <button onClick={() => { onSetCollapsed(false); createSession(activeProject?.id, activeProject?.name); }} className="p-3 text-fg-subtle hover:text-accent-blue transition-colors" title="New chat">
           <Plus size={16} />
         </button>
-        <button onClick={() => onSetCollapsed(false)} className="p-2 text-fg-subtle hover:text-fg-strong transition-colors" title="Discovered projects">
+        <button onClick={() => onSetCollapsed(false)} className="p-3 text-fg-subtle hover:text-fg-strong transition-colors" title="Expand to see discovered projects">
           <FolderGit2 size={16} />
         </button>
         <div className="mt-auto flex flex-col items-center gap-2" title={aiEnabled ? `AI: ${aiModel ?? 'enabled'}` : 'AI off'}>
-          <Brain size={16} className={`transition-colors ${aiEnabled ? 'text-accent' : 'text-fg-dim'}`} />
+          <Brain size={16} className={`transition-colors ${aiEnabled ? 'text-accent-blue' : 'text-fg-dim'}`} />
         </div>
       </aside>
     );
@@ -118,7 +118,7 @@ export const SidebarDrawer = ({
           />
           <button
             type="submit"
-            className="px-2 py-0.5 bg-accent-teal/20 text-accent-teal rounded-md text-[9px] font-bold tracking-wider uppercase hover:bg-accent-teal/30 transition-colors flex-shrink-0"
+            className="px-2 py-0.5 bg-accent-blue/20 text-accent-blue rounded-lg text-[9px] font-bold tracking-wider uppercase hover:bg-accent-blue/30 transition-colors flex-shrink-0"
           >
             Scan
           </button>
@@ -128,7 +128,7 @@ export const SidebarDrawer = ({
       <div className="p-2.5 flex-shrink-0">
         <button
           onClick={() => createSession(activeProject?.id, activeProject?.name)}
-          className="w-full flex items-center justify-center gap-1.5 py-1.5 bg-accent-teal/20 text-accent-teal rounded-lg text-[10px] font-bold tracking-wider uppercase hover:bg-accent-teal/30 transition-colors"
+          className="w-full flex items-center justify-center gap-1.5 py-1.5 bg-accent-blue/20 text-accent-blue rounded-lg text-[10px] font-bold tracking-wider uppercase hover:bg-accent-blue/30 transition-colors"
         >
           <Plus size={12} /> New Chat
         </button>
@@ -154,9 +154,14 @@ export const SidebarDrawer = ({
         {visibleSessions.map(s => (
           <div
             key={s.id}
+            role="button"
+            tabIndex={0}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); switchSession(s.id); }
+            }}
             onClick={() => switchSession(s.id)}
             className={`flex items-center gap-2 px-2 py-2 rounded-lg cursor-pointer text-xs transition-colors group ${
-              activeSessionId === s.id ? 'bg-accent-teal/15 text-accent-teal' : 'text-fg-subtle hover:bg-panel'
+              activeSessionId === s.id ? 'bg-accent-blue/15 text-accent-blue' : 'text-fg-subtle hover:bg-panel'
             }`}
           >
             <MessageSquare size={14} className="flex-shrink-0" />
@@ -184,7 +189,7 @@ export const SidebarDrawer = ({
               )}
             </span>
             {editingId !== s.id && (
-              <button onClick={(e) => { e.stopPropagation(); setEditingId(s.id); setDraftTitle(s.title); }} className="opacity-0 group-hover:opacity-100 text-fg-dim hover:text-accent-teal transition-all flex-shrink-0" title="Rename chat">
+              <button onClick={(e) => { e.stopPropagation(); setEditingId(s.id); setDraftTitle(s.title); }} className="opacity-0 group-hover:opacity-100 text-fg-dim hover:text-accent-blue transition-all flex-shrink-0" title="Rename chat">
                 <Pencil size={12} />
               </button>
             )}
@@ -205,6 +210,11 @@ export const SidebarDrawer = ({
           [...projects.filter((p) => pinned.includes(p.id)), ...projects.filter((p) => !pinned.includes(p.id))].map(p => (
             <div
               key={p.id}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleSelectProject(p); }
+              }}
               onClick={() => handleSelectProject(p)}
               className={`relative flex items-center gap-2 pl-2.5 pr-2 h-9 rounded-lg cursor-pointer text-xs transition-colors group ${
                 activeProject?.id === p.id ? 'bg-panel-strong text-fg-strong' : 'text-fg-subtle hover:bg-panel-strong'
@@ -239,7 +249,7 @@ export const SidebarDrawer = ({
       </div>
 
       <div className="mt-auto flex-shrink-0 border-t border-border-faint px-2.5 py-2 flex items-center gap-2">
-        <Brain size={14} className={`flex-shrink-0 ${aiEnabled ? 'text-accent' : 'text-fg-dim'}`} />
+        <Brain size={14} className={`flex-shrink-0 ${aiEnabled ? 'text-accent-blue' : 'text-fg-dim'}`} />
         <span className="text-[10px] text-fg-dim truncate flex-1 min-w-0 font-mono" title={aiEnabled ? (aiModel ?? 'AI enabled') : 'AI off'}>
           {aiEnabled ? (aiModel ?? 'AI on') : 'AI off'}
         </span>

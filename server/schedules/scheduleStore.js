@@ -31,6 +31,17 @@ function schedulePersist() {
   }, 500);
 }
 
+/** Persist immediately, bypassing the 500ms debounce. Used by markFired and one-shot
+ *  removal: a crash inside the debounce window would regress lastFiredAt (or resurrect an
+ *  expired reminder) and re-fire after restart. */
+function persistNow() {
+  if (saveTimer) {
+    clearTimeout(saveTimer);
+    saveTimer = null;
+  }
+  persist();
+}
+
 /** Load persisted schedules into memory. Call once at server startup (never replaces
  *  a live addSchedule that raced the load — invoked before any connection arrives). */
 export function loadSchedules() {
@@ -105,7 +116,8 @@ export function markFired(id, at = Date.now()) {
   const schedule = schedules.find((s) => s.id === id);
   if (!schedule) return;
   schedule.lastFiredAt = at;
-  schedulePersist();
+  // Immediate write — see persistNow's doc comment (crash-safety of the fire cadence).
+  persistNow();
 }
 
 /** Remove a schedule by id regardless of project. Used only by the scheduler for expired
@@ -116,7 +128,9 @@ export function removeScheduleById(id) {
   const idx = schedules.findIndex((s) => s.id === id);
   if (idx === -1) return null;
   const [removed] = schedules.splice(idx, 1);
-  schedulePersist();
+  // Immediate write — see persistNow's doc comment (an expired one-shot reminder whose
+  // removal was lost to a crash would fire again after restart).
+  persistNow();
   return removed;
 }
 

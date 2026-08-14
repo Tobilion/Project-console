@@ -200,7 +200,7 @@ export const projectActionHandlers = {
     ws.send(JSON.stringify({ type: 'answer', data: `Opening **[${project.name}]** in Cursor...` }));
   },
 
-  async 'project.action.open_file'(ws, _action, input, project) {
+  async 'project.action.open_file'(ws, _action, input, project, sessionContext) {
     // Phase 16 (2026-08-05): "open main.py" / "open the config file" — parses the name loosely
     // (same parseFileNameOnly as file_read/file_find), resolves it via the sandboxed findFiles()
     // across the project, then opens the matched file in the editor: `code` CLI first, the
@@ -208,6 +208,12 @@ export const projectActionHandlers = {
     // No name -> asks; no match -> the same "did you mean"-style guidance file_read uses.
     const fileName = parseFileNameOnly(input);
     if (!fileName) {
+      // Stage the follow-up so a bare "readme" reply resolves this question instead of
+      // dead-ending in the fallback (see handlePendingFileQuestionReply — Matchday-Exchange
+      // live session, 2026-08-14).
+      if (sessionContext) {
+        sessionContext.pendingFileQuestion = { projectId: project.id, intent: 'project.action.open_file' };
+      }
       ws.send(JSON.stringify({ type: 'answer', data: `Which file would you like me to open? Try "open the readme file" or "open main.py".` }));
       return true;
     }

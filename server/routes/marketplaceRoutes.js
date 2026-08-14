@@ -2,15 +2,16 @@
 // read-only registry index + config. Installing goes through the WS admin-command path
 // ("install pack <name> from registry") so preview/confirm/journaling stay in the terminal.
 import { getRegistryUrl, fetchRegistryIndex } from '../packRegistry.js';
+import { asyncHandler } from '../asyncHandler.js';
 
 export function registerMarketplaceRoutes(app) {
   app.get('/api/registry/config', (req, res) => {
     res.json({ url: getRegistryUrl() });
   });
 
-  app.get('/api/registry/packs', async (req, res) => {
+  app.get('/api/registry/packs', asyncHandler(async (req, res) => {
     const result = await fetchRegistryIndex();
     if (result.error) return res.status(400).json({ error: result.error });
     res.json({ packs: result.packs });
-  });
+  }));
 }

@@ -9,6 +9,7 @@ import { resolveProject } from '../state.js';
 import { walkDir, isTextFile } from '../toolScan.js';
 import { createResolveSafe } from '../toolSandbox.js';
 import { findDuplicates, planTidy } from '../wsHandlers/builtinGeneralFiles.js';
+import { asyncHandler } from '../asyncHandler.js';
 
 const MAX_LIST_ENTRIES = 500;
 const MAX_SEARCH_RESULTS = 20;
@@ -87,7 +88,7 @@ async function searchFiles(projectRoot, needle) {
 
 export function registerFileToolsRoutes(app) {
   // File listing — optionally scoped to a sub-directory (?path=) and name-filtered (?search=).
-  app.get('/api/projects/:id/files', async (req, res) => {
+  app.get('/api/projects/:id/files', asyncHandler(async (req, res) => {
     const project = findProject(req);
     if (!project) return res.status(404).json({ error: 'Project not found' });
     const dirPath = typeof req.query.path === 'string' ? req.query.path : '.';
@@ -95,17 +96,17 @@ export function registerFileToolsRoutes(app) {
     const result = listEntries(project.path, dirPath, search);
     if (result.error) return res.status(400).json({ error: result.error });
     res.json(result);
-  });
+  }));
 
   // Content + name search across the full project tree (flat results, not dir-scoped).
-  app.get('/api/projects/:id/search-files', async (req, res) => {
+  app.get('/api/projects/:id/search-files', asyncHandler(async (req, res) => {
     const project = findProject(req);
     if (!project) return res.status(404).json({ error: 'Project not found' });
     const q = typeof req.query.q === 'string' ? req.query.q.trim() : '';
     if (!q) return res.status(400).json({ error: 'Missing ?q= parameter.' });
     const results = await searchFiles(project.path, q);
     res.json({ results });
-  });
+  }));
 
   // Tidy plan for the panel's move-preview table (?by=type|date) — the same planTidy the
   // chat confirm flow uses, so the preview and the actual move can never diverge.
@@ -122,7 +123,7 @@ export function registerFileToolsRoutes(app) {
   // Duplicate scan — reuses the existing findDuplicates orchestrator, enriched per group
   // with the keep-newest selection (same rule as planDuplicateDeletes) for the panel's
   // checkbox conventions.
-  app.get('/api/projects/:id/duplicates', async (req, res) => {
+  app.get('/api/projects/:id/duplicates', asyncHandler(async (req, res) => {
     const project = findProject(req);
     if (!project) return res.status(404).json({ error: 'Project not found' });
     const result = await findDuplicates(project.path);
@@ -135,5 +136,5 @@ export function registerFileToolsRoutes(app) {
       };
     });
     res.json({ groups, skippedBig: result.skippedBig, totalWasted: result.totalWasted });
-  });
+  }));
 }

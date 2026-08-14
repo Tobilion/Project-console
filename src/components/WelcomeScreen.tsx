@@ -50,6 +50,16 @@ const TOUR_STEPS = [
 export function WelcomeScreen({ projects, activeProject, ollamaStatus, aiEnabled, greeting, onAIToggle, onSelectProject, onNewChat, onQuickStart, workspaceProjects, addToWorkspace, removeFromWorkspace }: WelcomeScreenProps) {
   const [tourStep, setTourStep] = React.useState(0);
 
+  // Escape closes the tour overlay — the same keyboard path every modal in the app offers.
+  React.useEffect(() => {
+    if (tourStep === 0) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setTourStep(0);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [tourStep]);
+
   // Per-project stats when a project is selected, else global totals across all discovered
   // projects — so the strip is never empty and swaps context as the active project changes.
   const idx = activeProject?.codebaseIndex;

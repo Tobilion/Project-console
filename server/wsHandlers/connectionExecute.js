@@ -9,7 +9,7 @@ import { getCommandDir } from '../commandDir.js';
 import { handleAIQuery } from './aiQuery.js';
 import { guessCommand } from '../commandGuesser.js';
 import { logNearMiss } from '../nearMissLogger.js';
-import { handlePendingParamReply, handlePendingFollowUpReply, handlePendingDisambiguationReply, handlePendingMemorySuggestionReply } from './connectionInterceptors.js';
+import { handlePendingParamReply, handlePendingFollowUpReply, handlePendingDisambiguationReply, handlePendingFileQuestionReply, handlePendingMemorySuggestionReply } from './connectionInterceptors.js';
 import { handleTelemetryCommand } from './connectionTelemetry.js';
 import { handleDistillationCommand, handleMemoryReview, handleLearningCommand } from './connectionAdminCommands.js';
 import { handlePackCommand, handlePendingPackInstallReply } from './connectionPackAdmin.js';
@@ -110,6 +110,7 @@ async function handleExecuteBody(ws, parsed, sessionContext) {
   if (await handlePendingParamReply(ws, project, projectId, input, sessionContext)) return;
   if (await handlePendingFollowUpReply(ws, project, projectId, input, sessionContext)) return;
   if (await handlePendingDisambiguationReply(ws, project, projectId, input, sessionContext)) return;
+  if (await handlePendingFileQuestionReply(ws, project, projectId, input, sessionContext)) return;
   if (await handlePendingPackInstallReply(ws, project, input.trim().toLowerCase(), sessionContext)) return;
   if (await handlePendingWorkspaceReply(ws, project, input.trim().toLowerCase(), sessionContext)) return;
 

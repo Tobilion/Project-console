@@ -37,6 +37,9 @@ export function BackupPanel({ project, onSendMessage }: BackupPanelProps) {
   const [error, setError] = useState<string | null>(null);
   const [lastSent, setLastSent] = useState<string | null>(null);
   const lastSentTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Clear the pending "last sent" timer on unmount so its delayed setState can't fire on a
+  // dead panel (and hold the panel's closure alive after it unmounted).
+  useEffect(() => () => { if (lastSentTimer.current) clearTimeout(lastSentTimer.current); }, []);
 
   const fetchBackups = useCallback(async () => {
     if (!project?.id) return;
@@ -107,7 +110,7 @@ export function BackupPanel({ project, onSendMessage }: BackupPanelProps) {
             <h2 className="text-sm font-semibold text-fg-strong tracking-wide uppercase">Backup</h2>
             {project && <span className="text-xs text-fg-dim font-normal normal-case">— {project.name}</span>}
           </div>
-          <button onClick={fetchBackups} className="p-1.5 text-fg-dim hover:text-fg-strong rounded-md transition-colors" title="Refresh">
+          <button onClick={fetchBackups} className="p-1.5 text-fg-dim hover:text-fg-strong rounded-lg transition-colors" title="Refresh">
             <RefreshCw size={15} className={cn(loading && 'animate-spin')} />
           </button>
         </div>
@@ -179,7 +182,7 @@ export function BackupPanel({ project, onSendMessage }: BackupPanelProps) {
               )}
             </div>
 
-            <p className="text-[11px] text-fg-faint px-1">
+            <p className="text-[11px] text-fg-dim px-1">
               Backups are read-only against the project (nothing is modified or deleted) and live in the
               console's own <code className="font-mono">data/backups/</code> folder. Each zip shows in
               "recent actions", so <code className="font-mono">revert action &lt;id&gt;</code> deletes it.

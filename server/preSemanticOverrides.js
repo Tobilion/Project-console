@@ -24,6 +24,21 @@ export const PRE_SEMANTIC_OVERRIDES = [
   // how_to_run interpretation, and the rule lives FIRST because the bare "deploy" override
   // below would otherwise catch "how to deploy the site" and run a push.
   { intent: 'system.chit_chat.how_do_i', pattern: /^(?:how\s+(?:to|do\s+(?:you|i|we))\s+|(?:what\s+is\s+the\s+)?command\s+to\s+)(?:push|commit|deploy|build|stop\s+the\s+server|open\s+in|show|make\s+a\s+checkpoint|see\s+(?:the\s+)?(?:dashboard|test\s+coverage|bundle)|switch\s+projects|change\s+the\s+theme|check\s+(?:git\s+status|the\s+console\s+health|collisions)|export|schedule|review|approve)/i },
+  // Matchday-Exchange live session (2026-08-14): "what is the site about" routed to
+  // system.chit_chat.deploy — a read-only question triggered the git-push confirm card — and
+  // "what is the details of the site" landed on project.context.dev_server_status. The
+  // deploy/status example clusters are saturated with "the site" phrases, so the cosine is
+  // dominated by the noun. A what-verb + site/app/project noun + about/details/for question is
+  // unambiguous in this app's domain — it asks what the project IS, never to push it or check
+  // its server. Same trap class as the how_do_i pin above, so it lives alongside it.
+  { intent: 'project.knowledge.overview', pattern: /^what(?:'s| is| are)\s+(?:the\s+)?(?:site|app|website|project)\s+(?:about|details|for)\b/i },
+  { intent: 'project.knowledge.overview', pattern: /^what(?:'s| is| are)\s+(?:the\s+)?details?\s+(?:of|about|on)\s+(?:the\s+)?(?:site|app|website|project)\b/i },
+  // Same live session: typo'd time questions drifted into unrelated clusters — "what is the
+  // tme" answered with the tech stack and "what as time\" executed git status. A what-verb +
+  // a (typo-tolerant) time/clock noun is unambiguous — it is always the clock, never a
+  // stack/status question. The \b boundary keeps "timeline"/"times" (plural) on their
+  // existing routes.
+  { intent: 'system.chit_chat.time', pattern: /^what(?:'s| is| as| are)\s+(?:the\s+)?(?:t(?:i)?me|clock)\b/i },
   { intent: 'git_init', pattern: /\bgit\s+init\b|\b(initialize|init)\b.*\brepo(sitory)?\b|\b(initialize|init)\b.*\bgit\b/i },
   { intent: 'git_ignore_add', pattern: /\bgiti?gnore\b/i },
   { intent: 'system.chit_chat.deploy', pattern: /\bdeploy\b|\bpush\s+live\b/i },

@@ -95,7 +95,7 @@ export function ProcessDock({
                 {dockTab === 'projects' ? (
                   <div className="max-h-64 overflow-y-auto p-3">
                     {projects.length === 0 ? (
-                      <div className="text-xs text-fg-faint px-1">No projects discovered yet — scan a folder first.</div>
+                      <div className="text-xs text-fg-dim px-1">No projects discovered yet — scan a folder first.</div>
                     ) : (
                       <div className="space-y-1">
                         {projects.map((proj) => {
@@ -126,10 +126,10 @@ export function ProcessDock({
                                   <>
                                     <span className="w-1.5 h-1.5 rounded-full bg-accent-green animate-pulse flex-shrink-0" />
                                     <span className="font-mono text-[10px] text-fg-subtle truncate">{shortCommand(running.command)}</span>
-                                    {port && <span className="font-mono text-[10px] text-fg-faint flex-shrink-0">:{port}</span>}
+                                    {port && <span className="font-mono text-[10px] text-fg-dim flex-shrink-0">:{port}</span>}
                                   </>
                                 ) : (
-                                  <span className="text-[10px] text-fg-faint italic flex-shrink-0">idle</span>
+                                  <span className="text-[10px] text-fg-dim italic flex-shrink-0">idle</span>
                                 )}
                               </button>
                               {running && (
@@ -156,7 +156,7 @@ export function ProcessDock({
                 ) : (
                   <>
                     <div className="flex items-center justify-between px-4 pt-2">
-                      <span className="text-[10px] text-fg-faint uppercase">Live output</span>
+                      <span className="text-[10px] text-fg-dim uppercase">Live output</span>
                       <CopyButton
                         text={logText}
                         title="Copy log"
@@ -257,7 +257,7 @@ export function ProcessDock({
                     <span className="w-1.5 h-1.5 rounded-full bg-accent-green animate-pulse flex-shrink-0" />
                     <span>{shortCommand(p.command)}</span>
                     {p.url && (
-                      <span className={`text-[10px] ${selected ? 'text-accent-blue/70' : 'text-fg-faint'}`}>
+                      <span className={`text-[10px] ${selected ? 'text-accent-blue/70' : 'text-fg-dim'}`}>
                         :{port}
                       </span>
                     )}

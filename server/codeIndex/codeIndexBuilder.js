@@ -19,7 +19,7 @@ const require = createRequire(import.meta.url);
 // mammoth is CommonJS — same createRequire pattern as archiver.
 const mammoth = require('mammoth');
 
-const watchedProjects = new Set(); // projectId -> watcher instance
+const watchedProjects = new Map(); // projectId -> chokidar watcher
 
 async function embed(text) {
   const result = await semanticMatcher.extractor(text, { pooling: 'mean', normalize: true });
@@ -102,7 +102,17 @@ export async function updateFileInProjectIndex(project, relPath) {
       return;
     }
   }
-  await store.upsertChunks(project.id, project.path, relPath, (await fs.stat(fullPath)).mtimeMs, chunks, vectors);
+  // The file was verified at the guarded stat above, but it can vanish between there and here
+  // (editor save/delete race) — an unguarded stat would reject the whole indexing task and
+  // leave stale chunks behind. Drop them instead, same as the watcher unlink path.
+  let mtimeMs;
+  try {
+    mtimeMs = (await fs.stat(fullPath)).mtimeMs;
+  } catch {
+    await store.dropFile(project.id, project.path, relPath);
+    return;
+  }
+  await store.upsertChunks(project.id, project.path, relPath, mtimeMs, chunks, vectors);
 }
 
 /**
@@ -174,7 +184,21 @@ function attachProjectWatcher(project) {
     }
     enqueueTask(project.id, 'code index update', () => updateFileInProjectIndex(project, norm));
   });
-  watchedProjects.add(project.id);
+  watchedProjects.set(project.id, watcher);
+}
+
+/** Close watchers for projects that left the active scan set (rescan removed them, or the
+ *  config watcher filtered a folder out). Same lifecycle pattern as scheduler.js's
+ *  syncEventTriggerWatchers and watchEngine.js's syncWatchRules — call after every
+ *  activeProjectsCache replacement. */
+export function syncProjectWatchers(projects) {
+  const ids = new Set(projects.map((p) => p.id));
+  for (const [projectId, watcher] of watchedProjects) {
+    if (!ids.has(projectId)) {
+      watcher.close().catch(() => {});
+      watchedProjects.delete(projectId);
+    }
+  }
 }
 
 /**

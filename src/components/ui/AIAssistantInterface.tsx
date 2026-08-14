@@ -155,7 +155,7 @@ export function AIAssistantInterface({ onSend, onSearch, onDeepResearch, disable
             onKeyDown={handleKeyDown}
             disabled={disabled}
             placeholder={placeholder || 'Ask me anything...'}
-            className="w-full bg-transparent text-fg text-base outline-none placeholder:text-fg-faint"
+            className="w-full bg-transparent text-fg text-base outline-none placeholder:text-fg-dim"
           />
         </div>
 
@@ -165,8 +165,8 @@ export function AIAssistantInterface({ onSend, onSearch, onDeepResearch, disable
               <div key={i} className="flex items-center gap-1.5 bg-panel border border-border-soft rounded-lg px-2 py-1">
                 <FileText size={12} className="text-accent-blue" />
                 <span className="text-xs text-fg-subtle">{f.name}</span>
-                <span className="text-[10px] text-fg-faint">{f.content.length.toLocaleString()} chars</span>
-                <button onClick={() => setUploadedFiles(prev => prev.filter((_, j) => j !== i))} className="text-fg-faint hover:text-accent-red transition-colors">
+                <span className="text-[10px] text-fg-dim">{f.content.length.toLocaleString()} chars</span>
+                <button onClick={() => setUploadedFiles(prev => prev.filter((_, j) => j !== i))} aria-label={`Remove ${f.name}`} className="text-fg-faint hover:text-accent-red transition-colors">
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
                 </button>
               </div>
@@ -178,7 +178,7 @@ export function AIAssistantInterface({ onSend, onSearch, onDeepResearch, disable
           <div className="px-4 pb-2">
             <div className="flex items-start gap-2 bg-accent-red/10 border border-accent-red/20 rounded-lg px-2.5 py-1.5">
               <span className="text-xs text-accent-red flex-1">{uploadError}</span>
-              <button onClick={() => setUploadError(null)} className="text-accent-red/60 hover:text-accent-red transition-colors flex-shrink-0">
+              <button onClick={() => setUploadError(null)} aria-label="Dismiss error" className="text-accent-red/60 hover:text-accent-red transition-colors flex-shrink-0">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
               </button>
             </div>
@@ -195,6 +195,7 @@ export function AIAssistantInterface({ onSend, onSearch, onDeepResearch, disable
             <button
               onClick={handleSend}
               disabled={(!inputValue.trim() && uploadedFiles.length === 0) || !!disabled}
+              aria-label="Send message"
               className={cn('w-9 h-9 flex items-center justify-center rounded-full transition-all', (inputValue.trim() || uploadedFiles.length > 0) && !disabled ? 'bg-accent-blue text-white hover:bg-accent-blue/80' : 'bg-panel text-fg-faint cursor-not-allowed')}
             >
               <ArrowUp size={16} />
@@ -249,6 +250,10 @@ export function AIAssistantInterface({ onSend, onSearch, onDeepResearch, disable
               <ul className="divide-y divide-border-faint">
                 {(suggestions[activeCategory] || []).map((s, i) => (
                   <motion.li key={i} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: i * 0.03 }}
+                    role="button" tabIndex={0}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setInputValue(s); setActiveCategory(null); }
+                    }}
                     onClick={() => { setInputValue(s); setActiveCategory(null); }}
                     className="px-3 py-2.5 hover:bg-panel cursor-pointer transition-colors flex items-center gap-3"
                   >

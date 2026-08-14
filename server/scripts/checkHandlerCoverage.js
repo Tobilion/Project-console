@@ -306,15 +306,17 @@ sent.length = 0;
 const switched = await handleModeCommand(ws, tmpProj, 'switch to general mode');
 const written = JSON.parse(fs.readFileSync(path.join(tmpRoot, 'console.config.json'), 'utf-8'));
 eq('mode admin: switch to general mode consumed', switched, true);
-eq('mode admin: answer confirms the switch', ws.sent.length === 1 && ws.sent[0].type === 'answer' && ws.sent[0].data.includes('general mode'), true);
+// answer + trailing end (the 2026-08-14 fix — see CLAUDE.md's mode-switch bug note; these
+// rows double as the regression guard the note's lesson asks for).
+eq('mode admin: answer confirms the switch', ws.sent.length === 2 && ws.sent[0].type === 'answer' && ws.sent[1].type === 'end' && ws.sent[0].data.includes('general mode'), true);
 eq('mode admin: console.config.json override persisted', written.workspaceType, 'general');
 eq('mode admin: in-memory project updated', tmpProj.workspaceType, 'general');
 sent.length = 0;
 const same = await handleModeCommand(ws, tmpProj, 'switch to general mode');
-eq('mode admin: re-switching to the same mode says already', same === true && ws.sent.length === 1 && ws.sent[0].data.includes('already'), true);
+eq('mode admin: re-switching to the same mode says already', same === true && ws.sent.length === 2 && ws.sent[0].data.includes('already') && ws.sent[1].type === 'end', true);
 sent.length = 0;
 const what = await handleModeCommand(ws, tmpProj, 'what mode am i in');
-eq('mode admin: what mode am i in answers', what === true && ws.sent.length === 1 && ws.sent[0].type === 'answer' && ws.sent[0].data.includes('general'), true);
+eq('mode admin: what mode am i in answers', what === true && ws.sent.length === 2 && ws.sent[0].type === 'answer' && ws.sent[1].type === 'end' && ws.sent[0].data.includes('general'), true);
 sent.length = 0;
 const notMode = await handleModeCommand(ws, tmpProj, 'run the tests');
 eq('mode admin: unrelated input not consumed', notMode === false && ws.sent.length === 0, true);

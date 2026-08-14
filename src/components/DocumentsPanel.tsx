@@ -113,8 +113,8 @@ export function DocumentsPanel({ project, onSendMessage, aiEnabled }: DocumentsP
                   className={cn(inputCls, 'w-full pl-8')}
                 />
               </div>
-              <button onClick={runSearch} disabled={!query.trim()} className="text-xs font-medium rounded-lg px-3 py-2 bg-accent/90 text-white hover:bg-accent transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
-                Search
+              <button onClick={runSearch} disabled={!query.trim() || loading} className="text-xs font-medium rounded-lg px-3 py-2 bg-accent/90 text-white hover:bg-accent transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
+                {loading ? 'Searching…' : 'Search'}
               </button>
             </div>
 
@@ -160,6 +160,11 @@ export function DocumentsPanel({ project, onSendMessage, aiEnabled }: DocumentsP
             )}
 
             {/* Results */}
+            {loading && (
+              <div className="flex items-center gap-2 text-xs text-fg-muted bg-scrim-faint border border-border-soft rounded-lg p-3">
+                <RefreshCw size={13} className="animate-spin" /> Searching…
+              </div>
+            )}
             {searched && status === 'ready' && results.length === 0 && (
               <div className="text-xs text-fg-dim italic text-center py-8">No documents match "{query}".</div>
             )}
@@ -171,7 +176,7 @@ export function DocumentsPanel({ project, onSendMessage, aiEnabled }: DocumentsP
                     <div className="flex items-center gap-2 mb-1.5">
                       {fileIcon(r.filePath)}
                       <span className="text-xs font-mono text-fg-strong truncate">{r.filePath}</span>
-                      <span className="text-[10px] text-fg-faint shrink-0">{r.startLine}{r.endLine && r.endLine !== r.startLine ? `-${r.endLine}` : ''}</span>
+                      <span className="text-[10px] text-fg-dim shrink-0">{r.startLine}{r.endLine && r.endLine !== r.startLine ? `-${r.endLine}` : ''}</span>
                     </div>
                     <p className="text-[11px] text-fg-muted leading-relaxed whitespace-pre-wrap max-h-24 overflow-y-auto">{r.snippet}</p>
                   </div>

@@ -611,6 +611,22 @@ const BATTERIES = [
       ['open the pack marketplace', 'BUILTIN=system.tools.open_marketplace'],
     ],
   },
+  {
+    // Matchday-Exchange live session (2026-08-14): "what is the site about" triggered the
+    // deploy confirm (git push) and "what is the details of the site" landed on server status —
+    // the "the site" token collision. The typo'd time questions drifted onto stack/git_status.
+    // The pre-semantic overrides pin all five shapes; these rows make the regression visible.
+    name: 'MATCHDAY-2026-08-14 (site-question + time-typo misroute set)',
+    items: [
+      ['what is the site about', 'BUILTIN=project.knowledge.overview'],
+      ['What is the details of the site', 'BUILTIN=project.knowledge.overview'],
+      ['what is the tme', 'BUILTIN=system.chit_chat.time'],
+      ['what as time\\', 'BUILTIN=system.chit_chat.time'],
+      ['what is the time', 'BUILTIN=system.chit_chat.time'],
+      ['what files do i have', 'BUILTIN=project.context.structure'],
+      ['list all my files', 'BUILTIN=project.context.structure'],
+    ],
+  },
 ];
 
 await semanticMatcher.initialize();

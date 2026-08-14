@@ -59,6 +59,9 @@ export function RemindersPanel({ project, onSendMessage }: RemindersPanelProps) 
   const [lastSent, setLastSent] = useState<string | null>(null);
   const [completing, setCompleting] = useState<Set<string>>(new Set());
   const lastSentTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Clear the pending "last sent" timer on unmount so its delayed setState can't fire on a
+  // dead panel (and hold the panel's closure alive after it unmounted).
+  useEffect(() => () => { if (lastSentTimer.current) clearTimeout(lastSentTimer.current); }, []);
   const pollTimer = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const fetchReminders = useCallback(async () => {
@@ -237,7 +240,7 @@ export function RemindersPanel({ project, onSendMessage }: RemindersPanelProps) 
               Reminders
             </h2>
           </div>
-          <button onClick={fetchReminders} className="p-1.5 rounded-md hover:opacity-70 transition-opacity" title="Refresh" style={{ color: 'var(--rm-label2)' }}>
+          <button onClick={fetchReminders} className="p-1.5 rounded-lg hover:opacity-70 transition-opacity" title="Refresh" style={{ color: 'var(--rm-label2)' }}>
             <RefreshCw size={15} className={cn(loading && 'animate-spin')} />
           </button>
         </div>

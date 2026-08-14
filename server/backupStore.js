@@ -76,6 +76,9 @@ export async function createBackup(project, subPath) {
       const output = fs.createWriteStream(file);
       const archive = archiver('zip', { zlib: { level: 6 } });
       output.on('close', resolve);
+      // A failing destination stream (disk full, EIO) never emits 'close' — without this
+      // listener the promise would hang forever and the backup chat turn would never answer.
+      output.on('error', reject);
       archive.on('error', reject);
       archive.pipe(output);
       // Preserve the folder structure inside the zip: the root entry is the target's basename.

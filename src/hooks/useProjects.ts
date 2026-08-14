@@ -58,13 +58,9 @@ export function useProjects() {
     }
   };
 
-  const updateProject = (id: string, updates: Partial<Project>) => {
-    setProjects(prev => prev.map(p => p.id === id ? { ...p, ...updates } : p));
-  };
-
   return {
     projects, setProjects, activeProject, setActiveProject,
     scanPath, setScanPath, indexingProjectId, setIndexingProjectId,
-    fetchProjects, scanNewPath, handleSelectProject, updateProject,
+    fetchProjects, scanNewPath, handleSelectProject,
   };
 }

@@ -48,6 +48,7 @@ import { registerNotificationsRoutes } from './routes/notificationsRoutes.js';
 import { registerKnowledgeRoutes } from './routes/knowledgeRoutes.js';
 import { registerMarketplaceRoutes } from './routes/marketplaceRoutes.js';
 import { registerConnectedUsersRoutes } from './routes/connectedUsersRoutes.js';
+import { syncProjectWatchers } from './codeIndex/codeIndexBuilder.js';
 import { loadTuning } from './tuningStore.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -84,6 +85,15 @@ registerNotificationsRoutes(app);
 registerKnowledgeRoutes(app);
 registerMarketplaceRoutes(app);
 registerConnectedUsersRoutes(app);
+// Final error middleware: a rejection that slips past asyncHandler (or a throw inside a sync
+// handler) used to bypass Express entirely — the request never got a response and the client
+// hung (see asyncHandler.js). Any async route handler wrapped with asyncHandler lands here;
+// respond with JSON instead of Express's default HTML stack trace.
+app.use((err, req, res, next) => {
+  if (res.headersSent) return next(err);
+  console.error(`Route error (${req.method} ${req.path}):`, err?.stack || err);
+  res.status(500).json({ error: err?.message || 'Server error.' });
+});
 // Tuning overrides (data/tuning.json) must be in memory before any consumer reads a knob —
 // the first Fuse build happens during semanticMatcher.initialize() a few lines below.
 loadTuning();
@@ -158,7 +168,8 @@ async function init() {
 
   // Initialize semantic matcher (embedding + Fuse.js)
   await semanticMatcher.initialize().catch((err) => console.error('SemanticMatcher init failed:', err.message));
-  semanticMatcher.addProjectIntents(state.activeProjectsCache).catch(() => {});
+  semanticMatcher.addProjectIntents(state.activeProjectsCache).catch((err) =>
+    console.warn('Project-intent injection failed at boot (matching/AI context degraded):', err?.message || err));
 
   // Phase 7: restore auto-start config and schedule boot-time runs (needs the matcher above
   // for its launch-phrase re-match; loadAutoStart runs before any connection can configure).
@@ -195,9 +206,12 @@ async function init() {
             if (idx >= 0) state.activeProjectsCache[idx] = updated;
           }
         });
+        // Close code-index watchers for projects the config watcher just filtered out.
+        syncProjectWatchers(state.activeProjectsCache);
         nlpEngine.train(state.activeProjectsCache).catch(() => {});
         semanticMatcher.clearProjectIntents().catch(() => {});
-        semanticMatcher.addProjectIntents(state.activeProjectsCache).catch(() => {});
+        semanticMatcher.addProjectIntents(state.activeProjectsCache).catch((err) =>
+          console.warn('Project-intent refresh failed after config change:', err?.message || err));
         broadcast({ type: 'projects_updated', data: state.activeProjectsCache });
       });
       console.log('File watcher active for console.config.json changes.');
@@ -223,13 +237,19 @@ async function init() {
     console.error('Confidence model retrain failed (non-fatal):', err.message);
   }
 
-  // Auto-apply telemetry-based threshold adjustments on startup
-  const autoResults = autoApplyThresholdsForAll();
-  if (autoResults.length > 0) {
-    console.log(`Auto-applied threshold adjustments for ${autoResults.length} project(s):`);
-    for (const r of autoResults) {
-      console.log(`  ${r.projectId}: ${r.applied} adjustment(s)`);
+  // Auto-apply telemetry-based threshold adjustments on startup. Same non-fatal treatment as
+  // the two sibling boot steps above — its write path (telemetryThresholds.js) can throw on a
+  // read-only data/ directory, which must not turn a boot into a crash.
+  try {
+    const autoResults = autoApplyThresholdsForAll();
+    if (autoResults.length > 0) {
+      console.log(`Auto-applied threshold adjustments for ${autoResults.length} project(s):`);
+      for (const r of autoResults) {
+        console.log(`  ${r.projectId}: ${r.applied} adjustment(s)`);
+      }
     }
+  } catch (err) {
+    console.error('Auto-apply threshold adjustments failed (non-fatal):', err.message);
   }
 
   // Auto-promote high-confidence near-miss patterns (5+ occurrences, >=80% acceptance) into

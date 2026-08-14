@@ -7,13 +7,14 @@ import { resolveProject } from '../state.js';
 import { parseCsv, loadCsv, findColumn, matchOp, aggregateColumn } from '../csvTools.js';
 import { createResolveSafe } from '../toolSandbox.js';
 import { appendAction } from '../actionHistory.js';
+import { asyncHandler } from '../asyncHandler.js';
 
 const MAX_CSV_FILES = 200;
 const MAX_CSV_UPLOAD_BYTES = 2 * 1024 * 1024;
 
 export function registerCsvRoutes(app) {
   // Project CSV files (project-relative paths), for the panel's file picker.
-  app.get('/api/projects/:id/csv-files', async (req, res) => {
+  app.get('/api/projects/:id/csv-files', asyncHandler(async (req, res) => {
     const project = resolveProject(req.params.id);
     if (!project) return res.status(404).json({ error: 'Project not found' });
     const out = [];
@@ -37,15 +38,22 @@ export function registerCsvRoutes(app) {
     } catch { /* empty list is fine */ }
     out.sort((a, b) => a.path.localeCompare(b.path));
     res.json({ files: out });
-  });
+  }));
 
   // Header row of one CSV, for the panel's column dropdown.
-  app.get('/api/projects/:id/csv-headers', async (req, res) => {
+  app.get('/api/projects/:id/csv-headers', asyncHandler(async (req, res) => {
     const project = resolveProject(req.params.id);
     if (!project) return res.status(404).json({ error: 'Project not found' });
     const filePath = typeof req.query.file === 'string' ? req.query.file : '';
     if (!filePath || !/\.csv$/i.test(filePath)) return res.status(400).json({ error: 'Missing ?file= (a .csv path).' });
-    const abs = path.resolve(project.path, filePath);
+    // Security: resolve through the same sandbox boundary the upload endpoint and csvTools.loadCsv
+    // use — an absolute path or `..` traversal must never read a file outside the project root.
+    let abs;
+    try {
+      abs = createResolveSafe(project.path)(filePath);
+    } catch {
+      return res.status(400).json({ error: 'File must be inside the project.' });
+    }
     if (!fs.existsSync(abs)) return res.status(404).json({ error: 'CSV file not found.' });
     try {
       const text = fs.readFileSync(abs, 'utf-8');
@@ -55,11 +63,11 @@ export function registerCsvRoutes(app) {
     } catch {
       res.status(500).json({ error: 'Could not read the CSV file.' });
     }
-  });
+  }));
 
   // Filtered rows for the panel's table view — same read-only path the chat filter uses
   // (csvTools.loadCsv + matchOp), so the panel table and the chat answer can never diverge.
-  app.get('/api/projects/:id/csv-filter', async (req, res) => {
+  app.get('/api/projects/:id/csv-filter', asyncHandler(async (req, res) => {
     const project = resolveProject(req.params.id);
     if (!project) return res.status(404).json({ error: 'Project not found' });
     const filePath = typeof req.query.file === 'string' ? req.query.file : '';
@@ -78,13 +86,13 @@ export function registerCsvRoutes(app) {
       .slice(0, 500)
       .map((r) => csv.headers.map((h, i) => r[i] ?? ''));
     res.json({ headers: csv.headers, rows });
-  });
+  }));
 
   // Aggregate result for the panel's Sum/Average/Count card — the SAME aggregateColumn /
   // matchOp paths the chat handlers use, so the panel result and the chat answer can never
   // diverge. Count follows the chat semantics: rows matching a where-clause (op + value),
   // not raw numeric cells.
-  app.get('/api/projects/:id/csv-aggregate', async (req, res) => {
+  app.get('/api/projects/:id/csv-aggregate', asyncHandler(async (req, res) => {
     const project = resolveProject(req.params.id);
     if (!project) return res.status(404).json({ error: 'Project not found' });
     const filePath = typeof req.query.file === 'string' ? req.query.file : '';
@@ -109,7 +117,7 @@ export function registerCsvRoutes(app) {
     const result = aggregateColumn(csv, column, op);
     if (!result.ok) return res.status(400).json({ error: result.error });
     res.json({ op, value: result.value, count: result.count, column: csv.headers[colIdx], file: filePath });
-  });
+  }));
 
   // Upload a CSV into the project folder — the Spreadsheet panel's drag-and-drop / file-picker
   // target (Stage C). An explicit user action with the file already in hand; the write is

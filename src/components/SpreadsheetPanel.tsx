@@ -43,6 +43,9 @@ export function SpreadsheetPanel({ project, onSendMessage }: SpreadsheetPanelPro
   const [sortCol, setSortCol] = useState<number | null>(null);
   const [sortAsc, setSortAsc] = useState(true);
   const lastSentTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Clear the pending "last sent" timer on unmount so its delayed setState can't fire on a
+  // dead panel (and hold the panel's closure alive after it unmounted).
+  useEffect(() => () => { if (lastSentTimer.current) clearTimeout(lastSentTimer.current); }, []);
 
   const fetchFiles = useCallback(async () => {
     if (!project?.id) return;
@@ -191,7 +194,7 @@ export function SpreadsheetPanel({ project, onSendMessage }: SpreadsheetPanelPro
             <h2 className="text-sm font-semibold text-fg-strong tracking-wide uppercase">Spreadsheet</h2>
             {project && <span className="text-xs text-fg-dim font-normal normal-case">— {project.name}</span>}
           </div>
-          <button onClick={fetchFiles} className="p-1.5 text-fg-dim hover:text-fg-strong rounded-md transition-colors" title="Refresh">
+          <button onClick={fetchFiles} className="p-1.5 text-fg-dim hover:text-fg-strong rounded-lg transition-colors" title="Refresh">
             <RefreshCw size={15} className={cn(loading && 'animate-spin')} />
           </button>
         </div>
@@ -268,7 +271,7 @@ export function SpreadsheetPanel({ project, onSendMessage }: SpreadsheetPanelPro
                   />
                 </>
               )}
-              <button onClick={run} disabled={runDisabled} className="flex items-center gap-1.5 text-xs font-medium rounded-lg px-3 py-2 bg-accent/90 text-white hover:bg-accent transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
+              <button onClick={run} disabled={runDisabled || loading} className="flex items-center gap-1.5 text-xs font-medium rounded-lg px-3 py-2 bg-accent/90 text-white hover:bg-accent transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
                 <Send size={12} /> Run
               </button>
             </div>
@@ -296,7 +299,7 @@ export function SpreadsheetPanel({ project, onSendMessage }: SpreadsheetPanelPro
               <div className="text-2xl font-semibold text-fg-strong font-mono">
                 {aggregate.op === 'average' ? aggregate.value.toFixed(2) : aggregate.value.toLocaleString()}
               </div>
-              <div className="text-[11px] text-fg-faint">{aggregate.file} — {aggregate.count} numeric row{aggregate.count === 1 ? '' : 's'}</div>
+              <div className="text-[11px] text-fg-dim">{aggregate.file} — {aggregate.count} numeric row{aggregate.count === 1 ? '' : 's'}</div>
             </div>
           </div>
         )}
@@ -309,15 +312,19 @@ export function SpreadsheetPanel({ project, onSendMessage }: SpreadsheetPanelPro
                 <thead className="sticky top-0 z-10">
                   <tr className="bg-panel-strong">
                     {table.headers.map((h, i) => (
-                      <th key={i} onClick={() => toggleSort(i)} className="px-3 py-2 text-left text-[12px] font-semibold text-fg-strong whitespace-nowrap cursor-pointer hover:text-accent select-none border-b border-border-soft">
-                        <span className="inline-flex items-center gap-1">{h}<ArrowUpDown size={11} className="text-fg-faint" /></span>
+                      <th key={i} className="px-3 py-2 text-left text-[12px] font-semibold text-fg-strong whitespace-nowrap border-b border-border-soft">
+                        <button onClick={() => toggleSort(i)} className="inline-flex items-center gap-1 cursor-pointer hover:text-accent select-none">
+                          {h}<ArrowUpDown size={11} className="text-fg-faint" />
+                        </button>
                       </th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
                   {sortedRows.map((row, ri) => (
-                    <tr key={ri} className={cn(ri % 2 === 1 ? 'bg-panel' : 'bg-background', 'hover:bg-accent/5 transition-colors')}>
+                    // Content-derived identity: the table re-sorts live, so positional keys
+                    // would make React reuse the wrong DOM rows across sort changes.
+                    <tr key={row.map((cell) => String(cell)).join('\u0001')} className={cn(ri % 2 === 1 ? 'bg-panel' : 'bg-background', 'hover:bg-accent/5 transition-colors')}>
                       {row.map((cell, ci) => (
                         <td key={ci} className={cn(
                           'px-3 py-1.5 whitespace-nowrap border-b border-border-faint',

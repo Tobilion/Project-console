@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Copy } from 'lucide-react';
 
 interface CopyButtonProps {
@@ -15,10 +15,15 @@ interface CopyButtonProps {
  *  original behavior at those call sites. */
 export function CopyButton({ text, title, size = 12, label, className = '', feedback = true }: CopyButtonProps) {
   const [copied, setCopied] = useState(false);
+  const copiedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Clear the "Copied" reset timer on unmount so the delayed setState can't fire on a dead
+  // button (and hold the component's closure alive after it unmounted).
+  useEffect(() => () => { if (copiedTimer.current) clearTimeout(copiedTimer.current); }, []);
   const handleCopy = () => {
     navigator.clipboard.writeText(text);
     setCopied(true);
-    setTimeout(() => setCopied(false), 1500);
+    if (copiedTimer.current) clearTimeout(copiedTimer.current);
+    copiedTimer.current = setTimeout(() => setCopied(false), 1500);
   };
   return (
     <button

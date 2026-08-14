@@ -27,6 +27,8 @@ import path from 'path';
 const base = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..') + path.sep;
 
 const { COMMAND_DOCS } = await import(pathToFileURL(base + 'server/consoleCommandDocs.js').href);
+const { buildCommandCatalog, CANNED_CHITCHAT_INTENTS } = await import(pathToFileURL(base + 'server/commandCatalog.js').href);
+const { BUILTIN_INTENTS } = await import(pathToFileURL(base + 'server/intentRegistry.js').href);
 
 const README = readFileSync(base + 'README.md', 'utf8');
 
@@ -85,4 +87,16 @@ if (failures > 0) {
   console.error(`\n${failures} catalog entries missing from README — update the reference table (see consoleCommandDocs.js).`);
   process.exit(1);
 }
-console.log(`check-docs: ${COMMAND_DOCS.length} catalog entries covered, ${warnings} unmapped README row(s) (intent-level, tolerated).`);
+
+// 2026-08-13: the generated intent layer must cover every dispatchable intent — a new intent
+// added to BUILTIN_INTENTS without an INTENTS example (or left out of the catalog for any
+// other reason) would silently vanish from the Ctrl+K deck and the Command Reference tab.
+const { intents: catalogIntents } = buildCommandCatalog();
+const catalogIntentIds = new Set(catalogIntents.map((i) => i.intentId));
+const missing = [...BUILTIN_INTENTS].filter((id) => !CANNED_CHITCHAT_INTENTS.has(id) && !catalogIntentIds.has(id));
+if (missing.length > 0) {
+  console.error(`\n${missing.length} intent(s) missing from the generated command catalog: ${missing.join(', ')}`);
+  process.exit(1);
+}
+
+console.log(`check-docs: ${COMMAND_DOCS.length} catalog entries covered, ${catalogIntents.length} generated intent entries, ${warnings} unmapped README row(s) (intent-level, tolerated).`);

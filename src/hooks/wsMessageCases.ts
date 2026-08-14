@@ -281,6 +281,18 @@ const updateAvailableCase: WsCaseHandler = (ctx, payload) => {
   ctx.setUpdateNotice({ current: payload.data.current, latest: payload.data.latest });
 };
 
+const semanticMatcherProgressCase: WsCaseHandler = () => {
+  // Boot-time embedding-download progress broadcast (semanticMatcher.js) — fires before the
+  // UI has anything to show it in, and the matcher's ready state is implied by the server
+  // answering /api/projects. Deliberate no-op: the CLI ignores it for the same reason.
+};
+
+const displayNameSetCase: WsCaseHandler = () => {
+  // Phase 19 ack of a claimed display name (set_display_name). The web client already knows
+  // the name it claimed (profile name, sent on connect) — the ack is confirmation only.
+  // Deliberate no-op: nothing to render.
+};
+
 /**
  * The 27 core (non-streaming) cases. Exported separately from the full map because
  * scripts/checkWsMessageCases.ts asserts CLI parity against exactly this set — a key here
@@ -314,6 +326,8 @@ export const WS_CORE_CASES = {
   processes_update: processesUpdateCase,
   learning_suggestion: learningSuggestionCase,
   update_available: updateAvailableCase,
+  semantic_matcher_progress: semanticMatcherProgressCase,
+  display_name_set: displayNameSetCase,
 } satisfies Record<string, WsCaseHandler>;
 
 /** Full dispatch map: core cases + the streaming trio (stream_start/token/stream_end). */

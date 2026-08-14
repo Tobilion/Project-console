@@ -26,6 +26,16 @@ export async function handleConfirmResponse(ws, parsed) {
   if (pendingToolConfirmations.has(token)) {
     const pending = pendingToolConfirmations.get(token);
     pendingToolConfirmations.delete(token);
+    // Same expiry rule as pendingConfirmations below (5 minutes), plus the owner check: a
+    // stale card resolved long after the fact, or a token resolved from a DIFFERENT connection
+    // than the one that sent the prompt, must never execute the gated tool. Resolving false
+    // rejects the pending promise so the calling turn sees a clean rejection.
+    if (Date.now() - pending.createdAt > 5 * 60 * 1000 || (pending.owner && pending.owner !== ws)) {
+      try { pending.resolve(false); } catch {}
+      ws.send(JSON.stringify({ type: 'error_output', data: 'Confirmation token is invalid or expired.\n' }));
+      ws.send(JSON.stringify({ type: 'end' }));
+      return;
+    }
     pending.resolve(!!confirmed);
     return;
   }
@@ -39,6 +49,15 @@ export async function handleConfirmResponse(ws, parsed) {
 
   const pending = pendingConfirmations.get(token);
   pendingConfirmations.delete(token);
+
+  // Expiry gate for every branch below — checked BEFORE the stdinWrite branch so an expired
+  // confirm can't write Y/n into a running child's stdin (it previously ran only after that
+  // branch, which consumed expired port-prompt replies).
+  if (Date.now() - pending.createdAt > 5 * 60 * 1000) {
+    ws.send(JSON.stringify({ type: 'error_output', data: 'Confirmation token expired.\n' }));
+    ws.send(JSON.stringify({ type: 'end' }));
+    return;
+  }
 
   // Interactive port-conflict prompt from a still-running dev server (see executor.js's
   // PORT_PROMPT_RE detection) — there's no new command to run here, just a reply to write into
@@ -83,27 +102,27 @@ export async function handleConfirmResponse(ws, parsed) {
     return;
   }
 
-  // Track near-miss accept/reject + update linked telemetry entry
-  if (pending.nearMissId) {
-    updateNearMiss(pending.projectId, pending.nearMissId, { accepted: !!confirmed });
-  }
-  if (pending.telemetryEntryId) {
-    updateTelemetryEntry(pending.projectId, pending.telemetryEntryId, {
-      falsePositive: !confirmed,
-      resolvedByGuess: confirmed ? pending.command : null,
-    });
-    // Stage 1 ML work (2026-07-29): every confirm/reject response is a fresh labeled example for
-    // confidenceModel.js's logistic regression. Retrain right away rather than waiting for the
-    // next server restart, so the learned floor in suggestThresholds() reflects real usage as it
-    // happens — fire-and-forget since retraining is fast (a few hundred gradient steps over a
-    // small feature vector) but there's no reason to make the user wait on it.
-    Promise.resolve().then(() => retrainConfidenceModel()).catch(() => {});
-  }
-
-  if (Date.now() - pending.createdAt > 5 * 60 * 1000) {
-    ws.send(JSON.stringify({ type: 'error_output', data: 'Confirmation token expired.\n' }));
-    ws.send(JSON.stringify({ type: 'end' }));
-    return;
+  // Track near-miss accept/reject + update linked telemetry entry. These are synchronous fs
+  // writes; a failure (read-only data/, disk full) must NOT fail the confirm turn after the
+  // command already ran — log and continue instead of a spurious "Error processing request".
+  try {
+    if (pending.nearMissId) {
+      updateNearMiss(pending.projectId, pending.nearMissId, { accepted: !!confirmed });
+    }
+    if (pending.telemetryEntryId) {
+      updateTelemetryEntry(pending.projectId, pending.telemetryEntryId, {
+        falsePositive: !confirmed,
+        resolvedByGuess: confirmed ? pending.command : null,
+      });
+      // Stage 1 ML work (2026-07-29): every confirm/reject response is a fresh labeled example for
+      // confidenceModel.js's logistic regression. Retrain right away rather than waiting for the
+      // next server restart, so the learned floor in suggestThresholds() reflects real usage as it
+      // happens — fire-and-forget since retraining is fast (a few hundred gradient steps over a
+      // small feature vector) but there's no reason to make the user wait on it.
+      Promise.resolve().then(() => retrainConfidenceModel()).catch(() => {});
+    }
+  } catch (err) {
+    console.error('Confirm bookkeeping failed (non-fatal):', err.message);
   }
 
   if (!confirmed) {

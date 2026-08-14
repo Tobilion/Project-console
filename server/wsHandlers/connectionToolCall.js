@@ -44,14 +44,33 @@ export async function handleToolCall(ws, parsed, sessionContext) {
       ws.send(JSON.stringify({ type: 'tool_result', data: { success: false, error: `Command not allowed: "${command.split(/\s+/)[0]}" is not in the allowed commands list.` } }));
       return;
     }
+    // Same single gate as the AI path (aiQueryToolRun.js) and the generic tool path below:
+    // `risky: true` executeCommand can never be auto-approved by any policy or session grant —
+    // it always waits for an explicit tool_confirm_prompt approval before anything runs.
+    const gate = await resolveToolGate(tool, args, project.path, sessionContext.toolGrants);
+    if (gate.action === 'deny') {
+      ws.send(JSON.stringify({ type: 'tool_result', data: { success: false, error: `Tool "${tool}" is denied by this project's permissions policy.` } }));
+      return;
+    }
+    if (gate.action === 'ask') {
+      const token = crypto.randomUUID();
+      const confirmed = await new Promise((resolve) => {
+        pendingToolConfirmations.set(token, { owner: ws, resolve, createdAt: Date.now() });
+        ws.send(JSON.stringify({ type: 'tool_confirm_prompt', token, tool, args, preview: null }));
+      });
+      if (!confirmed) {
+        ws.send(JSON.stringify({ type: 'tool_result', data: { success: false, error: 'executeCommand rejected by user.' } }));
+        return;
+      }
+    }
     if (risky) {
       const cp = await createCheckpoint(project.path, command);
       ws.send(JSON.stringify({ type: 'tool_start', data: `[GIT SAFETY] ${cp.message}\n` }));
     }
-    // Phase 3: risky direct tool calls are the frontend's own confirm-gated equivalent (the
-    // chip path) — flag them for the sandbox; non-risky ones stay env-complete. Runs in the
-    // effective command dir so wrapper projects (scriptless root + one sub-package) execute
-    // where the package.json actually lives — commandDir.js.
+    // Phase 3: risky direct tool calls are confirm-gated by the gate above (same standard as the
+    // AI path) — approved risky commands are flagged for the sandbox; non-risky ones stay
+    // env-complete. Runs in the effective command dir so wrapper projects (scriptless root + one
+    // sub-package) execute where the package.json actually lives — commandDir.js.
     const sub = await getCommandDir(project);
     executeCommand(command, sub ? path.join(project.path, sub) : project.path, ws, project.id, { sandboxed: !!risky });
     // Phase 4 (2026-08-10): same logging rule as the AI path — risky direct commands are the

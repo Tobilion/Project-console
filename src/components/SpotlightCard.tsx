@@ -26,6 +26,11 @@ export const SpotlightCard = ({ children, className = '', active, onClick }: Spo
       onMouseEnter={() => setOpacity(1)}
       onMouseLeave={() => setOpacity(0)}
       onClick={onClick}
+      role={onClick ? 'button' : undefined}
+      tabIndex={onClick ? 0 : undefined}
+      onKeyDown={onClick ? (e) => {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick(); }
+      } : undefined}
       className={`relative rounded-xl border overflow-hidden transition-all duration-200 cursor-pointer ${
         active
           ? 'border-accent-blue/60 bg-accent-blue/10'
@@ -36,7 +41,9 @@ export const SpotlightCard = ({ children, className = '', active, onClick }: Spo
         className="pointer-events-none absolute -inset-px opacity-0 transition duration-300"
         style={{
           opacity,
-          background: `radial-gradient(600px circle at ${position.x}px ${position.y}px, rgba(100,210,255,.1), transparent 40%)`,
+          // accent-teal as a token (the old literal rgba(100,210,255,.1) was the same color
+          // hardcoded) — color-mix keeps the 10% tint theme-aware.
+          background: `radial-gradient(600px circle at ${position.x}px ${position.y}px, color-mix(in srgb, var(--color-accent-teal) 10%, transparent), transparent 40%)`,
         }}
       />
       {children}

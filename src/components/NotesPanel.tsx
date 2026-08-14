@@ -35,26 +35,31 @@ export function NotesPanel({ project, onSendMessage }: NotesPanelProps) {
   const [error, setError] = useState<string | null>(null);
   const [newInput, setNewInput] = useState('');
   const [filter, setFilter] = useState('');
-  const [selectedIdx, setSelectedIdx] = useState<number | null>(null);
+  const [selectedText, setSelectedText] = useState<string | null>(null);
   const [lastSent, setLastSent] = useState<string | null>(null);
   const lastSentTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Clear the pending "last sent" timer on unmount so its delayed setState can't fire on a
+  // dead panel (and hold the panel's closure alive after it unmounted).
+  useEffect(() => () => { if (lastSentTimer.current) clearTimeout(lastSentTimer.current); }, []);
 
-  // Persist selection + filter per project ID.
+  // Persist selection + filter per project ID. Selection is stored by note text (the note's
+  // stable identity) — an index would silently point at a different note after a filter or
+  // refetch changed the list order.
   useEffect(() => {
     if (!project?.id) return;
-    setSelectedIdx((() => {
+    setSelectedText((() => {
       const raw = localStorage.getItem(selKey(project.id));
-      return raw === null ? null : Number(raw);
-    })() ?? null);
+      return raw === null || raw === '' ? null : raw;
+    })());
     setFilter(localStorage.getItem(filterKey(project.id)) ?? '');
   }, [project?.id]);
 
   useEffect(() => {
     if (!project?.id) return;
-    if (selectedIdx !== null) localStorage.setItem(selKey(project.id), String(selectedIdx));
+    if (selectedText !== null) localStorage.setItem(selKey(project.id), selectedText);
     else localStorage.removeItem(selKey(project.id));
     localStorage.setItem(filterKey(project.id), filter);
-  }, [project?.id, selectedIdx, filter]);
+  }, [project?.id, selectedText, filter]);
 
   const fetchNotes = useCallback(async () => {
     if (!project?.id) return;
@@ -101,8 +106,9 @@ export function NotesPanel({ project, onSendMessage }: NotesPanelProps) {
     return base.slice().reverse();
   }, [notes, filter]);
 
-  // Clamp the persisted selection into the current (possibly refetched) list.
-  const selected = filtered.length === 0 ? null : filtered[Math.min(selectedIdx ?? 0, filtered.length - 1)] ?? null;
+  // Clamp the persisted selection into the current (possibly refetched) list — by text, so a
+  // filter change can never silently select a different note.
+  const selected = filtered.find((n) => n.text === selectedText) ?? filtered[0] ?? null;
 
   const titleOf = (n: NoteInfo) => n.text.split('\n')[0];
   const previewOf = (n: NoteInfo) => n.text.split('\n').slice(1).join(' ');
@@ -122,7 +128,7 @@ export function NotesPanel({ project, onSendMessage }: NotesPanelProps) {
             <span className="text-xs font-normal normal-case text-fg-muted">— {project.name}</span>
           )}
         </div>
-        <button onClick={fetchNotes} className="p-1.5 rounded-md text-fg-muted hover:text-fg-strong transition-colors" title="Refresh">
+        <button onClick={fetchNotes} className="p-1.5 rounded-lg text-fg-muted hover:text-fg-strong transition-colors" title="Refresh">
           <RefreshCw size={15} className={cn(loading && 'animate-spin')} />
         </button>
       </div>
@@ -140,7 +146,7 @@ export function NotesPanel({ project, onSendMessage }: NotesPanelProps) {
                 onChange={(e) => setNewInput(e.target.value)}
                 onKeyDown={(e) => { if (e.key === 'Enter') handleAdd(); }}
                 placeholder="New note — e.g. buy milk"
-                className="flex-1 bg-transparent text-[13px] outline-none placeholder:text-fg-faint text-fg-strong min-w-0"
+                className="flex-1 bg-transparent text-[13px] outline-none placeholder:text-fg-dim text-fg-strong min-w-0"
               />
               <button
                 onClick={handleAdd}
@@ -158,7 +164,7 @@ export function NotesPanel({ project, onSendMessage }: NotesPanelProps) {
                 onChange={(e) => setFilter(e.target.value)}
                 onKeyDown={(e) => { if (e.key === 'Enter') handleSearch(); }}
                 placeholder="Filter notes…"
-                className="flex-1 bg-transparent text-[13px] outline-none placeholder:text-fg-faint text-fg-strong min-w-0"
+                className="flex-1 bg-transparent text-[13px] outline-none placeholder:text-fg-dim text-fg-strong min-w-0"
               />
             </div>
           </div>
@@ -175,12 +181,12 @@ export function NotesPanel({ project, onSendMessage }: NotesPanelProps) {
               </div>
             ) : (
               filtered.map((n, i) => (
-                <div key={i}>
+                <div key={n.text}>
                   <button
-                    onClick={() => setSelectedIdx(i)}
+                    onClick={() => setSelectedText(n.text)}
                     className={cn(
                       'w-full text-left px-3 py-2.5 min-h-[48px] transition-colors',
-                      i === selectedIdx ? 'bg-panel-strong' : 'hover:bg-panel-strong/60',
+                      n.text === selected?.text ? 'bg-panel-strong' : 'hover:bg-panel-strong/60',
                     )}
                   >
                     <div className="text-[13px] font-semibold leading-snug truncate text-fg-strong">
@@ -220,7 +226,7 @@ export function NotesPanel({ project, onSendMessage }: NotesPanelProps) {
                 className="flex-1 w-full bg-transparent border-none outline-none resize-none px-5 py-3 text-[13px] leading-[18px] text-fg-subtle"
                 spellCheck={false}
               />
-              <div className="px-5 pb-3 shrink-0 text-[10px] text-fg-faint">
+              <div className="px-5 pb-3 shrink-0 text-[10px] text-fg-dim">
                 Read-only view — edits and new notes go through chat (the terminal is the single source of truth).
               </div>
             </>

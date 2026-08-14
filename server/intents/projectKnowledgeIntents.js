@@ -20,6 +20,11 @@ export const PROJECT_KNOWLEDGE_INTENTS = {
       'what am i looking at', 'whats the purpose of this project',
       'what problem does this solve', 'why does this project exist',
       'context on this project', 'background on this project',
+      // Matchday-Exchange live session (2026-08-14): the site-noun question shapes previously
+      // drifted onto deploy/status via the "the site" token collision (pre-semantic override
+      // pins them now; these examples keep the embedding cluster honest for variants).
+      'what is the site about', 'what is this site about', 'what does this site do',
+      'what is the site for', 'what is the details of the site',
     ],
   },
   'project.knowledge.stack': {

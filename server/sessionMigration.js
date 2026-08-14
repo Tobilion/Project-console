@@ -10,6 +10,7 @@
  */
 import fs from 'fs/promises';
 import path from 'path';
+import { execSync } from 'child_process';
 import { state } from './state.js';
 import {
   legacyFilePath,
@@ -44,6 +45,46 @@ export async function ensureGitignored(projectPath) {
       if (alreadyIgnored) return;
       const sep = content.length > 0 && !content.endsWith('\n') ? '\n' : '';
       const addition = `${sep}${content.length > 0 ? '\n' : ''}# Local Project Console chat memory (not for git)\n.console/\n`;
+      await fs.writeFile(gitignorePath, content + addition);
+    } catch {}
+  });
+}
+
+export async function ensureConsoleConfigGitignored(projectPath) {
+  // The console writes console.config.json itself on mode switches (connectionModeAdmin.js) —
+  // machine-local bookkeeping like .console/, not project source. Without this, a "push my
+  // site" git add -A sweeps the console's own config into the user's commit (Matchday-Exchange
+  // live session 2026-08-14: a user push contained ONLY the console's mode-switch file). A
+  // user who already tracks the file deliberately keeps their choice — git ls-files reports it
+  // and this returns early. Same serialized read-modify-write as ensureGitignored.
+  return serializePersistence(async () => {
+    // execSync (not async): the caller fires this without awaiting, and an async git child
+    // racing a subsequent directory teardown (the check-handlers harness rmSync's its temp
+    // fixture right after the mode-switch handler) held the dir open and crashed it with
+    // EPERM — a synchronous check completes before the handler returns.
+    let tracked = false;
+    try {
+      const { stdout } = execSync('git ls-files --error-unmatch console.config.json', {
+        cwd: projectPath, stdio: ['ignore', 'pipe', 'ignore'], timeout: 3000,
+      });
+      tracked = stdout.toString().trim().length > 0;
+    } catch {
+      // untracked, or not a git repo — either way the ignore entry is the right call
+    }
+    if (tracked) return; // deliberately tracked by the user — never fight that
+    const gitignorePath = path.join(projectPath, '.gitignore');
+    try {
+      let content = '';
+      try {
+        content = await fs.readFile(gitignorePath, 'utf-8');
+      } catch {}
+      const alreadyIgnored = content.split(/\r?\n/).some((l) => {
+        const t = l.trim();
+        return t === 'console.config.json' || t === '/console.config.json';
+      });
+      if (alreadyIgnored) return;
+      const sep = content.length > 0 && !content.endsWith('\n') ? '\n' : '';
+      const addition = `${sep}${content.length > 0 ? '\n' : ''}# Local Project Console workspace mode (console-managed, not for git)\nconsole.config.json\n`;
       await fs.writeFile(gitignorePath, content + addition);
     } catch {}
   });

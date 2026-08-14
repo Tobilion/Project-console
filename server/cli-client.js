@@ -623,6 +623,8 @@ async function main() {
       case 'copy_to_clipboard': break; // display notice only since Phase 8 — the server-side OS clipboard write happens inside the intent handler, so the CLI copies for real without a browser
       case 'dashboard_update': break; // dashboard refresh signal — no dashboard in the CLI
       case 'processes_update': break; // dock refresh signal — no dock in the CLI
+      case 'semantic_matcher_progress': break; // boot-time embedding progress — the CLI connects after boot
+      case 'display_name_set': break; // name-claim ack — the CLI already knows the name it sent
       default:
         break;
     }

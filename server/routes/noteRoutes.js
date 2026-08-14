@@ -3,12 +3,13 @@
 // so the terminal stays the single source of truth.
 import { listNotes } from '../notesStore.js';
 import { resolveProject } from '../state.js';
+import { asyncHandler } from '../asyncHandler.js';
 
 export function registerNoteRoutes(app) {
-  app.get('/api/projects/:id/notes', async (req, res) => {
+  app.get('/api/projects/:id/notes', asyncHandler(async (req, res) => {
     const project = resolveProject(req.params.id);
     if (!project) return res.status(404).json({ error: 'Project not found' });
     const notes = await listNotes(project.path);
     res.json({ notes });
-  });
+  }));
 }

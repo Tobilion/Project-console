@@ -65,11 +65,11 @@ export function HistoryPanel({ projects, activeProjectId, onSendMessage }: Histo
     <div className="flex flex-col max-h-64">
       <div className="flex items-center justify-between gap-2 px-4 pt-2">
         <div className="flex items-center gap-2 min-w-0">
-          <span className="text-[10px] text-fg-faint uppercase flex-shrink-0">Action history</span>
+          <span className="text-[10px] text-fg-dim uppercase flex-shrink-0">Action history</span>
           <select
             value={projectId || ''}
             onChange={(e) => setProjectId(e.target.value || null)}
-            className="max-w-44 truncate text-[11px] bg-panel border border-border-soft rounded px-1.5 py-0.5 text-fg-muted outline-none focus:border-border-strong"
+            className="max-w-44 truncate text-[11px] bg-panel border border-border-soft rounded-lg px-1.5 py-0.5 text-fg-muted outline-none focus:border-border-strong"
             title="Project whose action history is shown"
           >
             {projects.map((p) => (
@@ -87,7 +87,7 @@ export function HistoryPanel({ projects, activeProjectId, onSendMessage }: Histo
       </div>
       <div className="overflow-y-auto p-3 space-y-1">
         {actions.length === 0 ? (
-          <div className="text-xs text-fg-faint px-1">
+          <div className="text-xs text-fg-dim px-1">
             {loading ? 'Loading…' : 'No actions recorded yet — file writes and confirmed commands will show up here.'}
           </div>
         ) : (
@@ -98,9 +98,9 @@ export function HistoryPanel({ projects, activeProjectId, onSendMessage }: Histo
                 key={a.id}
                 className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg border border-border-soft bg-panel text-xs"
               >
-                <span className={`px-1.5 py-0.5 rounded font-mono text-[9px] flex-shrink-0 ${meta.className}`}>{meta.label}</span>
-                <span className="font-mono text-[10px] text-fg-faint flex-shrink-0">{a.id}</span>
-                <span className="text-[10px] text-fg-faint flex-shrink-0">
+                <span className={`px-1.5 py-0.5 rounded-lg font-mono text-caption flex-shrink-0 ${meta.className}`}>{meta.label}</span>
+                <span className="font-mono text-[10px] text-fg-dim flex-shrink-0">{a.id}</span>
+                <span className="text-[10px] text-fg-dim flex-shrink-0">
                   {new Date(a.ts).toLocaleTimeString()}
                 </span>
                 <span className="truncate text-fg-muted min-w-0 flex-1" title={a.description}>{a.description}</span>

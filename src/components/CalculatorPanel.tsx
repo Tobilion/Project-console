@@ -81,25 +81,30 @@ export function CalculatorPanel({ onSendMessage }: CalculatorPanelProps) {
   };
 
   // Keyboard input: digits, operators, Enter (=), Backspace, Escape. Ignored while the user
-  // is typing in the convert/tip text fields (target is an INPUT).
+  // is typing in the convert/tip text fields (target is an INPUT). The handler is read
+  // through a ref so the window listener subscribes exactly once (a bare effect with no deps
+  // re-subscribed on every render; capturing press/equals/backspace/clear directly would go
+  // stale — the ref always sees the current render's closures).
+  const onKeyRef = useRef<(e: KeyboardEvent) => void>(() => {});
+  onKeyRef.current = (e: KeyboardEvent) => {
+    const t = e.target as HTMLElement;
+    if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')) return;
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    const k = e.key;
+    if (/^[0-9.]$/.test(k)) { e.preventDefault(); press(k); }
+    else if (k === '+') { e.preventDefault(); press('+'); }
+    else if (k === '-') { e.preventDefault(); press('-'); }
+    else if (k === '*') { e.preventDefault(); press('*'); }
+    else if (k === '/') { e.preventDefault(); press('/'); }
+    else if (k === 'Enter' || k === '=') { e.preventDefault(); equals(); }
+    else if (k === 'Backspace') { e.preventDefault(); backspace(); }
+    else if (k === 'Escape') { e.preventDefault(); clear(); }
+  };
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      const t = e.target as HTMLElement;
-      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')) return;
-      if (e.ctrlKey || e.metaKey || e.altKey) return;
-      const k = e.key;
-      if (/^[0-9.]$/.test(k)) { e.preventDefault(); press(k); }
-      else if (k === '+') { e.preventDefault(); press('+'); }
-      else if (k === '-') { e.preventDefault(); press('-'); }
-      else if (k === '*') { e.preventDefault(); press('*'); }
-      else if (k === '/') { e.preventDefault(); press('/'); }
-      else if (k === 'Enter' || k === '=') { e.preventDefault(); equals(); }
-      else if (k === 'Backspace') { e.preventDefault(); backspace(); }
-      else if (k === 'Escape') { e.preventDefault(); clear(); }
-    };
+    const onKey = (e: KeyboardEvent) => onKeyRef.current(e);
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  });
+  }, []);
 
   const display = lastResult ?? (expr || '0');
 
@@ -223,7 +228,7 @@ export function CalculatorPanel({ onSendMessage }: CalculatorPanelProps) {
             <button
               key={m}
               onClick={() => setMode(m)}
-              className={cn('flex-1 py-1.5 rounded-md text-xs font-semibold capitalize transition-colors', mode === m ? 'text-white' : 'opacity-60')}
+              className={cn('flex-1 py-1.5 rounded-lg text-xs font-semibold capitalize transition-colors', mode === m ? 'text-white' : 'opacity-60')}
               style={{ backgroundColor: mode === m ? 'var(--calc-orange)' : 'transparent' }}
             >
               {m === 'basic' ? 'Calculator' : m === 'convert' ? 'Convert' : 'Tip'}

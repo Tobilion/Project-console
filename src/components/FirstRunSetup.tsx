@@ -63,7 +63,7 @@ export function FirstRunSetup({ open, scanPath, setScanPath, handleScan, onFinis
               placeholder="Your name"
               className="w-full bg-surface border border-border-soft rounded-lg px-3 py-2 text-sm text-fg focus:outline-none focus:border-accent-blue transition-colors"
             />
-            <p className="text-[11px] text-fg-faint mt-1">Used for greetings only — change it anytime from the profile settings.</p>
+            <p className="text-[11px] text-fg-dim mt-1">Used for greetings only — change it anytime from the profile settings.</p>
           </div>
 
           <div>
@@ -77,7 +77,7 @@ export function FirstRunSetup({ open, scanPath, setScanPath, handleScan, onFinis
               placeholder="C:\Users\you\Desktop\Projects"
               className="w-full bg-surface border border-border-soft rounded-lg px-3 py-2 text-sm text-fg font-mono focus:outline-none focus:border-accent-blue transition-colors"
             />
-            <p className="text-[11px] text-fg-faint mt-1">The folder containing your project folders — you can rescan a different one anytime from the sidebar.</p>
+            <p className="text-[11px] text-fg-dim mt-1">The folder containing your project folders — you can rescan a different one anytime from the sidebar.</p>
           </div>
 
           <div>
@@ -89,7 +89,7 @@ export function FirstRunSetup({ open, scanPath, setScanPath, handleScan, onFinis
                 className={`flex-1 px-3 py-2 rounded-lg border text-left transition-colors ${workspaceType === 'dev' ? 'border-accent-blue bg-accent-blue/10' : 'border-border-soft bg-surface hover:border-border-strong'}`}
               >
                 <span className="block text-sm text-fg">Developer</span>
-                <span className="block text-[10px] text-fg-faint mt-0.5">git, npm, run commands, diagnostics</span>
+                <span className="block text-[10px] text-fg-dim mt-0.5">git, npm, run commands, diagnostics</span>
               </button>
               <button
                 type="button"
@@ -97,10 +97,10 @@ export function FirstRunSetup({ open, scanPath, setScanPath, handleScan, onFinis
                 className={`flex-1 px-3 py-2 rounded-lg border text-left transition-colors ${workspaceType === 'general' ? 'border-accent-blue bg-accent-blue/10' : 'border-border-soft bg-surface hover:border-border-strong'}`}
               >
                 <span className="block text-sm text-fg">General</span>
-                <span className="block text-[10px] text-fg-faint mt-0.5">files, notes, reminders, PDF tools — a tools-first landing</span>
+                <span className="block text-[10px] text-fg-dim mt-0.5">files, notes, reminders, PDF tools — a tools-first landing</span>
               </button>
             </div>
-            <p className="text-[11px] text-fg-faint mt-1">Used as the default when a project isn't auto-classified — switch any project anytime from the header tabs.</p>
+            <p className="text-[11px] text-fg-dim mt-1">Used as the default when a project isn't auto-classified — switch any project anytime from the header tabs.</p>
           </div>
 
           <div className="rounded-lg bg-scrim-faint border border-border-soft px-3 py-2">

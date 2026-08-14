@@ -61,7 +61,7 @@ export function TerminalInput({
                 value={aiModel}
                 onChange={(e) => onSetModel(e.target.value)}
                 title={ollamaStatus.cloudModels?.some(m => m.name === aiModel) ? 'Running on Ollama Cloud — needs internet + `ollama signin`' : 'Running locally'}
-                className="bg-surface border border-border-soft rounded-md px-1.5 py-1 text-[11px] text-fg-muted focus:outline-none focus:border-accent-teal/40 flex-shrink-0 max-w-[220px]"
+                className="bg-surface border border-border-soft rounded-lg px-1.5 py-1 text-[11px] text-fg-muted focus:outline-none focus:border-accent-teal/40 flex-shrink-0 max-w-[220px]"
               >
                 {(ollamaStatus.models?.length ?? 0) > 0 && (
                   <optgroup label="Local (offline)">
@@ -81,7 +81,7 @@ export function TerminalInput({
               <select
                 value={aiMode}
                 onChange={(e) => onSetMode(e.target.value)}
-                className="bg-surface border border-border-soft rounded-md px-1.5 py-1 text-[11px] text-fg-muted focus:outline-none focus:border-accent-teal/40 flex-shrink-0"
+                className="bg-surface border border-border-soft rounded-lg px-1.5 py-1 text-[11px] text-fg-muted focus:outline-none focus:border-accent-teal/40 flex-shrink-0"
               >
                 {AI_MODES.map(m => (
                   <option key={m.value} value={m.value}>{m.label}</option>
@@ -113,7 +113,7 @@ export function TerminalInput({
               type="submit"
                disabled={!input.trim() || !activeProject || aiThinking || commandPending || isBlocked || !connected}
                title={!connected ? 'WebSocket disconnected — reconnecting…' : isBlocked ? 'Resolve the pending confirmation first (Esc to cancel)' : undefined}
-              className="absolute right-1.5 w-9 h-9 rounded-lg bg-accent-blue text-white hover:opacity-90 flex items-center justify-center disabled:opacity-50 transition-opacity"
+              className="absolute right-1.5 w-11 h-11 rounded-lg bg-accent-blue text-white hover:opacity-90 flex items-center justify-center disabled:opacity-50 transition-opacity"
             >
               <Send size={18} />
             </button>

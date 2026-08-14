@@ -65,7 +65,7 @@ export function TerminalHeader({
               {workspaceProjects.map((p) => (
                 <span key={p.id} className="flex items-center gap-1 px-2 py-0.5 rounded bg-accent-blue/10 border border-accent-blue/30 text-xs text-accent-blue">
                   {p.name}
-                  <button onClick={() => removeFromWorkspace(p.id)} className="text-accent-blue/60 hover:text-accent-blue transition-colors">×</button>
+                  <button onClick={() => removeFromWorkspace(p.id)} aria-label={`Remove ${p.name} from workspace`} className="text-accent-blue/60 hover:text-accent-blue transition-colors">×</button>
                 </span>
               ))}
               <button onClick={clearWorkspace} className="text-fg-faint hover:text-accent-red transition-colors text-xs" title="Clear workspace">×</button>

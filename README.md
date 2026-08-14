@@ -8,7 +8,7 @@
 
 ### Command dispatcher (works without AI)
 
-- **Intent matching**: every message is resolved through a multi-stage pipeline — embedding similarity (all-MiniLM-L6-v2), literal pre-checks for known trap phrases, fuzzy matching, keyword rules, a trained NLP classifier, and a bounded local-model classification call for novel phrasings. 83 intents with ~2,300 example phrases, split across `server/intents/*.js` and merged in `intentsData.js`.
+- **Intent matching**: every message is resolved through a multi-stage pipeline — embedding similarity (all-MiniLM-L6-v2), literal pre-checks for known trap phrases, fuzzy matching, keyword rules, a trained NLP classifier, and a bounded local-model classification call for novel phrasings. 141 intents with ~2,860 example phrases, split across `server/intents/*.js` and merged in `intentsData.js`.
 - **Self-learning**: confirmed phrases are promoted into the permanent example set automatically as the console is used (near-miss logging → `learningEngine.js`), persisted across restarts, and used to retrain both the embedding matcher and the NLP classifier.
 - **Chit-chat**: greeting, status, gratitude, farewell, acknowledgment, and joke replies with varied templates — no LLM call involved. Greetings/status are enriched with live state (console port, projects indexed, running dev server + URL, uncommitted-file count) and what the console remembers about the project. With AI mode on, greeting/status also ask the active model for a tailored reply (bounded timeout, falls back to the canned reply on any error).
 - **Calculator**: safe arithmetic (`+ - * / ( )`, no eval) plus offline unit conversion (length/weight/volume/temperature), percentage/tip/tax phrases (`convert 5 km to miles`, `what is 15% of 80`, `whats 18% tip on 64.50`, `add 8.25% tax to 120`). The Calculator panel (Tools) is a live iOS-style widget — button presses are instant, `=` evaluates through the same server-side evaluator chat uses.
@@ -30,12 +30,18 @@
 
 ### Tools panels (interactive web UI)
 
- - A **Tools** button (visible when a general-mode project is active) opens a card grid of interactive tools — Calculator, File Tools, PDF Tools, and Reminders today, more later. Clicking a card opens that tool's dedicated panel in the same space the chat/dashboard use; no modal stacks.
+ - A **Tools** button (visible when a general-mode project is active) opens a card grid of interactive tools — Calculator, PDF Tools, Reminders, File Tools, Notes, Spreadsheet (CSV), Clipboard & Snippets, Backup, Notifications, Documents (knowledge base), and the Pack Marketplace, all in one registry-driven grid. Clicking a card opens that tool's dedicated panel in the same space the chat/dashboard use; no modal stacks.
 - Tools are chat-addressable too: typing `open calculator` or `open pdf tools` lands you in the same panel state as clicking the card. The chat reply stays plain text (the CLI is deliberately text-only — from a terminal, these commands answer with a short note and the equivalent chat phrasings).
 - Panels are server-driven (registry + `GET /api/tool-panels`), so a tool can later report availability (e.g. "PDF Tools disabled — missing dependency") without a frontend change.
  - The PDF Tools panel is fully interactive: project PDF list with download/"show in folder", merge with multi-select + output name, split (per page / around a page), extract text, page-range extract, and watermark — every Run button composes the same trigger command chat uses, so confirmation, checkpointing, history and `revert action <id>` all work identically from either surface.
  - The Reminders panel is an Apple Reminders-style sectioned list (Today / Upcoming / All); each row has a checkbox completion control and due-date/time subtitle. Adding works through a single `+ New Reminder` input row, and completing a row removes the reminder through the same chat command path.
  - The Pack Marketplace panel is an App Store-style browsing grid (name + description + author/version per card, Install as the primary action) for remote tool packs — see "Pack marketplace" below.
+
+### Desktop shell, command palette & updates
+
+- **Desktop app (`desktop/`)**: a self-contained Electron wrapper around the same server — it reuses the launchers' port rule (3000–3009, attaches instead of starting a duplicate), spawns the server as a child process, opens the console in your default browser, and adds a tray icon whose Quit stops the server cleanly. `npm install && npm start` in `desktop/` runs it; `npm run dist` builds a Windows installer. First run uses the same onboarding wizard as the browser; Ollama is a separate optional install (ollama.com).
+- **Command palette (`Ctrl+K`)**: a Raycast-style palette that searches the whole app — navigation, actions (theme, profile, fullscreen, workspace switch, AI toggle, session exports, dock tabs, tool history), every registered tool panel, every chat command the matcher understands, sessions, and projects. Nothing in the palette bypasses the confirm flows; commands run through the same chat path.
+- **Update checker**: `check for updates` / `update console` compare the installed version against the npm registry (offline-safe — a failed check is silent) and a one-per-boot "Update available" banner appears above the chat. Updating still requires an explicit confirmed `npm install -g` command; the console never updates itself.
 
 ### Pack marketplace
 
@@ -136,7 +142,7 @@
 - **Sandboxed file tools**: all file/git tools resolve only within the active project's directory — path-escape attempts (including symlink tricks) are rejected.
 - **Risky-command confirmation**: destructive commands require explicit UI approval with one-time security tokens.
 - **Git checkpoints**: before any risky command runs, a `console-checkpoint:` commit creates a rollback point.
-- **Blocklist + allowlist**: dangerous patterns (`rm -rf /`, force-push, `shutdown`, fork bombs) are rejected outright; only approved executables (`npm`, `node`, `git`, `python`, `npx`, `vite`, etc.) can run.
+- **Blocklist + allowlist**: dangerous patterns (`rm -rf /`, force-push, `shutdown`, fork bombs) are rejected outright; commands run through the tool layer (chips, AI tool calls, manifest entries) must start with an approved executable (`npm`, `node`, `git`, `python`, `npx`, `vite`, plus the framework CLIs: `ng`, `flutter`, `dart`, `cargo`, `go`, `mvn`, `dotnet`, `ruby`, `php`, ...). Typed command lines in chat are more lenient: a well-formed multi-token command whose executable resolves on PATH (or in the project's own `node_modules/.bin`) runs directly — the strict allowlist governs everything that is not hand-typed.
 - **WebSocket origin check**: non-local origins are rejected.
 - **SSRF protection**: web search/deep research only reach safe external hosts; `probeUrl` is restricted to localhost/private http(s).
 - **Host binding**: defaults to `127.0.0.1` (local only). Set `HOST=0.0.0.0` for LAN access — there is no authentication, so don't do that on an untrusted network.
@@ -333,7 +339,7 @@ App-global identity (name/title/custom role) edited from the ⚙ Settings modal;
 | `extract pages 2-5 from report.pdf into excerpt.pdf` | Copy a page range into a new PDF (confirm-gated, revertible) |
 | `watermark report.pdf with confidential` | Stamp text across a copy of a PDF (confirm-gated, revertible) |
 | `undo` / `revert that` | Restore the last change (git checkpoint or file journal) |
-| `type the command directly` | Allowlisted command lines (git push, npm run ...) run as-is |
+| `type the command directly` | Well-formed command lines run as-is — single tokens still require the allowlist, multi-token lines may use any executable resolvable on PATH or the project's `node_modules/.bin` (git push, npm run ...) |
 | `npx local-project-console init` | Bootstrap a console.config.json for a project |
 
 ### Schedules, notifications & automation
@@ -407,7 +413,7 @@ server/
 ├── matcher.js            — matchInput() pipeline: multi-intent → semantic → NLP → local router → fallback
 ├── semanticMatcher.js    — Embedding + Fuse.js matching + PRE_SEMANTIC_OVERRIDES literal rules
 ├── localRouter.js        — Bounded single-call local-model classification (last resort, AI-toggle independent)
-├── intentsData.js        — Merges 83 intents (~2,300 phrases) from server/intents/*
+├── intentsData.js        — Merges 141 intents (~2,860 phrases) from server/intents/*
 ├── nlpEngine.js          — Trained NLP.js classifier; retrains from confirmed near-miss promotions
 ├── tools.js              — Sandboxed file/git/memory/process/test tools + resolveToolGate approval point
 ├── executor.js           — Shell command spawner, URL detection, port retry, buffered output streaming
@@ -422,7 +428,7 @@ server/
 ├── learningEngine.js     — Near-miss → suggestion generation, phrase injection
 ├── distillation.js       — AI exchange analysis → trigger-mode config suggestions
 ├── projectMemory.js      — Usage-pattern tracking + CLAUDE.md augmentation
-├── routes/               — projectRoutes, sessionRoutes, searchRoutes, monitoringRoutes
+├── routes/               — 21 route modules: project/session/search/monitoring/profile/tuning/workspace/tool-panels/pdf/reminders/file-tools/notes/csv/clipboard/calculate/backup/command-docs/notifications/knowledge/marketplace/connected-users
 ├── wsHandlers/           — connection.js shim + per-domain leaves, builtin intent handlers, matchedEntry
 ├── intents/              — Per-domain intent phrase files
 └── scripts/              — Daemon launchers + check-* harnesses
@@ -446,7 +452,7 @@ scripts/                  — Daemon launchers (start/stop/add-to-startup)
 ```powershell
 npm run lint                # tsc --noEmit
 npm run check-intents       # static exact/near-duplicate phrase scanner
-npm run check-matcher       # matching-pipeline regression battery (68+ inputs)
+npm run check-matcher       # matching-pipeline regression battery (280+ inputs)
 npm run check-indexer       # codebase indexer regression battery
 npm run check-tools         # sandbox/gate/tool regression battery
 npm run check-handlers      # intent-handler coverage + dispatch checks

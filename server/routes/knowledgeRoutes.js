@@ -5,9 +5,10 @@ import { resolveProject } from '../state.js';
 import { performSearch, searchProjectCode } from '../codeIndex/codeIndexSearch.js';
 import { buildProjectIndex } from '../codeIndex/codeIndexBuilder.js';
 import { enqueueTask } from '../taskQueue.js';
+import { asyncHandler } from '../asyncHandler.js';
 
 export function registerKnowledgeRoutes(app) {
-  app.get('/api/projects/:id/documents', async (req, res) => {
+  app.get('/api/projects/:id/documents', asyncHandler(async (req, res) => {
     const project = resolveProject(req.params.id);
     if (!project) return res.status(404).json({ error: 'Project not found' });
     const q = typeof req.query.q === 'string' ? req.query.q.trim() : '';
@@ -18,7 +19,7 @@ export function registerKnowledgeRoutes(app) {
       enqueueTask(project.id, 'document index build', () => buildProjectIndex(project));
     }
     res.json({ status: result.status, results: result.results });
-  });
+  }));
 
   // Phase 16 audit: AI-mode "ask" — the panel's free-text ask box (only visible when AI mode
   // is on client-side) posts here; the server retrieves the top chunks and hands them to the
@@ -26,7 +27,7 @@ export function registerKnowledgeRoutes(app) {
   // panel can render the citations under the synthesis (retrieval is never dependent on the
   // model — a failed/unavailable model call yields { synthesis: null } and the panel falls
   // back to the chunk list, never an error).
-  app.get('/api/projects/:id/documents/ask', async (req, res) => {
+  app.get('/api/projects/:id/documents/ask', asyncHandler(async (req, res) => {
     const project = resolveProject(req.params.id);
     if (!project) return res.status(404).json({ error: 'Project not found' });
     const q = typeof req.query.q === 'string' ? req.query.q.trim() : '';
@@ -51,5 +52,5 @@ export function registerKnowledgeRoutes(app) {
       }
     }
     res.json({ status: result.status, results: result.results, synthesis });
-  });
+  }));
 }

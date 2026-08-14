@@ -142,8 +142,15 @@ async function routeMessage(ws, parsed, sessionContext) {
       }
       if (token && pendingToolConfirmations.has(token)) {
         const pending = pendingToolConfirmations.get(token);
-        pendingToolConfirmations.delete(token);
-        pending.resolve(true);
+        // Same expiry + owner rule as confirm_response (connectionConfirm.js): an expired token
+        // or one owned by a different connection must not be resolvable here.
+        if (Date.now() - pending.createdAt > 5 * 60 * 1000 || (pending.owner && pending.owner !== ws)) {
+          pendingToolConfirmations.delete(token);
+          try { pending.resolve(false); } catch {}
+        } else {
+          pendingToolConfirmations.delete(token);
+          pending.resolve(true);
+        }
       } else {
         ws.send(JSON.stringify({ type: 'answer', data: 'Approved — future file edits in this conversation will run without asking (commands and tests still get their own confirm).' }));
       }

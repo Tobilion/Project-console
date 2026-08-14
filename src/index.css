@@ -21,7 +21,10 @@
   --color-secondary: #3F3F46;
   --color-accent: #64D2FF;
   --color-accent-dim: #64D2FF66;
-  --color-accent-blue: #0A84FF;
+  /* accent-blue dark was #0A84FF — white text on it measured 3.65:1 (below AA). #0071E3 is
+     the closest rung that passes 4.5:1 with white text (4.70:1) while staying a true blue;
+     the focus-ring token --color-ring keeps the original #0A84FF (a non-text 3:1 indicator). */
+  --color-accent-blue: #0071E3;
   --color-accent-teal: #64D2FF;
   --color-accent-orange: #FF9F0A;
   --color-accent-green: #30D158;
@@ -41,7 +44,10 @@
   --color-fg: #E4E4E7;
   --color-fg-muted: #8E8E93;
   --color-fg-subtle: #A1A1AA;
-  --color-fg-dim: #636366;
+  /* fg-dim was #636366 (3.24:1 on the dark background — below the 4.5:1 AA floor it is used
+     at). Bumped to the closest rung that passes AA for normal text (4.55:1); faint stays the
+     dimmer decorative rung below it. */
+  --color-fg-dim: #7A7A7F;
   /* fg-faint is a distinct, dimmer rung than fg-dim in dark mode (iOS systemGray3) —
      dark previously shared #636366 for both while light mode already diverged
      (#71717A vs #A1A1AA); this restores the same gap in dark. */
@@ -66,7 +72,9 @@
   --color-secondary: #E4E4E7;
   --color-accent: #5AC8FA;
   --color-accent-dim: #5AC8FA66;
-  --color-accent-blue: #007AFF;
+  /* accent-blue light was #007AFF — white text on it measured 4.02:1. Same #0071E3 as dark:
+     4.70:1 with white text, 4.14:1 on the light background (AA-large links). */
+  --color-accent-blue: #0071E3;
   --color-accent-teal: #5AC8FA;
   --color-accent-orange: #FF9500;
   --color-accent-green: #34C759;
@@ -83,7 +91,8 @@
   --color-fg: #27272A;
   --color-fg-muted: #8E8E93;
   --color-fg-subtle: #52525B;
-  --color-fg-dim: #71717A;
+  /* fg-dim light was #71717A (4.33:1 — just under the AA floor); #6D6D75 hits 4.60:1. */
+  --color-fg-dim: #6D6D75;
   --color-fg-faint: #A1A1AA;
   --color-border-faint: #D1D1D6;
   --color-border-soft: #D1D1D6;
@@ -226,4 +235,12 @@ html, body {
   --tw-prose-th-borders: var(--color-border-strong);
   --tw-prose-td-borders: var(--color-border-soft);
   color: var(--tw-prose-body);
+}
+
+/* Keyboard focus: guaranteed visible indicator for every interactive element (incl. the few
+   inputs with outline-none and no focus:border substitute). :focus-visible keeps mouse clicks
+   ring-free; unlayered so it beats Tailwind's layered outline-none utility. */
+:focus-visible {
+  outline: 2px solid var(--color-ring);
+  outline-offset: 2px;
 }

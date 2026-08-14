@@ -19,6 +19,10 @@ export const PROJECT_CONTEXT_INTENTS = {
       'what top level folders exist', 'show top level structure',
       'give me the folder map', 'display the file tree',
       'how is the codebase laid out',
+      // Matchday-Exchange live session (2026-08-14): "what files do i have" dead-ended in the
+      // generic fallback — the whole-tree file-listing question shapes belong to structure.
+      'what files do i have', 'list all my files', 'show me all files',
+      'what files are in this project', 'list the files in this project',
     ],
   },
   'project.context.languages': {

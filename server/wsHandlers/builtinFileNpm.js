@@ -72,7 +72,7 @@ export const fileNpmHandlers = {
           }));
           return true;
         }
-        executeCommand(applyRequestedPort(`npm run ${scriptName}`, requestedPort, { script: scripts[scriptName] }), runDir, ws, project.id);
+        executeCommand(applyRequestedPort(`npm run ${scriptName}`, requestedPort, { script: scripts[scriptName], projectRoot: project.path }), runDir, ws, project.id);
       } else {
         ws.send(JSON.stringify({ type: 'answer', data: `No script called **\`${scriptName}\`** found in \`package.json\`.` }));
         await projectTypeSuggestions(ws, project, input, scripts);
@@ -82,21 +82,21 @@ export const fileNpmHandlers = {
     // "npm serve" / "npm start" shortcut — no "run" keyword
     const serveMatch = input.match(/\bnpm\s+serve\b/i);
     if (serveMatch && scripts.serve) {
-      executeCommand(applyRequestedPort('npm run serve', requestedPort, { script: scripts.serve }), runDir, ws, project.id);
+      executeCommand(applyRequestedPort('npm run serve', requestedPort, { script: scripts.serve, projectRoot: project.path }), runDir, ws, project.id);
       return true;
     }
     const startDirect = input.match(/\bnpm\s+start\b/i);
     if (startDirect && scripts.start) {
-      executeCommand(applyRequestedPort('npm start', requestedPort, { script: scripts.start }), runDir, ws, project.id);
+      executeCommand(applyRequestedPort('npm start', requestedPort, { script: scripts.start, projectRoot: project.path }), runDir, ws, project.id);
       return true;
     }
     // Try "start the dev server" / "start a live server" patterns
     const startMatch = input.match(/start\s+(?:the\s+|a\s+)?(?:live\s+)?(?:dev\s+)?(?:server|site|app)\b/i);
     if (startMatch) {
       if (scripts.dev) {
-        executeCommand(applyRequestedPort('npm run dev', requestedPort, { script: scripts.dev }), runDir, ws, project.id);
+        executeCommand(applyRequestedPort('npm run dev', requestedPort, { script: scripts.dev, projectRoot: project.path }), runDir, ws, project.id);
       } else if (scripts.start) {
-        executeCommand(applyRequestedPort('npm start', requestedPort, { script: scripts.start }), runDir, ws, project.id);
+        executeCommand(applyRequestedPort('npm start', requestedPort, { script: scripts.start, projectRoot: project.path }), runDir, ws, project.id);
       } else {
         ws.send(JSON.stringify({ type: 'answer', data: `No \`dev\` or \`start\` script found in \`package.json\`.` }));
         await projectTypeSuggestions(ws, project, input, scripts);
@@ -106,9 +106,9 @@ export const fileNpmHandlers = {
     // Try "start developing" / "start dev mode"
     if (/\bstart\s+developing\b|\bstart\s+dev\s+mode\b/i.test(input)) {
       if (scripts.dev) {
-        executeCommand(applyRequestedPort('npm run dev', requestedPort, { script: scripts.dev }), runDir, ws, project.id);
+        executeCommand(applyRequestedPort('npm run dev', requestedPort, { script: scripts.dev, projectRoot: project.path }), runDir, ws, project.id);
       } else if (scripts.start) {
-        executeCommand(applyRequestedPort('npm start', requestedPort, { script: scripts.start }), runDir, ws, project.id);
+        executeCommand(applyRequestedPort('npm start', requestedPort, { script: scripts.start, projectRoot: project.path }), runDir, ws, project.id);
       } else {
         await projectTypeSuggestions(ws, project, input, scripts);
       }
@@ -123,11 +123,11 @@ export const fileNpmHandlers = {
     if (/\b(?:run|serve|start)\s+(?:the\s+|a\s+)?(?:live\s+)?(?:site|app|server|application)\b/i.test(input)) {
       let command = null;
       if (scripts.dev) {
-        command = applyRequestedPort('npm run dev', requestedPort, { script: scripts.dev });
+        command = applyRequestedPort('npm run dev', requestedPort, { script: scripts.dev, projectRoot: project.path });
       } else if (scripts.start) {
-        command = applyRequestedPort('npm start', requestedPort, { script: scripts.start });
+        command = applyRequestedPort('npm start', requestedPort, { script: scripts.start, projectRoot: project.path });
       } else if (scripts.serve) {
-        command = applyRequestedPort('npm run serve', requestedPort, { script: scripts.serve });
+        command = applyRequestedPort('npm run serve', requestedPort, { script: scripts.serve, projectRoot: project.path });
       } else {
         await projectTypeSuggestions(ws, project, input, scripts);
         return true;
@@ -295,7 +295,7 @@ export const fileNpmHandlers = {
     const requestedPort = extractRequestedPort(input);
     const mentioned = findMentionedScript(input, scripts);
     if (mentioned && !['dev', 'start', 'serve'].includes(mentioned)) {
-      executeCommand(applyRequestedPort(`npm run ${mentioned}`, requestedPort, { script: scripts[mentioned] }), runDir, ws, project.id);
+      executeCommand(applyRequestedPort(`npm run ${mentioned}`, requestedPort, { script: scripts[mentioned], projectRoot: project.path }), runDir, ws, project.id);
       return true;
     }
 
@@ -326,11 +326,11 @@ export const fileNpmHandlers = {
 
     // Check for known dev/start scripts first
     if (scripts.dev) {
-      executeCommand(applyRequestedPort('npm run dev', requestedPort, { script: scripts.dev }), runDir, ws, project.id);
+      executeCommand(applyRequestedPort('npm run dev', requestedPort, { script: scripts.dev, projectRoot: project.path }), runDir, ws, project.id);
     } else if (scripts.start) {
-      executeCommand(applyRequestedPort('npm start', requestedPort, { script: scripts.start }), runDir, ws, project.id);
+      executeCommand(applyRequestedPort('npm start', requestedPort, { script: scripts.start, projectRoot: project.path }), runDir, ws, project.id);
     } else if (scripts.serve) {
-      executeCommand(applyRequestedPort('npm run serve', requestedPort, { script: scripts.serve }), runDir, ws, project.id);
+      executeCommand(applyRequestedPort('npm run serve', requestedPort, { script: scripts.serve, projectRoot: project.path }), runDir, ws, project.id);
     } else {
       await projectTypeSuggestions(ws, project, input, scripts);
     }

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Store, RefreshCw, Download, CheckCircle2, Globe } from 'lucide-react';
 import { apiFetchJson } from '../utils/apiFetch';
 import { cn } from '../lib/utils';
@@ -33,6 +33,10 @@ export function MarketplacePanel({ project, onSendMessage }: MarketplacePanelPro
   const [status, setStatus] = useState<'idle' | 'loading' | 'error' | 'ready'>('idle');
   const [error, setError] = useState<string | null>(null);
   const [lastSent, setLastSent] = useState<string | null>(null);
+  const lastSentTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Clear the pending "last sent" timer on unmount so its delayed setState can't fire on a
+  // dead panel (and hold the panel's closure alive after it unmounted).
+  useEffect(() => () => { if (lastSentTimer.current) clearTimeout(lastSentTimer.current); }, []);
 
   const fetchState = useCallback(async () => {
     const cfg = await apiFetchJson<{ url: string | null }>('/api/registry/config');
@@ -51,7 +55,8 @@ export function MarketplacePanel({ project, onSendMessage }: MarketplacePanelPro
   const send = (text: string) => {
     onSendMessage(text);
     setLastSent(text);
-    setTimeout(() => setLastSent(null), 8000);
+    if (lastSentTimer.current) clearTimeout(lastSentTimer.current);
+    lastSentTimer.current = setTimeout(() => setLastSent(null), 8000);
     setTimeout(fetchState, 1500);
   };
 
@@ -75,7 +80,7 @@ export function MarketplacePanel({ project, onSendMessage }: MarketplacePanelPro
             </div>
             <h2 className="text-sm font-semibold text-fg-strong tracking-wide uppercase">Pack Marketplace</h2>
           </div>
-          <button onClick={fetchState} className="p-1.5 text-fg-dim hover:text-fg-strong rounded-md transition-colors" title="Refresh">
+          <button onClick={fetchState} className="p-1.5 text-fg-dim hover:text-fg-strong rounded-lg transition-colors" title="Refresh">
             <RefreshCw size={15} className={cn(status === 'loading' && 'animate-spin')} />
           </button>
         </div>

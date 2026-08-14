@@ -58,7 +58,11 @@ export async function runGatedExecuteCommand(ws, project, args) {
   }
   const result = await Promise.race([
     cmdPromise,
-    new Promise(resolve => setTimeout(() => resolve({ timeout: true }), TIMEOUT_MS))
+    new Promise(resolve => {
+      const timer = setTimeout(() => resolve({ timeout: true }), TIMEOUT_MS);
+      // unref so a command that settles first can't keep the process alive for the full 6s.
+      if (typeof timer.unref === 'function') timer.unref();
+    }),
   ]);
   // Real PID of the tracked process (if it's still running after the race) — the model was
   // previously left to invent one ("Background process started (PID 9128)" was a guess in a

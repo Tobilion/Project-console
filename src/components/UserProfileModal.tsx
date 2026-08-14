@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { UserProfile } from '../hooks/useUserProfile';
 import { Settings, X, ChevronDown, ChevronRight } from 'lucide-react';
 import { ModalShell } from './ui/ModalShell';
@@ -56,6 +56,10 @@ export function UserProfileModal({ open, profile, onClose, onSave }: UserProfile
   const [sandboxRiskyCommands, setSandboxRiskyCommands] = useState(profile.sandboxRiskyCommands);
   const [clipboardHistory, setClipboardHistory] = useState(profile.clipboardHistory);
   const [clipboardPersist, setClipboardPersist] = useState(profile.clipboardPersist);
+  const tuningSavedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Clear the "tuning saved" timer on unmount so its delayed setState can't fire on a dead
+  // modal (and hold its closure alive after it unmounted).
+  useEffect(() => () => { if (tuningSavedTimer.current) clearTimeout(tuningSavedTimer.current); }, []);
 
   // Stage H: accent-color presets + custom-hex draft. The chosen value persists through the
   // existing profile-write path (onSave) and App.tsx applies it as an inline
@@ -132,7 +136,8 @@ export function UserProfileModal({ open, profile, onClose, onSave }: UserProfile
       for (const [k, v] of Object.entries(res.overrides)) merged[k] = String(v);
       setDraft(merged);
       setTuningSaved(true);
-      setTimeout(() => setTuningSaved(false), 2000);
+      if (tuningSavedTimer.current) clearTimeout(tuningSavedTimer.current);
+      tuningSavedTimer.current = setTimeout(() => setTuningSaved(false), 2000);
     }
   };
 
@@ -147,7 +152,8 @@ export function UserProfileModal({ open, profile, onClose, onSave }: UserProfile
       for (const [k, v] of Object.entries(res.defaults)) merged[k] = String(v);
       setDraft(merged);
       setTuningSaved(true);
-      setTimeout(() => setTuningSaved(false), 2000);
+      if (tuningSavedTimer.current) clearTimeout(tuningSavedTimer.current);
+      tuningSavedTimer.current = setTimeout(() => setTuningSaved(false), 2000);
     }
   };
 
@@ -247,9 +253,9 @@ export function UserProfileModal({ open, profile, onClose, onSave }: UserProfile
             >
               Apply
             </button>
-            <span className="text-[10px] text-fg-faint">6 hex digits</span>
+            <span className="text-[10px] text-fg-dim">6 hex digits</span>
           </div>
-          <p className="text-[10px] text-fg-faint mt-1.5">
+          <p className="text-[10px] text-fg-dim mt-1.5">
             Applies everywhere accent-blue is used (active tab, buttons, selection). Semantic
             colors — teal/orange/green/red — are not affected, like macOS.
           </p>
@@ -269,7 +275,7 @@ export function UserProfileModal({ open, profile, onClose, onSave }: UserProfile
           </button>
           <div>
             <p className="text-sm text-fg">Sandbox risky commands</p>
-            <p className="text-[11px] text-fg-faint mt-0.5">
+            <p className="text-[11px] text-fg-dim mt-0.5">
               When on, confirmed risky commands run with an environment allowlist and a
               project-restricted cwd (not a container — see the docs for exact guarantees).
               Off by default.
@@ -292,7 +298,7 @@ export function UserProfileModal({ open, profile, onClose, onSave }: UserProfile
           </button>
           <div>
             <p className="text-sm text-fg">Track clipboard history</p>
-            <p className="text-[11px] text-fg-faint mt-0.5">
+            <p className="text-[11px] text-fg-dim mt-0.5">
               When on, the console polls the OS clipboard in the background (in-memory, most
               recent 25 entries, deduped). Off by default — your clipboard can hold passwords
               and tokens, so nothing reads it without your say-so.
@@ -315,7 +321,7 @@ export function UserProfileModal({ open, profile, onClose, onSave }: UserProfile
           </button>
           <div>
             <p className="text-sm text-fg">Persist clipboard history to disk</p>
-            <p className="text-[11px] text-fg-faint mt-0.5">
+            <p className="text-[11px] text-fg-dim mt-0.5">
               A separate opt-in on top of tracking: writes the in-memory history to a local
               plaintext file so it survives restarts. Persisting clipboard content is a bigger
               privacy commitment than an in-memory buffer — off by default.
@@ -336,7 +342,7 @@ export function UserProfileModal({ open, profile, onClose, onSave }: UserProfile
             )}
           </button>
           {advancedOpen && (
-            <p className="text-[11px] text-fg-faint mt-1.5">
+            <p className="text-[11px] text-fg-dim mt-1.5">
               Raw matcher/executor constants for power users — the defaults are tuned for most
               setups. Change these only if you know what they do.
             </p>
@@ -345,20 +351,20 @@ export function UserProfileModal({ open, profile, onClose, onSave }: UserProfile
             <div className="mt-2 space-y-3 max-h-64 overflow-y-auto pr-1">
               {TUNING_GROUPS.map((group) => (
                 <div key={group.label}>
-                  <p className="text-[10px] tracking-[0.15em] uppercase text-fg-faint font-bold mb-1">{group.label}</p>
+                  <p className="text-[10px] tracking-[0.15em] uppercase text-fg-dim font-bold mb-1">{group.label}</p>
                   <div className="space-y-2">
                     {group.keys.map(({ name, hint, describe }) => (
                       <div key={name} className="flex items-center justify-between gap-3">
                         <label className="text-[11px] text-fg-subtle flex-1 min-w-0" title={hint}>
                           <span className="font-mono">{name}</span>
-                          <span className="block text-[10px] text-fg-faint">{hint}</span>
+                          <span className="block text-[10px] text-fg-dim">{hint}</span>
                           <span className="block text-[10px] text-fg-muted mt-0.5 leading-snug">{describe}</span>
                         </label>
                         <input
                           type="number"
                           value={draft[name] ?? ''}
                           onChange={(e) => setDraft((d) => ({ ...d, [name]: e.target.value }))}
-                          className="w-24 bg-surface border border-border-soft rounded-md px-2 py-1 text-[11px] font-mono text-fg focus:outline-none focus:border-accent-blue transition-colors text-right"
+                          className="w-24 bg-surface border border-border-soft rounded-lg px-2 py-1 text-[11px] font-mono text-fg focus:outline-none focus:border-accent-blue transition-colors text-right"
                         />
                       </div>
                     ))}

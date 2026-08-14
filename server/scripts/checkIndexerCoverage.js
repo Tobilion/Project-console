@@ -216,6 +216,13 @@ try {
   eq('resolve embedded in sentence', norm(graph.resolveTargetFile(appIdx, 'how does src/server.js start?')), 'src/server.js');
   eq('resolve short generic -> null', graph.resolveTargetFile(appIdx, 'app'), null);
   eq('resolve symbol name -> null', graph.resolveTargetFile(appIdx, 'start'), null);
+  // Typo tolerance (Matchday-Exchange live session, 2026-08-14): wrong/missing extensions
+  // must resolve to the real file; generic 3-char stems must stay null.
+  eq('resolve wrong extension', norm(graph.resolveTargetFile(appIdx, 'util.t')), 'src/lib/util.js');
+  eq('resolve wrong extension 2', norm(graph.resolveTargetFile(appIdx, 'server.zz')), 'src/server.js');
+  eq('resolve wrong extension 3', norm(graph.resolveTargetFile(appIdx, 'server.tx')), 'src/server.js');
+  eq('resolve missing extension', norm(graph.resolveTargetFile(appIdx, 'util')), 'src/lib/util.js');
+  eq('resolve typo stem still null when absent', graph.resolveTargetFile(appIdx, 'readme'), null);
   eq('slice has start + imports', graph.renderTargetedSlice(appIdx, 'src/server.js').includes('function start @3'), true);
   eq('slice has usedBy', graph.renderTargetedSlice(appIdx, 'src/lib/util.js').includes('greet: src/server.js'), true);
   eq('symbolGraph render', graph.formatSymbolGraph(appIdx).includes('function greet'), true);

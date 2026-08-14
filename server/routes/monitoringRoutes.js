@@ -6,6 +6,7 @@ import { runningProcesses, getProcessLog } from '../executor.js';
 import { state } from '../state.js';
 import { forgetDevUrl } from '../devUrlStore.js';
 import { probeUrl } from '../livenessProbe.js';
+import { asyncHandler } from '../asyncHandler.js';
 
 /** Runs a git command in the given directory with a timeout, returning { stdout, stderr }. */
 function runGit(cwd, args, timeoutMs = 5000) {
@@ -101,7 +102,7 @@ export function registerMonitoringRoutes(app) {
     return parts.sort().join(';');
   }
 
-  app.get('/api/dashboard', async (req, res) => {
+  app.get('/api/dashboard', asyncHandler(async (req, res) => {
     const now = Date.now();
     const sig = volatileSignature();
     if (dashboardCache && sig === dashboardCacheSig && (now - dashboardCacheTime < CACHE_TTL)) {
@@ -222,5 +223,5 @@ export function registerMonitoringRoutes(app) {
     dashboardCacheTime = now;
     dashboardCacheSig = sig;
     res.json(results);
-  });
+  }));
 }

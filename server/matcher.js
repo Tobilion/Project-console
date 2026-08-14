@@ -35,6 +35,18 @@ export async function matchInput(input, project, projectIndex, options = {}) {
   metrics.inc('matching.total');
   const t0 = Date.now();
 
+  // Matchday-Exchange live session (2026-08-14): "What as time\" — a stray trailing backslash
+  // from a phone keyboard — drifted onto git_status and executed a command. Strip trailing
+  // punctuation/junk before ANY stage so every tier (multi-split, pre-semantic overrides,
+  // embeddings, NLP, fuzzy) sees the cleaned phrase. Only the END of the string is touched:
+  // paths ("C:\Users\..."), "note: buy milk" (the colon is mid-string, and a bare "note:"
+  // must keep its colon for the notes override), and command lines (which bypass the matcher
+  // via typedCommand.js anyway) are unaffected. Quotes are deliberately NOT stripped — they
+  // close comment strings ("push the site with comment \"x\"") and removing them shifts the
+  // embedding just enough to flip closeSecond markers on git/deploy rows (measured in the
+  // harness).
+  input = input.replace(/(?:[?!.,;)\]}]+|\\+)$/g, '');
+
   // 0. Check for multi-intent queries (split on conjunctions)
   const tMulti = Date.now();
   const multiResult = await semanticMatcher.matchMulti(input);
