@@ -161,9 +161,12 @@ function App() {
     setShowCommandRef(false);
     // 2026-08-12: the General tab is tools-first — landing on the Tools card grid (chat stays
     // reachable via the grid's close/back or the header Tools button). Developer stays chat.
+    // 2026-08-14: without an active project the General workspace lands on chat instead, so a
+    // user can talk before picking a project; tools-first only kicks in once one is selected.
     if (mode === 'general') {
       setShowDashboard(false);
-      setToolsOpen(true);
+      if (activeProject?.id) setToolsOpen(true);
+      else setToolsOpen(false);
     } else {
       setToolsOpen(false);
     }
@@ -184,11 +187,13 @@ function App() {
   // has claimed the main view (dashboard off, no explicit tool panel pick yet), land on the
   // Tools card grid so a non-technical user immediately sees the panels. Chat stays reachable
   // through the grid's close/back and the header Tools toggle.
+  // 2026-08-14: only when a project is active. With no project picked the General workspace is
+  // chat-first (the user can talk before choosing a project), so the tools grid is not forced.
   useEffect(() => {
-    if (workspaceTab === 'general' && !showDashboard && !activeToolPanel && !chatFullscreen) {
+    if (workspaceTab === 'general' && activeProject?.id && !showDashboard && !activeToolPanel && !chatFullscreen) {
       setToolsOpen(true);
     }
-  }, [workspaceTab, showDashboard, activeToolPanel, chatFullscreen]);
+  }, [workspaceTab, activeProject?.id, showDashboard, activeToolPanel, chatFullscreen]);
 
   // Phase 19 (2026-08-12): LAN display-name attribution — when the server is bound to
   // 0.0.0.0 (HOST env), claim the profile name so action-history/notes/reminders attribute

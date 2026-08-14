@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { ModalShell } from './ui/ModalShell';
 import { UserProfile } from '../hooks/useUserProfile';
-import { Sparkles, FolderSearch, ArrowRight } from 'lucide-react';
+import { Sparkles, FolderSearch, ArrowRight, ChevronDown, TerminalSquare } from 'lucide-react';
 
 interface FirstRunSetupProps {
   open: boolean;
@@ -27,6 +27,7 @@ interface FirstRunSetupProps {
 export function FirstRunSetup({ open, scanPath, setScanPath, handleScan, onFinish }: FirstRunSetupProps) {
   const [name, setName] = useState('');
   const [workspaceType, setWorkspaceType] = useState<'dev' | 'general'>('dev');
+  const [showDev, setShowDev] = useState(false);
 
   const handleContinue = (e: React.FormEvent<HTMLFormElement>) => {
     // Only actually rescan if the user changed the pre-filled path — the default scan
@@ -110,6 +111,40 @@ export function FirstRunSetup({ open, scanPath, setScanPath, handleScan, onFinis
               <a href="https://ollama.com" target="_blank" rel="noreferrer" className="text-accent-blue underline">Ollama</a>{' '}
               (a free local app) — then flip the AI toggle in the chat header. Nothing else is required.
             </p>
+          </div>
+
+          <div className="rounded-lg border border-border-soft">
+            <button
+              type="button"
+              onClick={() => setShowDev((v) => !v)}
+              className="w-full flex items-center justify-between px-3 py-2 text-[11px] text-fg-subtle hover:text-fg-strong transition-colors"
+            >
+              <span className="flex items-center gap-1.5">
+                <TerminalSquare size={12} /> For developers: publishing & installing this app
+              </span>
+              <ChevronDown size={12} className={`transition-transform ${showDev ? 'rotate-180' : ''}`} />
+            </button>
+            {showDev && (
+              <div className="px-3 pb-3 pt-1 space-y-2 text-[11px] text-fg-muted leading-relaxed">
+                <p><span className="text-fg-strong font-semibold">Publish to npm</span> — others install with <code className="text-fg-strong font-mono">npm install -g local-project-console</code> (or run once via <code className="text-fg-strong font-mono">npx local-project-console</code>):</p>
+                <pre className="bg-scrim border border-border-soft rounded-md px-3 py-2 font-mono text-[10px] text-fg-strong overflow-x-auto">npm login
+npm version patch          # or minor / major
+npm run build              # refresh dist/ before publishing
+npm publish</pre>
+                <p><span className="text-fg-strong font-semibold">Desktop installer</span> (no command line for the end user — NSIS .exe / .dmg / .AppImage):</p>
+                <pre className="bg-scrim border border-border-soft rounded-md px-3 py-2 font-mono text-[10px] text-fg-strong overflow-x-auto">cd desktop
+npm install
+npm run dist</pre>
+                <p><span className="text-fg-strong font-semibold">Common install errors:</span></p>
+                <ul className="list-disc pl-4 space-y-1">
+                  <li><code className="font-mono">gyp ERR! Could not find any Visual Studio</code> — a native module (re2/embeddings) needs the VS "Desktop development with C++" workload. Those deps are <span className="text-fg-strong">optional</span>, so the install can succeed without them; matching falls back to fuzzy/NLP.</li>
+                  <li><code className="font-mono">sharp: Request timed out</code> — just retry <code className="font-mono">npm install</code>; it only affects semantic search.</li>
+                  <li><code className="font-mono">EPERM: operation not permitted, rmdir</code> — a locked folder (running process / antivirus / OneDrive). Close it, delete the partial <code className="font-mono">AppData\Roaming\npm\node_modules\local-project-console</code>, retry from an elevated terminal.</li>
+                  <li>Never use <code className="font-mono">--ignore-scripts</code> to get past a build error — it silently breaks code search.</li>
+                </ul>
+                <p className="text-fg-dim">Full walkthrough is in the README "Publishing &amp; installing on another machine" section; chat "how do i publish this" answers it too.</p>
+              </div>
+            )}
           </div>
         </div>
 

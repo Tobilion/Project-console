@@ -25,6 +25,20 @@ const MAX_PORT_ATTEMPTS = 10;
 const CONNECT_TIMEOUT_MS = 90000;
 const RETRY_INTERVAL_MS = 750;
 
+// Mirrors the web UI's reserved '__general__' pseudo-workspace (src/types.ts): the server resolves
+// this projectId to a synthetic "no project" session so a user can chat before picking a project.
+const GENERAL_PROJECT_ID = '__general__';
+
+function generalPseudoProject() {
+  return {
+    id: GENERAL_PROJECT_ID,
+    name: 'General workspace',
+    path: '(no project selected)',
+    folderName: 'general',
+    workspaceType: 'general',
+  };
+}
+
 const C = {
   reset: '\x1b[0m', green: '\x1b[32m', blue: '\x1b[34m',
   yellow: '\x1b[33m', red: '\x1b[31m', cyan: '\x1b[36m',
@@ -100,11 +114,14 @@ function selectProject(projects) {
 async function selectProjectInteractive(projects) {
   const selected = await p.select({
     message: 'Select a project to open in CLI session:',
-    options: projects.map((proj) => ({
-      value: proj,
-      label: proj.name,
-      hint: chalk.dim(proj.path),
-    })),
+    options: [
+      { value: generalPseudoProject(), label: 'General workspace', hint: chalk.dim('chat + tools, no project selected') },
+      ...projects.map((proj) => ({
+        value: proj,
+        label: proj.name,
+        hint: chalk.dim(proj.path),
+      })),
+    ],
   });
   if (p.isCancel(selected)) {
     p.cancel('CLI Session cancelled.');
@@ -129,17 +146,18 @@ function selectProjectLegacy(projects) {
     // three readline.createInterface() calls in this file for the same reason.
     const rl = readline.createInterface({ input: process.stdin, output: process.stdout, crlfDelay: Infinity });
     console.log(`\n${C.bold}${C.cyan}Available Projects:${C.reset}\n`);
+    console.log(`  ${C.bold}0${C.reset}. ${C.green}General workspace${C.reset}\n     ${C.dim}chat + tools, no project selected${C.reset}`);
     projects.forEach((p, i) => {
       console.log(`  ${C.bold}${i + 1}${C.reset}. ${C.green}${p.name}${C.reset}\n     ${C.dim}${p.path}${C.reset}`);
     });
     const ask = () => {
-      rl.question(`\n${C.bold}Select project (1-${projects.length}):${C.reset} `, (answer) => {
+      rl.question(`\n${C.bold}Select project (0 = General, 1-${projects.length}):${C.reset} `, (answer) => {
         const idx = parseInt(answer.trim(), 10);
-        if (Number.isInteger(idx) && idx >= 1 && idx <= projects.length) {
+        if (Number.isInteger(idx) && idx >= 0 && idx <= projects.length) {
           rl.close();
-          resolve(projects[idx - 1]);
+          resolve(idx === 0 ? generalPseudoProject() : projects[idx - 1]);
         } else {
-          console.log(`${C.red}"${answer.trim()}" isn't a number between 1 and ${projects.length} — try again.${C.reset}`);
+          console.log(`${C.red}"${answer.trim()}" isn't a number between 0 and ${projects.length} — try again.${C.reset}`);
           ask();
         }
       });
@@ -166,6 +184,9 @@ function findProjectFromArgs(projects) {
   const projIdx = args.findIndex((a) => a === '--project' || a === '-p');
   if (projIdx !== -1 && args[projIdx + 1]) {
     const target = args[projIdx + 1].toLowerCase();
+    // 2026-08-14: "general" maps to the reserved General workspace (no project) instead of a
+    // discovered folder — e.g. `--project general` to chat before picking a project.
+    if (target === 'general') return generalPseudoProject();
     const match = projects.find((p) => p.name.toLowerCase() === target || p.folderName?.toLowerCase() === target);
     if (match) return match;
     console.log(`${C.yellow}No discovered project matches name "${args[projIdx + 1]}" — falling back to the picker.${C.reset}`);
@@ -290,12 +311,19 @@ async function main() {
         } }),
       });
       console.log(`${C.green}✔ ${C.reset}Setup saved. Everything works without AI — flip the AI toggle in the web UI later to enable it.${C.reset}\n`);
+      console.log(`${C.dim}Publishing/distributing this console? In the web chat type "how do i publish this" —${C.reset}`);
+      console.log(`${C.dim}it covers npm publish, the desktop installer (cd desktop && npm run dist), and common install errors.${C.reset}\n`);
     }
   } catch {
     // profile unreachable — the web wizard will handle onboarding instead
   }
 
-  let project = findProjectFromArgs(projects) || (projects.length === 1 ? projects[0] : await selectProject(projects));
+  // 2026-08-14: General-workspace chat. Interactive (TTY) runs always show the picker so a user
+  // can choose "General workspace" and chat before picking a project; piped/CI runs keep the old
+  // single-project auto-pick so scripted runs are not broken by an extra prompt.
+  let project = findProjectFromArgs(projects)
+    || (isTTY ? await selectProject(projects)
+        : (projects.length === 1 ? projects[0] : await selectProject(projects)));
 
   console.log(`\n${C.dim}─── Project: ${C.green}${project.name}${C.dim} ───────${C.reset}`);
   console.log(`${C.gray}Type a message, 'projects' to switch/rescan, or 'quit' to exit.${C.reset}\n`);

@@ -400,7 +400,11 @@ App-global identity (name/title/custom role) edited from the ⚙ Settings modal;
 | `set pack registry <https-url>` / `browse pack registry` / `install pack <name> from registry` | Remote pack registry (HTTPS only, SSRF-guarded, checksum-verified) — see "Pack marketplace" above |
 | `AI mode: "remember that ..."` | Save a durable cross-session fact to .console/memory.md |
 | `chat header download icon` | Export the session as Markdown/JSON/PDF; chat-log download from the session list |
-| `how do i publish this` / `how do i install this on someone else's system` | Publish-to-npm and cross-machine install steps (see "Publishing & installing on another machine" below) |
+| `how do i publish this` / `how do i install this on someone else's system` | Publish-to-npm and cross-machine install steps — including the desktop installer and common errors (see "Publishing & installing on another machine" below) |
+| `how do i fix a native module build error` / `how do i fix the re2 build error` | Visual Studio / node-gyp C++ workload fix; re2 & embeddings are optional so the install can succeed without them |
+| `how do i fix the sharp download timeout` | Retry `npm install`; sharp is optional and only affects semantic search |
+| `how do i fix an eperm permission error` | Close locked files / elevated terminal / clear cache; remove the partial `AppData\Roaming\npm\node_modules` folder first |
+| `how do i build the desktop app` | `cd desktop && npm install && npm run dist` — NSIS `.exe` (Windows), `.dmg` (macOS), `.AppImage` (Linux) |
 
 ---
 
@@ -474,6 +478,7 @@ someone else's system" answers from the command reference with the exact command
 ```powershell
 npm login                    # once per machine, if you haven't already
 npm version patch            # or minor / major — bumps package.json and tags a commit
+npm run build                # regenerate dist/ so what ships is up to date
 npm publish
 ```
 
@@ -481,6 +486,18 @@ npm publish
 `README.md`, `LICENSE`) — `data/`, personal config, and anything gitignored never gets published.
 Run `npm run build` first if `dist/` isn't already up to date; `npm publish` ships whatever's on
 disk, not a fresh build.
+
+**Desktop installer (no command line for the end user):** the repo also ships a self-contained
+Electron wrapper in `desktop/` (its own `package.json`, so the root install never pulls Electron):
+
+```powershell
+cd desktop
+npm install
+npm run dist        # NSIS .exe on Windows; .dmg on macOS; .AppImage on Linux
+```
+
+Users double-click the produced installer — no Node, no terminal, no npm. Ollama is still a
+separate optional install for AI mode (the in-app note points at ollama.com).
 
 **Installing on someone else's machine (no clone required):**
 
@@ -497,6 +514,15 @@ Either way it opens the same setup flow as running from source: pick or type a f
 and the first-run wizard walks through the rest. It needs Node 18+ and, for AI mode, a local
 [Ollama](https://ollama.com) install — everything else (the matcher, trigger-mode commands, git
 integration) works with zero setup.
+
+**Common install errors** (also answerable in chat via "how do i fix ..."):
+
+| Error | Cause | Fix |
+|---|---|---|
+| `gyp ERR! Could not find any Visual Studio installation` | A native module (`re2`, embeddings) tried to compile with node-gyp | Install VS "Desktop development with C++" + a Python tool, or rely on the optional fallback — `re2` and the embedding package install fine without it and the console runs normally |
+| `sharp: Installation error: Request timed out` | One-time native-binary download on a slow network | Just retry `npm install`; sharp is optional and only affects semantic search |
+| `EPERM: operation not permitted, rmdir ...` | A running process / antivirus / OneDrive holds a folder | Close Node processes, delete the partial `AppData\Roaming\npm\node_modules\local-project-console`, and retry from an elevated terminal |
+| `npm error code 1` after a `re2` node-gyp fail | The native build aborted the whole install | Retry without `--ignore-scripts` (that flag silently breaks code search) |
 
 ---
 

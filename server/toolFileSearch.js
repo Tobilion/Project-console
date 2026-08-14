@@ -4,7 +4,16 @@ import { createRequire } from 'module';
 import { walkDir, isTextFile, getProjectFiles } from './toolScan.js';
 
 const require = createRequire(import.meta.url);
-const RE2 = require('re2');
+
+// re2 is an optional native dependency (node-gyp build on Windows requires Visual Studio
+// C++ tooling). When it isn't installed we fall back to native RegExp — the isReDosRisk
+// guard below already rejects nested quantifiers, so the native engine stays safe.
+let RE2;
+try {
+  RE2 = require('re2');
+} catch {
+  RE2 = RegExp;
+}
 
 /**
  * Project-wide file/content search tools (Phase 14 split of toolFileTools.js, 2026-08-05 —
