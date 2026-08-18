@@ -1,5 +1,5 @@
 import crypto from 'crypto';
-import { isGitRepo } from '../gitSafety.js';
+import { isGitRepo, pushCommandWithUpstream } from '../gitSafety.js';
 import { pendingConfirmations } from '../state.js';
 import { extractCommentMessage, assertSafeCommitMessage } from './builtinHelpers.js';
 
@@ -26,9 +26,12 @@ export const gitWorkflowHandlers = {
         return true;
       }
       const token = crypto.randomUUID();
+      // pushCommandWithUpstream: a branch that has never been pushed would otherwise dead-end
+      // on the "no upstream branch" fatal (the 2026-08-13 live failure) — the push part gains
+      // --set-upstream so a first push succeeds in one step (2026-08-18).
       const command = commitMsg
-        ? `git add -A && git commit -m "${commitMsg}" && git push`
-        : 'git push';
+        ? await pushCommandWithUpstream(project.path, `git add -A && git commit -m "${commitMsg}" && git push`)
+        : await pushCommandWithUpstream(project.path, 'git push');
       pendingConfirmations.set(token, {
         owner: ws,
         projectId: project.id,
@@ -39,8 +42,8 @@ export const gitWorkflowHandlers = {
       ws.send(JSON.stringify({
         type: 'confirm_prompt', token,
         command: commitMsg
-          ? `git add -A && git commit -m "${commitMsg}" && git push  (commits with your comment, then pushes)`
-          : 'git push (pushes local commits to the remote repository)',
+          ? `${command}  (commits with your comment, then pushes)`
+          : `${command}  (pushes local commits to the remote repository)`,
         trigger: 'git_push'
       }));
     }
@@ -84,16 +87,17 @@ export const gitWorkflowHandlers = {
         return true;
       }
       const token = crypto.randomUUID();
+      const command = await pushCommandWithUpstream(project.path, `git add -A && git commit -m "${commitMsg}" && git push`);
       pendingConfirmations.set(token, {
         owner: ws,
         projectId: project.id,
-        command: `git add -A && git commit -m "${commitMsg}" && git push`,
+        command,
         trigger: input,
         createdAt: Date.now()
       });
       ws.send(JSON.stringify({
         type: 'confirm_prompt', token,
-        command: `git add -A && git commit -m "${commitMsg}" && git push (stages all, commits, and pushes)`,
+        command: `${command}  (stages all, commits, and pushes)`,
         trigger: 'git_commit_push'
       }));
     }

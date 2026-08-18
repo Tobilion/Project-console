@@ -1,5 +1,5 @@
 import crypto from 'crypto';
-import { performUndo, isGitRepo } from '../gitSafety.js';
+import { performUndo, isGitRepo, pushCommandWithUpstream } from '../gitSafety.js';
 import { executeCommand } from '../executor.js';
 import { pendingConfirmations, state } from '../state.js';
 import { injectContext } from '../contextInjector.js';
@@ -345,9 +345,12 @@ export const chitChatHandlers = {
         return true;
       }
       const token = crypto.randomUUID();
+      // pushCommandWithUpstream: a never-pushed branch would otherwise dead-end on the "no
+      // upstream branch" fatal (the 2026-08-13 live failure) — the push part gains
+      // --set-upstream so a first push succeeds in one step (2026-08-18).
       const command = commitMsg
-        ? `git add -A && git commit -m "${commitMsg}" && git push`
-        : 'git push';
+        ? await pushCommandWithUpstream(project.path, `git add -A && git commit -m "${commitMsg}" && git push`)
+        : await pushCommandWithUpstream(project.path, 'git push');
       pendingConfirmations.set(token, {
         owner: ws,
         projectId: project.id,
@@ -359,8 +362,8 @@ export const chitChatHandlers = {
         type: 'confirm_prompt',
         token,
         command: commitMsg
-          ? `git add -A && git commit -m "${commitMsg}" && git push  (commits with your comment, then pushes — Vercel deploys on push)`
-          : 'git push  (commits all changes first, then pushes — Vercel deploys on push)',
+          ? `${command}  (commits with your comment, then pushes — Vercel deploys on push)`
+          : `${command}  (pushes local commits to the remote repository)`,
         trigger: 'deploy'
       }));
     }

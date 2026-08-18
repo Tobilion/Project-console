@@ -893,5 +893,40 @@ eq('git retry: success exit not offered', offerUpstreamRetry({ ws, projectId: 'p
 eq('git retry: no fatal in output not offered', offerUpstreamRetry({ ws, projectId: 'p1', command: 'git push', stdout: '', stderr: 'fatal: other error', exitCode: 128 }), false);
 eq('git retry: no project not offered', offerUpstreamRetry({ ws, projectId: null, command: 'git push', stdout: '', stderr: fatalText, exitCode: 128 }), false);
 
+// --- GIT PUSH UPSTREAM PREVENTION + CHECKPOINT QUOTE SAFETY (2026-08-18) --------------
+// pushCommandWithUpstream (gitSafety.js): console-authored push commands (deploy /
+// git_push / git_commit_push) gain --set-upstream when the branch has no tracking remote,
+// so "push my site with the comment X" can never dead-end on the no-upstream fatal again.
+// createCheckpoint must also survive triggers containing double quotes (the -F tempfile fix).
+const { createCheckpoint, pushCommandWithUpstream } = await import(pathToFileURL(base + 'gitSafety.js').href);
+const { execFileSync } = await import('child_process');
+
+const gpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'console-gitpush-'));
+const gpWork = path.join(gpRoot, 'work');
+const gpBare = path.join(gpRoot, 'remote.git');
+fs.mkdirSync(gpWork);
+execFileSync('git', ['init', '--bare', gpBare], { stdio: 'ignore' });
+execFileSync('git', ['init', '-b', 'no-upstream-branch'], { cwd: gpWork, stdio: 'ignore' });
+execFileSync('git', ['config', 'user.name', 'Harness'], { cwd: gpWork, stdio: 'ignore' });
+execFileSync('git', ['config', 'user.email', 'harness@local'], { cwd: gpWork, stdio: 'ignore' });
+fs.writeFileSync(path.join(gpWork, 'a.txt'), 'a\n');
+execFileSync('git', ['add', '-A'], { cwd: gpWork, stdio: 'ignore' });
+execFileSync('git', ['commit', '-m', 'init'], { cwd: gpWork, stdio: 'ignore' });
+execFileSync('git', ['remote', 'add', 'origin', gpBare], { cwd: gpWork, stdio: 'ignore' });
+
+eq('push prevent: branch without upstream gains --set-upstream', await pushCommandWithUpstream(gpWork, 'git push'), 'git push --set-upstream origin no-upstream-branch');
+eq('push prevent: commit-push command gains --set-upstream at the end', await pushCommandWithUpstream(gpWork, 'git add -A && git commit -m "x" && git push'), 'git add -A && git commit -m "x" && git push --set-upstream origin no-upstream-branch');
+execFileSync('git', ['push', '-u', 'origin', 'no-upstream-branch'], { cwd: gpWork, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+eq('push prevent: branch with upstream stays unchanged', await pushCommandWithUpstream(gpWork, 'git push'), 'git push');
+eq('push prevent: non-repo dir stays unchanged', await pushCommandWithUpstream(path.join(gpRoot, 'nope'), 'git push'), 'git push');
+execFileSync('git', ['checkout', '--detach'], { cwd: gpWork, stdio: 'ignore' });
+eq('push prevent: detached HEAD stays unchanged', await pushCommandWithUpstream(gpWork, 'git push'), 'git push');
+execFileSync('git', ['checkout', 'no-upstream-branch'], { cwd: gpWork, stdio: 'ignore' });
+
+const cpQuoted = await createCheckpoint(gpWork, 'push my site with the comment "quoted trigger"');
+eq('checkpoint: quoted trigger survives via -F tempfile', cpQuoted.success === true && cpQuoted.message.includes('console-checkpoint: before "push my site with the comment "quoted trigger""'), true);
+
+fs.rmSync(gpRoot, { recursive: true, force: true });
+
 console.log(`check-handlers: ${total} checks, ${failed} failed`);
 process.exit(failed ? 1 : 0);

@@ -721,7 +721,13 @@ npm run lint    # tsc --noEmit
   parsing + sanitizePermissions + injection-safe substitution), `contextInjector.js`
   (codebase-index snippets appended to some trigger replies), `contextResolver.js`
   (last-resort keyword fallback with word-boundary regex — `.env`-style keywords special-cased),
-  `gitSafety.js` (createCheckpoint/performUndo/isGitRepo), `metrics.js`, `fileWatcher.js`,
+  `gitSafety.js` (createCheckpoint/performUndo/isGitRepo — the checkpoint commit passes its
+  message via a `-F` tempfile (2026-08-18): `-m "..."` interpolation broke on triggers with
+  double quotes, cmd.exe ignores `\"`; plus `pushCommandWithUpstream(cwd, cmd)` — rewrites a
+  push command to `--set-upstream <remote> <branch>` when the branch has no tracking remote,
+  so the console's own push builders can never dead-end on the no-upstream fatal; typed
+  commands run as typed and get executorGitRetry's one-click suggestion instead),
+  `metrics.js`, `fileWatcher.js`,
   `mathEval.js` (safe shunting-yard evaluator for the `calculate` intent — `+ - * / ( )`
   only, no eval/Function; Phase 6, 2026-08-12 adds `convertUnits` — offline static
   length/weight/volume/temperature table — and `percentageQuery` — percent-of/tip/tax phrases,
@@ -1420,6 +1426,9 @@ no dispatch or matching logic). Notable functional additions made during the sty
    calculation" → calculate, "extract the archive" → file_count); check-ws-cases 122/122;
    check-indexer 103/103; check-intents 1/7/82; check-docs 69/69. Phase 7 (2026-08-17,
    natural → server/porterStemmer.js, byte-identical parity): all counts unchanged.
+   Push hardening (2026-08-18): check-handlers 232/232 (+6 GIT-UPSTREAM rows — the
+   pushCommandWithUpstream offer matrix over a temp bare remote + the quoted-trigger
+   checkpoint -F row; the git-retry trigger row from the earlier fix pass is folded in).
    Run the relevant battery after ANY edit to the corresponding module.
 - **editFile** tolerates whitespace differences (normalized line-range fallback) but not
   wrong wording; on total failure the error names both attempts and tells the caller to
