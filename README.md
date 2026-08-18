@@ -472,14 +472,24 @@ scripts/                  — Daemon launchers (start/stop/add-to-startup)
 
 ```powershell
 npm run lint                # tsc --noEmit
+npm test                    # node:test suite: 461 tests (339 matcher cases + 122 WS case tables)
+npm run test:coverage       # same suite with a coverage report (server-wide, line/function/branch)
 npm run check-intents       # static exact/near-duplicate phrase scanner
-npm run check-matcher       # matching-pipeline regression battery (280+ inputs)
+npm run check-matcher       # matching-pipeline regression battery (339 inputs)
 npm run check-indexer       # codebase indexer regression battery
 npm run check-tools         # sandbox/gate/tool regression battery
 npm run check-handlers      # intent-handler coverage + dispatch checks
-npm run check-ws-cases      # frontend WS message-case regression battery
-npm run build               # vite build + esbuild server bundle → dist/
+npm run check-ws-cases      # frontend WS message-case regression battery (node:test, 122 tests)
+npm run build               # vite build + esbuild server bundle -> dist/
 ```
+
+The matcher batteries live in `server/scripts/batteries/matcherBatteries.js` — a single shared
+source of truth used by both `npm test` and `npm run check-matcher`. To recalibrate an
+expectation when an intent intentionally changes: `npm run check-matcher -- --probe`, eyeball
+the new routing, then update the `EXPECT` value in the battery file. The node:test suite runs
+every battery row as an individually-named test, so regressions show up as named failures in
+CI and in local `npm test` output. CI runs `npm test` on every push/PR alongside the legacy
+check-* gates.
 
 Cross-platform note: `start.bat` is Windows-only; on macOS/Linux run `npm run dev` directly. The server, sandboxed file tools, and safety blocklist are all `process.platform`-aware.
 

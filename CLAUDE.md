@@ -975,10 +975,12 @@ collapsed header.
 
 ## Matching pipeline — current behavior and known traps
 
-Run `npm run check-matcher` after ANY matcher edit (68+ self-asserting inputs; `--probe`
-mode to print routing when an intent intentionally changes). Current batteries green:
-CONTROL/PHASE1-3/BASICS/MATCHDAY/TRAPS/MUST_NOT_STEAL/GARBAGE (+ open-family rows + PHASE0
-time/date/calculate rows, 92/92).
+Run `npm test` (node:test suite) or `npm run check-matcher` after ANY matcher edit
+(339+ self-asserting inputs across CONTROL/PHASE1-3/BASICS/MATCHDAY/TRAPS/MUST_NOT_STEAL/
+GARBAGE/PDF/REMINDERS/CSV/CLIPBOARD/BACKUP/HOWTO/NOTES/OPEN-* rows; `--probe` mode prints
+routing when an intent intentionally changes). Batteries live in
+`server/scripts/batteries/matcherBatteries.js` — shared by both runners, recalibrate there
+(probe → eyeball → update EXPECT), never in two places.
 
 - **Stage order**: pre-semantic literal overrides → embedding scan (floor 0.6, margin 0.03,
   collision/close-second second pass) → stage-1b config-entry scan (`bestProjectCommandEntry`
@@ -1441,9 +1443,10 @@ no dispatch or matching logic). Notable functional additions made during the sty
    listSessions response gained the additive `projectPath` field, harness-neutral).
    Audit phases 1-6 (2026-08-17, see AUDIT-PROMPT.md — phases landed in earlier passes;
    Phase 6 latency + the persistence-chain fix landed 2026-08-17): check-handlers 225/225;
-   check-tools 175/175; check-matcher 337/339 (SAME two pre-existing drifts — "run the
-   calculation" → calculate, "extract the archive" → file_count); check-ws-cases 122/122;
-   check-indexer 103/103; check-intents 1/7/82; check-docs 69/69. Phase 7 (2026-08-17,
+   check-tools 175/175; check-matcher 339/339 (the two long-standing drifts — "run the
+   calculation" → calculate, "extract the archive" → file_count — were recalibrated into
+   the batteries on 2026-08-18, so the harness and the node:test suite are both green);
+   check-ws-cases 122/122; check-indexer 103/103; check-intents 1/7/82; check-docs 69/69. Phase 7 (2026-08-17,
    natural → server/porterStemmer.js, byte-identical parity): all counts unchanged.
    Push hardening (2026-08-18): check-handlers 232/232 (+6 GIT-UPSTREAM rows — the
    pushCommandWithUpstream offer matrix over a temp bare remote + the quoted-trigger

@@ -29,6 +29,9 @@ jobs:
       - name: Type check (tsc --noEmit)
         run: npm run lint
 
+      - name: Test suite (node:test — matcher batteries + WS case tables)
+        run: npm test
+
       - name: Intent duplicate scan
         run: npm run check-intents
 

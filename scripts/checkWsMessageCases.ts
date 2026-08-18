@@ -16,17 +16,17 @@
 import { readFileSync } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
 import { WS_CORE_CASES, WS_MESSAGE_CASES } from '../src/hooks/wsMessageCases';
 import type { WsCtx } from '../src/hooks/wsCtx';
 
 const BASE = path.join(path.dirname(fileURLToPath(import.meta.url)), '..') + path.sep;
 
-let passed = 0;
-let failed = 0;
+// The condition is evaluated eagerly at the call site (state may change between
+// registration and callback), then asserted inside the node:test callback.
 function check(name: string, cond: boolean) {
-  if (cond) { passed++; return; }
-  failed++;
-  console.error(`FAIL: ${name}`);
+  test(name, () => { assert.ok(cond, name); });
 }
 
 function makeFakeCtx() {
@@ -331,9 +331,6 @@ async function main() {
   const before = c.state.msgs.length;
   dispatch(c.ctx, 'banana_event', { data: 'x' });
   check('unknown type no-op', c.state.msgs.length === before);
-
-  console.log(`check-ws-cases: ${passed} passed, ${failed} failed`);
-  if (failed > 0) process.exit(1);
 }
 
 main().catch(err => {
