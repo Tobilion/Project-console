@@ -45,7 +45,13 @@ export function offerUpstreamRetry({ ws, projectId, command, stdout, stderr, exi
     owner: ws,
     projectId,
     command: retryCommand,
-    trigger: command,
+    // The trigger feeds createCheckpoint's `git commit -m "console-checkpoint: before
+    // <trigger>"` (connectionConfirm.js:277), which breaks on embedded double quotes — cmd.exe
+    // does not honor `\"`. The ORIGINAL deploy command carries the user's quoted commit message
+    // ("push my site with the comment \"...\""), so using it here made the retry's auto-checkpoint
+    // fail with a confusing "[GIT SAFETY] Failed to create git checkpoint" warning (live-probed
+    // 2026-08-18). The retry command itself is quote-free, so it doubles as a safe trigger.
+    trigger: retryCommand,
     createdAt: Date.now(),
   });
   if (ws.readyState === 1) {

@@ -226,7 +226,10 @@ npm run lint    # tsc --noEmit
   branch X has no upstream branch"; the close handler then offers the confirm-gated
   `git push --set-upstream origin <branch>` retry git itself suggests, same one-click shape
   as offerPortRetry, branch name validated against the safe refname charset before being
-  interpolated into the command),   `executorProcesses.js`
+  interpolated into the command; the retry's pending record sets `trigger: retryCommand` —
+  NOT the original quoted deploy command — because the trigger feeds createCheckpoint's
+  `-m "console-checkpoint: before <trigger>"`, which breaks on embedded double quotes
+  (cmd.exe ignores `\"`; live-probed 2026-08-18)),   `executorProcesses.js`
   (`runningProcesses` is MULTI-SLOT per project — `Map<projectId, Map<pid, entry>>` since the
   2026-08-10 NetPulse serve+watch fix, so several commands can run concurrently and each owns
   its own slot; `processLogs` LineRingBuffer 2000-line cap is per-project shared; `stopTrackedProcess`

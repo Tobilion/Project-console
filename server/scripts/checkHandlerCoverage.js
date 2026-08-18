@@ -882,6 +882,10 @@ const retryOffered = offerUpstreamRetry({
 eq('git retry: failed push offers a confirm-gated retry', retryOffered === true && ws.sent.length === 1 && ws.sent[0].type === 'confirm_prompt' && ws.sent[0].trigger === 'git_no_upstream_retry' && /--set-upstream origin ui-redesign/.test(ws.sent[0].command), true);
 const retryQueued = [...pendingConfirmations.entries()].find(([, p]) => p.command === 'git push --set-upstream origin ui-redesign');
 eq('git retry: pending record carries the retry command', !!retryQueued && retryQueued[1].projectId === 'p1', true);
+// The retry's trigger feeds createCheckpoint's `-m "console-checkpoint: before <trigger>"`
+// (connectionConfirm.js:277), and cmd.exe does not honor `\"` — so the trigger must be the
+// quote-free retry command, never the original quoted deploy command (live-probed 2026-08-18).
+eq('git retry: trigger is the quote-free retry command', !!retryQueued && retryQueued[1].trigger === 'git push --set-upstream origin ui-redesign' && !retryQueued[1].trigger.includes('"'), true);
 if (retryQueued) pendingConfirmations.delete(retryQueued[0]);
 sent.length = 0;
 eq('git retry: non-push command not offered', offerUpstreamRetry({ ws, projectId: 'p1', command: 'npm run deploy', stdout: '', stderr: fatalText, exitCode: 128 }), false);
