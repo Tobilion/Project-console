@@ -11,7 +11,11 @@ import { state } from './state.js';
 // Persistence is deliberately best-effort: a missing/corrupt file means a fresh start, and a
 // failed write is swallowed rather than crashing the server.
 
-const DEV_URLS_FILE = path.join(process.cwd(), 'data', 'dev-urls.json');
+// Env-overridable for harness isolation (2026-08-18): checkHandlerCoverage's
+// dev_server_status row probes live candidate ports and records hits — without a redirect it
+// wrote fixture ids (p1) into the REAL data/dev-urls.json. Same pattern as WATCH_RULES_FILE /
+// SCHEDULES_FILE / EDITORS_FILE.
+const DEV_URLS_FILE = process.env.DEV_URLS_FILE || path.join(process.cwd(), 'data', 'dev-urls.json');
 
 let saveTimer = null;
 

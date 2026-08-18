@@ -8,8 +8,8 @@ import path from 'path';
 import fs from 'fs';
 import { broadcast } from './wsServer.js';
 import { recordDevUrl, forgetDevUrl } from './devUrlStore.js';
-import { state } from './state.js';
-import { probeUrl } from './livenessProbe.js';
+import { state, allKnownProjects } from './state.js';
+import { probeUrl, candidateDevUrls } from './livenessProbe.js';
 import { summarizeCommandOutput } from './outputSummarizer.js';
 import { readProfile } from './routes/profileRoutes.js';
 import { buildSandboxEnv } from './executorSandbox.js';
@@ -57,6 +57,19 @@ export const DETACHED_EXIT_PROBE_TIMEOUT_MS = 1500;
 /** Bound on how long a dev server may sit at an unanswered port-conflict prompt before it is
  *  force-detached (matches the 5-minute confirmation TTL in state.js's sweep). */
 export const PORT_PROMPT_ANSWER_TIMEOUT_MS = 5 * 60 * 1000;
+// Post-detach dev-URL recovery (2026-08-18): a slow cold start can print the "Local:"
+// banner AFTER the force-detach deadline (Matchday Exchange's vite took >10s on a loaded
+// machine — console + NetPulse + tsx watch all running). The old detach() removed every
+// stdout listener, so the banner was dropped forever: no recordDevUrl, no server_url
+// event, no open-site chip, and the Live Sites tab (filtered on devUrl) showed nothing.
+// The stdout handler now stays attached in URL-scan-only mode after detach; these bound
+// the fallback probe that covers servers which never print a URL at all.
+/** Delay before the post-detach recovery probe starts — gives a slow server time to bind. */
+export const DEV_URL_RECOVERY_PROBE_DELAY_MS = 3000;
+/** Per-candidate probe timeout for the recovery pass. */
+export const DEV_URL_RECOVERY_PROBE_TIMEOUT_MS = 1000;
+/** Max candidate URLs probed per recovery pass (candidateDevUrls caps at 3 anyway). */
+export const DEV_URL_RECOVERY_MAX_CANDIDATES = 3;
 
 /** Rewrites `python ...` to the project's venv interpreter when a venv exists (verbatim rule). */
 function rewriteVenvPython(command, cwd) {
@@ -223,8 +236,12 @@ export function executeCommand(command, cwd, ws, projectId, opts = {}) {
       detached = true;
       if (trackedEntry.detachTimer) clearTimeout(trackedEntry.detachTimer);
       if (trackedEntry.forceDetachTimer) clearTimeout(trackedEntry.forceDetachTimer);
-      // Stop listening to output
-      child.stdout.removeAllListeners('data');
+      // 2026-08-18: the stdout listener STAYS attached in URL-scan-only mode instead of being
+      // removed — a slow cold start can print the "Local:" banner after the force-detach
+      // deadline (Matchday Exchange's vite on a loaded machine), and removing the listener
+      // dropped that banner forever (no recordDevUrl, no server_url event, no Live Sites row
+      // or open-site chip). The data handler below still scans for URLs after detach; it just
+      // stops streaming/buffering. stderr carries no URLs, so its listener is still dropped.
       child.stderr.removeAllListeners('data');
       // Flush any output that arrived just before detaching so it isn't silently dropped.
       stdoutSender.flush();
@@ -236,16 +253,27 @@ export function executeCommand(command, cwd, ws, projectId, opts = {}) {
         success: true,
         data: { code: null, detached: true, devServer: msg.devServer, url: msg.url || null }
       });
+      // Fallback for servers that never print a URL at all (or print it to a stream we can't
+      // see): probe the project's candidate ports after a short delay and record the first
+      // hit, so a live-but-quiet server still lands in the Live Sites tab and the chip.
+      // Fire-and-forget, bounded, never blocks the turn (2026-08-18).
+      if (isDev && projectId && !state.lastDevUrls.has(projectId)) {
+        recoverDevUrlAfterDetach(projectId, ws);
+      }
     }
 
     child.stdout.on('data', (data) => {
       const s = data.toString();
-      stdout += s;
+      // Only accumulate for the summary while streaming — a detached dev server could run for
+      // hours and the listener stays attached for URL scanning, so `stdout` must stop growing.
+      if (!detached) stdout += s;
 
-      if (detached) return;
-
-      stdoutSender.push(s);
-      if (projectId) processLogs.get(projectId)?.push(s);
+      // 2026-08-18: after detach, keep scanning for URLs (a slow cold-start banner can arrive
+      // late) but stop streaming/buffering — the process is background now.
+      if (!detached) {
+        stdoutSender.push(s);
+        if (projectId) processLogs.get(projectId)?.push(s);
+      }
 
       const clean = s.replace(ANSI_RE, '');
       const urls = clean.match(URL_PATTERN);
@@ -260,7 +288,7 @@ export function executeCommand(command, cwd, ws, projectId, opts = {}) {
           }
         }
         // If this is a dev server command, detach after URL + short grace to show it
-        if (isDev) {
+        if (isDev && !detached) {
           trackedEntry.detachTimer = setTimeout(detach, getTuning('DEV_URL_DETACH_GRACE_MS', DEV_URL_DETACH_GRACE_MS));
         }
       }
@@ -273,7 +301,7 @@ export function executeCommand(command, cwd, ws, projectId, opts = {}) {
       // The bound is re-armed on answer (connectionConfirm re-arms it to PORT_PROMPT_ANSWER_
       // TIMEOUT_MS and resets portPromptAsked so a second conflict can prompt again) — without
       // that, an unanswered prompt left the command hung forever.
-      if (isDev && !trackedEntry.portPromptAsked && projectId) {
+      if (isDev && !detached && !trackedEntry.portPromptAsked && projectId) {
         const asked = buildPortPromptConfirmation({
           ws, projectId, cleanInput: clean, triggerCommand: finalCommand,
         });
@@ -400,7 +428,17 @@ export function executeCommand(command, cwd, ws, projectId, opts = {}) {
         return;
       }
       setTimeout(async () => {
-        const probe = await probeUrl(lastUrl, DETACHED_EXIT_PROBE_TIMEOUT_MS);
+        // 2026-08-18: a single probe timeout is NOT proof the server is dead — a busy machine
+        // or cold JIT can exceed the 1.5s bound while the site still serves (same class as the
+        // dashboard forget fix). Only a definitive refusal — or two consecutive timeouts —
+        // declares death; a timeout gets one retry after the same delay. This used to
+        // removeTrackedProcess + forgetDevUrl + fire a false `dev-server-crash` notification
+        // on the first timeout, silently dropping the open-site chip for a live server.
+        let probe = await probeUrl(lastUrl, DETACHED_EXIT_PROBE_TIMEOUT_MS);
+        if (!probe.alive && probe.error === 'timeout') {
+          await new Promise((r) => setTimeout(r, DETACHED_EXIT_PROBE_DELAY_MS));
+          probe = await probeUrl(lastUrl, DETACHED_EXIT_PROBE_TIMEOUT_MS);
+        }
         if (probe.alive) return; // real server still serving (wrapper-close-early case)
         const removed = removeTrackedProcess(projectId, child.pid);
         if (removed) {
@@ -437,4 +475,52 @@ export function executeCommand(command, cwd, ws, projectId, opts = {}) {
       resolve({ success: false, error: err.message });
     });
   });
+}
+
+/**
+ * Fire-and-forget fallback for a dev server that detached without printing a URL (2026-08-18,
+ * Matchday Exchange: vite's "Local:" banner arrived after the 10s force-detach on a loaded
+ * machine, and detach() used to drop every stdout listener, so the URL was lost forever — no
+ * recordDevUrl, no server_url event, no Live Sites row or open-site chip). The stdout data
+ * handler now stays attached post-detach and scans for late banners; this probe covers servers
+ * that NEVER print a URL at all (or print it to a stream we can't see).
+ *
+ * Probes the project's candidate ports (package.json --port hints first, COMMON_DEV_PORTS
+ * fallback — see candidateDevUrls), bounded: one delay + up to 3 candidates at ~1s each, never
+ * blocks the turn. A hit is recorded through the SAME path as live URL detection (recordDevUrl
+ * + server_url event + broadcasts), so Live Sites and the click-chip light up for servers the
+ * force-detach window missed. The server_url event also posts a chat bubble, matching what the
+ * user would have seen had the banner been caught in time.
+ */
+async function recoverDevUrlAfterDetach(projectId, ws) {
+  try {
+    const project = allKnownProjects().find((p) => p.id === projectId);
+    if (!project) return;
+    const candidates = candidateDevUrls(project).slice(0, DEV_URL_RECOVERY_MAX_CANDIDATES);
+    if (candidates.length === 0) return;
+    // Give a slow cold start a moment to finish binding before probing.
+    await new Promise((r) => setTimeout(r, DEV_URL_RECOVERY_PROBE_DELAY_MS));
+    // The stdout URL scan (kept alive after detach) may have caught the banner meanwhile —
+    // or the user stopped the process — so re-check between probes. Deliberately NO
+    // runningProcesses guard here: the Windows npm wrapper can close early (removing the
+    // tracked entry in the close handler) while the real server keeps serving — this probe
+    // is that server's only chance to be discovered (same philosophy as connectionDevServer's
+    // on-demand candidate scan for servers started outside the console).
+    if (state.lastDevUrls.has(projectId)) return;
+    for (const url of candidates) {
+      if (state.lastDevUrls.has(projectId)) return;
+      const probe = await probeUrl(url, DEV_URL_RECOVERY_PROBE_TIMEOUT_MS);
+      if (probe.alive) {
+        recordDevUrl(projectId, url);
+        if (ws.readyState === 1) {
+          ws.send(JSON.stringify({ type: 'server_url', data: url }));
+        }
+        broadcast({ type: 'dashboard_update' });
+        broadcast({ type: 'processes_update' });
+        return;
+      }
+    }
+  } catch {
+    // Best-effort recovery — never crash the turn it runs behind.
+  }
 }

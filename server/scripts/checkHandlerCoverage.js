@@ -31,6 +31,10 @@ process.env.WATCH_RULES_FILE = path.join(os.tmpdir(), `console-watchrules-${Date
 // store), so the store must be redirected to a temp file too — never pollute the real
 // data/schedules.json from the harness.
 process.env.SCHEDULES_FILE = path.join(os.tmpdir(), `console-schedules-${Date.now()}.json`);
+// 2026-08-18: the dev_server_status row probes live candidate ports on this machine; a hit is
+// recorded through devUrlStore, which would write into the REAL data/dev-urls.json otherwise
+// (confirmed live: fixture id `p1` landed there). Redirect like the other stores.
+process.env.DEV_URLS_FILE = path.join(os.tmpdir(), `console-devurls-${Date.now()}.json`);
 
 const PROBE = process.argv.includes('--probe');
 // Derived from this script's own location, not hardcoded to one machine/username (audit

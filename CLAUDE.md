@@ -96,7 +96,12 @@ npm run lint    # tsc --noEmit
   session; explicit Content-Type; no temp files), `searchRoutes.js`,
   `monitoringRoutes.js` (`/api/metrics`, `/api/active-servers`, `/api/processes` +
   `/api/processes/:projectId/log`, `/api/dashboard` with a 30s cache invalidated by a
-  `volatileSignature()` over projects+runningProcesses+lastDevUrls), `profileRoutes.js`
+  `volatileSignature()` over projects+runningProcesses+lastDevUrls; the per-entry 600ms
+  probe marks a dead URL `devUrl: null` in the response but NO LONGER `forgetDevUrl`s it —
+  2026-08-18: a single transient probe failure permanently erased the persisted URL,
+  killing the open-site chip and the Live Sites row until the next server_url event; a
+  stale entry just shows not-live and is re-probed next rebuild, real cleanup stays in the
+  executor close handler), `profileRoutes.js`
   (`data/user-profile.json` — tracked by git, unlike gitignored conversations/near-misses/
   telemetry/dev-urls; hosts the opt-in `sandboxRiskyCommands` Phase 3 setting, read per
   sandbox-flagged execution via its exported `readProfile`)
@@ -244,7 +249,21 @@ npm run lint    # tsc --noEmit
   "Heads-up" warning appended to the answer, verification never re-kills (a same-command process
   may be the user's own manual instance); `removeTrackedProcess` deletes one
   pid and cleans the project key when its slot empties; `process.on('exit'/'SIGTERM')` cleanup),
-  `executorDevServer.js` (`isDevServerCommand`, `buildDetachMessage`). Tuning knobs are
+   `executorDevServer.js` (`isDevServerCommand`, `buildDetachMessage`). Post-detach URL
+   recovery (2026-08-18, Matchday Exchange live report): a slow cold start can print the
+   "Local:" banner AFTER the 10s force-detach deadline; the stdout listener now STAYS attached
+   in URL-scan-only mode post-detach (no streaming/buffering/accumulation, late banner still
+   recorded + broadcast), and `recoverDevUrlAfterDetach` probes the project's candidate ports
+   (candidateDevUrls, 3s delay, ≤3 candidates × 1s, fire-and-forget, no runningProcesses
+   guard — the Windows wrapper-close-early case removes the entry while the real server still
+   serves, so this probe is that server's only chance to be discovered) for servers that never
+   print a URL. Single-probe-failure hardening, same class as the dashboard forget fix: the
+   detached-close handler probes the last-known URL and only declares the server dead on a
+   definitive refusal or TWO consecutive timeouts (a timeout gets one retry after
+   `DETACHED_EXIT_PROBE_DELAY_MS`) — the old single 1.5s timeout removed the tracked entry,
+   forgot the URL, and fired a false `dev-server-crash` notification for a live-but-slow
+   server (Windows npm wrapper close-early + busy machine = the "chip keeps disappearing"
+   recurrence). Tuning knobs are
   exported named constants (`DEV_URL_DETACH_GRACE_MS`, `DEV_SERVER_FORCE_DETACH_MS`,
   `LONG_RUNNING_FORCE_DETACH_MS`, `STDOUT_SUMMARY_CAP`, `STDERR_SUMMARY_CAP`); likewise
   `semanticMatcher.js` exports `FUSE_THRESHOLD`/`FUSE_MIN_MATCH_CHAR_LENGTH`/

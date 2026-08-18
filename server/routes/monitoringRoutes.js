@@ -263,7 +263,15 @@ export function registerMonitoringRoutes(app) {
             probeConfirmedAlive = true;
           } else {
             devUrl = null;
-            forgetDevUrl(project.id);
+            // 2026-08-18: a single failed 600ms probe is NOT proof the server is gone — a
+            // busy machine, a mid-restart server, or vite still binding can all time out
+            // transiently. Forgetting here permanently erased the persisted URL, which
+            // killed the open-site chip and the Live Sites row until the next server_url
+            // event (reported live alongside the Matchday force-detach fix). The entry
+            // already shows "not running" — honesty doesn't require deletion. Real cleanup
+            // happens in the executor's close handler, which forgets only when the tracked
+            // process actually exited and nothing answers. A stale entry just shows
+            // not-live and is re-probed at the next cache rebuild.
           }
         } catch { /* keep the URL if the probe itself failed — a stale link is better than a wrong truth */ }
       }
