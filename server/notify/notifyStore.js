@@ -7,11 +7,19 @@
 import fs from 'fs';
 import path from 'path';
 import { writeFileAtomicSync } from '../atomicWrite.js';
+import { NOTIFY_EVENTS, NOTIFY_EVENT_KEYS } from './notifyEvents.js';
 
 const NOTIFY_FILE = path.join(process.cwd(), 'data', 'notifications.json');
 
+// The event map is seeded from the catalog (audit 2026-08-17): it used to hardcode three
+// events, so every event added to NOTIFY_EVENTS later (collision-found, the Phase 15
+// file-watch set, reminder-fired) was invisible to `list notifications` and — worse — was
+// DROPPED on reload, because loadNotifyRules only copied keys already present in the seed.
+// Building it from NOTIFY_EVENT_KEYS keeps rules and catalog drift-free by construction.
+const allEventsDisabled = () => Object.fromEntries(NOTIFY_EVENT_KEYS.map((k) => [k, false]));
+
 let rules = {
-  events: { 'dev-server-crash': false, 'schedule-find': false, 'task-done': false },
+  events: allEventsDisabled(),
   webhookUrls: [],
   desktop: false,
 };
@@ -42,10 +50,8 @@ export function loadNotifyRules() {
     const parsed = JSON.parse(fs.readFileSync(NOTIFY_FILE, 'utf8'));
     if (!parsed || typeof parsed !== 'object') return;
     if (parsed.events && typeof parsed.events === 'object') {
-      for (const key of Object.keys(parsed.events)) {
-        if (Object.prototype.hasOwnProperty.call(rules.events, key)) {
-          rules.events[key] = !!parsed.events[key];
-        }
+      for (const key of NOTIFY_EVENT_KEYS) {
+        if (typeof parsed.events[key] === 'boolean') rules.events[key] = parsed.events[key];
       }
     }
     if (Array.isArray(parsed.webhookUrls)) {

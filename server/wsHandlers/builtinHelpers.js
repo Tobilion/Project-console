@@ -67,6 +67,24 @@ export function extractCommentMessage(input) {
 }
 
 /**
+ * The commit/push confirm commands run through the shell (executor.js spawns with shell: true —
+ * cmd.exe on Windows), and the message is interpolated inside `git commit -m "..."`. A double
+ * quote inside the message closes the quoted argument early, letting the rest of the message run
+ * as new shell syntax; `$` and backticks are additionally command substitution on POSIX shells.
+ * cmd.exe does not honor `\"`, so escaping the quote was ineffective (audit 2026-08-17). Reject
+ * those characters with a clear answer instead of attempting per-shell escaping. `&`/`|`/`<`/`>`
+ * are literal inside balanced quotes on both shells, so they stay allowed.
+ * Returns a user-facing rejection message, or null when the message is safe to use.
+ */
+export function assertSafeCommitMessage(msg) {
+  if (!msg) return null;
+  if (/["`$]|[\x00-\x1f]/.test(msg)) {
+    return 'Commit messages containing double quotes, backticks, dollar signs, or control characters can\'t be run safely through the shell — please rephrase the message without them.';
+  }
+  return null;
+}
+
+/**
  * Queues a direct file-tool call (writeFile/appendToFile/etc.) behind the same
  * confirm-before-execute flow risky shell commands already use, instead of routing it through
  * executeCommand — there's no shell command to run here, just a sandboxed tools.js function.

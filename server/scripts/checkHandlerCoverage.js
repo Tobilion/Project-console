@@ -55,6 +55,11 @@ const { csvHandlers } = await import(pathToFileURL(base + 'wsHandlers/builtinCsv
 const { clipboardHandlers } = await import(pathToFileURL(base + 'wsHandlers/builtinClipboard.js').href);
 const { backupHandlers } = await import(pathToFileURL(base + 'wsHandlers/builtinBackup.js').href);
 const { handleNotifyCommand } = await import(pathToFileURL(base + 'wsHandlers/connectionNotifyAdmin.js').href);
+const { getWatchRules } = await import(pathToFileURL(base + 'watchRules.js').href);
+const { handleScheduleCommand } = await import(pathToFileURL(base + 'wsHandlers/connectionScheduleAdmin.js').href);
+const { handleHistoryCommand } = await import(pathToFileURL(base + 'wsHandlers/connectionHistoryAdmin.js').href);
+const { handleAutoStartCommand } = await import(pathToFileURL(base + 'wsHandlers/connectionAutoStartAdmin.js').href);
+const { handleUpdateCommand } = await import(pathToFileURL(base + 'wsHandlers/connectionUpdateAdmin.js').href);
 const { parseReminderInput } = await import(pathToFileURL(base + 'schedules/reminderParser.js').href);
 const {
   parsePdfNames, parsePdfOutput, parsePageSpec, extractWatermarkText,
@@ -64,6 +69,7 @@ const { PDFDocument } = await import('pdf-lib');
 const { revertAction, listActions, appendAction } = await import(pathToFileURL(base + 'actionHistory.js').href);
 const { BUILTIN_INTENTS, WORKSPACE_DEV_ONLY_INTENTS, intentWorkspaceEligible } = await import(pathToFileURL(base + 'intentRegistry.js').href);
 const { detectWorkspaceType, isRecognizableByCodeAlone } = await import(pathToFileURL(base + 'projectScanHelpers.js').href);
+const { discoverProjects } = await import(pathToFileURL(base + 'projectScanner.js').href);
 const { handleModeCommand } = await import(pathToFileURL(base + 'wsHandlers/connectionModeAdmin.js').href);
 const { handleOnboardingCommand } = await import(pathToFileURL(base + 'wsHandlers/connectionOnboardingAdmin.js').href);
 const { INTENTS } = await import(pathToFileURL(base + 'intentsData.js').href);
@@ -149,6 +155,28 @@ sent.length = 0;
 await handleBuiltinIntent(ws, 'project.action.open_file', 'open a file', proj, {});
 eq('actions leaf: open_file without a name asks which file', ws.sent.length === 1 && ws.sent[0].type === 'answer' && ws.sent[0].data.includes('Which file'), true);
 
+// Phase T (2026-08-14): open_html resolves via sandboxed findFiles, so the deterministic
+// harness shapes are the no-name ask + the no-match answer — spawning the actual browser is
+// covered by the BIDIRECTIONAL gate (same class as open_in_terminal/open_in_cursor).
+sent.length = 0;
+await handleBuiltinIntent(ws, 'project.action.open_html', 'preview the page', proj, {});
+eq('actions leaf: open_html without a name asks which file', ws.sent.length === 1 && ws.sent[0].type === 'answer' && ws.sent[0].data.includes('Which file'), true);
+
+// Phase T2 (2026-08-14): open_with resolves a file + editor (spawn is covered by the
+// BIDIRECTIONAL gate); the deterministic shapes are the no-name ask and the missing-editor
+// ask. reveal_file's no-name ask likewise; actual reveal spawns explorer (gate-covered).
+sent.length = 0;
+await handleBuiltinIntent(ws, 'project.action.open_with', 'open a file with pycharm', proj, {});
+eq('actions leaf: open_with without a name asks which file', ws.sent.length === 1 && ws.sent[0].type === 'answer' && ws.sent[0].data.includes('Which file'), true);
+
+sent.length = 0;
+await handleBuiltinIntent(ws, 'project.action.open_with', 'open main.py', proj, {});
+eq('actions leaf: open_with with a name but no editor asks which editor', ws.sent.length === 1 && ws.sent[0].type === 'answer' && /Which editor/.test(ws.sent[0].data), true);
+
+sent.length = 0;
+await handleBuiltinIntent(ws, 'project.action.reveal_file', 'open a file in the folder', proj, {});
+eq('actions leaf: reveal_file without a name asks which file', ws.sent.length === 1 && ws.sent[0].type === 'answer' && ws.sent[0].data.includes('Which file'), true);
+
 // --- NORMALIZER (Phase 16: GitHub remote URL -> repo page) --------------------
 eq('normalizer: git@ ssh shape', normalizeGithubPageUrl('git@github.com:tobi/user-repo.git'), 'https://github.com/tobi/user-repo');
 eq('normalizer: https with .git', normalizeGithubPageUrl('https://github.com/tobi/user-repo.git'), 'https://github.com/tobi/user-repo');
@@ -185,6 +213,21 @@ sent.length = 0;
 await handleBuiltinIntent(ws, 'system.chit_chat.how_do_i', 'how do i export this chat', proj, {});
 eq('chitchat leaf: how_do_i answers from the command catalog', ws.sent.length === 2 && ws.sent[0].type === 'answer' && /export/i.test(ws.sent[0].data) && /chat header download icon/.test(ws.sent[0].data), true);
 eq('chitchat leaf: how_do_i emits suggestion chips after the answer', ws.sent[1].type === 'suggestions' && ws.sent[1].data.includes('chat header download icon'), true);
+
+// NetPulse crosscheck (2026-08-17): "how do i publish" must answer with the push-to-github
+// guidance FIRST (the user's own publishing = git push) and the npm publish option second —
+// both catalog entries match the subject, deploy docs wins the keyword tie because it appears
+// earlier in the catalog. Never executes anything.
+sent.length = 0;
+await handleBuiltinIntent(ws, 'system.chit_chat.how_do_i', 'how do i publish', proj, {});
+eq('chitchat leaf: how_do_i publish answers push-to-github first', ws.sent.length === 2 && ws.sent[0].type === 'answer' && /push to github/.test(ws.sent[0].data) && /npm publish/.test(ws.sent[0].data), true);
+eq('chitchat leaf: how_do_i publish suggests the npm publish command as a chip', ws.sent[1].type === 'suggestions' && ws.sent[1].data.includes('npm version patch && npm publish'), true);
+
+// "how do i use a command" (singular) used to fall through to "no documented answer" — the help
+// entry's keywords only covered the plural "commands" form. The singular shape now matches help.
+sent.length = 0;
+await handleBuiltinIntent(ws, 'system.chit_chat.how_do_i', 'how do i use a command', proj, {});
+eq('chitchat leaf: how_do_i use-a-command answers from the help entry', ws.sent.length === 2 && ws.sent[0].type === 'answer' && /prints the full command reference/.test(ws.sent[0].data), true);
 
 sent.length = 0;
 await handleBuiltinIntent(ws, 'system.chit_chat.needs_ai_mode', 'make me a landing page', proj, {});
@@ -292,6 +335,41 @@ eq('detect: pdf-only folder -> general (Phase 3)', detectWorkspaceType(null, idx
 eq('detect: code + pdfs stays dev (Phase 3)', detectWorkspaceType(null, idxCodePlusPdf), 'dev');
 eq('detect: pdf-only folder is recognizable (Phase 3)', isRecognizableByCodeAlone(idxPdfOnly), true);
 eq('detect: junk-only folder still unrecognizable', isRecognizableByCodeAlone({ totalFiles: 2, hasRealCode: false, keyFiles: {}, hasGit: false }), false);
+
+// --- SCAN-ALL-FOLDERS (Phase T, 2026-08-14) -----------------------------------
+// The scanAllFolders profile setting: discoverProjects includes EVERY immediate subfolder
+// even with no recognition signals, and a signal-free root with no subfolders resolves to
+// itself. Real temp dirs (indexProject reads the folder), never the C:/tmp/nowhere fixture.
+const scanAllRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'console-scanall-'));
+const junkFolder = path.join(scanAllRoot, 'plain-notes');
+fs.mkdirSync(junkFolder);
+fs.writeFileSync(path.join(junkFolder, 'scratch.txt'), 'nothing here');
+const devFolder = path.join(scanAllRoot, 'real-app');
+fs.mkdirSync(devFolder);
+fs.writeFileSync(path.join(devFolder, 'package.json'), '{"name":"real-app","scripts":{"dev":"node index.js"}}');
+fs.writeFileSync(path.join(devFolder, 'index.js'), 'console.log("hi");');
+const withoutAll = await discoverProjects(scanAllRoot, { includeAll: false });
+const devOnly = withoutAll.filter((p) => p.folderName === 'real-app');
+const junkWithout = withoutAll.find((p) => p.folderName === 'plain-notes');
+eq('scan-all: off -> junk folder not included', !junkWithout, true);
+eq('scan-all: off -> dev folder still included', devOnly.length === 1, true);
+const withAll = await discoverProjects(scanAllRoot, { includeAll: true });
+const junkWith = withAll.find((p) => p.folderName === 'plain-notes');
+eq('scan-all: on -> junk folder included', !!junkWith, true);
+eq('scan-all: on -> junk folder classifies general', junkWith?.workspaceType, 'general');
+eq('scan-all: on -> junk folder has a config (shape-complete)', !!junkWith?.config && Array.isArray(junkWith?.config.entries), true);
+eq('scan-all: on -> dev folder still classifies dev', withAll.find((p) => p.folderName === 'real-app')?.workspaceType, 'dev');
+// Signal-free root with no subfolders resolves to itself when includeAll is on (the same
+// class of escape as hasRootPdf — a junk folder pasted as the scan target is one project).
+const bareRoot = path.join(os.tmpdir(), `console-bare-${Date.now()}`);
+fs.mkdirSync(bareRoot);
+fs.writeFileSync(path.join(bareRoot, 'scratch.txt'), 'nothing here');
+const bareOff = await discoverProjects(bareRoot, { includeAll: false });
+eq('scan-all: bare root with includeAll off -> zero projects', bareOff.length, 0);
+const bareOn = await discoverProjects(bareRoot, { includeAll: true });
+eq('scan-all: bare root with includeAll on -> resolves to itself', bareOn.length === 1 && bareOn[0].path === bareRoot && bareOn[0].workspaceType === 'general', true);
+try { fs.rmSync(bareRoot, { recursive: true, force: true }); } catch {}
+try { fs.rmSync(scanAllRoot, { recursive: true, force: true }); } catch {}
 
 // The admin tier WRITES console.config.json, so it is exercised against a real temp dir (the
 // C:/tmp/nowhere fixture above must never receive files). broadcast() is a no-op here — the
@@ -636,6 +714,9 @@ sent.length = 0;
 await handleBuiltinIntent(ws, 'clipboard.copy_item', 'copy clipboard item 2', proj, {});
 eq('clipboard leaf: copy item on empty history asks which', ws.sent.length === 1 && ws.sent[0].type === 'answer' && /Which item/.test(ws.sent[0].data), true);
 sent.length = 0;
+await handleBuiltinIntent(ws, 'clipboard.remove_item', 'remove clipboard item 2', proj, {});
+eq('clipboard leaf: remove item on empty history asks which (audit 2026-08-17)', ws.sent.length === 1 && ws.sent[0].type === 'answer' && /Which item/.test(ws.sent[0].data), true);
+sent.length = 0;
 await handleBuiltinIntent(ws, 'snippet.show', 'show my snippets', proj, {});
 eq('snippet leaf: show answers empty state', ws.sent.length === 1 && ws.sent[0].type === 'answer' && /No snippets yet/.test(ws.sent[0].data), true);
 
@@ -693,21 +774,61 @@ fs.rmSync(auditRoot, { recursive: true, force: true });
 // needs a live fs event) — the store + admin surface is the harnessable contract.
 sent.length = 0;
 const w1 = await handleNotifyCommand(ws, proj, 'notify me when files change in C:/tmp/watch-a', 'notify me when files change in C:/tmp/watch-a');
-eq('watch admin: file-changed rule consumed + answers + opens panel', w1 === true && ws.sent.length === 1 && ws.sent[0].type === 'answer' && ws.sent[0].openPanel === 'notifications' && /Watching/.test(ws.sent[0].data), true);
+eq('watch admin: file-changed rule consumed + answers + opens panel', w1 === true && ws.sent.length === 2 && ws.sent[0].type === 'answer' && ws.sent[1].type === 'end' && ws.sent[0].openPanel === 'notifications' && /Watching/.test(ws.sent[0].data), true);
 sent.length = 0;
 const w2 = await handleNotifyCommand(ws, proj, "notify me if C:/tmp/watch-b hasn't changed in 7 days", "notify me if C:/tmp/watch-b hasn't changed in 7 days");
-eq('watch admin: folder-stale rule consumed + answers + opens panel', w2 === true && ws.sent.length === 1 && ws.sent[0].type === 'answer' && ws.sent[0].openPanel === 'notifications' && /Stale-check/.test(ws.sent[0].data), true);
+eq('watch admin: folder-stale rule consumed + answers + opens panel', w2 === true && ws.sent.length === 2 && ws.sent[0].type === 'answer' && ws.sent[1].type === 'end' && ws.sent[0].openPanel === 'notifications' && /Stale-check/.test(ws.sent[0].data), true);
 sent.length = 0;
 const w3 = await handleNotifyCommand(ws, proj, 'list watched folders', 'list watched folders');
-eq('watch admin: list shows both rules', w3 === true && ws.sent.length === 1 && ws.sent[0].data.includes('watch-a') && ws.sent[0].data.includes('watch-b'), true);
+eq('watch admin: list shows both rules', w3 === true && ws.sent.length === 2 && ws.sent[0].type === 'answer' && ws.sent[1].type === 'end' && ws.sent[0].data.includes('watch-a') && ws.sent[0].data.includes('watch-b'), true);
 sent.length = 0;
 const w4 = await handleNotifyCommand(ws, proj, 'stop watching C:/tmp/watch-a', 'stop watching C:/tmp/watch-a');
-eq('watch admin: stop watching removes the rule', w4 === true && ws.sent.length === 1 && /Stopped watching/.test(ws.sent[0].data), true);
+eq('watch admin: stop watching removes the rule', w4 === true && ws.sent.length === 2 && ws.sent[0].type === 'answer' && ws.sent[1].type === 'end' && /Stopped watching/.test(ws.sent[0].data), true);
+sent.length = 0;
+const w4b = await handleNotifyCommand(ws, proj, 'disable watch rule w-invalid', 'disable watch rule w-invalid');
+eq('watch admin: disabling an unknown rule answers cleanly (audit 2026-08-17)', w4b === true && ws.sent.length === 2 && ws.sent[0].type === 'answer' && ws.sent[1].type === 'end' && /No watch rule/.test(ws.sent[0].data), true);
+sent.length = 0;
+const w4c = await handleNotifyCommand(ws, proj, 'enable watch rule w-invalid', 'enable watch rule w-invalid');
+eq('watch admin: enabling an unknown rule answers cleanly (audit 2026-08-17)', w4c === true && ws.sent.length === 2 && ws.sent[0].type === 'answer' && ws.sent[1].type === 'end' && /No watch rule/.test(ws.sent[0].data), true);
+sent.length = 0;
+const watchBRule = getWatchRules().find((r) => r.folder === 'C:/tmp/watch-b');
+const w4d = await handleNotifyCommand(ws, proj, `enable watch rule ${watchBRule?.id}`, `enable watch rule ${watchBRule?.id}`);
+eq('watch admin: enable by id toggles the rule on (audit 2026-08-17)', w4d === true && ws.sent.length === 2 && ws.sent[0].type === 'answer' && ws.sent[1].type === 'end' && /now enabled/.test(ws.sent[0].data) && watchBRule?.enabled === true, true);
+sent.length = 0;
+const w4e = await handleNotifyCommand(ws, proj, `disable watch rule ${watchBRule?.id}`, `disable watch rule ${watchBRule?.id}`);
+eq('watch admin: disable by id toggles the rule off (audit 2026-08-17)', w4e === true && ws.sent.length === 2 && ws.sent[0].type === 'answer' && ws.sent[1].type === 'end' && /now disabled/.test(ws.sent[0].data) && watchBRule?.enabled === false, true);
 sent.length = 0;
 const w5 = await handleNotifyCommand(ws, proj, 'notify me when dev-server-crash', 'notify me when dev-server-crash');
-eq('watch admin: existing event enable still works', w5 === true && ws.sent.length === 1 && /ON/.test(ws.sent[0].data), true);
+eq('watch admin: existing event enable still works', w5 === true && ws.sent.length === 2 && ws.sent[0].type === 'answer' && ws.sent[1].type === 'end' && /ON/.test(ws.sent[0].data), true);
 try { fs.unlinkSync(process.env.WATCH_RULES_FILE); } catch {}
 delete process.env.WATCH_RULES_FILE;
+
+// --- ADMIN TRAILING-END REGRESSION (2026-08-17) -------------------------------
+// Every pre-matcher admin handler must send a trailing `end` after its answer — the frontend
+// only clears commandPending on `end` (wsMessageCases.ts), so an answer without one leaves the
+// terminal stuck on "Running..." forever. The mode-admin rows above already assert this for the
+// mode handler; these rows cover the five handlers that previously omitted it (the 2026-08-14
+// bug class recurring — see the audit's stuck-spinner findings).
+sent.length = 0;
+const sch1 = await handleScheduleCommand(ws, proj, 'list schedules', 'list schedules');
+eq('schedule admin: list answers + trailing end', sch1 === true && ws.sent.length === 2 && ws.sent[0].type === 'answer' && ws.sent[1].type === 'end', true);
+sent.length = 0;
+const hist1 = await handleHistoryCommand(ws, proj, 'show history', 'show history');
+eq('history admin: show history answers + trailing end', hist1 === true && ws.sent.length === 2 && ws.sent[0].type === 'answer' && ws.sent[1].type === 'end', true);
+sent.length = 0;
+const aut1 = await handleAutoStartCommand(ws, proj, 'list auto-start');
+eq('auto-start admin: list answers + trailing end', aut1 === true && ws.sent.length === 2 && ws.sent[0].type === 'answer' && ws.sent[1].type === 'end', true);
+sent.length = 0;
+const not1 = await handleNotifyCommand(ws, proj, 'list notifications', 'list notifications');
+eq('notify admin: list answers + trailing end', not1 === true && ws.sent.length === 2 && ws.sent[0].type === 'answer' && ws.sent[1].type === 'end', true);
+// The update handler hits the npm registry — stub fetch to return a newer version so the
+// answer + trailing-end contract is exercised deterministically, then restore the real fetch.
+const realFetch = globalThis.fetch;
+globalThis.fetch = async () => ({ ok: true, json: async () => ({ version: '9.9.9' }) });
+sent.length = 0;
+const upd1 = await handleUpdateCommand(ws, proj, 'check for updates');
+eq('update admin: check-for-updates answers + trailing end', upd1 === true && ws.sent.length === 2 && ws.sent[0].type === 'answer' && ws.sent[1].type === 'end' && /Update available/.test(ws.sent[0].data), true);
+globalThis.fetch = realFetch;
 
 // --- PACK REGISTRY (Phase 17, 2026-08-12) -------------------------------------
 // The network fetch itself can't be exercised in the harness (SSRF guard blocks localhost by

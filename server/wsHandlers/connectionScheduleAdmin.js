@@ -5,6 +5,10 @@
 // message would use (matchInput), and only read-only intents survive (see scheduleIntents.js);
 // anything mutating, unambiguous, unresolved, or that resolves to a config-entry command is
 // rejected with a clear error instead of being silently created and skipped later.
+//
+// Every branch must send a trailing `end` after its answer: the frontend only clears its
+// `commandPending` flag on `end` (wsMessageCases.ts), so an answer without one leaves the
+// terminal stuck on "Running..." forever — the 2026-08-14 mode-switch bug class.
 
 import { state } from '../state.js';
 import { matchInput } from '../matcher.js';
@@ -13,6 +17,8 @@ import { addSchedule, getSchedules, removeSchedule } from '../schedules/schedule
 import { isReadOnlyIntent, readOnlySummary } from '../schedules/scheduleIntents.js';
 import { syncEventTriggerWatchers } from '../schedules/scheduler.js';
 import { readScheduleLog } from '../schedules/scheduleFire.js';
+
+const end = (ws) => ws.send(JSON.stringify({ type: 'end' }));
 
 // The interval phrase can span several words ("every 5 minutes"), so capture the longest
 // recognized prefix and treat the rest as the trigger command. The optional "schedule "
@@ -23,6 +29,7 @@ const SCHEDULE_RE = /^(?:schedule\s+)?(every\s+\d+\s*(?:minute|minutes|min|mins|
 export async function handleScheduleCommand(ws, project, lowerInput, input) {
   if (/^review\s+schedule\s*log$/.test(lowerInput)) {
     ws.send(JSON.stringify({ type: 'answer', data: `### Schedule log\n\n\`\`\`\n${readScheduleLog()}\n\`\`\`` }));
+    end(ws);
     return true;
   }
 
@@ -30,6 +37,7 @@ export async function handleScheduleCommand(ws, project, lowerInput, input) {
     const schedules = getSchedules();
     if (schedules.length === 0) {
       ws.send(JSON.stringify({ type: 'answer', data: `No schedules yet. Try \`schedule every 10 minutes "git status"\` — ${readOnlySummary()}.` }));
+      end(ws);
       return true;
     }
     const rows = schedules.map((s, i) => {
@@ -39,6 +47,7 @@ export async function handleScheduleCommand(ws, project, lowerInput, input) {
       return `${i + 1}. **${s.id}**${owner} — ${when} → \`${s.command}\` — last fired ${last}`;
     });
     ws.send(JSON.stringify({ type: 'answer', data: `### Schedules\n\n${rows.join('\n')}` }));
+    end(ws);
     return true;
   }
 
@@ -52,6 +61,7 @@ export async function handleScheduleCommand(ws, project, lowerInput, input) {
         ? `Removed schedule \`${removed.id}\` ("${removed.command}", ${removed.label}).`
         : `No schedule \`${removeMatch[1]}\` exists for **[${project.name}]** — try \`list schedules\`.`,
     }));
+    end(ws);
     return true;
   }
 
@@ -78,6 +88,7 @@ async function createSchedule(ws, project, rawInput, intervalPhrase, command) {
   const parsed = parseIntervalPhrase(intervalPhrase);
   if (!parsed.ok) {
     ws.send(JSON.stringify({ type: 'answer', data: parsed.reason }));
+    end(ws);
     return;
   }
 
@@ -87,24 +98,29 @@ async function createSchedule(ws, project, rawInput, intervalPhrase, command) {
     matchResult = await matchInput(command, project, projectIndex, { model: null });
   } catch (err) {
     ws.send(JSON.stringify({ type: 'answer', data: `Couldn't validate "${command}" — ${err.message}` }));
+    end(ws);
     return;
   }
 
   const intentId = matchResult.builtin || null;
   if (!intentId) {
     ws.send(JSON.stringify({ type: 'answer', data: `I can't schedule that: "${command}" didn't resolve to an intent. Scheduled commands must be ${readOnlySummary()}.` }));
+    end(ws);
     return;
   }
   if (matchResult.multi || matchResult.disambiguate) {
     ws.send(JSON.stringify({ type: 'answer', data: `Keep a scheduled command to one clear read-only intent — "${command}" reads as ambiguous.` }));
+    end(ws);
     return;
   }
   if (!isReadOnlyIntent(intentId)) {
     ws.send(JSON.stringify({ type: 'answer', data: `**Can't schedule "${command}"** — it resolves to a mutating or confirm-gated action (\`${intentId}\`), which can never run unattended. Scheduled commands must be ${readOnlySummary()}.` }));
+    end(ws);
     return;
   }
   if (matchResult.match) {
     ws.send(JSON.stringify({ type: 'answer', data: `**Can't schedule "${command}"** — it resolves to a project config command, and command schedules aren't supported yet (a config command could mutate anything). Scheduled commands must be ${readOnlySummary()}.` }));
+    end(ws);
     return;
   }
 
@@ -114,4 +130,5 @@ async function createSchedule(ws, project, rawInput, intervalPhrase, command) {
     type: 'answer',
     data: `Scheduled ✅ — **${schedule.id}**: ${schedule.label} → \`${schedule.command}\` (intent \`${intentId}\`).\n\nResults post to this chat when someone is connected, otherwise to the schedule log (\`review schedule log\`). Manage with \`list schedules\` / \`remove schedule ${schedule.id}\`.`,
   }));
+  end(ws);
 }

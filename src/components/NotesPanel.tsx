@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { StickyNote, RefreshCw, Send, Search, FileText } from 'lucide-react';
 import { apiFetchJson } from '../utils/apiFetch';
+import { projectApi } from '../utils/projectApi';
 import { cn } from '../lib/utils';
 import type { Project } from '../types';
 import './NotesPanel.css';
@@ -23,13 +24,15 @@ interface NoteInfo {
 interface NotesPanelProps {
   project: Project | null;
   onSendMessage: (text: string) => void;
+  /** Phase T (2026-08-14): the tab whose workspace this panel's REST calls address. */
+  tabId?: string | null;
 }
 
 const POLL_MS = 15000;
 const selKey = (projectId: string) => `console.notesSelection.${projectId}`;
 const filterKey = (projectId: string) => `console.notesFilter.${projectId}`;
 
-export function NotesPanel({ project, onSendMessage }: NotesPanelProps) {
+export function NotesPanel({ project, onSendMessage, tabId = null }: NotesPanelProps) {
   const [notes, setNotes] = useState<NoteInfo[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -37,10 +40,25 @@ export function NotesPanel({ project, onSendMessage }: NotesPanelProps) {
   const [filter, setFilter] = useState('');
   const [selectedText, setSelectedText] = useState<string | null>(null);
   const [lastSent, setLastSent] = useState<string | null>(null);
+  // Phase 5: in-place edit draft — the right-pane textarea was read-only with no way to
+  // change a note. null = not editing; saves go through the normal `note:` trigger
+  // (append path — the store's exact-dedupe makes an unchanged re-save a no-op, and an
+  // edited text lands as a fresh note line, oldest copy kept).
+  const [editDraft, setEditDraft] = useState<string | null>(null);
   const lastSentTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Clear the pending "last sent" timer on unmount so its delayed setState can't fire on a
   // dead panel (and hold the panel's closure alive after it unmounted).
   useEffect(() => () => { if (lastSentTimer.current) clearTimeout(lastSentTimer.current); }, []);
+
+  // Switching the selected note resets the draft so it never shows another note's text.
+  const selectedTextRef = useRef<string | null>(null);
+  const prevSelectedText = selectedText;
+  useEffect(() => {
+    if (prevSelectedText !== selectedTextRef.current) {
+      selectedTextRef.current = prevSelectedText;
+      setEditDraft(null);
+    }
+  }, [prevSelectedText]);
 
   // Persist selection + filter per project ID. Selection is stored by note text (the note's
   // stable identity) — an index would silently point at a different note after a filter or
@@ -64,12 +82,12 @@ export function NotesPanel({ project, onSendMessage }: NotesPanelProps) {
   const fetchNotes = useCallback(async () => {
     if (!project?.id) return;
     setLoading(true);
-    const data = await apiFetchJson<{ notes: NoteInfo[] }>(`/api/projects/${encodeURIComponent(project.id)}/notes`);
+    const data = await apiFetchJson<{ notes: NoteInfo[] }>(projectApi(`/api/projects/${encodeURIComponent(project.id)}/notes`, tabId));
     setLoading(false);
     if (!data) { setError('Could not load notes.'); return; }
     setError(null);
     setNotes(data.notes || []);
-  }, [project?.id]);
+  }, [project?.id, tabId]);
 
   useEffect(() => {
     if (project?.id) {
@@ -92,6 +110,16 @@ export function NotesPanel({ project, onSendMessage }: NotesPanelProps) {
     if (!trimmed) return;
     send(/^note\s*:/i.test(trimmed) ? trimmed : `note: ${trimmed}`);
     setNewInput('');
+  };
+
+  // Phase 5: save the edited note (blur or Cmd/Ctrl+Enter) through the same trigger path —
+  // unchanged text is a no-op server-side (exact dedupe), so this only fires on real edits.
+  const saveEdit = () => {
+    if (editDraft === null) return;
+    const trimmed = editDraft.trim();
+    setEditDraft(null);
+    if (!trimmed || trimmed === selected?.text) return;
+    send(`note: ${trimmed}`);
   };
 
   const handleSearch = () => {
@@ -221,13 +249,20 @@ export function NotesPanel({ project, onSendMessage }: NotesPanelProps) {
                 )}
               </div>
               <textarea
-                readOnly
-                value={selected.text}
+                value={editDraft ?? selected.text}
+                onChange={(e) => setEditDraft(e.target.value)}
+                onBlur={saveEdit}
+                onKeyDown={(e) => {
+                  if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+                    e.preventDefault();
+                    saveEdit();
+                  }
+                }}
                 className="flex-1 w-full bg-transparent border-none outline-none resize-none px-5 py-3 text-[13px] leading-[18px] text-fg-subtle"
                 spellCheck={false}
               />
               <div className="px-5 pb-3 shrink-0 text-[10px] text-fg-dim">
-                Read-only view — edits and new notes go through chat (the terminal is the single source of truth).
+                Editable — changes save on blur (or Cmd/Ctrl+Enter) through the chat trigger; new notes go through the terminal (single source of truth).
               </div>
             </>
           ) : (

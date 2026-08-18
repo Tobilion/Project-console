@@ -1,5 +1,6 @@
 import fs from 'fs/promises';
 import { applySingleEdit } from './toolEdit.js';
+import { invalidateProjectFiles } from './toolScan.js';
 
 /**
  * The find-and-replace edit tool (Phase 14 split of toolFileTools.js, 2026-08-05 — body moved
@@ -7,7 +8,7 @@ import { applySingleEdit } from './toolEdit.js';
  * `applySingleEdit` (toolEdit.js) tries an exact match first, then a whitespace-normalized
  * line-range fallback for smaller models that don't reproduce indentation byte-for-byte.
  */
-export function createFileEditTool({ resolveSafe }) {
+export function createFileEditTool({ root, resolveSafe }) {
   async function editFile({ path: filePath, oldString, newString, oldStrings, newStrings } = {}) {
     if (!filePath) return { success: false, error: 'path is required.' };
     const hasMulti = Array.isArray(oldStrings) || Array.isArray(newStrings);
@@ -49,6 +50,7 @@ export function createFileEditTool({ resolveSafe }) {
           return { success: false, error: 'No changes made (replacement identical to original).' };
         }
         await fs.writeFile(resolved, content, 'utf-8');
+        invalidateProjectFiles(root);
         const note = fallbackUsed ? ' (matched via whitespace-normalized fallback — verify the result looks right)' : '';
         return { success: true, data: `Edited ${filePath} (${oldStrings.length} hunk${oldStrings.length === 1 ? '' : 's'})${note}` };
       }
@@ -66,6 +68,7 @@ export function createFileEditTool({ resolveSafe }) {
         return { success: false, error: 'No changes made (replacement identical to original).' };
       }
       await fs.writeFile(resolved, attempt.content, 'utf-8');
+      invalidateProjectFiles(root);
       const note = attempt.usedFallback ? ' (matched via whitespace-normalized fallback — verify the result looks right)' : '';
       return { success: true, data: `Edited ${filePath}${note}` };
     } catch (err) {

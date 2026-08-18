@@ -4,11 +4,18 @@
 // the exact npm command before anything runs, and with sandboxRiskyCommands on it inherits the
 // Phase 3 sandboxed env like every other confirmed command). Dispatched from the same
 // pre-matcher admin tier as notify/health/auto-start commands (connectionExecute.js).
+//
+// Answer branches must send a trailing `end` (the frontend only clears its commandPending flag
+// on `end`); the confirm_prompt branch must NOT — the confirm flow sends its own `end` after
+// approval/rejection.
+
 import crypto from 'crypto';
 import { state, pendingConfirmations } from '../state.js';
 import { checkForUpdates } from '../updateChecker.js';
 
 const UPDATE_COMMAND = 'npm install -g local-project-console@latest';
+
+const end = (ws) => ws.send(JSON.stringify({ type: 'end' }));
 
 /** "check for updates" / "update console" — returns true when the input matched. */
 export async function handleUpdateCommand(ws, project, lowerInput) {
@@ -24,6 +31,7 @@ export async function handleUpdateCommand(ws, project, lowerInput) {
     } else {
       ws.send(JSON.stringify({ type: 'answer', data: `Update available: ${info.current} → ${info.latest}. Say "update console" to install it (you'll be asked to confirm).` }));
     }
+    end(ws);
     return true;
   }
 
@@ -48,6 +56,7 @@ export async function handleUpdateCommand(ws, project, lowerInput) {
     }
     if (info && !info.available) {
       ws.send(JSON.stringify({ type: 'answer', data: `You're already on the latest version (${info.current}).` }));
+      end(ws);
       return true;
     }
     // The version check failed (offline or transient) — still let the user try: npm itself
@@ -56,6 +65,7 @@ export async function handleUpdateCommand(ws, project, lowerInput) {
       type: 'answer',
       data: "Couldn't verify the latest version (offline?). The update will install the registry's latest published version if you confirm — run 'update console' again to retry the check.",
     }));
+    end(ws);
     return true;
   }
 

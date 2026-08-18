@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Bell, RefreshCw, Plus, Trash2, CheckCircle2, Globe, MonitorSmartphone } from 'lucide-react';
+import { Bell, RefreshCw, Plus, Trash2, CheckCircle2, Globe, MonitorSmartphone, Zap, Pause, Play } from 'lucide-react';
 import { apiFetchJson } from '../utils/apiFetch';
 import { cn } from '../lib/utils';
 import type { Project } from '../types';
@@ -16,6 +16,8 @@ interface WatchRule {
   days: number | null;
   projectName: string | null;
   createdAt: number;
+  enabled: boolean;
+  lastFiredAt?: number;
 }
 
 interface NotificationsPanelProps {
@@ -42,6 +44,11 @@ function ruleSentence(r: WatchRule): string {
     return `When ${r.folder} hasn't changed in ${r.days} days, notify me`;
   }
   return `When ${EVENT_LABEL[r.event]} in ${r.folder}, notify me`;
+}
+
+function lastFiredText(r: WatchRule): string {
+  if (!r.lastFiredAt) return 'never fired';
+  return `last fired ${new Date(r.lastFiredAt).toLocaleString()}`;
 }
 
 export function NotificationsPanel({ project, onSendMessage }: NotificationsPanelProps) {
@@ -149,7 +156,7 @@ export function NotificationsPanel({ project, onSendMessage }: NotificationsPane
           </div>
           <p className="text-[11px] text-fg-dim mt-2">
             Rules are notification-only — they never run commands. Each rule also needs its event
-            enabled below to actually fire.
+            enabled below to actually fire. Pause/resume toggles a single rule without removing it.
           </p>
         </div>
 
@@ -175,6 +182,9 @@ export function NotificationsPanel({ project, onSendMessage }: NotificationsPane
           <div className="flex items-center gap-4 mt-3 pt-2 border-t border-border-faint text-[11px] text-fg-dim">
             <span className="flex items-center gap-1"><MonitorSmartphone size={12} /> Desktop: {desktop ? 'on' : 'off'}</span>
             <span className="flex items-center gap-1"><Globe size={12} /> Webhooks: {webhooks.length === 0 ? 'none' : webhooks.length}</span>
+            <button onClick={() => send('test notification')} className="ml-auto flex items-center gap-1 text-accent-teal hover:text-fg-strong transition-colors" title="Send a test notification now">
+              <Zap size={12} /> Test
+            </button>
           </div>
         </div>
 
@@ -188,9 +198,20 @@ export function NotificationsPanel({ project, onSendMessage }: NotificationsPane
           ) : (
             <div className="space-y-2">
               {rules.map((r) => (
-                <div key={r.id} className="bg-panel rounded-xl border border-border-faint p-4 flex items-center gap-3">
+                <div key={r.id} className={cn('bg-panel rounded-xl border border-border-faint p-4 flex items-center gap-3', !r.enabled && 'opacity-60')}>
                   <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: EVENT_COLORS[r.event] || 'var(--color-accent-blue)' }} />
-                  <span className="flex-1 text-xs text-fg-subtle min-w-0 truncate" title={r.folder}>{ruleSentence(r)}</span>
+                  <span className="flex-1 text-xs text-fg-subtle min-w-0">
+                    <span className="block truncate" title={r.folder}>{ruleSentence(r)}</span>
+                    <span className={cn('block text-[10px] mt-0.5', r.lastFiredAt ? 'text-fg-dim' : 'text-fg-faint')}>{lastFiredText(r)}</span>
+                  </span>
+                  <button
+                    onClick={() => send(`${r.enabled ? 'disable' : 'enable'} watch rule ${r.id}`)}
+                    className={cn('p-1.5 rounded-lg transition-colors flex items-center gap-1 text-[11px]', r.enabled ? 'text-fg-dim hover:text-accent-orange' : 'text-accent-green hover:text-fg-strong')}
+                    title={r.enabled ? 'Disable this rule (stops firing, keeps it listed)' : 'Enable this rule'}
+                  >
+                    {r.enabled ? <Pause size={13} /> : <Play size={13} />}
+                    {r.enabled ? 'Pause' : 'Resume'}
+                  </button>
                   <button onClick={() => send(`stop watching ${r.folder}`)} className="p-1 text-fg-dim hover:text-accent-red rounded transition-colors" title="Remove rule">
                     <Trash2 size={13} />
                   </button>

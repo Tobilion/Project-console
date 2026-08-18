@@ -4,6 +4,7 @@ import { createProjectTools, resolveToolGate, isCommandAllowed } from '../tools.
 import { executeCommand, runningProcesses } from '../executor.js';
 import { createCheckpoint } from '../gitSafety.js';
 import { isCommandBlocked } from '../dangerousPatterns.js';
+import { isDestructiveCommand } from '../commandRisk.js';
 import { pendingToolConfirmations } from '../state.js';
 import { commandMatchesTemplate } from '../paramCommand.js';
 import { computeFileEditPreview } from '../diffPreview.js';
@@ -25,7 +26,7 @@ export function requestToolConfirmation(ws, tool, args, preview) {
   });
 }
 
-export async function runGatedExecuteCommand(ws, project, args) {
+export async function runGatedExecuteCommand(ws, project, args, turnKey = null) {
   const command = args?.command;
   if (!command) return { success: false, error: 'command is required.' };
   if (isCommandBlocked(command)) {
@@ -34,7 +35,11 @@ export async function runGatedExecuteCommand(ws, project, args) {
   if (!isCommandAllowed(command)) {
     return { success: false, error: `Command not allowed: "${command.split(/\s+/)[0]}" is not in the allowed commands list.` };
   }
-  if (args.risky) {
+  // Server-side effective risk: the model's flag can only add risk, never waive it — a
+  // destructive command the model forgot to flag still checkpoints, sandboxes, and journals
+  // (audit 2026-08-17).
+  const effectiveRisky = !!args.risky || isDestructiveCommand(command);
+  if (effectiveRisky) {
     const cp = await createCheckpoint(project.path, command);
     ws.send(JSON.stringify({ type: 'tool_start', data: `[GIT SAFETY] ${cp.message}\n` }));
   }
@@ -42,14 +47,14 @@ export async function runGatedExecuteCommand(ws, project, args) {
   // so the AI tool loop doesn't hang — the URL will have been sent as a server_url event
   // during stdout streaming. If the process exits before the timeout, we get the real result.
   const TIMEOUT_MS = 6000;
-  // Phase 3: only `risky: true` executeCommand calls are confirm-gated, so only those are
-  // flagged for the sandbox — plain `npm run dev` from AI mode must stay env-complete.
-  const cmdPromise = executeCommand(command, project.path, ws, project.id, { sandboxed: !!args.risky });
-  // Phase 4 (2026-08-10): log risky AI-run commands. `risky: true` is exactly the set the
+  // Phase 3: risky executeCommand calls are confirm-gated, so only those are flagged for the
+  // sandbox — plain `npm run dev` from AI mode must stay env-complete.
+  const cmdPromise = executeCommand(command, project.path, ws, project.id, { sandboxed: effectiveRisky, turnKey });
+  // Phase 4 (2026-08-10): log risky AI-run commands. `effectiveRisky` is exactly the set the
   // console considers confirm-worthy (same flag that opts the run into the sandbox), so this
   // is the AI-path equivalent of connectionConfirm's post-confirm logging — the command HAS
   // run by now, regardless of the 6s race result.
-  if (args.risky && project?.path) {
+  if (effectiveRisky && project?.path) {
     appendAction(project.path, {
       type: /^git\s/i.test(command.trim()) ? 'git' : 'command',
       description: `Ran: ${command}`,
@@ -115,7 +120,7 @@ export async function runGatedExecuteCommand(ws, project, args) {
  * allow-after-first-ask the grant is recorded once the user approves so later calls this session
  * run without asking.
  */
-export async function runToolCall(ws, project, tools, call, workspaceTools = {}, workspaceProjects = [], sessionGrants = null) {
+export async function runToolCall(ws, project, tools, call, workspaceTools = {}, workspaceProjects = [], sessionGrants = null, turnKey = null) {
   const { tool, args } = call;
 
   // If the AI specified a projectId, use that project's tools instead — gates resolve against
@@ -142,7 +147,7 @@ export async function runToolCall(ws, project, tools, call, workspaceTools = {},
       const prefix = gate.autoApproved ? 'Auto-approved ' : '';
       ws.send(JSON.stringify({ type: 'tool_start', data: `${prefix}Running: ${args?.command}` }));
     }
-    return runGatedExecuteCommand(ws, resolvedProject, args);
+    return runGatedExecuteCommand(ws, resolvedProject, args, turnKey);
   }
 
   if (!resolvedTools[tool]) {

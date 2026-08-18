@@ -15,7 +15,8 @@ import { appendAction } from '../actionHistory.js';
 const MAX_PDF_UPLOAD_BYTES = 50 * 1024 * 1024;
 
 function findProject(req) {
-  return resolveProject(req.params.id) || null;
+  // Phase T (2026-08-14): resolve inside the requesting tab's workspace when ?tab= is given.
+  return resolveProject(req.params.id, req.query.tab) || null;
 }
 
 export function registerPdfRoutes(app) {
@@ -107,7 +108,7 @@ export function registerPdfRoutes(app) {
     req.on('end', async () => {
       if (tooBig) return res.status(413).json({ error: 'PDF must be under 50 MB.' });
       try {
-        fs.writeFileSync(abs, Buffer.concat(chunks));
+        await fs.promises.writeFile(abs, Buffer.concat(chunks));
         await appendAction(project.path, { type: 'file_write', path: name, existed: false, preContent: null });
         res.json({ path: name, name, size: total });
       } catch {

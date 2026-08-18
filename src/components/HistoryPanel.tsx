@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { RotateCcw } from 'lucide-react';
 import { apiFetchJson } from '../utils/apiFetch';
+import { projectApi } from '../utils/projectApi';
 
 // Phase 4 (2026-08-10): action-history view for the ProcessDock. Reads the per-project
 // JSONL timeline (GET /api/projects/:id/action-history, most-recent-first) and offers a
@@ -20,6 +21,8 @@ interface HistoryPanelProps {
   projects: { id: string; name: string }[];
   activeProjectId: string | null;
   onSendMessage: (msg: string) => void;
+  /** Phase T (2026-08-14): the tab whose workspace the history REST call addresses. */
+  tabId?: string | null;
 }
 
 const TYPE_LABELS: Record<string, { label: string; className: string }> = {
@@ -32,7 +35,7 @@ const TYPE_LABELS: Record<string, { label: string; className: string }> = {
   revert: { label: 'REVERT', className: 'bg-fg-dim/10 text-fg-dim' },
 };
 
-export function HistoryPanel({ projects, activeProjectId, onSendMessage }: HistoryPanelProps) {
+export function HistoryPanel({ projects, activeProjectId, onSendMessage, tabId = null }: HistoryPanelProps) {
   const [projectId, setProjectId] = useState<string | null>(null);
   const [actions, setActions] = useState<HistoryAction[]>([]);
   const [loading, setLoading] = useState(false);
@@ -51,11 +54,11 @@ export function HistoryPanel({ projects, activeProjectId, onSendMessage }: Histo
     }
     setLoading(true);
     const data = await apiFetchJson<{ actions: HistoryAction[] }>(
-      `/api/projects/${encodeURIComponent(id)}/action-history?limit=30`,
+      projectApi(`/api/projects/${encodeURIComponent(id)}/action-history?limit=30`, tabId),
     );
     if (data) setActions(data.actions || []);
     setLoading(false);
-  }, []);
+  }, [tabId]);
 
   useEffect(() => {
     fetchActions(projectId);

@@ -94,6 +94,10 @@ interface TerminalMessagesProps {
    *  polls) — the "Click here to open the site" chip is gated on these so arbitrary links
    *  in messages (e.g. an Ollama endpoint inside an error text) never get one. */
   knownDevUrls: string[];
+  /** Phase 6 (2026-08-17): "load earlier" — visible while the buffer holds fewer stored
+      messages than the session log contains; fetches the previous page and prepends. */
+  historyHasMore?: boolean;
+  onLoadEarlier?: () => void;
 }
 
 /** One chat row's *content* (bubble / output block / suggestion chips), extracted into a memoized
@@ -261,6 +265,8 @@ const TerminalMessagesComponent = ({
   emptyStateActions,
   onDidYouMeanPick,
   knownDevUrls,
+  historyHasMore,
+  onLoadEarlier,
 }: TerminalMessagesProps) => {
   // Custom markdown components for structured JSON blocks
   const markdownComponents = useMemo(() => ({
@@ -280,21 +286,29 @@ const TerminalMessagesComponent = ({
   // here instead of Terminal.tsx.
   const containerRef = useRef<HTMLDivElement>(null);
   const atBottomRef = useRef(true);
+  const lastScrolledTailRef = useRef('');
   const handleContainerScroll = useCallback(() => {
     const el = containerRef.current;
     if (!el) return;
     atBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
   }, []);
   useEffect(() => {
-    if (atBottomRef.current) {
-      // M22: during an active AI token stream the server pushes a new `messages` array
-      // reference per token (wsStreamingCases appends via prev.map), so this effect re-fires
-      // every ~16ms. With `behavior: 'smooth'` that produces visible scroll-jank; jump
-      // instantly (`auto`) only while streaming, and keep the smooth, pleasant scroll for
-      // the natural cadence of discrete user/system/error message arrivals.
-      endRef.current?.scrollIntoView({ behavior: aiThinking ? 'auto' : 'smooth' });
-    }
-  }, [messages, pendingConfirm, pendingToolConfirm, pendingMemorySuggestion, endRef]);
+    // Phase 6: gate on the tail's identity+length. Mid-list updates (tool_start status,
+    // confirm-card state) rebuild the messages array but leave the tail untouched — those
+    // must not trigger redundant scrollIntoView calls. A changed tail (new message, or a
+    // stream flush that grew the last row) still scrolls exactly as before.
+    const last = messages[messages.length - 1];
+    const tailKey = last ? `${last.id}:${last.content.length}` : '';
+    if (lastScrolledTailRef.current === tailKey) return;
+    if (!atBottomRef.current) return;
+    lastScrolledTailRef.current = tailKey;
+    // M22: during an active AI token stream the server pushes a new `messages` array
+    // reference per flush (wsStreamingCases appends via prev.map), so this effect re-fires
+    // every ~45ms. With `behavior: 'smooth'` that produces visible scroll-jank; jump
+    // instantly (`auto`) only while streaming, and keep the smooth, pleasant scroll for
+    // the natural cadence of discrete user/system/error message arrivals.
+    endRef.current?.scrollIntoView({ behavior: aiThinking ? 'auto' : 'smooth' });
+  }, [messages, pendingConfirm, pendingToolConfirm, pendingMemorySuggestion, endRef, aiThinking]);
 
   return (
     <div ref={containerRef} onScroll={handleContainerScroll} className="flex-1 overflow-y-auto p-4">
@@ -317,6 +331,19 @@ const TerminalMessagesComponent = ({
         </div>
       ) : (
       <div className={`${centerCol} space-y-3`}>
+      {historyHasMore && (
+        // Phase 6: pagination — prepending shifts the thread, but the auto-scroll gate keys
+        // on the tail's identity+length, so a loaded page never yanks the view.
+        <div className="flex justify-center pt-1">
+          <button
+            onClick={onLoadEarlier}
+            className="px-3 py-1.5 text-xs text-fg-dim hover:text-fg-strong bg-scrim-faint hover:bg-panel border border-border-soft rounded-full transition-colors"
+            title="Load the previous page of this chat's history"
+          >
+            Load earlier messages
+          </button>
+        </div>
+      )}
       <AnimatePresence initial={false}>
       {messages.map((msg, i) => {
         const rowClass = msg.type === 'output'

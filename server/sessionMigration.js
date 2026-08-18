@@ -11,7 +11,7 @@
 import fs from 'fs/promises';
 import path from 'path';
 import { execSync } from 'child_process';
-import { state } from './state.js';
+import { allKnownProjects } from './state.js';
 import {
   legacyFilePath,
   legacySessionLogFile,
@@ -128,9 +128,13 @@ async function moveLegacyLog(oldLog, newLog) {
   }
 }
 
-export async function getSession(id) {
+export async function getSession(id, opts = {}) {
   const idx = await readIndex();
   const meta = idx[id];
+  // Phase 6: pagination window — `before` skips that many of the latest messages (the page
+  // the client already holds); `limit` sizes the page. Defaults (200 / 0) are unchanged for
+  // every existing caller.
+  const { limit = 200, before = 0 } = opts;
 
   let session = null;
 
@@ -139,7 +143,7 @@ export async function getSession(id) {
       const metaData = await fs.readFile(projectSessionMetaFile(meta.projectPath, id), 'utf-8');
       session = JSON.parse(metaData);
       // Read messages from append-only NDJSON log
-      const messages = await readMessageLog(projectSessionLogFile(meta.projectPath, id), 200);
+      const messages = await readMessageLog(projectSessionLogFile(meta.projectPath, id), limit, before);
       session.messages = messages;
     } catch {
       // Corrupt or transiently unreadable meta — fall through to legacy; the ENOENT check
@@ -152,7 +156,7 @@ export async function getSession(id) {
     try {
       const data = await fs.readFile(legacyFilePath(id), 'utf-8');
       session = JSON.parse(data);
-      return await migrateLegacySession(session);
+      return await migrateLegacySession(session, opts);
     } catch (err) {
       // Both the project-scoped meta and the legacy file are gone, yet the index still lists
       // this session — drop the stale entry so it stops appearing in the sidebar (self-heal;
@@ -172,14 +176,18 @@ export async function getSession(id) {
   return session;
 }
 
-export async function migrateLegacySession(session) {
+export async function migrateLegacySession(session, opts = {}) {
   return serializePersistence(async () => {
-    const project = state.activeProjectsCache?.find((p) => p.id === session.projectId);
+    const { limit = 200, before = 0 } = opts;
+    // allKnownProjects() covers the global cache AND every tab's workspace (Phase T):
+    // a session whose project was only ever scanned inside a tab must still resolve here,
+    // or it would stay stranded in the legacy store forever.
+    const project = allKnownProjects().find((p) => p.id === session.projectId);
     if (!project?.path) {
       // Not linked to a resolvable project yet — still attach messages from the legacy NDJSON
       // log so the caller sees full history instead of an undefined `.messages` (see below for
       // why that mattered: it used to silently blank out the whole chat on reload).
-      session.messages = await readMessageLog(legacySessionLogFile(session.id), 200);
+      session.messages = await readMessageLog(legacySessionLogFile(session.id), limit, before);
       await setIndexEntry(session);
       return session;
     }
@@ -196,9 +204,13 @@ export async function migrateLegacySession(session) {
     // silently swallows the resulting TypeError — so reopening one of these chats looked exactly
     // like "my messages disappeared": the fetch succeeded, but the UI silently kept whatever was
     // on screen before because the state update never happened.
-    session.messages = await readMessageLog(projectSessionLogFile(project.path, session.id), 200);
-    // Write meta file (atomic — a torn meta makes the session unrecoverable; see getSession)
-    await writeFileAtomic(projectSessionMetaFile(project.path, session.id), JSON.stringify(session, null, 2));
+    session.messages = await readMessageLog(projectSessionLogFile(project.path, session.id), limit, before);
+    // Write meta file (atomic — a torn meta makes the session unrecoverable; see getSession).
+    // The attached .messages are for the caller only — persisting them into the meta would
+    // duplicate the NDJSON log on every migration (audit 2026-08-17).
+    const meta = { ...session };
+    delete meta.messages;
+    await writeFileAtomic(projectSessionMetaFile(project.path, session.id), JSON.stringify(meta, null, 2));
     await fs.unlink(legacyFilePath(session.id)).catch(() => {});
     await setIndexEntry(session);
     return session;
@@ -211,7 +223,9 @@ export async function linkSessionToProject(sessionId, projectId, projectPath) {
     if (!session) return null;
     if (session.projectId) return session;
 
-    const project = state.activeProjectsCache?.find(p => p.id === projectId);
+    // Same allKnownProjects() reasoning as migrateLegacySession — the linking project may
+    // live in a tab's workspace, not the global cache.
+    const project = allKnownProjects().find(p => p.id === projectId);
     if (!project?.path) return session;
 
     session.projectId = project.id;

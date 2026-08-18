@@ -48,6 +48,67 @@ function isOverdue(fireAt: number): boolean {
   return fireAt < Date.now();
 }
 
+// Phase 5: recurring reminders (daily/weekly/interval) get a concrete NEXT fire time so the
+// panel can classify them into Today/Upcoming instead of hiding them in All — mirrors the
+// scheduler's isDue() semantics (scheduler.js) for display purposes only.
+function nextFireAt(r: ReminderInfo): number | null {
+  if (r.type === 'oneshot' || r.type === 'todo') return r.fireAt;
+  const now = new Date();
+  if (r.type === 'daily' && r.hour !== null && r.minute !== null) {
+    const d = new Date(now.getFullYear(), now.getMonth(), now.getDate(), r.hour, r.minute, 0, 0);
+    if (d.getTime() > now.getTime()) return d.getTime();
+    d.setDate(d.getDate() + 1);
+    return d.getTime();
+  }
+  if (r.type === 'weekly' && r.weekday !== null && r.hour !== null && r.minute !== null) {
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate(), r.hour, r.minute, 0, 0);
+    const daysAhead = (r.weekday - today.getDay() + 7) % 7;
+    const occ = today.getTime() + daysAhead * 86400000;
+    if (occ > now.getTime()) return occ;
+    return occ + 7 * 86400000;
+  }
+  if (r.type === 'interval' && r.everyMs) {
+    const base = r.lastFiredAt ?? r.fireAt ?? 0;
+    let next = base + r.everyMs;
+    while (next <= now.getTime()) next += r.everyMs;
+    return next;
+  }
+  return null;
+}
+
+// Phase 5: reconstruct a trigger phrase the server's parser understands from a stored
+// reminder spec, for the Undo-after-complete affordance ("cancel reminder <id>" is
+// destructive — undo re-creates the same reminder instead of leaving a dead grey row).
+const WEEKDAY_NAMES = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+function formatHhMm(hour: number, minute: number): string {
+  const h12 = hour % 12 === 0 ? 12 : hour % 12;
+  return `${h12}:${String(minute).padStart(2, '0')} ${hour < 12 ? 'AM' : 'PM'}`;
+}
+function undoSpec(r: ReminderInfo): string {
+  if (r.type === 'oneshot' && r.fireAt) {
+    const d = new Date(r.fireAt);
+    const ymd = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    return `remind me on ${ymd} at ${formatHhMm(d.getHours(), d.getMinutes())} to ${r.text}`;
+  }
+  if (r.type === 'daily' && r.hour !== null && r.minute !== null) {
+    return `remind me daily at ${formatHhMm(r.hour, r.minute)} to ${r.text}`;
+  }
+  if (r.type === 'weekly' && r.weekday !== null && r.hour !== null && r.minute !== null) {
+    return `remind me every ${WEEKDAY_NAMES[r.weekday]} at ${formatHhMm(r.hour, r.minute)} to ${r.text}`;
+  }
+  if (r.type === 'interval' && r.everyMs) {
+    const days = r.everyMs / 86400000;
+    const isWeeks = days % 7 === 0 && days >= 7;
+    const n = isWeeks ? days / 7 : days;
+    const span = `every ${n} ${isWeeks ? 'week' : 'day'}${n > 1 ? 's' : ''}`;
+    if (r.hour !== null && r.minute !== null) {
+      return `remind me ${span} at ${formatHhMm(r.hour, r.minute)} to ${r.text}`;
+    }
+    return `remind me ${span} to ${r.text}`;
+  }
+  return `remind me ${r.text}`;
+}
+
 type View = 'today' | 'upcoming' | 'all' | 'nodate';
 
 export function RemindersPanel({ project, onSendMessage }: RemindersPanelProps) {
@@ -59,9 +120,16 @@ export function RemindersPanel({ project, onSendMessage }: RemindersPanelProps) 
   const [lastSent, setLastSent] = useState<string | null>(null);
   const [completing, setCompleting] = useState<Set<string>>(new Set());
   const lastSentTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Phase 5: Undo-after-complete snackbar — cancel is destructive, so completing a reminder
+  // offers a one-tap re-create via a reconstructed trigger phrase.
+  const [undo, setUndo] = useState<{ id: string; text: string; spec: string } | null>(null);
+  const undoTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Clear the pending "last sent" timer on unmount so its delayed setState can't fire on a
   // dead panel (and hold the panel's closure alive after it unmounted).
-  useEffect(() => () => { if (lastSentTimer.current) clearTimeout(lastSentTimer.current); }, []);
+  useEffect(() => () => {
+    if (lastSentTimer.current) clearTimeout(lastSentTimer.current);
+    if (undoTimer.current) clearTimeout(undoTimer.current);
+  }, []);
   const pollTimer = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const fetchReminders = useCallback(async () => {
@@ -74,6 +142,14 @@ export function RemindersPanel({ project, onSendMessage }: RemindersPanelProps) 
     }
     setError(null);
     setReminders(data.reminders || []);
+    // Phase 5: prune "completing" rows that the server has actually removed — without this
+    // a completed (deleted) reminder stays greyed out in the list forever.
+    setCompleting((prev) => {
+      if (prev.size === 0) return prev;
+      const live = new Set((data.reminders || []).map((r) => r.id));
+      const next = new Set([...prev].filter((id) => live.has(id)));
+      return next.size === prev.size ? prev : next;
+    });
   }, []);
 
   useEffect(() => {
@@ -106,8 +182,19 @@ export function RemindersPanel({ project, onSendMessage }: RemindersPanelProps) 
   };
 
   const handleComplete = (id: string) => {
+    const r = reminders.find((x) => x.id === id);
+    if (!r) return;
     setCompleting((prev) => new Set(prev).add(id));
+    setUndo({ id, text: r.text, spec: undoSpec(r) });
+    if (undoTimer.current) clearTimeout(undoTimer.current);
+    undoTimer.current = setTimeout(() => setUndo(null), 8000);
     send(`cancel reminder ${id}`);
+  };
+
+  const handleUndo = () => {
+    if (!undo) return;
+    send(undo.spec);
+    setUndo(null);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -125,9 +212,14 @@ export function RemindersPanel({ project, onSendMessage }: RemindersPanelProps) 
         n.push(r);
         continue;
       }
-      if (r.type === 'oneshot') {
-        if (r.fireAt <= todayEnd) t.push(r);
-        else u.push(r);
+      const next = nextFireAt(r);
+      if (next !== null && next <= todayEnd) {
+        // Phase 5: recurring reminders (daily/weekly/interval) now land in Today/Upcoming
+        // by their next fire instead of being reachable only via All. Each item lives in
+        // exactly ONE view (the sort key rides the fireAt override).
+        t.push({ ...r, fireAt: next });
+      } else if (next !== null) {
+        u.push({ ...r, fireAt: next });
       }
       a.push(r);
     }
@@ -267,6 +359,18 @@ export function RemindersPanel({ project, onSendMessage }: RemindersPanelProps) 
         {lastSent && (
           <div className="mb-3 text-[12px] px-2" style={{ color: 'var(--rm-blue)' }}>
             Sent: <code className="font-mono text-[11px]">{lastSent}</code> — follow the result in chat below.
+          </div>
+        )}
+
+        {undo && (
+          <div className="sticky bottom-3 mt-2 mb-1 flex items-center gap-3 px-3 py-2 rounded-xl shadow-float border z-10"
+            style={{ backgroundColor: 'var(--rm-group-bg)', borderColor: 'var(--rm-sep)' }}>
+            <span className="flex-1 min-w-0 truncate text-[12px]" style={{ color: 'var(--rm-label)' }}>
+              Completed: <span className="font-semibold">{undo.text}</span>
+            </span>
+            <button onClick={handleUndo} className="shrink-0 text-[12px] font-bold hover:opacity-70 transition-opacity" style={{ color: 'var(--rm-blue)' }}>
+              Undo
+            </button>
           </div>
         )}
 

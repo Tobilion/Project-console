@@ -5,6 +5,7 @@ import { state, pendingToolConfirmations } from '../state.js';
 import { createCheckpoint } from '../gitSafety.js';
 import { createProjectTools, isCommandAllowed, resolveToolGate } from '../tools.js';
 import { isCommandBlocked } from '../dangerousPatterns.js';
+import { isDestructiveCommand } from '../commandRisk.js';
 import { executeCommand } from '../executor.js';
 import { computeFileEditPreview } from '../diffPreview.js';
 import { validateToolCall, withFileLock, FILE_MUTATING_TOOLS } from '../aiGuardrails.js';
@@ -36,6 +37,10 @@ export async function handleToolCall(ws, parsed, sessionContext) {
       ws.send(JSON.stringify({ type: 'tool_result', data: { success: false, error: 'command is required.' } }));
       return;
     }
+    // Server-side effective risk: the caller's flag can only add risk, never waive it (audit
+    // 2026-08-17 — the frontend chip path sends risky: false unconditionally). Checkpoint,
+    // sandbox, and journaling all key off this value.
+    const effectiveRisky = !!risky || isDestructiveCommand(command);
     if (isCommandBlocked(command)) {
       ws.send(JSON.stringify({ type: 'tool_result', data: { success: false, error: 'SAFETY BLOCK: Dangerous pattern detected.' } }));
       return;
@@ -63,7 +68,7 @@ export async function handleToolCall(ws, parsed, sessionContext) {
         return;
       }
     }
-    if (risky) {
+    if (effectiveRisky) {
       const cp = await createCheckpoint(project.path, command);
       ws.send(JSON.stringify({ type: 'tool_start', data: `[GIT SAFETY] ${cp.message}\n` }));
     }
@@ -72,10 +77,10 @@ export async function handleToolCall(ws, parsed, sessionContext) {
     // env-complete. Runs in the effective command dir so wrapper projects (scriptless root + one
     // sub-package) execute where the package.json actually lives — commandDir.js.
     const sub = await getCommandDir(project);
-    executeCommand(command, sub ? path.join(project.path, sub) : project.path, ws, project.id, { sandboxed: !!risky });
+    executeCommand(command, sub ? path.join(project.path, sub) : project.path, ws, project.id, { sandboxed: effectiveRisky });
     // Phase 4 (2026-08-10): same logging rule as the AI path — risky direct commands are the
     // confirm-worthy set, so they land in the action history.
-    if (risky) {
+    if (effectiveRisky) {
       appendAction(project.path, {
         type: /^git\s/i.test(command.trim()) ? 'git' : 'command',
         description: `Ran: ${command}`,

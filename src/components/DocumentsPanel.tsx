@@ -1,6 +1,7 @@
 import { useCallback, useState } from 'react';
 import { BookOpen, Search, FileText, File as FileIcon, StickyNote, RefreshCw, Sparkles } from 'lucide-react';
 import { apiFetchJson } from '../utils/apiFetch';
+import { projectApi } from '../utils/projectApi';
 import { cn } from '../lib/utils';
 import type { Project } from '../types';
 
@@ -28,6 +29,8 @@ interface DocumentsPanelProps {
   onSendMessage: (text: string) => void;
   /** Phase 16 audit: gates the AI ask box — only shown when AI mode is on. */
   aiEnabled?: boolean;
+  /** Phase T (2026-08-14): the tab whose workspace this panel's REST calls address. */
+  tabId?: string | null;
 }
 
 function fileIcon(path: string) {
@@ -38,7 +41,7 @@ function fileIcon(path: string) {
   return <FileIcon size={14} className="text-fg-dim shrink-0" />;
 }
 
-export function DocumentsPanel({ project, onSendMessage, aiEnabled }: DocumentsPanelProps) {
+export function DocumentsPanel({ project, onSendMessage, aiEnabled, tabId = null }: DocumentsPanelProps) {
   const [query, setQuery] = useState('');
   const [askQuery, setAskQuery] = useState('');
   const [results, setResults] = useState<DocResult[]>([]);
@@ -53,13 +56,13 @@ export function DocumentsPanel({ project, onSendMessage, aiEnabled }: DocumentsP
     setLoading(true);
     setSearched(true);
     const data = await apiFetchJson<{ status: string; results: DocResult[] }>(
-      `/api/projects/${encodeURIComponent(project.id)}/documents?q=${encodeURIComponent(q.trim())}`
+      projectApi(`/api/projects/${encodeURIComponent(project.id)}/documents?q=${encodeURIComponent(q.trim())}`, tabId)
     );
     setLoading(false);
     if (!data) { setStatus('error'); return; }
     setStatus(data.status as typeof status);
     setResults(data.results || []);
-  }, [project?.id]);
+  }, [project?.id, tabId]);
 
   const runSearch = () => { search(query); };
 
@@ -71,7 +74,7 @@ export function DocumentsPanel({ project, onSendMessage, aiEnabled }: DocumentsP
     setAsking(true);
     setSearched(true);
     const data = await apiFetchJson<{ status: string; results: DocResult[]; synthesis: string | null }>(
-      `/api/projects/${encodeURIComponent(project.id)}/documents/ask?q=${encodeURIComponent(askQuery.trim())}`
+      projectApi(`/api/projects/${encodeURIComponent(project.id)}/documents/ask?q=${encodeURIComponent(askQuery.trim())}`, tabId)
     );
     setAsking(false);
     if (!data) { setStatus('error'); return; }

@@ -549,6 +549,9 @@ async function main() {
         writeRaw('\n');
         break;
       case 'end':
+        // The web renders 'end' with an optional summary (msg.data) — print it so the CLI
+        // shows the same command summary the web shows (audit Phase 5).
+        if (msg.data) writeRaw(`${msg.data}\n`);
         writeRaw(`\n`);
         if (!waitingForInput && !confirmPending && rl) { waitingForInput = true; rl.prompt(true); }
         break;

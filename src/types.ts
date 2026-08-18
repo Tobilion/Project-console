@@ -80,6 +80,14 @@ export interface ChatSession {
   title: string;
   projectId?: string;
   projectName?: string;
+  // Phase T2 fix (2026-08-14): the project's absolute path, exposed by GET /api/sessions so
+  // the frontend can find which tab's workspace a chat belongs to (path-prefix match against
+  // tab scan roots) — clicking a chat lands on the right folder + project.
+  projectPath?: string | null;
+  // The scan root this chat was created in — the tab-level counterpart to projectPath. General
+  // chats (no project) have no projectPath but DO carry this, so tapping one from another tab
+  // can switch back to its folder (see useConsoleTabs.openWorkspaceTab).
+  workspacePath?: string | null;
   messageCount: number;
   createdAt: number;
   updatedAt: number;
@@ -169,6 +177,9 @@ export interface ToolPanelDef {
   icon: string;
   available: boolean;
   chatHint: string;
+  /** Phase T2 fix (2026-08-14): extra Ctrl+K search terms beyond the id-derived ones —
+   *  e.g. the Folder Explorer is a "file explorer" to users, which the id never matched. */
+  keywords?: string[];
 }
 
 /** Reserved pseudo-workspace id (2026-08-12): the server resolves this to a synthetic General

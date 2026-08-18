@@ -49,6 +49,14 @@ const DEFAULT_PROFILE = {
   // applies as an inline --color-accent-blue override. Semantic accents (teal/orange/green/
   // red) are deliberately NOT covered by this setting — same separation as macOS.
   accentColor: 'auto',
+  // Phase T (2026-08-14): include EVERY immediate subfolder of the scan root as a project,
+  // even folders with no code/git/config/docs (they get a synthesized config + 'general'
+  // classification). Default false — a junk folder must not appear in the project list
+  // without the user explicitly opting into "general mode loads everything".
+  scanAllFolders: false,
+  // Phase T2 (2026-08-14): the Folder Explorer's default view mode — 'list' (lines) or
+  // 'grid' (objects). The in-panel toggle overrides per session; this is the fallback.
+  explorerViewMode: 'list',
 };
 
 // Only plain, trimmed strings up to a sane length — mirrors the conservative
@@ -92,6 +100,8 @@ function readProfile() {
       defaultWorkspaceType: p.defaultWorkspaceType === 'general' ? 'general' : 'dev',
       locale: typeof p.locale === 'string' && p.locale.length <= 8 ? p.locale : 'en',
       accentColor: sanitizeAccentColor(p.accentColor),
+      scanAllFolders: sanitizeBool(p.scanAllFolders, DEFAULT_PROFILE.scanAllFolders),
+      explorerViewMode: p.explorerViewMode === 'grid' ? 'grid' : 'list',
     };
   } catch {
     // Missing or corrupt file — serve defaults without touching disk.
@@ -115,6 +125,27 @@ export function writeProfile(profile) {
   }
 }
 
+// Single source of truth for "what a profile may contain" — the POST route AND the Phase 6
+// workspace import both funnel through this, so an imported bundle can never smuggle
+// arbitrary keys into user-profile.json (audit 2026-08-17). Values merge onto `current`
+// with the same per-field sanitizers as the route.
+export function sanitizeProfile(body, current) {
+  return {
+    name: sanitizeField(body.name, current.name),
+    title: sanitizeField(body.title, current.title),
+    customRole: sanitizeField(body.customRole, current.customRole),
+    setupComplete: sanitizeBool(body.setupComplete, current.setupComplete),
+    sandboxRiskyCommands: sanitizeBool(body.sandboxRiskyCommands, current.sandboxRiskyCommands),
+    clipboardHistory: sanitizeBool(body.clipboardHistory, current.clipboardHistory),
+    clipboardPersist: sanitizeBool(body.clipboardPersist, current.clipboardPersist),
+    defaultWorkspaceType: body.defaultWorkspaceType === 'general' ? 'general' : 'dev',
+    locale: typeof body.locale === 'string' && body.locale.length <= 8 ? body.locale : 'en',
+    accentColor: sanitizeAccentColor(body.accentColor ?? current.accentColor),
+    scanAllFolders: sanitizeBool(body.scanAllFolders, current.scanAllFolders),
+    explorerViewMode: body.explorerViewMode === 'grid' ? 'grid' : 'list',
+  };
+}
+
 export function registerProfileRoutes(app) {
   app.get('/api/profile', (req, res) => {
     res.json({ userProfile: readProfile() });
@@ -123,18 +154,7 @@ export function registerProfileRoutes(app) {
   app.post('/api/profile', (req, res) => {
     const body = req.body?.userProfile || req.body || {};
     const current = readProfile();
-    const updated = {
-      name: sanitizeField(body.name, current.name),
-      title: sanitizeField(body.title, current.title),
-      customRole: sanitizeField(body.customRole, current.customRole),
-      setupComplete: sanitizeBool(body.setupComplete, current.setupComplete),
-      sandboxRiskyCommands: sanitizeBool(body.sandboxRiskyCommands, current.sandboxRiskyCommands),
-      clipboardHistory: sanitizeBool(body.clipboardHistory, current.clipboardHistory),
-      clipboardPersist: sanitizeBool(body.clipboardPersist, current.clipboardPersist),
-      defaultWorkspaceType: body.defaultWorkspaceType === 'general' ? 'general' : 'dev',
-      locale: typeof body.locale === 'string' && body.locale.length <= 8 ? body.locale : 'en',
-      accentColor: sanitizeAccentColor(body.accentColor ?? current.accentColor),
-    };
+    const updated = sanitizeProfile(body, current);
     const err = writeProfile(updated);
     if (err) {
       res.status(500).json({ error: `Failed to save profile: ${err.message}` });

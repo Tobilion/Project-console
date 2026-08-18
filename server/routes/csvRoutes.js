@@ -1,4 +1,4 @@
-﻿// Phase 7 (UPGRADE-ROADMAP.md, 2026-08-12): REST surface for the Spreadsheet panel — the
+// Phase 7 (UPGRADE-ROADMAP.md, 2026-08-12): REST surface for the Spreadsheet panel � the
 // read-only CSV listing + header endpoints. Queries run through the normal WS trigger-command
 // path ("sum column X in Y" etc.) so the terminal stays the single source of truth.
 import fs from 'fs';
@@ -15,7 +15,7 @@ const MAX_CSV_UPLOAD_BYTES = 2 * 1024 * 1024;
 export function registerCsvRoutes(app) {
   // Project CSV files (project-relative paths), for the panel's file picker.
   app.get('/api/projects/:id/csv-files', asyncHandler(async (req, res) => {
-    const project = resolveProject(req.params.id);
+    const project = resolveProject(req.params.id, req.query.tab);
     if (!project) return res.status(404).json({ error: 'Project not found' });
     const out = [];
     try {
@@ -42,12 +42,12 @@ export function registerCsvRoutes(app) {
 
   // Header row of one CSV, for the panel's column dropdown.
   app.get('/api/projects/:id/csv-headers', asyncHandler(async (req, res) => {
-    const project = resolveProject(req.params.id);
+    const project = resolveProject(req.params.id, req.query.tab);
     if (!project) return res.status(404).json({ error: 'Project not found' });
     const filePath = typeof req.query.file === 'string' ? req.query.file : '';
     if (!filePath || !/\.csv$/i.test(filePath)) return res.status(400).json({ error: 'Missing ?file= (a .csv path).' });
     // Security: resolve through the same sandbox boundary the upload endpoint and csvTools.loadCsv
-    // use — an absolute path or `..` traversal must never read a file outside the project root.
+    // use � an absolute path or `..` traversal must never read a file outside the project root.
     let abs;
     try {
       abs = createResolveSafe(project.path)(filePath);
@@ -65,10 +65,28 @@ export function registerCsvRoutes(app) {
     }
   }));
 
-  // Filtered rows for the panel's table view — same read-only path the chat filter uses
+  // First N rows of one CSV for the panel's preview — same read-only loadCsv path as the
+  // filter/aggregate endpoints, so the preview table can never diverge from a chat answer.
+  // Audit 2026-08-17: the panel previously showed nothing until a query ran; the preview
+  // also returns the total row count so the UI can warn when it is truncated.
+  app.get('/api/projects/:id/csv-preview', asyncHandler(async (req, res) => {
+    const project = resolveProject(req.params.id, req.query.tab);
+    if (!project) return res.status(404).json({ error: 'Project not found' });
+    const filePath = typeof req.query.file === 'string' ? req.query.file : '';
+    const limit = Math.min(Math.max(parseInt(req.query.limit ?? '50', 10) || 50, 1), 200);
+    if (!filePath || !/\.csv$/i.test(filePath)) return res.status(400).json({ error: 'Missing ?file= (a .csv path).' });
+    const csv = await loadCsv(project.path, filePath);
+    if (!csv.ok) return res.status(400).json({ error: csv.error });
+    const rows = csv.rows
+      .slice(0, limit)
+      .map((r) => csv.headers.map((h, i) => r[i] ?? ''));
+    res.json({ headers: csv.headers, rows, total: csv.rows.length, truncated: csv.rows.length > limit });
+  }));
+
+  // Filtered rows for the panel's table view � same read-only path the chat filter uses
   // (csvTools.loadCsv + matchOp), so the panel table and the chat answer can never diverge.
   app.get('/api/projects/:id/csv-filter', asyncHandler(async (req, res) => {
-    const project = resolveProject(req.params.id);
+    const project = resolveProject(req.params.id, req.query.tab);
     if (!project) return res.status(404).json({ error: 'Project not found' });
     const filePath = typeof req.query.file === 'string' ? req.query.file : '';
     const column = typeof req.query.column === 'string' ? req.query.column : '';
@@ -77,7 +95,7 @@ export function registerCsvRoutes(app) {
     if (!filePath || !column || !['equals', 'contains', 'greater than', 'less than'].includes(op)) {
       return res.status(400).json({ error: 'Missing/invalid ?file=&column=&op=&value= parameters.' });
     }
-    const csv = loadCsv(project.path, filePath);
+    const csv = await loadCsv(project.path, filePath);
     if (!csv.ok) return res.status(400).json({ error: csv.error });
     const idx = findColumn(csv.headers, column);
     if (idx === -1) return res.status(400).json({ error: `Column "${column}" not found.` });
@@ -88,12 +106,12 @@ export function registerCsvRoutes(app) {
     res.json({ headers: csv.headers, rows });
   }));
 
-  // Aggregate result for the panel's Sum/Average/Count card — the SAME aggregateColumn /
+  // Aggregate result for the panel's Sum/Average/Count card � the SAME aggregateColumn /
   // matchOp paths the chat handlers use, so the panel result and the chat answer can never
   // diverge. Count follows the chat semantics: rows matching a where-clause (op + value),
   // not raw numeric cells.
   app.get('/api/projects/:id/csv-aggregate', asyncHandler(async (req, res) => {
-    const project = resolveProject(req.params.id);
+    const project = resolveProject(req.params.id, req.query.tab);
     if (!project) return res.status(404).json({ error: 'Project not found' });
     const filePath = typeof req.query.file === 'string' ? req.query.file : '';
     const column = typeof req.query.column === 'string' ? req.query.column : '';
@@ -101,7 +119,7 @@ export function registerCsvRoutes(app) {
     if (!filePath || !column || !['sum', 'average', 'count'].includes(op)) {
       return res.status(400).json({ error: 'Missing/invalid ?file=&column=&op= (sum|average|count) parameters.' });
     }
-    const csv = loadCsv(project.path, filePath);
+    const csv = await loadCsv(project.path, filePath);
     if (!csv.ok) return res.status(400).json({ error: csv.error });
     const colIdx = findColumn(csv.headers, column);
     if (colIdx === -1) return res.status(400).json({ error: `Column "${column}" not found.` });
@@ -119,13 +137,13 @@ export function registerCsvRoutes(app) {
     res.json({ op, value: result.value, count: result.count, column: csv.headers[colIdx], file: filePath });
   }));
 
-  // Upload a CSV into the project folder — the Spreadsheet panel's drag-and-drop / file-picker
+  // Upload a CSV into the project folder � the Spreadsheet panel's drag-and-drop / file-picker
   // target (Stage C). An explicit user action with the file already in hand; the write is
   // journaled as file_write (existed:false) so `revert action <id>` deletes it. Caps match
   // parseCsv (2MB), name is basename-sanitized + project-scoped via createResolveSafe, and an
-  // existing file is refused (never overwrite — mirrors the PDF tools' rule).
+  // existing file is refused (never overwrite � mirrors the PDF tools' rule).
   app.post('/api/projects/:id/csv-upload', (req, res) => {
-    const project = resolveProject(req.params.id);
+    const project = resolveProject(req.params.id, req.query.tab);
     if (!project) return res.status(404).json({ error: 'Project not found' });
     const rawName = typeof req.query.file === 'string' ? req.query.file : '';
     if (!rawName || !/\.csv$/i.test(rawName)) return res.status(400).json({ error: 'Missing ?file= (a .csv name).' });
@@ -144,7 +162,7 @@ export function registerCsvRoutes(app) {
     req.on('end', async () => {
       if (tooBig) return res.status(413).json({ error: 'CSV must be under 2 MB (matches the chat CSV reader).' });
       try {
-        fs.writeFileSync(abs, Buffer.concat(chunks));
+        await fs.promises.writeFile(abs, Buffer.concat(chunks));
         await appendAction(project.path, { type: 'file_write', path: name, existed: false, preContent: null });
         res.json({ path: name, name, size: total });
       } catch {

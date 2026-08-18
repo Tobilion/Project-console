@@ -17,7 +17,9 @@ export default defineConfig({
   server: {
     // Keep in sync with the inline config passed to createViteServer() in server/index.js —
     // `data/` holds this app's own runtime-written state (conversation index, telemetry,
-    // near-miss logs) and should never be treated as a source-file change.
-    watch: { ignored: ['**/data/**', '**/.cache/**', '**/*.console/**'] },
+    // near-miss logs) and should never be treated as a source-file change. Phase 6: `logs/`
+    // (daemon + schedule logs), `*.pid` (server.pid), and `dist/` (the shadowing bundle) are
+    // runtime artifacts too — the console's own writes must not trigger client rebuilds.
+    watch: { ignored: ['**/data/**', '**/.cache/**', '**/*.console/**', '**/logs/**', '**/*.pid', '**/dist/**'] },
   },
 });

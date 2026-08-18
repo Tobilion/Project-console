@@ -1,4 +1,5 @@
 import { keywordRegex } from './regexUtils.js';
+import { isReadOnlyIntent } from './schedules/scheduleIntents.js';
 
 const PRONOUN_PATTERN = /\b(it|this|that|they|those|these|them)\b/i;
 
@@ -78,9 +79,14 @@ export function resolveContext(input, lastTurns) {
     }
   }
 
-  // If input is very short (under 10 chars) and last had an intent,
-  // assume they want the same thing
-  if (inputLower.length < 10 && last.intent) {
+  // If input is very short (under 10 chars) and last had an intent, assume they want the same
+  // thing — but ONLY when that intent is read-only (audit 2026-08-17): a bare "ok"/"yes" after
+  // a mutating turn (deploy, git push, file delete) used to re-dispatch the mutation. Read-only
+  // repeat is the intended carryover ("yes" after "show me the todos"); mutating repeat is a
+  // footgun, and every mutating intent is confirm-gated precisely because it may not be what
+  // the user wants re-run. Reuses the same allowlist as scheduled triggers (scheduleIntents.js)
+  // so the two "what may run unattended" definitions can never drift apart.
+  if (inputLower.length < 10 && last.intent && isReadOnlyIntent(last.intent)) {
     return { builtin: last.intent, source: 'context_resolver' };
   }
 

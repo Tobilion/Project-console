@@ -95,10 +95,12 @@ async function buildRepoMap(projectPath, tree) {
     .sort((a, b) => pathParts(a.path).length - pathParts(b.path).length);
   const selected = files.slice(0, MAX_REPO_MAP_FILES);
 
-  const entries = [];
-  const allRoutes = [];
-  const contents = new Map();
-  for (const f of selected) {
+  // Phase 6 (2026-08-17): per-file reads/parses were serial — a project with many files paid
+  // every extract (signatures/imports/routes/symbols) one after another. The files are
+  // independent (the cache is keyed per absolute path and the reverse-import index is built
+  // over the collected results), so read them all concurrently; results are re-assembled in
+  // selection order so the repo map and route list keep their exact pre-parallel ordering.
+  const perFile = await Promise.all(selected.map(async (f, i) => {
     const fullPath = path.join(projectPath, f.path);
     const ext = path.extname(f.path).toLowerCase();
     try {
@@ -121,12 +123,22 @@ async function buildRepoMap(projectPath, tree) {
         symbols = await extractSymbols(content, ext);
         setRepoMapCache(fullPath, { mtime: stat.mtimeMs, signatures, imports, routes, symbols, content });
       }
-      if (routes.length && allRoutes.length < MAX_TOTAL_ROUTES) {
-        routes.forEach((r) => allRoutes.push({ ...r, file: f.path }));
-      }
-      contents.set(f.path.split(path.sep).join('/'), content);
-      if (signatures.length || imports.length || symbols.length) entries.push({ path: f.path, signatures, imports, symbols });
-    } catch {}
+      return { i, f, signatures, imports, routes, symbols, content };
+    } catch {
+      return { i, f, empty: true };
+    }
+  }));
+
+  const entries = [];
+  const allRoutes = [];
+  const contents = new Map();
+  for (const r of perFile) {
+    if (r.empty) continue;
+    if (r.routes.length && allRoutes.length < MAX_TOTAL_ROUTES) {
+      r.routes.forEach((rt) => allRoutes.push({ ...rt, file: r.f.path }));
+    }
+    contents.set(r.f.path.split(path.sep).join('/'), r.content);
+    if (r.signatures.length || r.imports.length || r.symbols.length) entries.push({ path: r.f.path, signatures: r.signatures, imports: r.imports, symbols: r.symbols });
   }
   // Reverse index ("what imports this file") — computed once over the whole selected file set
   // rather than per-file, since it needs to see every entry's imports before it can answer "who

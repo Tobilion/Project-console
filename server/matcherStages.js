@@ -13,9 +13,12 @@ import { scanAllVectors, cosineSimilarity } from './intentVectorScan.js';
  * finds the best-scoring DIFFERENT intent (see the collision comment below) and returns
  * collision/closeSecond alongside the winner.
  */
-export async function runSemanticStage(inputStr, { extractor, projectIntentVectors, intentVectors, getFloor }) {
-  const inputVec = await extractor(inputStr, { pooling: 'mean', normalize: true });
-  const inputData = inputVec.data;
+export async function runSemanticStage(inputStr, { extractor, embedInput, projectIntentVectors, intentVectors, getFloor }) {
+  // Phase 6: the matcher passes its cached embedInput so repeated phrasings skip the model
+  // call; the raw-extractor fallback keeps older callers (harnesses) working unchanged.
+  const inputData = embedInput
+    ? await embedInput(inputStr)
+    : (await extractor(inputStr, { pooling: 'mean', normalize: true })).data;
 
   let bestIntent = null;
   let bestScore = -1;

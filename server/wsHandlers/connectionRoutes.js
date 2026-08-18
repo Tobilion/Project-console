@@ -1,4 +1,4 @@
-import { state, pendingConfirmations, pendingToolConfirmations } from '../state.js';
+import { state, pendingConfirmations, pendingToolConfirmations, resolveProject } from '../state.js';
 import { stopTrackedProcess } from '../executor.js';
 import { GATED_TOOLS, toolGrantKey } from '../tools.js';
 import { generateSuggestions, applySuggestions } from '../learningEngine.js';
@@ -57,7 +57,14 @@ async function routeMessage(ws, parsed, sessionContext) {
         // was only cleared by the child's own 'close' (which on Windows can lag or never fire
         // when the killed child is npm's shell wrapper). stopTrackedProcess is the same single
         // kill+cleanup+broadcast path "stop server" and the dock Stop button use.
-        const stopped = await stopTrackedProcess(cancelProjectId);
+        // Phase 3 (2026-08-17): when an AI turn is in flight, cancel kills ONLY that turn's own
+        // processes (turnKey-tagged) — it must never tear down a dev server the user started
+        // separately. With no AI turn, it keeps the historical all-project behavior so a typed
+        // trigger-mode command can still be cancelled.
+        const stopOpts = sessionContext.aiAbortController && sessionContext.turnKey
+          ? { turnKey: sessionContext.turnKey }
+          : {};
+        const stopped = await stopTrackedProcess(cancelProjectId, stopOpts);
         if (stopped.ok) {
           didSomething = true;
           // executeCommand's own 'close' handler sends the final answer/end once the process
@@ -104,8 +111,9 @@ async function routeMessage(ws, parsed, sessionContext) {
       // directly through the exact same path a typed "1"/"2" reply uses.
       const pick = parsed.payload?.intent;
       if (!pick || typeof pick !== 'string') return;
+      // Phase T (2026-08-14): resolve inside this connection's tab workspace when it has one.
       const project = sessionContext.activeProjectId
-        ? state.activeProjectsCache.find((p) => p.id === sessionContext.activeProjectId)
+        ? resolveProject(sessionContext.activeProjectId, sessionContext.tabId)
         : null;
       if (sessionContext.pendingDisambiguation && sessionContext.pendingDisambiguation.projectId === sessionContext.activeProjectId) {
         const pending = sessionContext.pendingDisambiguation;
@@ -134,26 +142,30 @@ async function routeMessage(ws, parsed, sessionContext) {
       // enforced in resolveToolGate, not just by what this case grants.
       const { token, projectId } = parsed.payload || {};
       const pid = projectId || sessionContext.activeProjectId;
+      // Validate the token BEFORE granting anything: the old order added session grants first,
+      // so a stale/foreign/expired token still pre-granted every gated file tool and reported
+      // task_granted (audit 2026-08-17). Same expiry + owner rule as confirm_response.
+      let pending = null;
+      if (token && pendingToolConfirmations.has(token)) {
+        const candidate = pendingToolConfirmations.get(token);
+        const valid = Date.now() - candidate.createdAt <= 5 * 60 * 1000
+          && (!candidate.owner || candidate.owner === ws);
+        if (valid) pending = candidate;
+        else pendingToolConfirmations.delete(token);
+      }
+      if (!pending) {
+        ws.send(JSON.stringify({ type: 'answer', data: 'That approval has expired or belongs to another session — nothing was granted.' }));
+        ws.send(JSON.stringify({ type: 'end' }));
+        return;
+      }
+      pendingToolConfirmations.delete(token);
       const project = pid ? state.activeProjectsCache.find((p) => p.id === pid) : null;
       if (project?.path) {
         for (const name of GATED_TOOLS) {
           sessionContext.toolGrants.add(toolGrantKey(project.path, name));
         }
       }
-      if (token && pendingToolConfirmations.has(token)) {
-        const pending = pendingToolConfirmations.get(token);
-        // Same expiry + owner rule as confirm_response (connectionConfirm.js): an expired token
-        // or one owned by a different connection must not be resolvable here.
-        if (Date.now() - pending.createdAt > 5 * 60 * 1000 || (pending.owner && pending.owner !== ws)) {
-          pendingToolConfirmations.delete(token);
-          try { pending.resolve(false); } catch {}
-        } else {
-          pendingToolConfirmations.delete(token);
-          pending.resolve(true);
-        }
-      } else {
-        ws.send(JSON.stringify({ type: 'answer', data: 'Approved — future file edits in this conversation will run without asking (commands and tests still get their own confirm).' }));
-      }
+      pending.resolve(true);
       ws.send(JSON.stringify({ type: 'task_granted', data: { projectId: pid } }));
       return;
     }

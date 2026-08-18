@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { FileText, RefreshCw, Download, FolderOpen, Send, CheckCircle2 } from 'lucide-react';
 import { apiFetchJson } from '../utils/apiFetch';
+import { projectApi } from '../utils/projectApi';
 import { cn } from '../lib/utils';
 import type { Project } from '../types';
 
@@ -21,6 +22,8 @@ interface PdfFileInfo {
 interface PdfToolsPanelProps {
   project: Project | null;
   onSendMessage: (text: string) => void;
+  /** Phase T (2026-08-14): the tab whose workspace this panel's REST calls address. */
+  tabId?: string | null;
 }
 
 const POLL_MS = 6000;
@@ -39,7 +42,7 @@ function sanitizeOutputName(raw: string): string {
   return /\.pdf$/i.test(cleaned) ? cleaned : `${cleaned}.pdf`;
 }
 
-export function PdfToolsPanel({ project, onSendMessage }: PdfToolsPanelProps) {
+export function PdfToolsPanel({ project, onSendMessage, tabId = null }: PdfToolsPanelProps) {
   const [files, setFiles] = useState<PdfFileInfo[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -77,7 +80,7 @@ export function PdfToolsPanel({ project, onSendMessage }: PdfToolsPanelProps) {
     setError(null);
     try {
       const res = await fetch(
-        `/api/projects/${encodeURIComponent(project.id)}/pdf-upload?file=${encodeURIComponent(file.name)}`,
+        projectApi(`/api/projects/${encodeURIComponent(project.id)}/pdf-upload?file=${encodeURIComponent(file.name)}`, tabId),
         { method: 'POST', headers: { 'Content-Type': 'application/pdf' }, body: file }
       );
       const data = await res.json();
@@ -93,7 +96,7 @@ export function PdfToolsPanel({ project, onSendMessage }: PdfToolsPanelProps) {
   const fetchFiles = useCallback(async () => {
     if (!project?.id) return;
     setLoading(true);
-    const data = await apiFetchJson<{ files: PdfFileInfo[] }>(`/api/projects/${encodeURIComponent(project.id)}/pdf-files`);
+    const data = await apiFetchJson<{ files: PdfFileInfo[] }>(projectApi(`/api/projects/${encodeURIComponent(project.id)}/pdf-files`, tabId));
     setLoading(false);
     if (!data) {
       setError('Could not load the PDF list — check that the server is up.');
@@ -101,7 +104,7 @@ export function PdfToolsPanel({ project, onSendMessage }: PdfToolsPanelProps) {
     }
     setError(null);
     setFiles(data.files || []);
-  }, [project?.id]);
+  }, [project?.id, tabId]);
 
   useEffect(() => {
     setFiles([]);
@@ -130,11 +133,11 @@ export function PdfToolsPanel({ project, onSendMessage }: PdfToolsPanelProps) {
   };
 
   const fileUrl = (path: string) =>
-    `/api/projects/${encodeURIComponent(project?.id || '')}/file?path=${encodeURIComponent(path)}`;
+    projectApi(`/api/projects/${encodeURIComponent(project?.id || '')}/file?path=${encodeURIComponent(path)}`, tabId);
 
   const reveal = async (path: string) => {
     try {
-      await fetch(`/api/projects/${encodeURIComponent(project?.id || '')}/reveal`, {
+      await fetch(projectApi(`/api/projects/${encodeURIComponent(project?.id || '')}/reveal`, tabId), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ path }),

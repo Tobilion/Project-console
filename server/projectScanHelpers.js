@@ -97,8 +97,10 @@ export function sanitizeChatReplies(config) {
 
 /** Builds a minimal config for a project recognized only via isRecognizableByCodeAlone() above —
  *  otherwise it would be included with an empty `entries: []` and no way to explain itself when
- *  asked "what is this project" in trigger mode. */
-export function buildFallbackConfig(name, codebaseIndex) {
+ *  asked "what is this project" in trigger mode. When `includeAll` is set (the Phase T
+ *  scanAllFolders profile setting), the fallback summary instead explains the folder was
+ *  included because "include every folder" is on — honest about why a junk folder appears. */
+export function buildFallbackConfig(name, codebaseIndex, includeAll = false) {
   const parts = [];
   if (codebaseIndex.languages.length) parts.push(`Languages: ${codebaseIndex.languages.join(', ')}`);
   if (codebaseIndex.frameworks?.length) parts.push(`Detected stack: ${codebaseIndex.frameworks.join(', ')}`);
@@ -107,7 +109,9 @@ export function buildFallbackConfig(name, codebaseIndex) {
   if (codebaseIndex.isMonorepo) parts.push(`Monorepo with ${codebaseIndex.subPackages.length} sub-packages (${codebaseIndex.subPackages.map((p) => p.path).join(', ')})`);
   const summary = parts.length
     ? `No CLAUDE.md/README.md/console.config.json/package.json found for this project — this overview was auto-detected from the folder's contents. ${parts.join('. ')}.`
-    : `No CLAUDE.md/README.md/console.config.json/package.json found, and little else was detected either — auto-recognized based on file contents alone.`;
+    : includeAll
+      ? `No CLAUDE.md/README.md/console.config.json/package.json found, and little else was detected either — this folder is included as a project because the "include every folder" setting is on (it has no dev-code signals).`
+      : `No CLAUDE.md/README.md/console.config.json/package.json found, and little else was detected either — auto-recognized based on file contents alone.`;
   return {
     projectName: name,
     entries: [{
@@ -166,7 +170,17 @@ export async function readProjectContextDocs(projectPath) {
     const filesInDir = await fs.readdir(projectPath);
     for (const file of filesInDir) {
       if (isContextFilename(file)) {
-        const content = await fs.readFile(path.join(projectPath, file), 'utf-8');
+        // Cap each context doc at 1MB and skip per-file failures (read error, oversized
+        // file, encoding) instead of aborting the whole set — one corrupt CLAUDE.md must
+        // never hide the other docs (audit 2026-08-17).
+        let content = null;
+        try {
+          content = await fs.readFile(path.join(projectPath, file), 'utf-8');
+          if (content.length > 1024 * 1024) content = content.slice(0, 1024 * 1024);
+        } catch (err) {
+          console.warn(`[scan] Could not read context doc ${file}: ${err.message}`);
+        }
+        if (content === null) continue;
         contextFiles.push({ filename: file, content });
 
         // Simple markdown parsing based on headers

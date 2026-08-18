@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useMemo, useCallback, memo } from 'react';
 import { TerminalMessage, Project, AIStatus, PendingToolConfirm, PendingMemorySuggestion, ToolCallEntry } from '../types';
 import { getRandomChatPrompt, getRandomEmptyStatePrompt, getEmptyStateActions } from '../utils/greetings';
 import { ToolHistoryPanel } from './ToolHistoryPanel';
@@ -8,6 +8,7 @@ import { TerminalMessages } from './TerminalMessages';
 import { TerminalSearchOverlay } from './TerminalSearchOverlay';
 import { TerminalInput } from './TerminalInput';
 import { ErrorBoundary } from './ErrorBoundary';
+import { Minimize2 } from 'lucide-react';
 
 const MAX_HISTORY = 200;
 
@@ -49,6 +50,8 @@ interface TerminalProps {
   aiThinking: boolean;
   aiThinkingText?: string;
   commandPending: boolean;
+  /** Phase 5: bumped by useConsole after New Chat / session switch — focus the input. */
+  focusSignal?: number;
   onCancel?: () => void;
   ollamaStatus: AIStatus | null;
   aiModel: string;
@@ -73,6 +76,8 @@ interface TerminalProps {
   onSwitchToProject?: (projectId: string) => void;
   isFullscreen?: boolean;
   onToggleFullscreen?: () => void;
+  /** Feature B (2026-08-14): opens the full Chat History overlay (General/Projects tabs). */
+  onOpenChatHistory?: () => void;
   processes?: ProcessInfo[];
   processLogs?: Record<string, string[]>;
   selectedProcessId?: string | null;
@@ -83,18 +88,43 @@ interface TerminalProps {
   dockTab?: 'logs' | 'projects' | 'history';
   onSetDockTab?: (tab: 'logs' | 'projects' | 'history') => void;
   projects?: Project[];
+  /** Phase T (2026-08-14): the tab whose workspace the dock's History tab addresses. */
+  tabId?: string | null;
    knownDevUrls: string[];
    connected: boolean;
+  /** Phase 6 (2026-08-17): "load earlier" — true while the buffer holds fewer stored
+      messages than the session log contains. */
+  historyHasMore?: boolean;
+  onLoadEarlier?: () => void;
  }
 
-export const Terminal = ({ messages, onSendMessage, onSearch, onDeepResearch, activeProject, userName, pendingConfirm, onConfirm, pendingToolConfirm, onToolConfirm, onApproveTask, pendingMemorySuggestion, onMemorySuggestionRespond, aiEnabled, aiThinking, aiThinkingText, commandPending, onCancel, ollamaStatus, aiModel, aiMode, onAIToggle, onSetModel, onSetMode, toolHistory, showToolHistory, onToggleToolHistory, onRerunToolCall, onExportMarkdown, onExportJson, onExportPdf, onExportProjectChatLog, onDirectCommand, onDidYouMeanPick, workspaceProjects, addToWorkspace, removeFromWorkspace, clearWorkspace, onSwitchToProject, isFullscreen, onToggleFullscreen, processes, processLogs, 
- selectedProcessId, onSelectProcess, onStopProcess, dockExpanded, onToggleDock, dockTab, onSetDockTab, projects, knownDevUrls, connected }: TerminalProps) => {
+// Audit 2026-08-17: memoize the terminal — it's the heaviest subtree (messages + dock + log
+// joins) and App re-renders for unrelated reasons (dashboard polls, deck usage, theme). The
+// comparator ignores the five stateless inline lambdas App passes by identity: each is a
+// pure `v => !v` / `() => setX(...)` closure with no captured state, so behavior is identical
+// across renders. Every other prop is compared by reference — messages/processLogs/knownDevUrls
+// only change identity when their data actually changes.
+const VOLATILE_MEMO_PROPS = new Set([
+  'onToggleFullscreen', 'onToggleToolHistory', 'onOpenChatHistory', 'onToggleDock', 'onSetDockTab',
+]);
+const terminalAreEqual = (prev: TerminalProps, next: TerminalProps) =>
+  (Object.keys(next) as (keyof TerminalProps)[]).every((k) => VOLATILE_MEMO_PROPS.has(k as string) || prev[k] === next[k]);
+
+export const Terminal = memo(function Terminal({ messages, onSendMessage, onSearch, onDeepResearch, activeProject, userName, pendingConfirm, onConfirm, pendingToolConfirm, onToolConfirm, onApproveTask, pendingMemorySuggestion, onMemorySuggestionRespond, aiEnabled, aiThinking, aiThinkingText, commandPending, onCancel, ollamaStatus, aiModel, aiMode, onAIToggle, onSetModel, onSetMode, toolHistory, showToolHistory, onToggleToolHistory, onRerunToolCall, onExportMarkdown, onExportJson, onExportPdf, onExportProjectChatLog, onDirectCommand, onDidYouMeanPick, workspaceProjects, addToWorkspace, removeFromWorkspace, clearWorkspace, onSwitchToProject, isFullscreen, onToggleFullscreen, onOpenChatHistory, processes, processLogs, 
+ selectedProcessId, onSelectProcess, onStopProcess, dockExpanded, onToggleDock, dockTab, onSetDockTab, projects, tabId, knownDevUrls, connected, focusSignal, historyHasMore, onLoadEarlier }: TerminalProps) {
   const [input, setInput] = useState('');
   const [showSearchOverlay, setShowSearchOverlay] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [historyVersion, setHistoryVersion] = useState(0);
   const endRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  // Phase 5: focus the chat input when useConsole bumps the signal (New Chat, session
+  // switch, project pick). Runs after the re-render so the input exists; null-safe when
+  // the chat view isn't the active one or AI mode renders a different input.
+  useEffect(() => {
+    if (focusSignal) inputRef.current?.focus();
+  }, [focusSignal]);
 
   // Command history
   const commandHistory = useRef<string[]>([]);
@@ -204,6 +234,20 @@ export const Terminal = ({ messages, onSendMessage, onSearch, onDeepResearch, ac
 
   const isBlocked = !!pendingConfirm || !!pendingToolConfirm;
 
+  // Audit 2026-08-17: Esc exits chat fullscreen. The window listener is armed only while
+  // fullscreen is active; while a confirm card is up, Escape stays owned by the card's own
+  // reject handler (the input's keydown handles that) and must not also collapse the view.
+  useEffect(() => {
+    if (!isFullscreen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      if (pendingConfirm || pendingToolConfirm) return;
+      onToggleFullscreen?.();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [isFullscreen, pendingConfirm, pendingToolConfirm, onToggleFullscreen]);
+
   // Full-screen mode centers the whole chat column (thread + input) so bubbles never stretch
   // across a wide monitor — Claude/ChatGPT-style readable column. Non-fullscreen is untouched.
   const centerCol = isFullscreen ? 'mx-auto w-full max-w-3xl' : '';
@@ -258,6 +302,7 @@ export const Terminal = ({ messages, onSendMessage, onSearch, onDeepResearch, ac
          activeProject={activeProject}
          isFullscreen={isFullscreen}
          onToggleFullscreen={onToggleFullscreen}
+         onOpenChatHistory={onOpenChatHistory}
          ollamaStatus={ollamaStatus}
          workspaceProjects={workspaceProjects}
          removeFromWorkspace={removeFromWorkspace}
@@ -297,8 +342,23 @@ export const Terminal = ({ messages, onSendMessage, onSearch, onDeepResearch, ac
          emptyStateActions={emptyStateActions}
           onDidYouMeanPick={onDidYouMeanPick}
           knownDevUrls={knownDevUrls}
+          historyHasMore={historyHasMore}
+          onLoadEarlier={onLoadEarlier}
         />
       </ErrorBoundary>
+
+      {/* Audit 2026-08-17: slim always-visible exit affordance while fullscreen — the header's
+          Minimize button is up top, this sits at the thread's top-right corner so the way out
+          is never more than a glance away. */}
+      {isFullscreen && onToggleFullscreen && (
+        <button
+          onClick={onToggleFullscreen}
+          className="absolute top-12 right-3 z-40 flex items-center gap-1.5 px-2.5 py-1.5 text-[10px] font-bold tracking-wider uppercase text-fg-dim hover:text-fg-strong bg-scrim-faint border border-border-soft rounded-lg transition-colors"
+          title="Exit fullscreen (Esc)"
+        >
+          <Minimize2 size={11} /> Exit fullscreen
+        </button>
+      )}
 
       <ToolHistoryPanel toolHistory={toolHistory} show={showToolHistory} onToggle={onToggleToolHistory} onRerun={onRerunToolCall} />
 
@@ -316,6 +376,7 @@ export const Terminal = ({ messages, onSendMessage, onSearch, onDeepResearch, ac
           projects={projects || []}
           activeProjectId={activeProject?.id || null}
           onSendMessage={onSendMessage}
+          tabId={tabId}
         />
       </ErrorBoundary>
 
@@ -356,4 +417,4 @@ export const Terminal = ({ messages, onSendMessage, onSearch, onDeepResearch, ac
       />
     </div>
   );
-};
+}, terminalAreEqual);

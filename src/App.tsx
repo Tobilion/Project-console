@@ -6,17 +6,21 @@ import { Terminal } from './components/Terminal';
 import { WelcomeScreen } from './components/WelcomeScreen';
 import { Dashboard } from './components/Dashboard';
 import { ToolsPanel } from './components/ToolsPanel';
+import { ProjectTabs } from './components/ProjectTabs';
 import { CommandDeck } from './components/CommandDeck';
+import { ChatHistoryOverlay } from './components/ChatHistoryOverlay';
 import { useConsole } from './hooks/useConsole';
 import { useUserProfile } from './hooks/useUserProfile';
 import { useTheme } from './hooks/useTheme';
 import { getRandomGreeting } from './utils/greetings';
-import { Home, LayoutDashboard, LayoutGrid, Search, Settings, Loader2, X, BookOpen } from 'lucide-react';
+import { Home, LayoutDashboard, LayoutGrid, Search, Settings, Loader2, X, BookOpen, HelpCircle } from 'lucide-react';
 import { ThemeToggle } from './components/ui/ThemeToggle';
 import { UserProfileModal } from './components/UserProfileModal';
 import { FirstRunSetup } from './components/FirstRunSetup';
 import { CommandReference } from './components/CommandReference';
 import { ConfirmCardsOverlay } from './components/ConfirmCardsOverlay';
+import { TourOverlay, TourPicker } from './components/TourOverlay';
+import { getTourSection, TourSection } from './tours';
 import { GENERAL_PROJECT_ID } from './types';
 import type { Project } from './types';
 
@@ -77,6 +81,15 @@ function App() {
   const [sidebarCollapsed, setSidebarCollapsed] = React.useState(false);
   const [deckOpen, setDeckOpen] = React.useState(false);
   const [profileOpen, setProfileOpen] = React.useState(false);
+  // Feature B (2026-08-14): the full Chat History overlay (General/Projects tabs), opened
+  // from the sidebar's Chats header or the chat's top bar.
+  const [chatHistoryOpen, setChatHistoryOpen] = React.useState(false);
+  // Phase T2 (2026-08-14): the tour system — an active section (overlay open) or the
+  // section picker. Guided steps dispatch 'lpc:tour-view' to switch the main view; the
+  // settings modal dispatches 'lpc:launch-tour' to start a section.
+  const [tourSection, setTourSection] = React.useState<TourSection | null>(null);
+  const [tourPickerOpen, setTourPickerOpen] = React.useState(false);
+  const [tourMode, setTourMode] = React.useState<'card' | 'guided'>('guided');
   // Phase 1 workspaceType (UPGRADE-ROADMAP.md, 2026-08-11): per-project Developer/General
   // tab. Restored from localStorage per project (same inline-localStorage style as the pinned
   // projects rail in SidebarDrawer — deliberately NOT global, a user may keep both kinds of
@@ -123,19 +136,44 @@ function App() {
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
+  // Phase T2: guided-tour plumbing. 'lpc:tour-view' switches the main view so a guided
+  // step can point at the Tools grid / dashboard / chat; 'lpc:launch-tour' starts a section
+  // (dispatched by the settings modal's Tours section).
+  useEffect(() => {
+    const onTourView = (e: Event) => {
+      const view = (e as CustomEvent).detail?.view;
+      if (view === 'tools') { setShowDashboard(false); setShowCommandRef(false); setToolsOpen(true); }
+      else if (view === 'dashboard') { setShowDashboard(true); setShowCommandRef(false); setToolsOpen(false); }
+      else if (view === 'general') { setShowDashboard(false); setToolsOpen(false); setShowCommandRef(false); }
+      else { setShowDashboard(false); setToolsOpen(false); setShowCommandRef(false); }
+    };
+    const onLaunchTour = (e: Event) => {
+      const sectionId = (e as CustomEvent).detail?.section;
+      const section = sectionId ? getTourSection(sectionId) : null;
+      if (section) { setTourPickerOpen(false); setTourSection(section); }
+    };
+    window.addEventListener('lpc:tour-view', onTourView);
+    window.addEventListener('lpc:launch-tour', onLaunchTour);
+    return () => {
+      window.removeEventListener('lpc:tour-view', onTourView);
+      window.removeEventListener('lpc:launch-tour', onLaunchTour);
+    };
+  }, []);
+
   const {
     projects, activeProject, scanPath, setScanPath, messages,
     pendingConfirm, sessions, activeSessionId,
     aiEnabled, ollamaStatus, aiThinking, aiThinkingText, commandPending, indexingProjectId,
-    aiModel, aiMode, showWelcome, setShowWelcome, pendingToolConfirm,
+    aiModel, aiMode, showWelcome, setShowWelcome, pendingToolConfirm, chatFocusSignal,
     pendingMemorySuggestion, handleMemorySuggestionRespond,
     handleSendMessage, handleCancel, handleConfirm, handleToolConfirm, handleApproveTask, handleAIToggle,
-    handleSetModel, handleSetMode, handleSelectProject, setDisplayName,
+    handleSetModel, handleSetMode, handleSelectProject, handleSelectProjectReuse, setDisplayName,
     handleSearch, handleDeepResearch, handleNewChat, handleQuickStart, handleScan,
     createSession, switchSession, deleteSession, renameSession, handleSwitchToProject,
     toolHistory, showToolHistory, setShowToolHistory, rerunToolCall,
     exportAsMarkdown, exportAsJson, exportAsPdf, exportProjectChatLog,
     handleDirectCommand, activeServers, knownDevUrls, dashboardUpdateSignal,
+    historyTotal, loadedHistory, loadEarlierMessages,
     workspaceProjects, addToWorkspace, removeFromWorkspace, clearWorkspace,
     processes, processLogs, selectedProcessId, setSelectedProcessId,
      dockExpanded, setDockExpanded, dockTab, setDockTab, handleStopProcess,
@@ -143,7 +181,30 @@ function App() {
      updateNotice, onDismissUpdate,
      toolsOpen, setToolsOpen, activeToolPanel, setActiveToolPanel,
      toolPanels, toolPanelsError, fetchToolPanels,
+     tabs, activeTabId, activateTab, duplicateTab, closeTab,
+     registerViewSync, isTabSwitchingRef,
    } = useConsole();
+
+  // Per-tab view restoration (Phase T fix, 2026-08-14): the top-level view (chat / dashboard /
+  // tools / command reference) and the open tool panel used to be purely global state, so a
+  // tab that was in the Folder Explorer came back on the previous tab's chat/dashboard view.
+  // The tabs hook snapshots this before switching away and calls restore() after switching to
+  // the arriving tab — re-registered whenever the view state changes so snapshot() always
+  // reads the current (leaving) tab's view.
+  useEffect(() => {
+    registerViewSync({
+      snapshot: () => {
+        const view = showCommandRef ? 'commandRef' : toolsOpen ? 'tools' : showDashboard ? 'dashboard' : 'chat';
+        return { view, activeToolPanel };
+      },
+      restore: (saved) => {
+        setShowCommandRef(saved.view === 'commandRef');
+        setToolsOpen(saved.view === 'tools');
+        setShowDashboard(saved.view === 'dashboard');
+        setActiveToolPanel(saved.activeToolPanel ?? null);
+      },
+    });
+  }, [registerViewSync, showCommandRef, toolsOpen, showDashboard, activeToolPanel, setToolsOpen, setActiveToolPanel]);
 
   // Phase 1: restore the active project's last-selected tab. Runs only when the active
   // project changes (never on a tab switch — that path writes, it doesn't read back).
@@ -155,6 +216,17 @@ function App() {
     const saved = activeProject?.id ? tabs[activeProject.id] : undefined;
     setWorkspaceTab(saved ?? activeProject?.workspaceType ?? profile.defaultWorkspaceType ?? 'general');
   }, [activeProject?.id, activeProject?.workspaceType, profile.defaultWorkspaceType]);
+
+  // Phase 5: dashboard "View logs" jumps to the chat view with the dock open on that
+  // project's log tab (the dock's selection IS its filter).
+  const handleViewLogs = (projectId: string) => {
+    setShowDashboard(false);
+    setToolsOpen(false);
+    setShowCommandRef(false);
+    setDockExpanded(true);
+    setDockTab('logs');
+    setSelectedProcessId(projectId);
+  };
 
   const handleWorkspaceTabChange = (mode: 'dev' | 'general') => {
     setWorkspaceTab(mode);
@@ -190,6 +262,9 @@ function App() {
   // 2026-08-14: only when a project is active. With no project picked the General workspace is
   // chat-first (the user can talk before choosing a project), so the tools grid is not forced.
   useEffect(() => {
+    // A tab switch restores the arriving tab's own view — never force the tools grid open
+    // while that restore is in flight (the user chose "tab's saved view wins").
+    if (isTabSwitchingRef.current) return;
     if (workspaceTab === 'general' && activeProject?.id && !showDashboard && !activeToolPanel && !chatFullscreen) {
       setToolsOpen(true);
     }
@@ -222,6 +297,9 @@ function App() {
   // The per-project last-open panel persists via console.toolPanelByProject (restore effect
   // below), mirroring Phase 1's workspace-tab persistence.
   useEffect(() => {
+    // Skip during a tab switch — the tabs hook restores the arriving tab's own panel (via
+    // viewSync.restore) and that must not be overwritten by this project-keyed persistence.
+    if (isTabSwitchingRef.current) return;
     const saved = activeProject?.id ? readToolPanels()[activeProject.id] : undefined;
     setActiveToolPanel(saved ?? null);
   }, [activeProject?.id]);
@@ -362,11 +440,14 @@ function App() {
           </button>
           {/* Stage B: the Tools icon is visible in BOTH Developer and General modes — a
               functional fix, not just visual (the panels were previously General-only). */}
-          <button onClick={() => { setShowDashboard(false); setShowCommandRef(false); setToolsOpen(v => !v); }} className={`p-3 transition-colors ${toolsOpen ? 'text-accent-blue' : 'text-fg-dim hover:text-fg-strong'}`} title="Interactive tools">
+          <button data-tour="tools-button" onClick={() => { setShowDashboard(false); setShowCommandRef(false); setToolsOpen(v => !v); }} className={`p-3 transition-colors ${toolsOpen ? 'text-accent-blue' : 'text-fg-dim hover:text-fg-strong'}`} title="Interactive tools">
             <LayoutGrid size={18} />
           </button>
-          <button onClick={() => setProfileOpen(true)} className="p-3 text-fg-dim hover:text-fg-strong transition-colors" title="User profile">
+          <button data-tour="settings-button" onClick={() => setProfileOpen(true)} className="p-3 text-fg-dim hover:text-fg-strong transition-colors" title="User profile">
             <Settings size={18} />
+          </button>
+          <button onClick={() => setTourPickerOpen(true)} className="p-3 text-fg-dim hover:text-fg-strong transition-colors" title="Help — walkthroughs & tours">
+            <HelpCircle size={18} />
           </button>
           <ThemeToggle />
         </div>
@@ -393,14 +474,28 @@ function App() {
         </div>
       )}
 
-      <main className={`relative z-10 flex-1 min-h-0 overflow-hidden ${showDashboard || toolsOpen || showCommandRef ? '' : chatFullscreen ? 'block' : 'flex flex-col lg:flex-row gap-6'}`}>
+      <main className="relative z-10 flex-1 min-h-0 overflow-hidden flex flex-col">
+        {/* Phase T: Chrome-style project tabs — each tab owns its own scan folder + project
+            list + open chat. Always a full-width top bar (never a column in the side row);
+            hidden only in chat fullscreen. */}
+        {!chatFullscreen && (
+          <ProjectTabs
+            tabs={tabs}
+            activeTabId={activeTabId}
+            activeProjectName={activeProject?.name ?? null}
+            onActivate={activateTab}
+            onDuplicate={duplicateTab}
+            onClose={closeTab}
+          />
+        )}
         {showCommandRef ? (
-          <div className="h-full p-6">
+          <div className="flex-1 min-h-0 p-6">
             <CommandReference onClose={() => setShowCommandRef(false)} />
           </div>
         ) : toolsOpen ? (
-          <div className="h-full p-6">
+          <div className="flex-1 min-h-0 p-6">
             <ToolsPanel
+              key={activeTabId ?? 'default'}
               panels={toolPanels}
               panelsError={toolPanelsError}
               onRetryPanels={fetchToolPanels}
@@ -410,21 +505,26 @@ function App() {
               project={activeProject ?? GENERAL_PROJECT}
               onSendMessage={handleSendMessage}
               aiEnabled={aiEnabled}
+              tabId={activeTabId}
             />
           </div>
         ) : showDashboard ? (
-          <div className="h-full p-6">
+          <div className="flex-1 min-h-0 p-6">
             <Dashboard
               onClose={() => setShowDashboard(false)}
               refreshSignal={dashboardUpdateSignal}
               projects={projects}
               workspaceMode={workspaceTab}
               scanPath={scanPath}
+              tabId={activeTabId}
               onSelectProject={handleSelectProject}
+              onSelectProjectReuse={handleSelectProjectReuse}
               onSendMessage={handleSendMessage}
+              onViewLogs={handleViewLogs}
             />
           </div>
-        ) : (<>
+        ) : (
+        <div className={chatFullscreen ? 'flex-1 min-h-0' : 'flex-1 min-h-0 flex flex-col lg:flex-row gap-6'}>
         {!chatFullscreen && (
           <SidebarDrawer
             projects={projects}
@@ -440,6 +540,7 @@ function App() {
             deleteSession={deleteSession}
             renameSession={renameSession}
             handleSelectProject={handleSelectProject}
+            onOpenChatHistory={() => setChatHistoryOpen(true)}
             workspaceProjects={workspaceProjects}
             addToWorkspace={addToWorkspace}
             removeFromWorkspace={removeFromWorkspace}
@@ -467,6 +568,7 @@ function App() {
               workspaceProjects={workspaceProjects}
               addToWorkspace={addToWorkspace}
               removeFromWorkspace={removeFromWorkspace}
+              onOpenTourPicker={() => setTourPickerOpen(true)}
             />
             ) : (
             <Terminal
@@ -477,6 +579,7 @@ function App() {
               onSearch={handleSearch}
               onDeepResearch={handleDeepResearch}
               activeProject={activeProject}
+              tabId={activeTabId}
               pendingConfirm={pendingConfirm}
               onConfirm={handleConfirm}
               pendingToolConfirm={pendingToolConfirm}
@@ -488,6 +591,7 @@ function App() {
               aiThinking={aiThinking}
               aiThinkingText={aiThinkingText}
               commandPending={commandPending}
+              focusSignal={chatFocusSignal}
               onCancel={handleCancel}
               ollamaStatus={ollamaStatus}
               aiModel={aiModel}
@@ -503,8 +607,9 @@ function App() {
               onExportJson={exportAsJson}
               onExportPdf={exportAsPdf}
               onExportProjectChatLog={exportProjectChatLog}
-              onDirectCommand={handleDirectCommand}
-              onDidYouMeanPick={handleDidYouMeanPick}
+onDirectCommand={handleDirectCommand}
+               onDidYouMeanPick={handleDidYouMeanPick}
+               onOpenChatHistory={() => setChatHistoryOpen(true)}
               workspaceProjects={workspaceProjects}
               addToWorkspace={addToWorkspace}
               removeFromWorkspace={removeFromWorkspace}
@@ -523,11 +628,13 @@ function App() {
               knownDevUrls={knownDevUrls}
                userName={profile.name}
                connected={connected}
+               historyHasMore={loadedHistory > 0 && loadedHistory < historyTotal}
+               onLoadEarlier={loadEarlierMessages}
              />
             )}
           </div>
         </div>
-        </>)}
+        </div>)}
       </main>
 
       {/* 2026-08-12 audit fix: confirm cards render as a fixed overlay so they are visible
@@ -586,6 +693,18 @@ function App() {
         onSetDockTab={setDockTab}
         showToolHistory={showToolHistory}
         onToggleToolHistory={() => setShowToolHistory(v => !v)}
+        onOpenTourPicker={() => setTourPickerOpen(true)}
+      />
+
+      <ChatHistoryOverlay
+        open={chatHistoryOpen}
+        onClose={() => setChatHistoryOpen(false)}
+        sessions={sessions}
+        activeSessionId={activeSessionId}
+        onSwitchSession={switchSession}
+        onNewChat={handleNewChat}
+        onDeleteSession={deleteSession}
+        onRenameSession={renameSession}
       />
 
       <UserProfileModal
@@ -602,6 +721,28 @@ function App() {
         handleScan={handleScan}
         onFinish={updateProfile}
       />
+
+      {/* Phase T2: tour system — the section picker (Welcome "Take the Tour") and the
+          active overlay. Guided steps switch the main view via the lpc:tour-view listener. */}
+      {tourPickerOpen && (
+        <TourPicker
+          onClose={() => setTourPickerOpen(false)}
+          onPick={(sectionId, mode) => {
+            const section = getTourSection(sectionId);
+            if (!section) return;
+            setTourPickerOpen(false);
+            setTourSection(section);
+            setTourMode(mode);
+          }}
+        />
+      )}
+      {tourSection && (
+        <TourOverlay
+          section={tourSection}
+          mode={tourMode}
+          onClose={() => setTourSection(null)}
+        />
+      )}
     </div>
   );
 }

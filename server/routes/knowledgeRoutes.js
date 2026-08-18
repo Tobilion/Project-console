@@ -9,7 +9,7 @@ import { asyncHandler } from '../asyncHandler.js';
 
 export function registerKnowledgeRoutes(app) {
   app.get('/api/projects/:id/documents', asyncHandler(async (req, res) => {
-    const project = resolveProject(req.params.id);
+    const project = resolveProject(req.params.id, req.query.tab);
     if (!project) return res.status(404).json({ error: 'Project not found' });
     const q = typeof req.query.q === 'string' ? req.query.q.trim() : '';
     if (!q) return res.status(400).json({ error: 'Missing ?q= parameter.' });
@@ -28,7 +28,7 @@ export function registerKnowledgeRoutes(app) {
   // model — a failed/unavailable model call yields { synthesis: null } and the panel falls
   // back to the chunk list, never an error).
   app.get('/api/projects/:id/documents/ask', asyncHandler(async (req, res) => {
-    const project = resolveProject(req.params.id);
+    const project = resolveProject(req.params.id, req.query.tab);
     if (!project) return res.status(404).json({ error: 'Project not found' });
     const q = typeof req.query.q === 'string' ? req.query.q.trim() : '';
     if (!q) return res.status(400).json({ error: 'Missing ?q= parameter.' });

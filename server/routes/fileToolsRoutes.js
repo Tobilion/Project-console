@@ -16,7 +16,8 @@ const MAX_SEARCH_RESULTS = 20;
 const MAX_CONTENT_FILE_BYTES = 20000;
 
 function findProject(req) {
-  return resolveProject(req.params.id) || null;
+  // Phase T (2026-08-14): resolve inside the requesting tab's workspace when ?tab= is given.
+  return resolveProject(req.params.id, req.query.tab) || null;
 }
 
 /** List directory entries with size + mod date; optional name substring filter. */
@@ -56,34 +57,49 @@ function listEntries(projectRoot, dirPath, search) {
 /** Walk the project tree and return name + content hits in MAX_SEARCH_RESULTS flat results. */
 async function searchFiles(projectRoot, needle) {
   const files = await walkDir(projectRoot);
-  const results = [];
   const q = needle.toLowerCase();
-  for (const file of files) {
-    if (results.length >= MAX_SEARCH_RESULTS) break;
+
+  // Phase 6: per-file stat + read were serial sync calls — a large tree paid the whole walk
+  // then a stat per file through the event loop. The content pass now runs with bounded
+  // concurrency (fs/promises); results are tagged with their walk index and re-ordered at
+  // the end, so the returned set stays deterministic (first matches in walk order) instead
+  // of being racer-dependent.
+  const statFile = async (file) => {
+    try { return await fs.promises.stat(file); } catch { return null; }
+  };
+
+  const scanOne = async (file) => {
     const rel = path.relative(projectRoot, file).replace(/\\/g, '/');
-    // name match
     const base = path.basename(file);
+    const st = await statFile(file);
     if (base.toLowerCase().includes(q)) {
-      let size = 0, mtime = 0;
-      try { const st = fs.statSync(file); size = st.size; mtime = st.mtimeMs; } catch {}
-      results.push({ path: rel, match: 'name', size, modifiedAt: mtime });
-      continue;
+      return { path: rel, match: 'name', size: st?.size ?? 0, modifiedAt: st?.mtimeMs ?? 0 };
     }
-    // content match
-    if (!isTextFile(file)) continue;
-    try {
-      const st = fs.statSync(file);
-      if (st.size > MAX_CONTENT_FILE_BYTES) continue;
-    } catch { continue; }
+    if (!isTextFile(file)) return null;
+    if (!st || st.size > MAX_CONTENT_FILE_BYTES) return null;
     let content;
-    try { content = fs.readFileSync(file, 'utf-8'); } catch { continue; }
+    try { content = await fs.promises.readFile(file, 'utf-8'); } catch { return null; }
     if (content.toLowerCase().includes(q)) {
-      let size = 0, mtime = 0;
-      try { const st = fs.statSync(file); size = st.size; mtime = st.mtimeMs; } catch {}
-      results.push({ path: rel, match: 'content', size, modifiedAt: mtime });
+      return { path: rel, match: 'content', size: st.size, modifiedAt: st.mtimeMs };
     }
-  }
-  return results;
+    return null;
+  };
+
+  const tagged = [];
+  const POOL = 8;
+  let next = 0;
+  const worker = async () => {
+    while (next < files.length) {
+      const idx = next++;
+      const hit = await scanOne(files[idx]);
+      if (hit) tagged.push({ idx, hit });
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(POOL, files.length) }, () => worker()));
+  return tagged
+    .sort((a, b) => a.idx - b.idx)
+    .map((t) => t.hit)
+    .slice(0, MAX_SEARCH_RESULTS);
 }
 
 export function registerFileToolsRoutes(app) {
@@ -106,6 +122,39 @@ export function registerFileToolsRoutes(app) {
     if (!q) return res.status(400).json({ error: 'Missing ?q= parameter.' });
     const results = await searchFiles(project.path, q);
     res.json({ results });
+  }));
+
+  // Phase T (2026-08-14): static-file mount for in-console HTML preview. Serves any file
+  // relative to the project root under /static/* so a previewed .html's relative assets
+  // (./style.css, ./app.js, images) resolve to sibling URLs on the same mount — navigating
+  // to /api/projects/:id/static/index.html renders the page inline (res.sendFile sets the
+  // content-type from the extension, no Content-Disposition) and its relative links keep
+  // working. Same createResolveSafe escape rejection as every other project-scoped route.
+  app.get('/api/projects/:id/static/*', asyncHandler(async (req, res) => {
+    const project = findProject(req);
+    if (!project) return res.status(404).json({ error: 'Project not found' });
+    const rel = req.params[0];
+    if (!rel || typeof rel !== 'string') return res.status(400).json({ error: 'Missing file path.' });
+    let abs;
+    try {
+      abs = createResolveSafe(project.path)(rel);
+    } catch (err) {
+      return res.status(400).json({ error: err.message });
+    }
+    // The static mount exists for previewing project files — it must never serve the console's
+    // private bookkeeping (.console/ holds full chat transcripts and memory.md) or dotfiles such
+    // as .env, which would otherwise be readable by URL. Reject any segment that is .console or
+    // a dotfile before sendFile.
+    if (rel.split(/[\\/]/).some((seg) => seg === '.console' || (seg.startsWith('.') && seg.length > 1))) {
+      return res.status(403).json({ error: 'That path is not publicly readable.' });
+    }
+    try {
+      const st = fs.statSync(abs);
+      if (!st.isFile()) return res.status(400).json({ error: 'Not a file.' });
+    } catch {
+      return res.status(404).json({ error: `File not found: ${rel}` });
+    }
+    res.sendFile(abs);
   }));
 
   // Tidy plan for the panel's move-preview table (?by=type|date) — the same planTidy the

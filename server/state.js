@@ -3,6 +3,7 @@
 
 import os from 'os';
 import path from 'path';
+import crypto from 'crypto';
 import { Mutex } from 'async-mutex';
 
 export const projectsMutex = new Mutex();
@@ -47,10 +48,77 @@ export function getGeneralProject() {
 
 /** Resolve a projectId to the scanned project, or the synthetic General workspace for the
  *  reserved id (used by handleExecute and every project-scoped REST route, so the General
- *  workspace's own file tools/notes/PDFs work without a real project). */
-export function resolveProject(projectId) {
+ *  workspace's own file tools/notes/PDFs work without a real project). Phase T (2026-08-14):
+ *  `tabId` optionally scopes the lookup to that tab's workspace cache — callers without a tab
+ *  (CLI, out-of-band work, legacy clients) fall back to the global cache, unchanged. */
+export function resolveProject(projectId, tabId) {
   if (projectId === GENERAL_PROJECT_ID) return getGeneralProject();
-  return state.activeProjectsCache.find((p) => p.id === projectId) || null;
+  const cache = tabId && tabWorkspaces.has(tabId)
+    ? tabWorkspaces.get(tabId).projectsCache
+    : state.activeProjectsCache;
+  return cache.find((p) => p.id === projectId) || null;
+}
+
+// Phase T (2026-08-14): per-tab workspaces — Map<tabId, { scanDirectory, projectsCache }>.
+// A browser tab addresses its own workspace via ?tab=<id> on REST routes / tabId in the WS
+// execute payload, so two tabs can scan different folders without clobbering each other
+// (the global state.currentScanDirectory/activeProjectsCache stay the no-tab default).
+// Session-lifetime by design: tabs are recreated on reload from the client's localStorage.
+export const tabWorkspaces = new Map();
+
+export function getTabWorkspace(tabId) {
+  if (!tabId) return null;
+  return tabWorkspaces.get(tabId) || null;
+}
+
+export function setTabWorkspace(tabId, workspace) {
+  tabWorkspaces.set(tabId, workspace);
+}
+
+export function deleteTabWorkspace(tabId) {
+  tabWorkspaces.delete(tabId);
+}
+
+/** Every project from the global cache plus every tab's cache, last-write-wins by id. Used
+ *  where a global consumer needs the full set regardless of which tab scanned last — the
+ *  semantic-matcher project intents, the NLP retrain, and the code-index watcher sync must
+ *  see projects from ALL tabs, or one tab's scan would silently drop another tab's projects
+ *  from those global views. */
+export function allKnownProjects() {
+  const byId = new Map();
+  for (const p of state.activeProjectsCache) byId.set(p.id, p);
+  for (const ws of tabWorkspaces.values()) {
+    for (const p of ws.projectsCache) byId.set(p.id, p);
+  }
+  return [...byId.values()];
+}
+
+function pathHash(p) {
+  return crypto.createHash('sha1').update(p.toLowerCase()).digest('hex').slice(0, 8);
+}
+
+/** Resolve duplicate folder-name slug ids within a single project cache (audit 2026-08-17).
+ *  Two same-named folders under one scan root (e.g. A/beta and B/beta) both scan to id
+ *  'beta' — the session-lock path check already refuses wrong-folder chat, but REST routes
+ *  and id lookups would silently serve the FIRST match, leaving the second folder
+ *  unreachable. Fix: when an id repeats, later projects get '<slug>-<8-char path hash>'.
+ *  Deterministic across restarts (path-derived, not scan-order-derived — readdir order
+ *  varies): a sorted copy decides who keeps the plain slug, so a restart can never swap
+ *  which folder owns it. First-folder sessions persist unchanged; only pre-existing sessions
+ *  on the duplicate folder fail the path check with a clear error. */
+export function dedupeProjectIds(projects) {
+  const taken = new Set();
+  for (const p of [...projects].sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0))) {
+    if (!taken.has(p.id)) {
+      taken.add(p.id);
+      continue;
+    }
+    let suffix = pathHash(p.path);
+    while (taken.has(`${p.id}-${suffix}`)) suffix = pathHash(`${p.path}#${suffix}`);
+    p.id = `${p.id}-${suffix}`;
+    taken.add(p.id);
+  }
+  return projects;
 }
 
 /**

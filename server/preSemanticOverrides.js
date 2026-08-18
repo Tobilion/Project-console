@@ -23,7 +23,11 @@ export const PRE_SEMANTIC_OVERRIDES = [
   // launch/serve verbs are excluded so "how to run the site" stays with the project-specific
   // how_to_run interpretation, and the rule lives FIRST because the bare "deploy" override
   // below would otherwise catch "how to deploy the site" and run a push.
-  { intent: 'system.chit_chat.how_do_i', pattern: /^(?:how\s+(?:to|do\s+(?:you|i|we))\s+|(?:what\s+is\s+the\s+)?command\s+to\s+)(?:push|commit|deploy|build|stop\s+the\s+server|open\s+in|show|make\s+a\s+checkpoint|see\s+(?:the\s+)?(?:dashboard|test\s+coverage|bundle)|switch\s+projects|change\s+the\s+theme|check\s+(?:git\s+status|the\s+console\s+health|collisions)|export|schedule|review|approve)/i },
+  // NetPulse crosscheck (2026-08-17): "How do I publish" (and "how do i publish to npm") fired
+  // the deploy git-push confirm — the deploy example cluster owns publish-shaped phrases, and
+  // "publish" was missing from this list. Added alongside deploy; the catalog answers with the
+  // push-to-github guidance first and the npm publish option as the suggestion.
+  { intent: 'system.chit_chat.how_do_i', pattern: /^(?:how\s+(?:to|do\s+(?:you|i|we))\s+|(?:what\s+is\s+the\s+)?command\s+to\s+)(?:push|commit|deploy|publish|build|stop\s+the\s+server|open\s+in|show|make\s+a\s+checkpoint|see\s+(?:the\s+)?(?:dashboard|test\s+coverage|bundle)|switch\s+projects|change\s+the\s+theme|check\s+(?:git\s+status|the\s+console\s+health|collisions)|export|schedule|review|approve)/i },
   // Matchday-Exchange live session (2026-08-14): "what is the site about" routed to
   // system.chit_chat.deploy — a read-only question triggered the git-push confirm card — and
   // "what is the details of the site" landed on project.context.dev_server_status. The
@@ -41,7 +45,12 @@ export const PRE_SEMANTIC_OVERRIDES = [
   { intent: 'system.chit_chat.time', pattern: /^what(?:'s| is| as| are)\s+(?:the\s+)?(?:t(?:i)?me|clock)\b/i },
   { intent: 'git_init', pattern: /\bgit\s+init\b|\b(initialize|init)\b.*\brepo(sitory)?\b|\b(initialize|init)\b.*\bgit\b/i },
   { intent: 'git_ignore_add', pattern: /\bgiti?gnore\b/i },
-  { intent: 'system.chit_chat.deploy', pattern: /\bdeploy\b|\bpush\s+live\b/i },
+  // The deploy literal rule (audit 2026-08-17): "deploy"/"push live" is unambiguous as an
+  // IMPERATIVE, but the same tokens appear in negation/hesitation shapes — "don't deploy",
+  // "should i deploy", "is it deployed", "stop deploying" — which must NOT trigger a git-push
+  // confirm card. A leading negative/question marker routes those to normal matching instead
+  // (the how_do_i rule above already owns the "how do i deploy" shapes).
+  { intent: 'system.chit_chat.deploy', pattern: /^(?!.*\b(?:don'?t|dont|do\s+not|should\s+(?:i|we|you)|is\s+it|stop)\b).*(?:\bdeploy\b|\bpush\s+live\b)/i },
   // Confirmed live: "add a file" / "can you help me add a file" (no filename, no git
   // context) was resolving to git_add instead of file_create — both intents' example
   // phrases share the bag-of-words "add" + "file(s)", and git_add's semantic-embedding
@@ -85,6 +94,39 @@ export const PRE_SEMANTIC_OVERRIDES = [
   // pulled the centroid. Same class of trap, same fix: a leading run-family verb + a
   // site/app/project noun is an imperative launch, never a question — literal override wins.
   { intent: 'run_project', pattern: /^(?:run|start|launch|boot|restart|spin\s+up)\s+(?:the\s+|its\s+|your\s+|my\s+|this\s+)?(?:server|backend|api|site|website|app|project)\b(?:\s+please)?$/i },
+  // Phase T (2026-08-14): "open X.html in the browser" / "preview the page" shapes — a plain
+  // HTML file's purpose is rendering, so an open/preview ask with a .html mention or an
+  // explicit browser/preview intent must reach the browser, never the editor. These rules must
+  // sit BEFORE the open_file rule below: that rule's filename pattern matches .html files too
+  // and would otherwise send "open index.html" to VS Code. Exclusions keep the other open
+  // actions' territory (github page / vs code / cursor / editor / explorer / folder / site).
+  // Split in three because a verb-position "preview" cannot satisfy a trailing browser lookahead:
+  //  (a) open-family verb + a .html filename mention — the filename alone is the discriminator;
+  //  (b) preview/view verb + a page/html noun — the verb itself carries the browser intent;
+  //  (c) open/show/launch + page/html noun + an explicit browser mention;
+  //  (d) any open/view verb + ANY filename mention + an explicit browser mention — "open
+  //      report.pdf in the browser" / "view main.py in the browser": the OS default browser
+  //      handles the file via its association (HTML renders; other types open/download).
+  { intent: 'project.action.open_html', pattern: /^(?:open|open\s+up|open\s+me|preview|view|show|launch)\b(?!(?:.*\b(?:explorer|folder|directory|site|website|url|link|github|editor|vs\s*c?ode|cursor|tools|panel)\b))(?=[\s\S]*\b[\w./-]+\.html\b)/i },
+  { intent: 'project.action.open_html', pattern: /^(?:preview|view)\b(?!(?:.*\b(?:explorer|folder|directory|site|website|url|link|github|editor|vs\s*c?ode|cursor|tools|panel)\b))(?=[\s\S]*\b(?:page|html\b)\b)/i },
+  { intent: 'project.action.open_html', pattern: /^(?:open|open\s+up|open\s+me|show|launch)\b(?!(?:.*\b(?:explorer|folder|directory|site|website|url|link|github|editor|vs\s*c?ode|cursor|tools|panel)\b))(?=[\s\S]*\b(?:html\s+files?|the\s+page|a\s+page|this\s+page)\b)(?=[\s\S]*\b(?:browser)\b)/i },
+  { intent: 'project.action.open_html', pattern: /^(?:open|open\s+up|open\s+me|preview|view|show|launch)\b(?!(?:.*\b(?:explorer|folder|directory|site|website|url|link|github|editor|vs\s*c?ode|cursor|tools|panel)\b))(?=[\s\S]*\b[\w./-]+\.[a-zA-Z0-9]{1,10}\b)(?=[\s\S]*\bbrowser\b)/i },
+  // Phase T: an explicit editor mention in an open ask must keep its editor route — the new
+  // open_html examples pull "open X.html in vs code" toward the browser by embedding, so the
+  // mention is pinned back to its editor owner (narrow: requires the vs-code/cursor token).
+  // Split per editor so "open the project in cursor" keeps open_in_cursor (pinned together it
+  // drifted to open_in_vscode — the vscode intent owns "vs code" tokens but must not own cursor).
+  { intent: 'project.action.open_in_vscode', pattern: /^(?:open|open\s+up|open\s+me)\b(?=[\s\S]*\b(?:vs\s*c?ode|vscode)\b)/i },
+  { intent: 'project.action.open_in_cursor', pattern: /^(?:open|open\s+up|open\s+me)\b(?=[\s\S]*\bcursor\b)/i },
+  // Phase T2 (2026-08-14): "open X with <Editor>" / "open X in <Editor>" → open_with, and
+  // "open X in the folder" / "show X in explorer" → reveal_file. Both need a filename token
+  // (open_with additionally an editor name after with/in), and both sit BEFORE the open_file
+  // rule below (whose filename pattern would otherwise claim the .ext mention). Guards keep
+  // the pre-existing owners: "open the folder" (open_in_explorer), "open the github page",
+  // vs-code/cursor/editor mentions, and the browser shapes (open_html rules above already
+  // won those). The editor-name capture is deliberately loose (a-z0-9 spaces +._-).
+  { intent: 'project.action.open_with', pattern: /^(?:open|open\s+up|open\s+me|launch)\b(?!(?:.*\b(?:explorer|folder|directory|site|website|url|link|github|vs\s*c?ode|vscode|cursor|browser|preview)\b))(?=[\s\S]*\b[\w./-]+\.[a-zA-Z0-9]{1,10}\b)(?=[\s\S]*\b(?:with|in)\s+(?:the\s+)?(?:default\s+)?[a-z][a-z0-9 .+_-]*\s*$)/i },
+  { intent: 'project.action.reveal_file', pattern: /^(?:open|open\s+up|open\s+me|show|reveal|locate)\b(?!(?:.*\b(?:github|vs\s*c?ode|vscode|cursor|browser|editor)\b))(?=[\s\S]*\b[\w./-]+\.[a-zA-Z0-9]{1,10}\b)(?=[\s\S]*\b(?:in\s+the\s+folder|in\s+file\s+explorer|in\s+explorer)\b)/i },
   // Phase 16 (2026-08-05, harness-verified with real embeddings): file-open requests collided
   // with pre-existing owners — file_read owns the "open file"/"open this file" seeds, and
   // file_find owns every name-bearing "find/where is the X file" shape (the filename dominates

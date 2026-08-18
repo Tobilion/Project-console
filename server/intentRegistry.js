@@ -87,7 +87,8 @@ export const BUILTIN_INTENTS = new Set([
   'project.action.open_in_vscode', 'project.action.open_in_explorer',
   'project.action.open_site', 'project.action.copy_path',
   'project.action.open_in_terminal', 'project.action.open_github_page',
-  'project.action.open_in_cursor', 'project.action.open_file',
+  'project.action.open_in_cursor', 'project.action.open_file', 'project.action.open_html',
+  'project.action.open_with', 'project.action.reveal_file',
   'system.monitoring.metrics', 'system.chit_chat.port',
   // Phase 0 (2026-08-10): utility intents (time/date/calculate) — zero-argument, canned-shape
   // answers computed from Date.now()/mathEval.js, same family as status/port.
@@ -141,7 +142,7 @@ export const BUILTIN_INTENTS = new Set([
   'csv.sum', 'csv.average', 'csv.count', 'csv.filter',
   // Phase 8 (UPGRADE-ROADMAP.md, 2026-08-12): clipboard history + snippets (builtinClipboard.js).
   // Personal, not dev-only; clipboard polling is opt-in via the profile (never on by default).
-  'clipboard.show', 'clipboard.copy_item', 'clipboard.clear',
+  'clipboard.show', 'clipboard.copy_item', 'clipboard.clear', 'clipboard.remove_item',
   'snippet.save', 'snippet.show', 'snippet.copy', 'snippet.delete',
   // Phase 9 (UPGRADE-ROADMAP.md, 2026-08-12): backup/zip (builtinBackup.js + backupStore.js).
   // Zips are read-only w.r.t. the source but journaled (revert deletes the zip).

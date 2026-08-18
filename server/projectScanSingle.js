@@ -9,8 +9,11 @@ import { sanitizeChatReplies, readProjectContextDocs, commandEntriesFromDocs, is
  * auto-derived npm script entries, indexes the codebase, and applies the code-only
  * recognition fallback. Returns the project object or null if nothing recognized it.
  * (Phase 14 split of projectScanner.js, 2026-08-05 — body moved verbatim.)
+ * `opts.includeAll` (Phase T, 2026-08-14 — the scanAllFolders profile setting): include the
+ * folder even with no recognition signals at all, with a synthesized fallback config so the
+ * project object stays shape-complete for downstream consumers.
  */
-export async function scanSingleProject(folderName, projectPath) {
+export async function scanSingleProject(folderName, projectPath, opts = {}) {
   let config = null;
   try {
     const configPath = path.join(projectPath, 'console.config.json');
@@ -41,8 +44,8 @@ export async function scanSingleProject(folderName, projectPath) {
   // when a specific folder is picked directly (e.g. via the folder picker or --dir), so it needs
   // the same "don't go invisible just because there's no doc/config/package.json" treatment.
   const codebaseIndex = await indexProject(projectPath);
-  if (!config && contextFiles.length === 0 && isRecognizableByCodeAlone(codebaseIndex)) {
-    config = buildFallbackConfig(folderName, codebaseIndex);
+  if (!config && contextFiles.length === 0 && (isRecognizableByCodeAlone(codebaseIndex) || opts.includeAll)) {
+    config = buildFallbackConfig(folderName, codebaseIndex, opts.includeAll);
   }
 
   if (config || contextFiles.length > 0) {

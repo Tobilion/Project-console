@@ -11,26 +11,38 @@ import { pathParts } from './codebaseParsers.js';
 import { IGNORE_DIRS, CODE_EXTS, TODO_RE, MAX_TODO_FILES, MAX_TODO_RESULTS } from './codebaseData.js';
 
 export async function readProjectTree(dirPath, maxDepth = 4) {
-  const tree = [];
+  // Phase 6 (2026-08-17): the walk was serial — every directory's readdir waited for its
+  // parent's whole subtree. Each directory's children are independent, so recurse into all
+  // of them concurrently; results are re-assembled in readdir order per directory, so the
+  // returned tree is byte-identical to the serial DFS order (some consumers sort later,
+  // but a stable order keeps repo-map rendering deterministic across scans).
   async function walk(currentPath, depth) {
-    if (depth > maxDepth) return;
+    if (depth > maxDepth) return [];
     try {
       const entries = await fs.readdir(currentPath, { withFileTypes: true });
-      for (const entry of entries) {
-        if (IGNORE_DIRS.has(entry.name) || entry.name.startsWith('.')) continue;
+      const results = new Array(entries.length);
+      await Promise.all(entries.map(async (entry, i) => {
+        if (IGNORE_DIRS.has(entry.name) || entry.name.startsWith('.')) return;
         const fullPath = path.join(currentPath, entry.name);
         const relPath = path.relative(dirPath, fullPath);
         if (entry.isDirectory()) {
-          tree.push({ type: 'dir', path: relPath });
-          await walk(fullPath, depth + 1);
+          results[i] = { type: 'dir', path: relPath, sub: await walk(fullPath, depth + 1) };
         } else {
-          tree.push({ type: 'file', path: relPath });
+          results[i] = { type: 'file', path: relPath };
         }
+      }));
+      const out = [];
+      for (const r of results) {
+        if (!r) continue;
+        out.push({ type: r.type, path: r.path });
+        if (r.sub) out.push(...r.sub);
       }
-    } catch {}
+      return out;
+    } catch {
+      return [];
+    }
   }
-  await walk(dirPath, 0);
-  return tree;
+  return walk(dirPath, 0);
 }
 
 /** Cheap, allocation-light check for whether a folder is (or is inside) a git repo — used by

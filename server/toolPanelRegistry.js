@@ -37,6 +37,17 @@ export const TOOL_PANELS = [
     chatHint: 'find files matching invoice',
   },
   {
+    id: 'folder-explorer',
+    name: 'Folder Explorer',
+    description: 'Browse ANY folder on disk — list or grid view, folder-in-folder navigation, open files in your IDE',
+    icon: 'folder-open',
+    available: true,
+    chatHint: 'browse C:\\Users\\you\\Documents',
+    // Phase T2 fix: users call it a "file explorer" (Windows File Explorer habit) — the
+    // Ctrl+K palette must match that phrasing, not just the id-derived "folder explorer".
+    keywords: ['file explorer', 'files', 'browse', 'explore', 'folders', 'navigate'],
+  },
+  {
     id: 'notes',
     name: 'Notes',
     description: 'Quick-capture scratch notes — add, read back, and search them',

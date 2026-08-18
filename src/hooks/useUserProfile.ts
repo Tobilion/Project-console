@@ -23,6 +23,11 @@ export interface UserProfile {
   // Stage H (2026-08-12): accent-color override for --color-accent-blue. 'auto' follows
   // the theme's per-theme blue; a #RRGGBB hex overrides it in both themes.
   accentColor: string;
+  // Phase T (2026-08-14): include every immediate subfolder of the scan root as a project,
+  // even folders with no dev-code signals (they classify 'general'). Off by default.
+  scanAllFolders: boolean;
+  // Phase T2 (2026-08-14): Folder Explorer default view — 'list' (lines) or 'grid' (objects).
+  explorerViewMode: 'list' | 'grid';
 }
 
 // Neutral defaults, not a hardcoded person's name/title — matches server/routes/profileRoutes.js's
@@ -42,6 +47,8 @@ const DEFAULT_PROFILE: UserProfile = {
   defaultWorkspaceType: 'dev',
   locale: 'en',
   accentColor: 'auto',
+  scanAllFolders: false,
+  explorerViewMode: 'list',
 };
 
 /** Client state for the user profile persisted to the server (GET/POST /api/profile).

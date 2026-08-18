@@ -4,6 +4,7 @@
 // would need the standard confirm + action-history path.
 import fs from 'fs';
 import path from 'path';
+import { createResolveSafe } from './toolSandbox.js';
 
 const MAX_CSV_BYTES = 2 * 1024 * 1024; // 2MB cap — a spreadsheet panel should never read a dump file
 const MAX_ROWS = 20000;
@@ -36,19 +37,23 @@ export function parseCsv(text) {
 }
 
 /** Load a project CSV file, capped. Returns { ok, headers, rows } or { ok:false, error }. */
-export function loadCsv(projectRoot, filePath) {
+export async function loadCsv(projectRoot, filePath) {
   let abs;
   try {
-    abs = path.resolve(projectRoot, filePath);
-  } catch { return { ok: false, error: 'Invalid file path.' }; }
-  const rel = path.relative(projectRoot, abs);
-  if (rel.startsWith('..') || path.isAbsolute(rel)) return { ok: false, error: 'File must be inside the project.' };
+    // Resolve through the same sandbox boundary the file tools use. csvTools originally had its
+    // own weaker path.relative check that missed a symlink inside the project pointing outside
+    // it — createResolveSafe realpath-resolves and rejects any escape.
+    abs = createResolveSafe(projectRoot)(filePath);
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
   let text;
   try {
     if (!fs.existsSync(abs)) return { ok: false, error: `CSV file not found: ${filePath}` };
-    const st = fs.statSync(abs);
+    const st = await fs.promises.stat(abs);
     if (st.size > MAX_CSV_BYTES) return { ok: false, error: 'CSV file is over the 2MB cap.' };
-    text = fs.readFileSync(abs, 'utf-8');
+    // Phase 6: async read — up to 2MB through the event loop, never a sync block.
+    text = await fs.promises.readFile(abs, 'utf-8');
   } catch {
     return { ok: false, error: 'Could not read the CSV file.' };
   }

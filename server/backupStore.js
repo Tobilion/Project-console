@@ -32,7 +32,7 @@ function isInside(root, target) {
  *  { ok, file, relPath, size } or { ok: false, error }. */
 export async function createBackup(project, subPath) {
   try {
-    fs.mkdirSync(BACKUPS_DIR, { recursive: true });
+    await fs.promises.mkdir(BACKUPS_DIR, { recursive: true });
   } catch {
     return { ok: false, error: 'Could not create the backups directory.' };
   }
@@ -46,20 +46,24 @@ export async function createBackup(project, subPath) {
     }
   }
 
-  // Size guard before zipping — walk the target tree and refuse over the cap.
+  // Size guard before zipping — walk the target tree and refuse over the cap. Phase 6:
+  // async walk (readdir/stat per directory, siblings in parallel) — the sync walk pinned
+  // the event loop on large trees before the zip even started.
   let total = 0;
   const stack = [target];
   while (stack.length) {
     const dir = stack.pop();
     let names = [];
-    try { names = fs.readdirSync(dir); } catch { continue; }
-    for (const name of names) {
-      if (IGNORE_DIRS.has(name)) continue;
+    try { names = await fs.promises.readdir(dir); } catch { continue; }
+    const entries = await Promise.all(names.map(async (name) => {
+      if (IGNORE_DIRS.has(name)) return null;
       const p = path.join(dir, name);
-      let st;
-      try { st = fs.statSync(p); } catch { continue; }
-      if (st.isDirectory()) { stack.push(p); continue; }
-      total += st.size;
+      try { return { p, st: await fs.promises.stat(p) }; } catch { return null; }
+    }));
+    for (const entry of entries) {
+      if (!entry) continue;
+      if (entry.st.isDirectory()) { stack.push(entry.p); continue; }
+      total += entry.st.size;
       if (total > MAX_BACKUP_BYTES) {
         return { ok: false, error: `Folder is over the ${Math.round(MAX_BACKUP_BYTES / 1024 / 1024)}MB backup cap — pick a subfolder or remove large files first.` };
       }
@@ -86,11 +90,11 @@ export async function createBackup(project, subPath) {
       archive.finalize();
     });
   } catch {
-    try { fs.unlinkSync(file); } catch {}
+    try { await fs.promises.unlink(file); } catch {}
     return { ok: false, error: 'Zipping failed — check disk space and folder permissions.' };
   }
 
-  const st = fs.statSync(file);
+  const st = await fs.promises.stat(file);
   return { ok: true, file, relPath, size: st.size };
 }
 

@@ -83,12 +83,15 @@ function deliverResult(schedule, text) {
 /**
  * Run one schedule fire. Marks the schedule fired immediately (before the async work) so
  * the tick can never double-fire while a task waits in the queue; the actual run goes
- * through taskQueue to stay off the chat-turn path. Phase 4: reminders are deliberately
- * NOT queued or re-matched — they are plain text with nothing to validate, so they deliver
- * synchronously (a single ws.send, trivially cheap on the tick).
+ * through taskQueue to stay off the chat-turn path. `alreadyMarked` is set by callers that
+ * recorded the fire time themselves (the scheduler tick batches every due schedule into one
+ * persist; the file-event path marks its single throttled fire) so no second immediate
+ * write happens (audit 2026-08-17). Phase 4: reminders are deliberately NOT queued or
+ * re-matched — they are plain text with nothing to validate, so they deliver synchronously
+ * (a single ws.send, trivially cheap on the tick).
  */
-export function fireSchedule(schedule) {
-  markFired(schedule.id);
+export function fireSchedule(schedule, alreadyMarked = false) {
+  if (!alreadyMarked) markFired(schedule.id);
   if (schedule.kind === 'reminder') {
     deliverReminder(schedule);
     return;

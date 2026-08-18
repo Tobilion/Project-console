@@ -75,9 +75,15 @@ export async function startOllama() {
 export async function pullModel(modelName, onChunk) {
   const binary = findOllamaBinary();
   if (!binary) throw new Error('Ollama binary not found. Install from ollama.com/download/windows');
+  // The model name is user-supplied (POST /api/ollama/pull). Validate against a strict charset
+  // and never run through a shell — a crafted name must not become shell syntax even if a
+  // future caller reintroduces shell:true.
+  if (typeof modelName !== 'string' || !/^[\w.:-]+$/.test(modelName)) {
+    throw new Error(`Invalid model name: ${modelName}`);
+  }
 
   return new Promise((resolve, reject) => {
-    const proc = spawn(binary, ['pull', modelName], { shell: true });
+    const proc = spawn(binary, ['pull', modelName]);
 
     let lastLine = '';
     proc.stdout.on('data', (data) => {

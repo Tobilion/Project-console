@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Table, RefreshCw, Send, CheckCircle2, ArrowUpDown } from 'lucide-react';
 import { apiFetchJson } from '../utils/apiFetch';
+import { projectApi } from '../utils/projectApi';
 import { cn } from '../lib/utils';
 import type { Project } from '../types';
 
@@ -21,6 +22,8 @@ interface CsvFile {
 interface SpreadsheetPanelProps {
   project: Project | null;
   onSendMessage: (text: string) => void;
+  /** Phase T (2026-08-14): the tab whose workspace this panel's REST calls address. */
+  tabId?: string | null;
 }
 
 const POLL_MS = 15000;
@@ -28,7 +31,7 @@ const CSV_OPS = ['equals', 'contains', 'greater than', 'less than'];
 
 type Mode = 'sum' | 'average' | 'count' | 'filter';
 
-export function SpreadsheetPanel({ project, onSendMessage }: SpreadsheetPanelProps) {
+export function SpreadsheetPanel({ project, onSendMessage, tabId = null }: SpreadsheetPanelProps) {
   const [files, setFiles] = useState<CsvFile[]>([]);
   const [selectedFile, setSelectedFile] = useState('');
   const [headers, setHeaders] = useState<string[]>([]);
@@ -40,6 +43,9 @@ export function SpreadsheetPanel({ project, onSendMessage }: SpreadsheetPanelPro
   const [error, setError] = useState<string | null>(null);
   const [lastSent, setLastSent] = useState<string | null>(null);
   const [table, setTable] = useState<{ headers: string[]; rows: string[][] } | null>(null);
+  // Phase 5: file preview — first N rows + total row count, so the panel shows the data
+  // before any query runs (previously a dead zone until Sum/Average/Count/Filter).
+  const [preview, setPreview] = useState<{ headers: string[]; rows: string[][]; total: number; truncated: boolean } | null>(null);
   const [sortCol, setSortCol] = useState<number | null>(null);
   const [sortAsc, setSortAsc] = useState(true);
   const lastSentTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -50,12 +56,12 @@ export function SpreadsheetPanel({ project, onSendMessage }: SpreadsheetPanelPro
   const fetchFiles = useCallback(async () => {
     if (!project?.id) return;
     setLoading(true);
-    const data = await apiFetchJson<{ files: CsvFile[] }>(`/api/projects/${encodeURIComponent(project.id)}/csv-files`);
+    const data = await apiFetchJson<{ files: CsvFile[] }>(projectApi(`/api/projects/${encodeURIComponent(project.id)}/csv-files`, tabId));
     setLoading(false);
     if (!data) { setError('Could not load CSV files.'); return; }
     setError(null);
     setFiles(data.files || []);
-  }, [project?.id]);
+  }, [project?.id, tabId]);
 
   useEffect(() => {
     if (project?.id) {
@@ -63,6 +69,7 @@ export function SpreadsheetPanel({ project, onSendMessage }: SpreadsheetPanelPro
       setHeaders([]);
       setColumn('');
       setTable(null);
+      setPreview(null);
       fetchFiles();
       const t = setInterval(fetchFiles, POLL_MS);
       return () => clearInterval(t);
@@ -72,11 +79,22 @@ export function SpreadsheetPanel({ project, onSendMessage }: SpreadsheetPanelPro
   const fetchHeaders = useCallback(async (filePath: string) => {
     if (!project?.id) return;
     const data = await apiFetchJson<{ headers: string[] }>(
-      `/api/projects/${encodeURIComponent(project.id)}/csv-headers?file=${encodeURIComponent(filePath)}`
+      projectApi(`/api/projects/${encodeURIComponent(project.id)}/csv-headers?file=${encodeURIComponent(filePath)}`, tabId)
     );
     setHeaders(data?.headers || []);
     setColumn('');
-  }, [project?.id]);
+  }, [project?.id, tabId]);
+
+  const fetchPreview = useCallback(async (filePath: string) => {
+    if (!project?.id) return;
+    const data = await apiFetchJson<{ headers: string[]; rows: string[][]; total: number; truncated: boolean }>(
+      projectApi(`/api/projects/${encodeURIComponent(project.id)}/csv-preview?file=${encodeURIComponent(filePath)}`, tabId)
+    );
+    if (data) {
+      setPreview({ headers: data.headers, rows: data.rows, total: data.total, truncated: data.truncated });
+      setSortCol(null);
+    }
+  }, [project?.id, tabId]);
 
   const send = (text: string) => {
     onSendMessage(text);
@@ -96,7 +114,7 @@ export function SpreadsheetPanel({ project, onSendMessage }: SpreadsheetPanelPro
     const params = `file=${encodeURIComponent(selectedFile)}&column=${encodeURIComponent(column)}&op=${encodeURIComponent(mode)}` +
       (isCount ? `&cmp=${encodeURIComponent(op)}&value=${encodeURIComponent(filterValue.trim())}` : '');
     const data = await apiFetchJson<{ op: string; value: number; count: number; column: string; file: string }>(
-      `/api/projects/${encodeURIComponent(project.id)}/csv-aggregate?${params}`
+      projectApi(`/api/projects/${encodeURIComponent(project.id)}/csv-aggregate?${params}`, tabId)
     );
     setLoading(false);
     if (!data) { setError('Aggregate failed.'); return; }
@@ -106,15 +124,18 @@ export function SpreadsheetPanel({ project, onSendMessage }: SpreadsheetPanelPro
     send(isCount
       ? `count rows in ${selectedFile} where ${column} ${op} ${filterValue.trim()}`
       : `${mode} column ${column} in ${selectedFile}`);
-  }, [project?.id, selectedFile, column, mode, op, filterValue]);
+  }, [project?.id, selectedFile, column, mode, op, filterValue, tabId]);
 
   const runFilter = useCallback(async () => {
     if (!project?.id || !selectedFile || !column || !filterValue.trim()) return;
     setLoading(true);
     const data = await apiFetchJson<{ headers: string[]; rows: string[][] }>(
-      `/api/projects/${encodeURIComponent(project.id)}/csv-filter` +
-      `?file=${encodeURIComponent(selectedFile)}&column=${encodeURIComponent(column)}` +
-      `&op=${encodeURIComponent(op)}&value=${encodeURIComponent(filterValue.trim())}`
+      projectApi(
+        `/api/projects/${encodeURIComponent(project.id)}/csv-filter` +
+        `?file=${encodeURIComponent(selectedFile)}&column=${encodeURIComponent(column)}` +
+        `&op=${encodeURIComponent(op)}&value=${encodeURIComponent(filterValue.trim())}`,
+        tabId,
+      )
     );
     setLoading(false);
     if (!data) { setError('Filter failed.'); return; }
@@ -122,7 +143,7 @@ export function SpreadsheetPanel({ project, onSendMessage }: SpreadsheetPanelPro
     setTable(data);
     setAggregate(null);
     send(`filter ${selectedFile} where ${column} ${op} ${filterValue.trim()}`);
-  }, [project?.id, selectedFile, column, op, filterValue]);
+  }, [project?.id, selectedFile, column, op, filterValue, tabId]);
 
   const run = () => {
     if (!selectedFile) return;
@@ -147,7 +168,7 @@ export function SpreadsheetPanel({ project, onSendMessage }: SpreadsheetPanelPro
     setError(null);
     try {
       const res = await fetch(
-        `/api/projects/${encodeURIComponent(project.id)}/csv-upload?file=${encodeURIComponent(file.name)}`,
+        projectApi(`/api/projects/${encodeURIComponent(project.id)}/csv-upload?file=${encodeURIComponent(file.name)}`, tabId),
         { method: 'POST', headers: { 'Content-Type': 'text/csv' }, body: file }
       );
       const data = await res.json();
@@ -155,6 +176,7 @@ export function SpreadsheetPanel({ project, onSendMessage }: SpreadsheetPanelPro
       await fetchFiles();
       setSelectedFile(data.path);
       fetchHeaders(data.path);
+      fetchPreview(data.path);
       setTable(null);
       setAggregate(null);
     } catch {
@@ -175,6 +197,18 @@ export function SpreadsheetPanel({ project, onSendMessage }: SpreadsheetPanelPro
       return String(a[col] ?? '').localeCompare(String(b[col] ?? '')) * dir;
     });
   }, [table, sortCol, sortAsc]);
+
+  const previewSortedRows = useMemo(() => {
+    if (!preview || sortCol === null) return preview?.rows || [];
+    const col = sortCol;
+    const dir = sortAsc ? 1 : -1;
+    return [...preview.rows].sort((a, b) => {
+      const na = Number(String(a[col] ?? '').replace(/[$,%\s]/g, ''));
+      const nb = Number(String(b[col] ?? '').replace(/[$,%\s]/g, ''));
+      if (!Number.isNaN(na) && !Number.isNaN(nb)) return (na - nb) * dir;
+      return String(a[col] ?? '').localeCompare(String(b[col] ?? '')) * dir;
+    });
+  }, [preview, sortCol, sortAsc]);
 
   const toggleSort = (i: number) => {
     if (sortCol === i) setSortAsc((v) => !v);
@@ -244,7 +278,7 @@ export function SpreadsheetPanel({ project, onSendMessage }: SpreadsheetPanelPro
 
             {/* Toolbar */}
             <div className="flex items-center gap-2 px-3 py-2 rounded-t-xl border border-border-soft border-b-0 bg-panel flex-wrap">
-              <select value={selectedFile} onChange={(e) => { setSelectedFile(e.target.value); if (e.target.value) fetchHeaders(e.target.value); setTable(null); }} className={selectCls}>
+              <select value={selectedFile} onChange={(e) => { setSelectedFile(e.target.value); if (e.target.value) { fetchHeaders(e.target.value); fetchPreview(e.target.value); } setTable(null); setAggregate(null); }} className={selectCls}>
                 <option value="">Pick a CSV…</option>
                 {files.map((f) => <option key={f.path} value={f.path}>{f.name}</option>)}
               </select>
@@ -277,7 +311,7 @@ export function SpreadsheetPanel({ project, onSendMessage }: SpreadsheetPanelPro
             </div>
             <div className="px-3 py-1.5 border border-border-soft rounded-b-xl bg-scrim-faint">
               <span className="text-[11px] text-fg-dim">
-                {mode === 'filter' ? 'Filter renders the table below.' : 'Result renders in the card below.'}
+                The picked file's preview renders below; Sum/Average/Count/Filter replace it with their result.
               </span>
               {lastSent && (
                 <span className="ml-3 text-[11px] text-accent font-mono">sent: {lastSent}</span>
@@ -306,44 +340,35 @@ export function SpreadsheetPanel({ project, onSendMessage }: SpreadsheetPanelPro
 
         {/* Filter result table */}
         {table && (
-          <div className="mt-4 rounded-xl border border-border-soft overflow-hidden">
-            <div className="overflow-x-auto max-h-[60vh] overflow-y-auto">
-              <table className="w-full text-[13px] border-collapse">
-                <thead className="sticky top-0 z-10">
-                  <tr className="bg-panel-strong">
-                    {table.headers.map((h, i) => (
-                      <th key={i} className="px-3 py-2 text-left text-[12px] font-semibold text-fg-strong whitespace-nowrap border-b border-border-soft">
-                        <button onClick={() => toggleSort(i)} className="inline-flex items-center gap-1 cursor-pointer hover:text-accent select-none">
-                          {h}<ArrowUpDown size={11} className="text-fg-faint" />
-                        </button>
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {sortedRows.map((row, ri) => (
-                    // Content-derived identity: the table re-sorts live, so positional keys
-                    // would make React reuse the wrong DOM rows across sort changes.
-                    <tr key={row.map((cell) => String(cell)).join('\u0001')} className={cn(ri % 2 === 1 ? 'bg-panel' : 'bg-background', 'hover:bg-accent/5 transition-colors')}>
-                      {row.map((cell, ci) => (
-                        <td key={ci} className={cn(
-                          'px-3 py-1.5 whitespace-nowrap border-b border-border-faint',
-                          !Number.isNaN(Number(String(cell).replace(/[$,%\s]/g, ''))) && String(cell).trim() !== ''
-                            ? 'font-mono text-right text-fg-strong'
-                            : 'text-fg-muted',
-                        )}>
-                          {cell}
-                        </td>
-                      ))}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            <div className="px-3 py-1.5 text-[11px] text-fg-dim border-t border-border-soft bg-scrim-faint">
-              {sortedRows.length} matching row{sortedRows.length === 1 ? '' : 's'} — click a header to sort.
-            </div>
-          </div>
+          <ResultTable
+            headers={table.headers}
+            rows={sortedRows}
+            sortCol={sortCol}
+            sortAsc={sortAsc}
+            onToggleSort={toggleSort}
+            footer={`${sortedRows.length} matching row${sortedRows.length === 1 ? '' : 's'} — click a header to sort.`}
+          />
+        )}
+
+        {/* Phase 5: file preview — first N rows render before any query runs, with a
+            truncation warning when the file is larger than the preview window. */}
+        {preview && !table && !aggregate && (
+          <ResultTable
+            headers={preview.headers}
+            rows={previewSortedRows}
+            sortCol={sortCol}
+            sortAsc={sortAsc}
+            onToggleSort={toggleSort}
+            footer={
+              preview.truncated ? (
+                <span className="text-accent-orange">
+                  Large file — previewing the first {preview.rows.length} of {preview.total.toLocaleString()} rows. Run a filter for the full result set.
+                </span>
+              ) : (
+                <>{preview.total.toLocaleString()} row{preview.total === 1 ? '' : 's'} — click a header to sort.</>
+              )
+            }
+          />
         )}
 
         {files.length === 0 && project && !table && (
@@ -352,6 +377,58 @@ export function SpreadsheetPanel({ project, onSendMessage }: SpreadsheetPanelPro
             <code className="font-mono text-accent">sum column sales in data.csv</code> in chat.
           </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+/** Shared sortable table for the filter result and the file preview (Phase 5 extraction —
+ *  the preview reuses the exact filter-table rendering so both stay in lockstep). */
+function ResultTable({ headers, rows, sortCol, sortAsc, onToggleSort, footer }: {
+  headers: string[];
+  rows: string[][];
+  sortCol: number | null;
+  sortAsc: boolean;
+  onToggleSort: (i: number) => void;
+  footer: React.ReactNode;
+}) {
+  return (
+    <div className="mt-4 rounded-xl border border-border-soft overflow-hidden">
+      <div className="overflow-x-auto max-h-[60vh] overflow-y-auto">
+        <table className="w-full text-[13px] border-collapse">
+          <thead className="sticky top-0 z-10">
+            <tr className="bg-panel-strong">
+              {headers.map((h, i) => (
+                <th key={i} className="px-3 py-2 text-left text-[12px] font-semibold text-fg-strong whitespace-nowrap border-b border-border-soft">
+                  <button onClick={() => onToggleSort(i)} className="inline-flex items-center gap-1 cursor-pointer hover:text-accent select-none">
+                    {h}<ArrowUpDown size={11} className="text-fg-faint" />
+                  </button>
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row, ri) => (
+              // Content-derived identity: the table re-sorts live, so positional keys
+              // would make React reuse the wrong DOM rows across sort changes.
+              <tr key={row.map((cell) => String(cell)).join('\u0001')} className={cn(ri % 2 === 1 ? 'bg-panel' : 'bg-background', 'hover:bg-accent/5 transition-colors')}>
+                {row.map((cell, ci) => (
+                  <td key={ci} className={cn(
+                    'px-3 py-1.5 whitespace-nowrap border-b border-border-faint',
+                    !Number.isNaN(Number(String(cell).replace(/[$,%\s]/g, ''))) && String(cell).trim() !== ''
+                      ? 'font-mono text-right text-fg-strong'
+                      : 'text-fg-muted',
+                  )}>
+                    {cell}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <div className="px-3 py-1.5 text-[11px] text-fg-dim border-t border-border-soft bg-scrim-faint">
+        {footer}
       </div>
     </div>
   );

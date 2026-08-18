@@ -4,10 +4,16 @@
 // (same place as telemetry/pack/notify/health) — each returns true when it consumed the
 // message. No new intents or WS message types: everything answers through the existing
 // `answer` bubble. Persistence and the boot-time runner live in autoStartProjects.js.
+//
+// Every branch must send a trailing `end` after its answer: the frontend only clears its
+// `commandPending` flag on `end` (wsMessageCases.ts), so an answer without one leaves the
+// terminal stuck on "Running..." forever — the 2026-08-14 mode-switch bug class.
 
 import { setAutoStart, removeAutoStart, getAutoStart, appendAutoStartLog, readAutoStartLog, runAutoStart } from '../autoStartProjects.js';
 import { state } from '../state.js';
 import { enqueueTask } from '../taskQueue.js';
+
+const end = (ws) => ws.send(JSON.stringify({ type: 'end' }));
 
 /** Case-insensitive project lookup by name/folder: exact first, then unique contains. */
 function findProjectByName(name) {
@@ -33,6 +39,7 @@ export async function handleAutoStartCommand(ws, project, lowerInput) {
   }
   if (lowerInput === 'review auto-start') {
     ws.send(JSON.stringify({ type: 'answer', data: `### Auto-start log\n\n${readAutoStartLog()}` }));
+    end(ws);
     return true;
   }
 
@@ -54,6 +61,7 @@ export async function handleAutoStartCommand(ws, project, lowerInput) {
     } else {
       ws.send(JSON.stringify({ type: 'answer', data: `**[${project.name}]** was not set to auto-start. \`list auto-start\` shows what's configured.` }));
     }
+    end(ws);
     return true;
   }
 
@@ -65,6 +73,7 @@ export async function handleAutoStartCommand(ws, project, lowerInput) {
     } else {
       enableFor(ws, target, 'run the site');
     }
+    end(ws);
     return true;
   }
   const namedDisable = lowerInput.match(/^(?:disable|deny|stop)\s+auto[- ]?start\s+for\s+(.+)$/);
@@ -77,6 +86,7 @@ export async function handleAutoStartCommand(ws, project, lowerInput) {
     } else {
       ws.send(JSON.stringify({ type: 'answer', data: `**[${target.name}]** was not set to auto-start.` }));
     }
+    end(ws);
     return true;
   }
 
@@ -91,6 +101,7 @@ function enableFor(ws, project, command) {
       `Manage it with \`list auto-start\`, \`disable auto-start\`, or run it right now with \`run auto-start now\`.`,
   }));
   appendAutoStartLog(`${project.name}: auto-start ENABLED ("${command}")`);
+  end(ws);
 }
 
 function listAutoStart(ws) {
@@ -101,6 +112,7 @@ function listAutoStart(ws) {
       type: 'answer',
       data: `No projects are set to auto-start. Try \`auto-start this project\` (or \`auto-start <name>\` for another project).`,
     }));
+    end(ws);
     return;
   }
   const lines = ids.map((id) => {
@@ -109,31 +121,20 @@ function listAutoStart(ws) {
     return `  - **${e.projectName}** — \`${e.command}\` (${scanned})`;
   });
   ws.send(JSON.stringify({ type: 'answer', data: `### Auto-start\n\n${lines.join('\n')}\n\n\`run auto-start now\` starts them immediately; \`review auto-start\` shows the boot-run log.` }));
+  end(ws);
 }
 
 function runNowForProject(ws, project) {
   const entry = getAutoStart()[project.id];
   if (!entry) {
     ws.send(JSON.stringify({ type: 'answer', data: `**[${project.name}]** is not set to auto-start — \`auto-start this project\` first.` }));
+    end(ws);
     return;
   }
   // Deliberately bypasses initAutoStart's boot stagger: a manual "now" is one project only.
   enqueueTask(project.id, 'auto-start', () => runAutoStart(project, entry));
   ws.send(JSON.stringify({ type: 'answer', data: `Running auto-start for **[${project.name}]** (\`${entry.command}\`) — the result lands here when it finishes.` }));
-}
-
-function runNowForAll(ws) {
-  const entries = getAutoStart();
-  const ids = Object.keys(entries);
-  if (ids.length === 0) {
-    ws.send(JSON.stringify({ type: 'answer', data: 'No projects are set to auto-start.' }));
-    return;
-  }
-  for (const id of ids) {
-    const project = state.activeProjectsCache.find((p) => p.id === id);
-    if (project) enqueueTask(id, 'auto-start', () => runAutoStart(project, entries[id]));
-  }
-  ws.send(JSON.stringify({ type: 'answer', data: `Running auto-start now for ${ids.length} project(s) — results land here as each finishes.` }));
+  end(ws);
 }
 
 function scannedProjectsText() {

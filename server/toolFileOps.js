@@ -1,5 +1,6 @@
 import fs from 'fs/promises';
 import path from 'path';
+import { invalidateProjectFiles } from './toolScan.js';
 
 /**
  * Basic single-file read/write/append/insert tools (Phase 14 split of toolFileTools.js,
@@ -38,6 +39,7 @@ export function createFileOpsTools({ root, resolveSafe }) {
       if (written.length !== content.length) {
         return { success: false, error: 'File truncation detected after write.' };
       }
+      invalidateProjectFiles(root);
       return { success: true, data: `Written ${path.relative(root, resolved) || path.basename(resolved)}` };
     } catch (err) {
       return { success: false, error: `Failed to write file: ${err.message}` };
@@ -65,6 +67,7 @@ export function createFileOpsTools({ root, resolveSafe }) {
       const newContent = existing + separator + content + '\n';
       await fs.mkdir(path.dirname(resolved), { recursive: true });
       await fs.writeFile(resolved, newContent, 'utf-8');
+      invalidateProjectFiles(root);
       return { success: true, data: `Appended to ${path.relative(root, resolved) || path.basename(resolved)}` };
     } catch (err) {
       return { success: false, error: `Failed to append to file: ${err.message}` };
@@ -90,6 +93,7 @@ export function createFileOpsTools({ root, resolveSafe }) {
       const insertIdx = Math.min(line - 1, lines.length);
       lines.splice(insertIdx, 0, content);
       await fs.writeFile(resolved, lines.join('\n'), 'utf-8');
+      invalidateProjectFiles(root);
       return { success: true, data: `Inserted at line ${insertIdx + 1} of ${filePath} (file now ${lines.length} lines).` };
     } catch (err) {
       return { success: false, error: `Failed to insert into file: ${err.message}` };

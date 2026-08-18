@@ -28,6 +28,15 @@ export const INIT_DOWNLOAD_TIMEOUT_MS = 120_000;
 export const SUGGESTION_DEFAULT_LIMIT = 5;
 /** Default cosine threshold for flagging intent pairs that may be hard to distinguish. */
 export const COLLISION_DEFAULT_THRESHOLD = 0.9;
+/** Bounded-concurrency pool for bulk phrase/trigger embeddings (boot + project-intent
+ *  builds). The ONNX Runtime session behind @xenova/transformers accepts concurrent run()
+ *  calls, so batching shortens the ~2500-phrase boot embed from serial to ~8-way — the
+ *  single biggest boot-time win (Phase 6, 2026-08-17). */
+export const EMBED_BATCH_CONCURRENCY = 8;
+/** Cap for the per-input embedding cache: repeated user phrasings (chips, quick repeats,
+ *  retries after a confirm) skip the model call entirely. 256 x 384 floats is a few hundred
+ *  KB of memory; a miss cost is one model call, so eviction is plain LRU (Phase 6). */
+const INPUT_EMBED_CACHE_CAP = 256;
 
 // @xenova/transformers is an OPTIONAL dependency (package.json): it pulls sharp, whose native
 // libvips download has failed installs on slow/restricted networks. The lazy import below means
@@ -48,10 +57,66 @@ class SemanticMatcher {
     this.lastProjectIntents = null;
     // Serializes addProjectIntents / clearProjectIntents mutations (see those methods).
     this._projectIntentsMutex = new Mutex();
+    // LRU cache of input-string embedding vectors, keyed by the normalized input (see
+    // embedInput below). Never invalidated mid-process: an input maps to the same vector for
+    // the lifetime of the loaded model, so eviction is size-only (Phase 6).
+    this._inputEmbedCache = new Map();
+  }
+
+  /**
+   * Embeds many phrases with bounded concurrency instead of the serial per-phrase loop that
+   * used to dominate boot (initialize) and project-intent builds (addProjectIntents). Results
+   * are identical per phrase — only the wall-clock differs. Strict: any phrase failure
+   * rejects, matching the pre-batch behavior (initialize/addProjectIntents propagated
+   * extractor errors; only addLearnedExamples swallows them, see its method doc).
+   */
+  async _embedBatch(texts) {
+    if (!texts || texts.length === 0) return [];
+    const results = new Array(texts.length);
+    let next = 0;
+    const worker = async () => {
+      while (next < texts.length) {
+        const i = next++;
+        results[i] = await this.extractor(texts[i], { pooling: 'mean', normalize: true });
+      }
+    };
+    const poolSize = Math.min(EMBED_BATCH_CONCURRENCY, texts.length);
+    await Promise.all(Array.from({ length: poolSize }, () => worker()));
+    return results;
+  }
+
+  /**
+   * Embed one user input with an LRU cache. Keyed on the trimmed/lowercased string — the
+   * same normalization matcherMatch.js applies before the semantic stage — so a repeated
+   * phrasing (chips, retries) never re-runs the model. Returns the vector's Float32Array
+   * (callers previously read `.data` off the extractor result); null when the extractor
+   * isn't available or the input is empty.
+   */
+  async embedInput(text) {
+    if (!this.extractor) return null;
+    const key = (text || '').trim().toLowerCase();
+    if (!key) return null;
+    const hit = this._inputEmbedCache.get(key);
+    if (hit) {
+      // LRU touch: re-insert so the newest hit sits at the tail of the Map's insertion order.
+      this._inputEmbedCache.delete(key);
+      this._inputEmbedCache.set(key, hit);
+      return hit;
+    }
+    const result = await this.extractor(key, { pooling: 'mean', normalize: true });
+    if (this._inputEmbedCache.size >= INPUT_EMBED_CACHE_CAP) {
+      this._inputEmbedCache.delete(this._inputEmbedCache.keys().next().value);
+    }
+    this._inputEmbedCache.set(key, result.data);
+    return result.data;
   }
 
   async initialize() {
     if (this.ready) return;
+    // A prior download/embedding failure must short-circuit instead of re-running the whole
+    // 120s download attempt on every match() call (match() → semantic stage → initialize()).
+    // Callers already degrade gracefully to the fuzzy/NLP stages on initError.
+    if (this.initError) throw this.initError;
     if (this.initializing) {
       while (!this.ready && !this.initError) {
         await new Promise(r => setTimeout(r, getTuning('INIT_WAIT_POLL_MS', INIT_WAIT_POLL_MS)));
@@ -89,16 +154,19 @@ class SemanticMatcher {
       console.log('[SemanticMatcher] Model loaded, computing intent embeddings...');
 
       this.intentVectors = {};
+      // Phase 6: embed the whole phrase corpus in one bounded-concurrency batch instead of
+      // serially — ~2500 phrases at 8 in flight is the single largest boot-time reduction.
+      const phraseTasks = [];
       for (const [intent, config] of Object.entries(INTENTS)) {
-        const vectors = [];
         for (const example of config.examples) {
-          const result = await this.extractor(example, {
-            pooling: 'mean',
-            normalize: true,
-          });
-          vectors.push(result.data);
+          phraseTasks.push({ intent, example });
         }
-        this.intentVectors[intent] = vectors;
+      }
+      const phraseResults = await this._embedBatch(phraseTasks.map((t) => t.example));
+      for (let i = 0; i < phraseTasks.length; i++) {
+        const { intent } = phraseTasks[i];
+        if (!this.intentVectors[intent]) this.intentVectors[intent] = [];
+        this.intentVectors[intent].push(phraseResults[i].data);
       }
 
       this._rebuildFuseIndex();
@@ -106,6 +174,11 @@ class SemanticMatcher {
       this.ready = true;
       broadcast({ type: 'semantic_matcher_progress', data: { stage: 'ready', percent: 100 } });
       console.log(`[SemanticMatcher] Ready — ${Object.keys(INTENTS).length} base intents, ${Object.values(INTENTS).reduce((s, c) => s + c.examples.length, 0)} phrases`);
+      // First-message warm-up (Phase 6): the phrase batch above warms the model runtime, but
+      // the first INPUT embed still pays one-off tokenizer/thread-pool setup inside the model.
+      // Fire one throwaway embed (cached under 'warm-up check', harmless) so the first real
+      // user message doesn't pay it. Fire-and-forget — never blocks ready.
+      this.embedInput('warm-up check').catch(() => {});
     } catch (err) {
       this.initError = err;
       console.error('[SemanticMatcher] Failed:', err.message);
@@ -158,15 +231,15 @@ class SemanticMatcher {
   async addLearnedExamples(intent, phrases) {
     if (!this.extractor || !phrases || phrases.length === 0 || !this.intentVectors) return;
     const vectors = this.intentVectors[intent] || [];
-    for (const phrase of phrases) {
-      try {
-        const result = await this.extractor(phrase, { pooling: 'mean', normalize: true });
+    try {
+      const results = await this._embedBatch(phrases);
+      for (const result of results) {
         vectors.push(result.data);
-      } catch {
-        // skip — see method doc
       }
+      this.intentVectors[intent] = vectors;
+    } catch {
+      // skip — see method doc
     }
-    this.intentVectors[intent] = vectors;
   }
 
   /** Compute diff between last known state and current projects, returning only added/changed entries. */
@@ -194,7 +267,10 @@ class SemanticMatcher {
       console.log(`[SemanticMatcher] Adding ${totalEntries} project-specific intents (full recompute)...`);
       this.projectIntentVectors = {};
       this.projectFuseItems = [];
-      let count = 0;
+      // Phase 6: collect every trigger first, embed the whole set in one bounded-concurrency
+      // batch (same results as the serial loop, a fraction of the wall-clock), then assign
+      // vectors back to their entries by index.
+      const triggerGroups = new Map();
       for (let pIdx = 0; pIdx < projects.length; pIdx++) {
         const project = projects[pIdx];
         const entries = project.config?.entries || [];
@@ -205,15 +281,24 @@ class SemanticMatcher {
           const intentName = entry.type === 'command'
             ? `project.action.${pIdx}.${eIdx}`
             : `project.knowledge.${pIdx}.${eIdx}`;
-          const vectors = [];
-          for (const trigger of triggers) {
-            const result = await this.extractor(trigger, { pooling: 'mean', normalize: true });
-            vectors.push(result.data);
-            this.projectFuseItems.push({ intent: intentName, text: trigger, isProject: true });
-          }
-          this.projectIntentVectors[intentName] = { vectors, projectIndex: pIdx, entryIndex: eIdx };
-          count++;
+          triggerGroups.set(intentName, { pIdx, eIdx, triggers });
         }
+      }
+      const allTriggers = [];
+      for (const group of triggerGroups.values()) {
+        allTriggers.push(...group.triggers);
+      }
+      const results = await this._embedBatch(allTriggers);
+      let rIdx = 0;
+      let count = 0;
+      for (const [intentName, group] of triggerGroups) {
+        const vectors = [];
+        for (const trigger of group.triggers) {
+          vectors.push(results[rIdx++].data);
+          this.projectFuseItems.push({ intent: intentName, text: trigger, isProject: true });
+        }
+        this.projectIntentVectors[intentName] = { vectors, projectIndex: group.pIdx, entryIndex: group.eIdx };
+        count++;
       }
       this._rebuildFuseIndex();
       console.log(`[SemanticMatcher] ${count} project intents added`);
@@ -243,6 +328,10 @@ class SemanticMatcher {
     }
 
     console.log(`[SemanticMatcher] Incremental update: ${diff.changed.length} entries changed`);
+    // Phase 6: embed every changed entry's triggers in one bounded-concurrency batch, then
+    // assign vectors back by index (identical results to the serial loop).
+    const changedResults = await this._embedBatch(diff.changed.flatMap(({ entry }) => entry.triggers || []));
+    let cIdx = 0;
     for (const { pIdx, eIdx, entry } of diff.changed) {
       const intentName = entry.type === 'command'
         ? `project.action.${pIdx}.${eIdx}`
@@ -259,8 +348,7 @@ class SemanticMatcher {
 
       const vectors = [];
       for (const trigger of triggers) {
-        const result = await this.extractor(trigger, { pooling: 'mean', normalize: true });
-        vectors.push(result.data);
+        vectors.push(changedResults[cIdx++].data);
         this.projectFuseItems.push({ intent: intentName, text: trigger, isProject: true });
       }
       this.projectIntentVectors[intentName] = { vectors, projectIndex: pIdx, entryIndex: eIdx };
@@ -307,8 +395,9 @@ class SemanticMatcher {
     const inputStr = (input || '').trim().toLowerCase();
     if (!inputStr) return null;
     try {
-      const v = await this.extractor(inputStr, { pooling: 'mean', normalize: true });
-      return bestProjectActionVector(v.data, this.projectIntentVectors, projectIndex);
+      const v = await this.embedInput(inputStr);
+      if (!v) return null;
+      return bestProjectActionVector(v, this.projectIntentVectors, projectIndex);
     } catch {
       return null;
     }
@@ -337,7 +426,7 @@ class SemanticMatcher {
    * themselves; this app's threshold is 0.45). Returns { intent, confidence, meta } or null.
    */
   async nearestIntent(inputStr) {
-    return computeNearestIntent(this.extractor, inputStr, this.projectIntentVectors, this.intentVectors);
+    return computeNearestIntent((t) => this.embedInput(t), inputStr, this.projectIntentVectors, this.intentVectors);
   }
 
   async matchMulti(input) {

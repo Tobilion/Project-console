@@ -1,5 +1,5 @@
 import crypto from 'crypto';
-import { state, pendingConfirmations, resolveProject } from '../state.js';
+import { state, pendingConfirmations, resolveProject, getTabWorkspace } from '../state.js';
 import { appendMessage, getSession } from '../conversationStore.js';
 import { executeCommand } from '../executor.js';
 import { isCommandBlocked } from '../dangerousPatterns.js';
@@ -72,12 +72,15 @@ export async function handleExecute(ws, parsed, sessionContext) {
 }
 
 async function handleExecuteBody(ws, parsed, sessionContext) {
-  const { projectId, input, sessionId } = parsed.payload || {};
+  const { projectId, input, sessionId, tabId } = parsed.payload || {};
 
   sessionContext.activeProjectId = projectId;
+  // Phase T (2026-08-14): scope this connection's project resolution to the tab's workspace
+  // cache (kept per-connection — a reconnect re-derives it from the first execute payload).
+  if (tabId) sessionContext.tabId = tabId;
   if (sessionId) sessionContext.currentSessionId = sessionId;
 
-  const project = resolveProject(projectId);
+  const project = resolveProject(projectId, sessionContext.tabId);
   if (!project) {
     ws.send(JSON.stringify({ type: 'error_output', data: 'Project not found. Scan directory again.\n' }));
     ws.send(JSON.stringify({ type: 'end' }));
@@ -100,7 +103,24 @@ async function handleExecuteBody(ws, parsed, sessionContext) {
         ws.send(JSON.stringify({ type: 'end' }));
         return;
       }
-    } catch {}
+      // Phase T (2026-08-14): two tabs scanning different roots can contain same-named folders
+      // (folder-name slug ids collide), so the slug check alone passes for the WRONG folder.
+      // The session records its project's path at creation — compare paths too, so a chat
+      // opened against root A's "matchday" can never run commands against root B's folder.
+      if (session && session.projectPath && project.path && session.projectPath !== project.path) {
+        ws.send(JSON.stringify({
+          type: 'error_output',
+          data: `This chat is tied to "${session.projectName || session.projectId}" at \`${session.projectPath}\`, but your current tab has "${project.name}" at \`${project.path}\` — same folder name, different location. Switch to that project or create a new chat for this one.\n`,
+          switchProjectAction: { projectId: session.projectId, projectName: session.projectName || session.projectId },
+        }));
+        ws.send(JSON.stringify({ type: 'end' }));
+        return;
+      }
+    } catch (err) {
+      // The session is only an optimization here (lock/path guard) — a failed read must not
+      // block the message, but it also must not vanish silently (audit 2026-08-17).
+      console.error(`getSession(${sessionId}) failed in handleExecute:`, err);
+    }
   }
 
   if (sessionContext.currentSessionId) {
@@ -176,9 +196,11 @@ async function handleExecuteBody(ws, parsed, sessionContext) {
       }
       return;
     }
-    // Resolve workspace projects for AI context
+    // Resolve workspace projects for AI context — Phase T: scoped to this tab's own cache
+    // (a tab's workspace ids refer to ITS scan set; the global cache may hold another tab's).
+    const tabCache = sessionContext.tabId ? getTabWorkspace(sessionContext.tabId)?.projectsCache : null;
     const workspaceProjects = sessionContext.workspaceProjectIds
-      .map(id => state.activeProjectsCache.find(p => p.id === id))
+      .map(id => (tabCache || state.activeProjectsCache).find(p => p.id === id))
       .filter(Boolean);
     await handleAIQuery(ws, project, input, sessionContext, workspaceProjects);
     return;

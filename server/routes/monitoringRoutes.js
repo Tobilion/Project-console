@@ -1,9 +1,9 @@
-import { exec } from 'child_process';
+import { execFile } from 'child_process';
 import path from 'path';
 import fs from 'fs';
 import { metrics } from '../metrics.js';
 import { runningProcesses, getProcessLog } from '../executor.js';
-import { state } from '../state.js';
+import { state, getTabWorkspace } from '../state.js';
 import { forgetDevUrl } from '../devUrlStore.js';
 import { probeUrl } from '../livenessProbe.js';
 import { asyncHandler } from '../asyncHandler.js';
@@ -11,7 +11,7 @@ import { asyncHandler } from '../asyncHandler.js';
 /** Runs a git command in the given directory with a timeout, returning { stdout, stderr }. */
 function runGit(cwd, args, timeoutMs = 5000) {
   return new Promise((resolve, reject) => {
-    exec(`git ${args.join(' ')}`, { cwd, timeout: timeoutMs }, (err, stdout, stderr) => {
+    execFile('git', args, { cwd, timeout: timeoutMs }, (err, stdout, stderr) => {
       if (err) return reject(err);
       resolve({ stdout, stderr });
     });
@@ -85,14 +85,106 @@ export function registerMonitoringRoutes(app) {
   // reported directly — stop/cancel didn't reflect live; the WS-triggered refetch
   // was hitting a stale cache). The git calls are the expensive part and they're
   // still TTL-gated.
-  let dashboardCache = null;
-  let dashboardCacheTime = 0;
-  let dashboardCacheSig = '';
+  // The dashboard cache is per-tab (audit 2026-08-17): a single global triple made two tabs
+  // with different project sets thrash each other — the signature covers the requesting tab's
+  // projects, so every alternating request missed the TTL and rebuilt the expensive git state,
+  // and each rebuild overwrote the other tab's cache with its own project set (correct per
+  // request thanks to the signature, but a guaranteed cache miss for every second request).
+  const dashboardCaches = new Map(); // tabId (or 'global') -> { cache, time, sig }
   const CACHE_TTL = 30000;
 
-  function volatileSignature() {
+  // Windows path strings are case-insensitive and often typed differently than the scan
+  // records them (start.bat launches from "Desktop\project-console", discovery records
+  // "Desktop\Projects\Project console") — a raw `===` on path.resolve output made the
+  // console's own project entry fail the self-detection below and never show as live
+  // (reported live 2026-08-10). Compare normalized, case-folded paths on win32. Declared at
+  // function scope (not inside the route handler) because buildEntry below also uses it —
+  // a handler-local const would be out of scope for the hoisted buildEntry (TDZ ReferenceError,
+  // caught live 2026-08-17).
+  const consoleRoot = path.resolve(process.cwd());
+  const isConsolePath = (projectPath) => {
+    const norm = (p) => path.resolve(p).replace(/\\/g, '/');
+    const a = norm(projectPath);
+    const b = norm(consoleRoot);
+    return process.platform === 'win32' ? a.toLowerCase() === b.toLowerCase() : a === b;
+  };
+
+  // Phase 6 (2026-08-17): per-project git-state cache. The dashboard cache above is
+  // invalidated by ANY volatile change (process start/stop, URL detection), which used to
+  // re-run `git status`/`log`/`rev-list` for every project on every rebuild — frequent
+  // during dev-server churn. Git state only changes on commits/stages/fetches, so cache it
+  // per project with its own TTL + a cheap .git/HEAD+index mtime signature; unstaged
+  // working-tree edits are bounded by the TTL (same bound the whole-dashboard cache already
+  // had), while a commit invalidates immediately via the signature.
+  const GIT_CACHE_TTL = 30000;
+  const gitStateCache = new Map(); // projectPath -> { data, sig, at }
+
+  function gitSignature(projectPath) {
     const parts = [];
-    for (const project of state.activeProjectsCache) parts.push(`p:${project.id}`);
+    const stat = (p) => {
+      try {
+        parts.push(fs.statSync(p).mtimeMs);
+      } catch {
+        parts.push('missing');
+      }
+    };
+    stat(path.join(projectPath, '.git', 'HEAD'));
+    stat(path.join(projectPath, '.git', 'index'));
+    return parts.join('|');
+  }
+
+  async function getGitDashboardState(projectPath) {
+    const sig = gitSignature(projectPath);
+    const cached = gitStateCache.get(projectPath);
+    if (cached && cached.sig === sig && Date.now() - cached.at < GIT_CACHE_TTL) {
+      return cached.data;
+    }
+    const data = { uncommitted: [], recentCommits: [], isGitRepo: false, hasUpstream: false, aheadCount: 0 };
+    try {
+      if (!fs.existsSync(path.join(projectPath, '.git'))) return data;
+      data.isGitRepo = true;
+      // status + log are independent — run them concurrently; the upstream count needs the
+      // repo only, so all three run in parallel.
+      const [statusRes, logRes] = await Promise.all([
+        runGit(projectPath, ['status', '--short']),
+        runGit(projectPath, ['log', '--oneline', '-5']),
+      ]);
+      if (statusRes.stdout.trim()) {
+        data.uncommitted = statusRes.stdout.trim().split('\n').slice(0, 100);
+      }
+      if (logRes.stdout.trim()) {
+        data.recentCommits = logRes.stdout.trim().split('\n').filter(Boolean);
+      }
+      try {
+        const { stdout: aheadOut } = await runGit(projectPath, ['rev-list', '--count', '@{u}..HEAD']);
+        data.hasUpstream = true;
+        data.aheadCount = parseInt(aheadOut.trim(), 10) || 0;
+      } catch {
+        // No upstream configured (or detached HEAD) — leave hasUpstream false, aheadCount 0.
+      }
+    } catch {
+      // Not a git repo, or git unavailable — data stays with empty arrays
+    }
+    gitStateCache.set(projectPath, { data, sig, at: Date.now() });
+    return data;
+  }
+
+  function getDashboardCache(tabId) {
+    const key = tabId || 'global';
+    let entry = dashboardCaches.get(key);
+    if (!entry) {
+      entry = { cache: null, time: 0, sig: '' };
+      dashboardCaches.set(key, entry);
+    }
+    return entry;
+  }
+
+  function volatileSignature(tabId) {
+    const parts = [];
+    // Phase T (2026-08-14): the signature covers the requesting tab's OWN project set (a
+    // second tab's scan must not invalidate — or, worse, serve stale data to — this one).
+    const cache = tabId ? getTabWorkspace(tabId)?.projectsCache || [] : state.activeProjectsCache;
+    for (const project of cache) parts.push(`p:${project.id}`);
     for (const [pid, slot] of runningProcesses) {
       for (const proc of slot.values()) {
         parts.push(`r:${pid}|${proc.command}|${proc.startedAt || ''}`);
@@ -103,26 +195,39 @@ export function registerMonitoringRoutes(app) {
   }
 
   app.get('/api/dashboard', asyncHandler(async (req, res) => {
+    const tabId = typeof req.query.tab === 'string' ? req.query.tab : null;
     const now = Date.now();
-    const sig = volatileSignature();
-    if (dashboardCache && sig === dashboardCacheSig && (now - dashboardCacheTime < CACHE_TTL)) {
-      return res.json(dashboardCache);
+    const sig = volatileSignature(tabId);
+    const cacheEntry = getDashboardCache(tabId);
+    if (cacheEntry.cache && sig === cacheEntry.sig && (now - cacheEntry.time < CACHE_TTL)) {
+      return res.json(cacheEntry.cache);
     }
 
-    const results = [];
-    const consoleRoot = path.resolve(process.cwd());
-    // Windows path strings are case-insensitive and often typed differently than the scan
-    // records them (start.bat launches from "Desktop\project-console", discovery records
-    // "Desktop\Projects\Project console") — a raw `===` on path.resolve output made the
-    // console's own project entry fail the self-detection below and never show as live
-    // (reported live 2026-08-10). Compare normalized, case-folded paths on win32.
-    const isConsolePath = (projectPath) => {
-      const norm = (p) => path.resolve(p).replace(/\\/g, '/');
-      const a = norm(projectPath);
-      const b = norm(consoleRoot);
-      return process.platform === 'win32' ? a.toLowerCase() === b.toLowerCase() : a === b;
+    // Phase T: the dashboard lists the requesting tab's projects only — the same set the
+    // tab's sidebar shows — never another tab's scan results.
+    const tabProjects = tabId ? (getTabWorkspace(tabId)?.projectsCache || []) : state.activeProjectsCache;
+
+    // Phase 6: per-project work (probe + git state + assembly) was serial — a slow probe or
+    // git call delayed every later project. The pieces are independent, so a small worker
+    // pool overlaps them; results land by index so the response order is unchanged.
+    const results = new Array(tabProjects.length);
+    const POOL_SIZE = 6;
+    let nextIdx = 0;
+    const worker = async () => {
+      while (nextIdx < tabProjects.length) {
+        const idx = nextIdx++;
+        results[idx] = await buildEntry(tabProjects[idx]);
+      }
     };
-    for (const project of state.activeProjectsCache) {
+    await Promise.all(Array.from({ length: Math.min(POOL_SIZE, tabProjects.length) }, () => worker()));
+
+    cacheEntry.cache = results;
+    cacheEntry.time = now;
+    cacheEntry.sig = sig;
+    res.json(results);
+  }));
+
+  async function buildEntry(project) {
       const rawDevUrl = state.lastDevUrls.get(project.id) || null;
       const procs = [...(runningProcesses.get(project.id)?.values() || [])];
       // `running` is the dashboard's live-truth flag: true when a tracked process exists, the
@@ -151,7 +256,9 @@ export function registerMonitoringRoutes(app) {
       // assigned below and never enters lastDevUrls (recordDevUrl refuses that port).
       if (devUrl) {
         try {
-          const probe = await probeUrl(devUrl, 1200);
+          // Phase 6: probe bound tightened to 600ms — the parallel worker pool overlaps the
+          // per-project probes, so each individual bound can be shorter.
+          const probe = await probeUrl(devUrl, 600);
           if (probe.alive) {
             probeConfirmedAlive = true;
           } else {
@@ -168,60 +275,29 @@ export function registerMonitoringRoutes(app) {
         devUrl = `http://127.0.0.1:${state.serverPort}`;
       }
       running = running || probeConfirmedAlive || (isConsoleSelf && Boolean(devUrl));
+      const gitState = await getGitDashboardState(project.path);
       const entry = {
         id: project.id,
         name: project.name,
         path: project.path,
         workspaceType: project.workspaceType || 'dev',
-        uncommitted: [],
-        recentCommits: [],
+        uncommitted: gitState.uncommitted,
+        recentCommits: gitState.recentCommits,
         devUrl,
         running,
         runningCommand: null,
-        isGitRepo: false,
+        isGitRepo: gitState.isGitRepo,
         // Dashboard QoL expansion (2026-08-10, requested directly — a project card's push
         // button needs to know about commits that are committed-but-unpushed, not just dirty
         // working-tree files). `hasUpstream: false` covers both "no upstream branch configured
         // yet" and "detached HEAD" — either way there's no ahead/behind count to report, but a
         // first push is still meaningful, so the frontend treats it as "needs push" too.
-        aheadCount: 0,
-        hasUpstream: false,
+        aheadCount: gitState.aheadCount,
+        hasUpstream: gitState.hasUpstream,
       };
 
       if (procs.length > 0) entry.runningCommand = procs.map((p) => p.command).join('; ');
 
-      try {
-        const gitDir = path.join(project.path, '.git');
-        entry.isGitRepo = fs.existsSync(gitDir);
-        if (entry.isGitRepo) {
-          const { stdout: statusOut } = await runGit(project.path, ['status', '--short']);
-          if (statusOut.trim()) {
-            entry.uncommitted = statusOut.trim().split('\n').slice(0, 100);
-          }
-
-          const { stdout: logOut } = await runGit(project.path, ['log', '--oneline', '-5']);
-          if (logOut.trim()) {
-            entry.recentCommits = logOut.trim().split('\n').filter(Boolean);
-          }
-
-          try {
-            const { stdout: aheadOut } = await runGit(project.path, ['rev-list', '--count', '@{u}..HEAD']);
-            entry.hasUpstream = true;
-            entry.aheadCount = parseInt(aheadOut.trim(), 10) || 0;
-          } catch {
-            // No upstream configured (or detached HEAD) — leave hasUpstream false, aheadCount 0.
-          }
-        }
-      } catch {
-        // Not a git repo, or git unavailable — entry stays with empty arrays
-      }
-
-      results.push(entry);
+      return entry;
     }
-
-    dashboardCache = results;
-    dashboardCacheTime = now;
-    dashboardCacheSig = sig;
-    res.json(results);
-  }));
 }

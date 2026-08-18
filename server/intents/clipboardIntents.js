@@ -19,6 +19,12 @@ export const CLIPBOARD_INTENTS = {
       'clear clipboard history',
     ],
   },
+  'clipboard.remove_item': {
+    opensPanel: 'clipboard',
+    examples: [
+      'remove clipboard item 2', 'delete clipboard item 1',
+    ],
+  },
   'snippet.save': {
     opensPanel: 'clipboard',
     examples: [

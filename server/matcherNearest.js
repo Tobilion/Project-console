@@ -8,14 +8,14 @@ import { scanAllVectors } from './intentVectorScan.js';
  * path to offer a non-blocking "did you mean" chip when nothing cleared the normal gates but
  * the embedding still strongly favors one intent (callers gate on the returned confidence
  * themselves; this app's threshold is 0.45). Returns { intent, confidence, meta } or null.
+ * `embedInput` is a function returning the vector data for a string — semanticMatcher passes
+ * its cached embedInput so repeated did-you-mean lookups skip the model call (Phase 6).
  */
-export async function computeNearestIntent(extractor, inputStr, projectIntentVectors, intentVectors) {
-  if (!extractor) return null;
+export async function computeNearestIntent(embedInput, inputStr, projectIntentVectors, intentVectors) {
+  if (!embedInput) return null;
   try {
-    const inputVec = await extractor(inputStr, {
-      pooling: 'mean',
-      normalize: true,
-    });
+    const inputData = await embedInput(inputStr);
+    if (!inputData) return null;
     let bestIntent = null;
     let bestScore = -1;
     let bestMeta = null;
@@ -26,7 +26,7 @@ export async function computeNearestIntent(extractor, inputStr, projectIntentVec
         bestMeta = meta;
       }
     };
-    scanAllVectors(inputVec.data, projectIntentVectors, intentVectors, consider);
+    scanAllVectors(inputData, projectIntentVectors, intentVectors, consider);
     if (bestIntent) return { intent: bestIntent, confidence: bestScore, meta: bestMeta };
     return null;
   } catch (err) {

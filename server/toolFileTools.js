@@ -19,7 +19,7 @@ import { createProjectInfoTools } from './toolProjectInfo.js';
 export function createFileTools({ project, root, resolveSafe }) {
   return {
     ...createFileOpsTools({ root, resolveSafe }),
-    ...createFileEditTool({ resolveSafe }),
+    ...createFileEditTool({ root, resolveSafe }),
     ...createFileSearchTools({ root, resolveSafe }),
     ...createProjectInfoTools({ project, root }),
   };

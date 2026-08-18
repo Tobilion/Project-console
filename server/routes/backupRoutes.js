@@ -9,14 +9,14 @@ import { listBackups, backupsDir } from '../backupStore.js';
 export function registerBackupRoutes(app) {
   // List the project's backups, newest first — for the panel's Time Machine-style list.
   app.get('/api/projects/:id/backups', (req, res) => {
-    const project = resolveProject(req.params.id);
+    const project = resolveProject(req.params.id, req.query.tab);
     if (!project) return res.status(404).json({ error: 'Project not found' });
     res.json({ backups: listBackups(project) });
   });
 
   // Project subdirectories for the panel's subfolder picker (one level, relative paths).
   app.get('/api/projects/:id/folders', (req, res) => {
-    const project = resolveProject(req.params.id);
+    const project = resolveProject(req.params.id, req.query.tab);
     if (!project) return res.status(404).json({ error: 'Project not found' });
     const folders = [];
     try {
@@ -34,7 +34,7 @@ export function registerBackupRoutes(app) {
   // Download one backup by name — basename-validated so the lookup stays inside the
   // backups dir (same pattern as the workspace-export download).
   app.get('/api/projects/:id/backup-file', (req, res) => {
-    const project = resolveProject(req.params.id);
+    const project = resolveProject(req.params.id, req.query.tab);
     if (!project) return res.status(404).json({ error: 'Project not found' });
     const name = typeof req.query.name === 'string' ? req.query.name : '';
     const prefix = `${(project.folderName || project.id || 'project').replace(/[^a-z0-9_-]/gi, '-')}-`;

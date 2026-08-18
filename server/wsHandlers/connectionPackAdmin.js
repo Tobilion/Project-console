@@ -1,6 +1,7 @@
 import fs from 'fs/promises';
 import path from 'path';
 import { validateToolEntry, sanitizePermissions, MANIFEST_FILENAME } from '../pluginTools.js';
+import { invalidatePluginManifest } from '../toolGate.js';
 import { getRegistryUrl, setRegistryUrl, fetchRegistryIndex, fetchPackManifest } from '../packRegistry.js';
 
 // Plugin/pack install mechanism — infrastructure expansion (2026-08-10, "new infrastructure,
@@ -249,6 +250,9 @@ export async function handlePendingPackInstallReply(ws, project, lowerInput, ses
 
   try {
     await fs.writeFile(manifestPath, JSON.stringify(manifest, null, 2) + '\n', 'utf-8');
+    // The in-memory manifest cache would keep serving the pre-install tools forever (it never
+    // expires) — drop it so the newly installed tools are live immediately (audit 2026-08-17).
+    invalidatePluginManifest(project.path);
     ws.send(JSON.stringify({
       type: 'answer',
       data: `✓ Installed. ${added} new tool(s), ${overwritten} overwritten. ${project.name}'s ${MANIFEST_FILENAME} now has ${manifest.tools.length} custom tool(s) — the file watcher picks them up automatically.`,

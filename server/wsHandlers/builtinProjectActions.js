@@ -5,6 +5,20 @@ import { state } from '../state.js';
 import { isGitRepo } from '../gitSafety.js';
 import { createProjectTools } from '../tools.js';
 import { parseFileNameOnly } from './builtinHelpers.js';
+import { resolveEditor, defaultEditorFor, getEditorsState } from '../editorsStore.js';
+
+/**
+ * Extracts the editor name from "open X with <Editor>" / "open X in <Editor>" /
+ * "open X in the editor" phrasing: the token(s) right after "with"/"in". Returns the
+ * raw name (multi-word editor names like "IntelliJ IDEA" are joined back) or null.
+ */
+function extractEditorName(input) {
+  const m = input.match(/\b(?:with|in)\s+([a-z][a-z0-9 .+_-]*)$/i);
+  if (!m) return null;
+  const raw = m[1].trim();
+  // "in the editor" / "with the editor" → the default-editor ask (per-extension default).
+  return /^(?:the|your|my|default)\s+editor$/i.test(raw) ? 'the editor' : raw;
+}
 
 /**
  * project.action.* / system.monitoring.metrics — the side-effectful action branch bodies
@@ -38,7 +52,7 @@ export const projectActionHandlers = {
     // Phase 3 (2026-08-03): open project folder in VS Code. If `code` not on PATH, answer with
     // guidance instead of the raw error.
     const { spawn } = await import('child_process');
-    const child = spawn('code', [project.path], { detached: true, stdio: 'ignore' });
+    const child = spawn('code', [project.path], { detached: true, stdio: 'ignore', windowsHide: true });
     child.on('error', (err) => {
       if (err.code === 'ENOENT' || err.message.includes('not recognized')) {
         // Phase 15: the `code` CLI isn't on PATH on this machine — fall back to the
@@ -51,7 +65,7 @@ export const projectActionHandlers = {
         const isMac = process.platform === 'darwin';
         const cmd = isWindows ? 'start' : isMac ? 'open' : 'xdg-open';
         const args = isWindows ? ['', uri] : [uri];
-        const fallback = spawn(cmd, args, { detached: true, stdio: 'ignore', shell: isWindows });
+        const fallback = spawn(cmd, args, { detached: true, stdio: 'ignore', shell: isWindows, windowsHide: true });
         fallback.on('error', () => {
           ws.send(JSON.stringify({ type: 'answer', data: `VS Code \`code\` CLI not found on PATH. Open VS Code manually and use File → Open Folder → \`${project.path}\`.` }));
         });
@@ -81,7 +95,7 @@ export const projectActionHandlers = {
       cmd = 'xdg-open';
       args = [project.path];
     }
-    const child = spawn(cmd, args, { detached: true, stdio: 'ignore' });
+    const child = spawn(cmd, args, { detached: true, stdio: 'ignore', windowsHide: true });
     child.on('error', (err) => {
       ws.send(JSON.stringify({ type: 'error_output', data: `Failed to open folder: ${err.message}\n` }));
     });
@@ -101,7 +115,7 @@ export const projectActionHandlers = {
     const isMac = process.platform === 'darwin';
     const cmd = isWindows ? 'start' : isMac ? 'open' : 'xdg-open';
     const args = isWindows ? ['', url] : [url];
-    const child = spawn(cmd, args, { detached: true, stdio: 'ignore', shell: isWindows });
+    const child = spawn(cmd, args, { detached: true, stdio: 'ignore', shell: isWindows, windowsHide: true });
     child.on('error', (err) => {
       ws.send(JSON.stringify({ type: 'error_output', data: `Failed to open browser: ${err.message}\n` }));
     });
@@ -114,7 +128,7 @@ export const projectActionHandlers = {
     // Phase 8 (2026-08-12): ALSO write server-side so the CLI (no browser to hand the event
     // to) copies for real; the WS event stays as a display notice for the web client.
     const { copyToOsClipboard } = await import('../clipboardHistory.js');
-    copyToOsClipboard(project.path);
+    await copyToOsClipboard(project.path);
     ws.send(JSON.stringify({ type: 'copy_to_clipboard', data: project.path }));
     ws.send(JSON.stringify({ type: 'answer', data: `Copied **[${project.name}]** path to clipboard:\n\`${project.path}\`` }));
   },
@@ -138,6 +152,8 @@ export const projectActionHandlers = {
       cmd = 'x-terminal-emulator';
       args = [`--working-directory=${project.path}`];
     }
+    // No windowsHide here — this spawn's whole purpose is the visible cmd window (cd /K),
+    // and CREATE_NO_WINDOW would make the terminal invisible (audit 2026-08-17 deviation).
     const child = spawn(cmd, args, { detached: true, stdio: 'ignore' });
     child.on('error', (err) => {
       ws.send(JSON.stringify({ type: 'answer', data: `Couldn't open a terminal automatically (${err.message}). Open one yourself and run: \`cd "${project.path}"\`` }));
@@ -174,7 +190,7 @@ export const projectActionHandlers = {
     const isMac = process.platform === 'darwin';
     const cmd = isWindows ? 'start' : isMac ? 'open' : 'xdg-open';
     const args = isWindows ? ['', page] : [page];
-    const child = spawn(cmd, args, { detached: true, stdio: 'ignore', shell: isWindows });
+    const child = spawn(cmd, args, { detached: true, stdio: 'ignore', shell: isWindows, windowsHide: true });
     child.on('error', (err) => {
       ws.send(JSON.stringify({ type: 'error_output', data: `Failed to open browser: ${err.message}\n` }));
     });
@@ -188,7 +204,7 @@ export const projectActionHandlers = {
     // raw error — Cursor has no reliable cursor://file/ URI scheme like VS Code's documented
     // vscode:// one, so there's no protocol fallback to try; never claim it opened.
     const { spawn } = await import('child_process');
-    const child = spawn('cursor', [project.path], { detached: true, stdio: 'ignore' });
+    const child = spawn('cursor', [project.path], { detached: true, stdio: 'ignore', windowsHide: true });
     child.on('error', (err) => {
       if (err.code === 'ENOENT' || err.message.includes('not recognized')) {
         ws.send(JSON.stringify({ type: 'answer', data: `Cursor \`cursor\` CLI not found on PATH. Open Cursor manually and use File → Open Folder → \`${project.path}\`.` }));
@@ -230,7 +246,7 @@ export const projectActionHandlers = {
     const rel = matches.data[0];
     const abs = path.join(project.path, rel);
     const { spawn } = await import('child_process');
-    const child = spawn('code', [abs], { detached: true, stdio: 'ignore' });
+    const child = spawn('code', [abs], { detached: true, stdio: 'ignore', windowsHide: true });
     child.on('error', (err) => {
       if (err.code === 'ENOENT' || err.message.includes('not recognized')) {
         const uri = 'vscode://file/' + encodeURI(abs.replace(/\\/g, '/'));
@@ -238,7 +254,7 @@ export const projectActionHandlers = {
         const isMac = process.platform === 'darwin';
         const cmd = isWindows ? 'start' : isMac ? 'open' : 'xdg-open';
         const args = isWindows ? ['', uri] : [uri];
-        const fallback = spawn(cmd, args, { detached: true, stdio: 'ignore', shell: isWindows });
+        const fallback = spawn(cmd, args, { detached: true, stdio: 'ignore', shell: isWindows, windowsHide: true });
         fallback.on('error', () => {
           ws.send(JSON.stringify({ type: 'answer', data: `VS Code \`code\` CLI not found on PATH. Open the file manually: \`${abs}\`.` }));
         });
@@ -250,6 +266,184 @@ export const projectActionHandlers = {
     });
     child.unref();
     ws.send(JSON.stringify({ type: 'answer', data: `Opening **\`${rel}\`** in VS Code...` }));
+  },
+
+  async 'project.action.open_html'(ws, _action, input, project, sessionContext) {
+    // Phase T (2026-08-14): "open index.html in the browser" / "preview the page" / "open
+    // report.pdf in the browser" — resolves the file the same way open_file does (sandboxed
+    // findFiles, no-name follow-up staging), then opens it via the OS default browser using the
+    // file's association (start/open/xdg-open with the absolute path). HTML renders; other file
+    // types open/download per the OS association. Deliberately the browser, not the editor (see
+    // the pre-semantic overrides in preSemanticOverrides.js).
+    const fileName = parseFileNameOnly(input);
+    if (!fileName) {
+      if (sessionContext) {
+        sessionContext.pendingFileQuestion = { projectId: project.id, intent: 'project.action.open_html' };
+      }
+      ws.send(JSON.stringify({ type: 'answer', data: `Which file would you like to open in the browser? Try "open index.html in the browser" or "preview the page".` }));
+      return true;
+    }
+    const tools = await createProjectTools(project);
+    const matches = await tools.findFiles({ pattern: fileName });
+    if (!matches.success || matches.data.length === 0) {
+      if (matches.success) {
+        ws.send(JSON.stringify({ type: 'answer', data: `No file matches **"${fileName}"** in **[${project.name}]**. Try a different name, or say "where is index.html" to search.` }));
+      } else {
+        ws.send(JSON.stringify({ type: 'answer', data: matches.error || `Couldn't search for **"${fileName}"**.` }));
+      }
+      return true;
+    }
+    const rel = matches.data[0];
+    const abs = path.join(project.path, rel);
+    const { spawn } = await import('child_process');
+    const isWindows = process.platform === 'win32';
+    const isMac = process.platform === 'darwin';
+    const cmd = isWindows ? 'start' : isMac ? 'open' : 'xdg-open';
+    const args = isWindows ? ['', abs] : [abs];
+    const child = spawn(cmd, args, { detached: true, stdio: 'ignore', shell: isWindows, windowsHide: true });
+    child.on('error', (err) => {
+      ws.send(JSON.stringify({ type: 'error_output', data: `Failed to open browser: ${err.message}\n` }));
+    });
+    child.unref();
+    ws.send(JSON.stringify({ type: 'answer', data: `Opening **\`${rel}\`** in your default browser...` }));
+  },
+
+  async 'project.action.open_with'(ws, _action, input, project, sessionContext) {
+    // Phase T2 (2026-08-14): "open main.py with PyCharm" / "open app.ts in IntelliJ" /
+    // "open file.py in the editor" — resolves the file like open_file, then launches the
+    // chosen editor from the editorsStore registry (data/editors.json, configured in
+    // Settings → Editors & IDEs). "in the editor" / "with the editor" uses the per-extension
+    // default; the reserved 'browser' pseudo-editor delegates to open_html. ENOENT →
+    // named guidance (same pattern as open_in_vscode).
+    const fileName = parseFileNameOnly(input);
+    if (!fileName) {
+      if (sessionContext) {
+        sessionContext.pendingFileQuestion = { projectId: project.id, intent: 'project.action.open_with' };
+      }
+      ws.send(JSON.stringify({ type: 'answer', data: `Which file would you like to open? Try "open main.py with PyCharm" or "open app.ts in the editor".` }));
+      return true;
+    }
+    const editorName = extractEditorName(input);
+    if (!editorName) {
+      ws.send(JSON.stringify({ type: 'answer', data: `Which editor? Try "open ${fileName} with PyCharm" or "open ${fileName} in IntelliJ". Configure editors in Settings → Editors & IDEs.` }));
+      return true;
+    }
+    const tools = await createProjectTools(project);
+    const matches = await tools.findFiles({ pattern: fileName });
+    if (!matches.success || matches.data.length === 0) {
+      if (matches.success) {
+        ws.send(JSON.stringify({ type: 'answer', data: `No file matches **"${fileName}"** in **[${project.name}]**. Try a different name, or say "where is main.py" to search.` }));
+      } else {
+        ws.send(JSON.stringify({ type: 'answer', data: matches.error || `Couldn't search for **"${fileName}"**.` }));
+      }
+      return true;
+    }
+    const rel = matches.data[0];
+    const abs = path.join(project.path, rel);
+    const ext = path.extname(rel).toLowerCase();
+
+    // "the editor" / "the default editor" → the per-extension default (settings), falling
+    // back to VS Code; the browser pseudo-editor opens the file in the default browser
+    // (same start/open/xdg-open spawn as open_html — no delegation to avoid an import
+    // cycle through builtinIntents.js).
+    const isDefaultAsk = /(?:the|your|my|default)\s+(?:default\s+)?editor/i.test(editorName);
+    let editor = null;
+    if (isDefaultAsk) {
+      editor = defaultEditorFor(rel);
+      if (editor?.id === 'browser') {
+        const { spawn } = await import('child_process');
+        const isWindows = process.platform === 'win32';
+        const isMac = process.platform === 'darwin';
+        const cmd = isWindows ? 'start' : isMac ? 'open' : 'xdg-open';
+        const args = isWindows ? ['', abs] : [abs];
+        const child = spawn(cmd, args, { detached: true, stdio: 'ignore', shell: isWindows, windowsHide: true });
+        child.on('error', (err) => {
+          ws.send(JSON.stringify({ type: 'error_output', data: `Failed to open browser: ${err.message}\n` }));
+        });
+        child.unref();
+        ws.send(JSON.stringify({ type: 'answer', data: `Opening **\`${rel}\`** in your default browser (per-extension default for .${ext})...` }));
+        return true;
+      }
+      if (!editor) {
+        editor = resolveEditor('vscode');
+      }
+    } else {
+      editor = resolveEditor(editorName);
+    }
+
+    if (!editor || !editor.command) {
+      const known = getEditorsState().editors.map((e) => e.name).join(', ');
+      ws.send(JSON.stringify({ type: 'answer', data: `I don't know an editor called **"${editorName}"**. Configured editors: ${known || 'none yet'} — add them in Settings → Editors & IDEs, or use "open ${rel} in the editor" for the per-extension default.` }));
+      return true;
+    }
+
+    const { spawn } = await import('child_process');
+    let child;
+    try {
+      child = spawn(editor.command, [abs], { detached: true, stdio: 'ignore', windowsHide: true });
+    } catch (err) {
+      // A malformed command (e.g. "node script.js" — spawn needs a single executable) throws
+      // synchronously on Windows instead of emitting 'error'; surface it as guidance.
+      ws.send(JSON.stringify({ type: 'answer', data: `Could not launch **${editor.name}**: the command \`${editor.command}\` is not a single executable. Fix it in Settings → Editors & IDEs, or open the file manually at \`${abs}\`.` }));
+      return true;
+    }
+    child.on('error', (err) => {
+      if (err.code === 'ENOENT' || err.message.includes('not recognized')) {
+        ws.send(JSON.stringify({ type: 'answer', data: `**${editor.name}** (\`${editor.command}\`) was not found on PATH. Install it or fix the command in Settings → Editors & IDEs, then try again. The file is at \`${abs}\`.` }));
+      } else {
+        ws.send(JSON.stringify({ type: 'error_output', data: `Failed to open ${editor.name}: ${err.message}\n` }));
+      }
+    });
+    child.unref();
+    ws.send(JSON.stringify({ type: 'answer', data: `Opening **\`${rel}\`** in **${editor.name}**...` }));
+  },
+
+  async 'project.action.reveal_file'(ws, _action, input, project, sessionContext) {
+    // Phase T2 (2026-08-14): "open main.py in the folder" / "show file.py in explorer" —
+    // reveals the FILE in the OS file explorer (folder opens with the file selected),
+    // the file-level counterpart of open_in_explorer. Uses the same reveal spawn pattern
+    // as pdfRoutes' /api/projects/:id/reveal.
+    const fileName = parseFileNameOnly(input);
+    if (!fileName) {
+      if (sessionContext) {
+        sessionContext.pendingFileQuestion = { projectId: project.id, intent: 'project.action.reveal_file' };
+      }
+      ws.send(JSON.stringify({ type: 'answer', data: `Which file would you like to reveal? Try "open main.py in the folder" or "show file.py in explorer".` }));
+      return true;
+    }
+    const tools = await createProjectTools(project);
+    const matches = await tools.findFiles({ pattern: fileName });
+    if (!matches.success || matches.data.length === 0) {
+      if (matches.success) {
+        ws.send(JSON.stringify({ type: 'answer', data: `No file matches **"${fileName}"** in **[${project.name}]**. Try a different name.` }));
+      } else {
+        ws.send(JSON.stringify({ type: 'answer', data: matches.error || `Couldn't search for **"${fileName}"**.` }));
+      }
+      return true;
+    }
+    const rel = matches.data[0];
+    const abs = path.join(project.path, rel);
+    const { spawn } = await import('child_process');
+    let reveal;
+    try {
+      if (process.platform === 'win32') {
+        reveal = spawn('explorer.exe', [`/select,${abs}`], { detached: true, windowsHide: true });
+      } else if (process.platform === 'darwin') {
+        reveal = spawn('open', ['-R', abs], { detached: true, windowsHide: true });
+      } else {
+        reveal = spawn('xdg-open', [path.dirname(abs)], { detached: true, windowsHide: true });
+      }
+    } catch (err) {
+      ws.send(JSON.stringify({ type: 'error_output', data: `Failed to reveal file: ${err.message}\n` }));
+      return true;
+    }
+    // Best-effort reveal: a missing explorer/open/xdg-open must log, never crash the server
+    // (audit 2026-08-17 — the spawn used to be fire-and-forget with no error path at all).
+    reveal.on('error', (err) => {
+      console.error(`[reveal_file] Failed to reveal ${abs}: ${err.message}`);
+    });
+    reveal.unref();
+    ws.send(JSON.stringify({ type: 'answer', data: `Revealed **\`${rel}\`** in your file explorer...` }));
   },
 };
 

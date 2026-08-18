@@ -50,7 +50,7 @@ export function TerminalInput({
     <>
       {ollamaStatus && (
         <div className={`${centerCol} flex items-center gap-2 px-4 py-1.5 bg-panel border-t border-border-soft flex-wrap`}>
-          <button onClick={onAIToggle} className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] transition-colors border flex-shrink-0 ${aiEnabled ? 'bg-accent-green/20 border-accent-green/40 text-accent-green' : 'bg-panel border-border-soft text-fg-muted hover:text-fg-strong'}`}>
+          <button data-tour="ai-toggle" onClick={onAIToggle} className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] transition-colors border flex-shrink-0 ${aiEnabled ? 'bg-accent-green/20 border-accent-green/40 text-accent-green' : 'bg-panel border-border-soft text-fg-muted hover:text-fg-strong'}`}>
             <Brain size={13} />
             <span>AI {aiEnabled ? 'ON' : 'OFF'}</span>
           </button>
@@ -100,17 +100,18 @@ export function TerminalInput({
           <div className="relative flex items-center">
             <input
               ref={inputRef}
+              data-tour="chat-input"
               type="text"
               value={input}
               onChange={(e) => { onInputChange(e.target.value); }}
               onKeyDown={onInputKeyDown}
-              disabled={aiThinking || commandPending || !connected}
+              disabled={aiThinking || !connected}
               placeholder={aiThinking ? "AI is thinking..." : commandPending ? "Running..." : !connected ? "Reconnecting…" : chatPrompt}
               className="w-full bg-surface border border-border-soft rounded-xl py-3 pl-4 pr-12 text-fg text-sm focus:outline-none focus:border-accent-blue transition-colors disabled:opacity-50"
             />
             <button
               type="submit"
-               disabled={!input.trim() || aiThinking || commandPending || isBlocked || !connected}
+               disabled={!input.trim() || aiThinking || isBlocked || !connected}
                title={!connected ? 'WebSocket disconnected — reconnecting…' : isBlocked ? 'Resolve the pending confirmation first (Esc to cancel)' : undefined}
               className="absolute right-1.5 w-11 h-11 rounded-lg bg-accent-blue text-white hover:opacity-90 flex items-center justify-center disabled:opacity-50 transition-opacity"
             >

@@ -11,7 +11,7 @@ import { nlpEngine } from './nlpEngine.js';
 import { semanticMatcher } from './semanticMatcher.js';
 import { watchProjectConfigs } from './fileWatcher.js';
 import { setupMockProjectsIfMissing } from './mockProjects.js';
-import { state, projectsMutex } from './state.js';
+import { state, projectsMutex, dedupeProjectIds } from './state.js';
 import { autoApplyThresholdsForAll } from './intentTelemetry.js';
 import { retrainConfidenceModel } from './confidenceModel.js';
 import { autoApplySuggestionsForAll } from './learningEngine.js';
@@ -31,7 +31,7 @@ import { registerProjectRoutes } from './routes/projectRoutes.js';
 import { registerSessionRoutes } from './routes/sessionRoutes.js';
 import { registerSearchRoutes } from './routes/searchRoutes.js';
 import { registerMonitoringRoutes } from './routes/monitoringRoutes.js';
-import { registerProfileRoutes } from './routes/profileRoutes.js';
+import { registerProfileRoutes, readProfile } from './routes/profileRoutes.js';
 import { registerTuningRoutes } from './routes/tuningRoutes.js';
 import { registerWorkspaceRoutes } from './routes/workspaceRoutes.js';
 import { registerToolPanelRoutes } from './routes/toolPanelRoutes.js';
@@ -48,8 +48,12 @@ import { registerNotificationsRoutes } from './routes/notificationsRoutes.js';
 import { registerKnowledgeRoutes } from './routes/knowledgeRoutes.js';
 import { registerMarketplaceRoutes } from './routes/marketplaceRoutes.js';
 import { registerConnectedUsersRoutes } from './routes/connectedUsersRoutes.js';
+import { registerBrowseRoutes } from './routes/browseRoutes.js';
+import { registerEditorRoutes } from './routes/editorRoutes.js';
 import { syncProjectWatchers } from './codeIndex/codeIndexBuilder.js';
 import { loadTuning } from './tuningStore.js';
+import { loadEditors } from './editorsStore.js';
+import { setCachedScan, invalidateScanCacheForPath } from './scanCache.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -85,6 +89,8 @@ registerNotificationsRoutes(app);
 registerKnowledgeRoutes(app);
 registerMarketplaceRoutes(app);
 registerConnectedUsersRoutes(app);
+registerBrowseRoutes(app);
+registerEditorRoutes(app);
 // Final error middleware: a rejection that slips past asyncHandler (or a throw inside a sync
 // handler) used to bypass Express entirely — the request never got a response and the client
 // hung (see asyncHandler.js). Any async route handler wrapped with asyncHandler lands here;
@@ -97,6 +103,8 @@ app.use((err, req, res, next) => {
 // Tuning overrides (data/tuning.json) must be in memory before any consumer reads a knob —
 // the first Fuse build happens during semanticMatcher.initialize() a few lines below.
 loadTuning();
+// Editor/IDE registry (data/editors.json) — loaded before any open_with dispatch.
+loadEditors();
 
 initWebSocketServer();
 
@@ -122,8 +130,10 @@ async function init() {
         // this went unnoticed). Now that HMR actually works, without this exclusion *any* of
         // those writes would force a full-page reload — which looked exactly like "clicking New
         // Chat makes the page go white and reload," since creating a session is one of the things
-        // that writes to `data/conversations/index.json`.
-        watch: { ignored: ['**/data/**', '**/.cache/**', '**/*.console/**'] },
+        // that writes to `data/conversations/index.json`. Phase 6: `logs/` (daemon + schedule
+        // logs), `*.pid` (server.pid), and `dist/` (the shadowing bundle) are runtime
+        // artifacts too — keep this list in sync with vite.config.ts.
+        watch: { ignored: ['**/data/**', '**/.cache/**', '**/*.console/**', '**/logs/**', '**/*.pid', '**/dist/**'] },
       },
       appType: 'spa',
     });
@@ -139,19 +149,40 @@ async function init() {
 
   // Discover projects and train NLP once, before accepting connections
   const dirToScan = setupMockProjectsIfMissing(state.currentScanDirectory, __dirname);
-  await projectsMutex.runExclusive(async () => {
-    state.activeProjectsCache = await discoverProjects(dirToScan);
-  });
-  await nlpEngine.train(state.activeProjectsCache);
-  console.log(`NLP training complete. ${state.activeProjectsCache.length} project(s) loaded.`);
-
-  // Restore any phrases learned (and confirmed) in previous runs before the semantic matcher
-  // builds its embeddings, so restarts don't silently forget cross-project learning.
+  // Restore any phrases learned (and confirmed) in previous runs BEFORE the semantic matcher
+  // builds its embeddings, so restarts don't silently forget cross-project learning. This
+  // feeds the INTENTS corpus that initialize() embeds, so it must precede the parallel block
+  // below (previously it ran after NLP training — moving it earlier is safe: nlpEngine trains
+  // from its own seed intents + project config entries, never from learnedIntents).
   loadLearnedIntents();
-
   // Restore last-known dev-server URLs so "is the server running" can probe servers that were
-  // started outside the console or before this restart.
+  // started outside the console or before this restart. Independent of scan + matcher, loaded
+  // in parallel with the two heavy boot steps below.
   loadDevUrls();
+
+  // Phase 6 (2026-08-17): the project scan and the embedding-model load are the two slowest
+  // boot steps and touch disjoint state (the scan writes the project cache under the projects
+  // mutex; initialize() builds intent vectors + the Fuse index from INTENTS/learned intents).
+  // Running them serially made every cold boot pay both back to back; run them concurrently.
+  await Promise.all([
+    projectsMutex.runExclusive(async () => {
+      state.activeProjectsCache = dedupeProjectIds(await discoverProjects(dirToScan, { includeAll: readProfile().scanAllFolders }));
+    }),
+    semanticMatcher.initialize().catch((err) => console.error('SemanticMatcher init failed:', err.message)),
+  ]);
+  // Prime the whole-scan cache with the boot scan so the first GET /api/projects (web
+  // load) hits instead of re-walking the container (scanCache.js, Phase 6).
+  setCachedScan(dirToScan, readProfile().scanAllFolders, state.activeProjectsCache);
+  // NLP classifier training and the project-intent embedding pass are independent of each
+  // other (nlpEngine trains from NLP_SEED_INTENTS + project config entries; addProjectIntents
+  // embeds the same entries through the matcher). Both need the scan result above, so they
+  // join after the Promise.all instead of delaying it.
+  await Promise.all([
+    nlpEngine.train(state.activeProjectsCache),
+    semanticMatcher.addProjectIntents(state.activeProjectsCache).catch((err) =>
+      console.warn('Project-intent injection failed at boot (matching/AI context degraded):', err?.message || err)),
+  ]);
+  console.log(`NLP training complete. ${state.activeProjectsCache.length} project(s) loaded.`);
 
   // Phase 1: restore persisted schedules and start the scheduler tick (loadSchedules runs
   // before any connection can create a schedule; activeProjectsCache is populated above).
@@ -166,13 +197,9 @@ async function init() {
   loadWatchRules();
   initWatchRules();
 
-  // Initialize semantic matcher (embedding + Fuse.js)
-  await semanticMatcher.initialize().catch((err) => console.error('SemanticMatcher init failed:', err.message));
-  semanticMatcher.addProjectIntents(state.activeProjectsCache).catch((err) =>
-    console.warn('Project-intent injection failed at boot (matching/AI context degraded):', err?.message || err));
-
-  // Phase 7: restore auto-start config and schedule boot-time runs (needs the matcher above
-  // for its launch-phrase re-match; loadAutoStart runs before any connection can configure).
+  // Phase 7: restore auto-start config and schedule boot-time runs (needs the matcher ready —
+  // initialize() already finished in the parallel block above — for its launch-phrase re-match;
+  // loadAutoStart runs before any connection can configure).
   loadAutoStart();
   initAutoStart();
 
@@ -194,6 +221,12 @@ async function init() {
   try {
     if (fs.existsSync(dirToScan)) {
       watchProjectConfigs(dirToScan, async (updated, isNew, removedName) => {
+        // Phase 6: drop any cached whole-scan that contains the changed project, so the
+        // cache never serves the pre-change array while the watcher's own single-project
+        // rescan already refreshed the live caches (belt-and-braces — the mtime signature
+        // in scanCache.js would also catch the edit on the next read).
+        if (removedName) invalidateScanCacheForPath(path.join(dirToScan, removedName));
+        else if (updated) invalidateScanCacheForPath(updated.path);
         await projectsMutex.runExclusive(async () => {
           if (removedName) {
             state.activeProjectsCache = state.activeProjectsCache.filter((p) => p.folderName !== removedName);

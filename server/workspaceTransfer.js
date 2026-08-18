@@ -2,10 +2,12 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { state } from './state.js';
-import { readProfile, writeProfile } from './routes/profileRoutes.js';
+import { readProfile, writeProfile, sanitizeProfile } from './routes/profileRoutes.js';
 import { loadModel, saveModel } from './modelStore.js';
 import { getTuningState, resetTuning, setTuning } from './tuningStore.js';
 import { getThresholdOverrides, replaceThresholdOverrides } from './telemetryThresholds.js';
+import { writeFileAtomicSync } from './atomicWrite.js';
+import { validateToolEntry } from './pluginTools.js';
 
 // Phase 6 (2026-08-11): portable workspace export/import — the counterpart to the pack
 // installer (which moves tools between machines) that moves a user's whole SETUP: profile,
@@ -142,7 +144,11 @@ export function readWorkspaceBundle(filePath) {
 
 function applyProfile(section) {
   if (!section || typeof section !== 'object') return false;
-  writeProfile(section);
+  // Merge onto the current profile through the route's sanitizer (key allowlist + per-field
+  // validation) instead of verbatim replacement — a hand-edited or hostile bundle must not
+  // be able to write arbitrary keys into user-profile.json (audit 2026-08-17).
+  const merged = sanitizeProfile(section, readProfile());
+  writeProfile(merged);
   return true;
 }
 
@@ -182,12 +188,23 @@ function applyProjectFiles(entry) {
   const notes = [];
   if (typeof entry.memoryMd === 'string') {
     fs.mkdirSync(consoleDir, { recursive: true });
-    fs.writeFileSync(path.join(consoleDir, 'memory.md'), entry.memoryMd, 'utf-8');
+    // Atomic writes so a torn write can never leave a half-written memory.md / manifest
+    // (audit 2026-08-17 — the import used plain writeFileSync).
+    writeFileAtomicSync(path.join(consoleDir, 'memory.md'), entry.memoryMd);
     notes.push('memory.md');
   }
   if (entry.toolsJson && typeof entry.toolsJson === 'object') {
-    fs.writeFileSync(path.join(project.path, 'console.tools.json'), JSON.stringify(entry.toolsJson, null, 2) + '\n', 'utf-8');
-    notes.push('console.tools.json');
+    // Validate every tool entry against the exact schema the manifest parser uses — an
+    // invalid entry must be skipped, not imported into a manifest that then fails to load.
+    const tools = Array.isArray(entry.toolsJson.tools) ? entry.toolsJson.tools : [];
+    const invalid = tools.filter((t, i) => !validateToolEntry(t, i).valid);
+    if (invalid.length > 0) {
+      notes.push(`console.tools.json skipped (${invalid.length} invalid tool entr${invalid.length === 1 ? 'y' : 'ies'})`);
+    } else if (tools.length > 0 || entry.toolsJson.permissions !== undefined) {
+      const manifest = { tools, permissions: entry.toolsJson.permissions };
+      writeFileAtomicSync(path.join(project.path, 'console.tools.json'), JSON.stringify(manifest, null, 2) + '\n');
+      notes.push('console.tools.json');
+    }
   }
   if (notes.length === 0) {
     return { id: entry.id, name: entry.name, skipped: 'no readable content in bundle entry' };

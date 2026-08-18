@@ -1,7 +1,7 @@
 import crypto from 'crypto';
 import { isGitRepo } from '../gitSafety.js';
 import { pendingConfirmations } from '../state.js';
-import { extractCommentMessage } from './builtinHelpers.js';
+import { extractCommentMessage, assertSafeCommitMessage } from './builtinHelpers.js';
 
 /**
  * Commit/push handlers (Phase 14 split of builtinGit.js, 2026-08-05 — bodies moved verbatim).
@@ -20,9 +20,14 @@ export const gitWorkflowHandlers = {
       // dropping any comment the user typed. Parse it the same way deploy does so the comment
       // isn't lost regardless of which of the two intents wins the match.
       const commitMsg = extractCommentMessage(input);
+      const rejectReason = assertSafeCommitMessage(commitMsg);
+      if (rejectReason) {
+        ws.send(JSON.stringify({ type: 'answer', data: rejectReason }));
+        return true;
+      }
       const token = crypto.randomUUID();
       const command = commitMsg
-        ? `git add -A && git commit -m "${commitMsg.replace(/"/g, '\\"')}" && git push`
+        ? `git add -A && git commit -m "${commitMsg}" && git push`
         : 'git push';
       pendingConfirmations.set(token, {
         owner: ws,
@@ -47,11 +52,16 @@ export const gitWorkflowHandlers = {
     } else {
       // Extract a commit message from the user's input if possible
       const commitMsg = extractCommentMessage(input) || 'update';
+      const rejectReason = assertSafeCommitMessage(commitMsg);
+      if (rejectReason) {
+        ws.send(JSON.stringify({ type: 'answer', data: rejectReason }));
+        return true;
+      }
       const token = crypto.randomUUID();
       pendingConfirmations.set(token, {
         owner: ws,
         projectId: project.id,
-        command: `git add -A && git commit -m "${commitMsg.replace(/"/g, '\\"')}"`,
+        command: `git add -A && git commit -m "${commitMsg}"`,
         trigger: input,
         createdAt: Date.now()
       });
@@ -68,11 +78,16 @@ export const gitWorkflowHandlers = {
       ws.send(JSON.stringify({ type: 'answer', data: `**[${project.name}]** isn't a git repository yet. Run \`git init\` first, then add a remote origin.` }));
     } else {
       const commitMsg = extractCommentMessage(input) || 'update';
+      const rejectReason = assertSafeCommitMessage(commitMsg);
+      if (rejectReason) {
+        ws.send(JSON.stringify({ type: 'answer', data: rejectReason }));
+        return true;
+      }
       const token = crypto.randomUUID();
       pendingConfirmations.set(token, {
         owner: ws,
         projectId: project.id,
-        command: `git add -A && git commit -m "${commitMsg.replace(/"/g, '\\"')}" && git push`,
+        command: `git add -A && git commit -m "${commitMsg}" && git push`,
         trigger: input,
         createdAt: Date.now()
       });

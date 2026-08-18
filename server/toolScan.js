@@ -36,6 +36,15 @@ export function isTextFile(filePath) {
 // findFiles/searchCode/listFiles calls don't re-scan the whole filesystem.
 const fileIndexCache = new Map();
 
+/** Explicit invalidation after a successful write/edit/insert/append (audit 2026-08-17): the
+ *  cache keyed only on the ROOT directory's mtime, which never changes when a file inside a
+ *  subfolder is modified or created — findFiles/searchCode/listFiles kept serving a stale
+ *  listing for the rest of the session. Mutating tools call this on success; the next
+ *  getProjectFiles call re-walks. */
+export function invalidateProjectFiles(root) {
+  fileIndexCache.delete(root);
+}
+
 export async function getProjectFiles(root) {
   const cached = fileIndexCache.get(root);
   try {

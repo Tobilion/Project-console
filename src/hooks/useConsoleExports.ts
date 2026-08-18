@@ -21,6 +21,7 @@ interface ExportSessions {
 export function useConsoleExports(
   activeProject: Project | null,
   sessions: ExportSessions,
+  tabId: string | null = null,
 ) {
   const pushError = useCallback((message: string) => {
     sessions.setMessages(prev => [...prev, makeMessage('error', message)]);
@@ -129,7 +130,10 @@ export function useConsoleExports(
     void (async () => {
       if (!activeProject) return;
       try {
-        const res = await fetch(`/api/projects/${activeProject.id}/chat-log`);
+        // Phase T: the chat-log route resolves the project inside the requesting tab's
+        // workspace (a tab's project may not exist in the global cache at all).
+        const q = tabId ? `?tab=${encodeURIComponent(tabId)}` : '';
+        const res = await fetch(`/api/projects/${activeProject.id}/chat-log${q}`);
         if (!res.ok) {
           pushError('This project has no chat log yet — send a message first.');
           return;
@@ -140,7 +144,7 @@ export function useConsoleExports(
         pushError('Could not download the project chat log — try again in a moment.');
       }
     })();
-  }, [activeProject, downloadBlob, pushError]);
+  }, [activeProject, downloadBlob, pushError, tabId]);
 
   return { exportAsMarkdown, exportAsJson, exportAsPdf, exportProjectChatLog };
 }

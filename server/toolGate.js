@@ -1,4 +1,5 @@
 import { loadPluginManifest } from './pluginTools.js';
+import { isDestructiveCommand } from './commandRisk.js';
 
 // Tool-approval gate + per-project permissions policy (Phase 9 split, 2026-08-04 — extracted
 // from tools.js; re-exported from tools.js so external importers are untouched). This is the
@@ -6,6 +7,15 @@ import { loadPluginManifest } from './pluginTools.js';
 
 /** Cache for plugin manifests to avoid reading the file on every tool creation. */
 const pluginManifestCache = new Map();
+
+/** Drop a project's cached manifest (audit 2026-08-17): the cache never expired and nothing
+ *  invalidated it, so a `confirm install pack` merge was invisible to every later gate and
+ *  tool-def lookup until restart — the pack admin's "the file watcher picks them up
+ *  automatically" answer was only true for re-scans, never for this in-memory cache. The next
+ *  getPluginManifest call re-reads the file. */
+export function invalidatePluginManifest(root) {
+  pluginManifestCache.delete(root);
+}
 
 export async function getPluginManifest(root) {
   if (pluginManifestCache.has(root)) {
@@ -48,7 +58,10 @@ export const CUSTOM_RISKY_TOOLS = new Map();
 export function isGatedToolCall(toolName, args) {
   if (GATED_TOOLS.has(toolName)) return true;
   if (ALWAYS_CONFIRM_TOOLS.has(toolName)) return true;
-  if (toolName === 'executeCommand' && args?.risky) return true;
+  // The caller-supplied `risky` flag can only ADD risk, never waive it: a command that matches
+  // a destructive pattern (git push, publish, recursive deletes — see commandRisk.js) is gated
+  // even when the model or the frontend omits the flag (audit 2026-08-17).
+  if (toolName === 'executeCommand' && (args?.risky || isDestructiveCommand(args?.command))) return true;
   // saveMemory is deliberately NOT in GATED_TOOLS — a flat gate would require approval for every
   // save, including trivial ones ("user prefers dark mode"), which defeats the point of letting
   // the AI jot down low-stakes context without interrupting the conversation. Only a call the
@@ -115,7 +128,7 @@ export async function resolveToolGate(toolName, args, projectRoot, sessionGrants
 
   // Command-execution tools and risky shell commands can never be auto-approved by ANY grant —
   // they go through the normal confirm flow every time, exactly like executeCommand with risky.
-  if (ALWAYS_CONFIRM_TOOLS.has(toolName) || (toolName === 'executeCommand' && args?.risky)) {
+  if (ALWAYS_CONFIRM_TOOLS.has(toolName) || (toolName === 'executeCommand' && (args?.risky || isDestructiveCommand(args?.command)))) {
     return { action: 'ask', grantKey: null };
   }
 

@@ -9,8 +9,12 @@ import { scanSingleProject } from './projectScanSingle.js';
 /**
  * Scans baseDir for subdirectories containing console.config.json or CLAUDE.md/README.md.
  * (Phase 14 split of projectScanner.js, 2026-08-05 — body moved verbatim.)
+ * `opts.includeAll` (Phase T, 2026-08-14 — the scanAllFolders profile setting): include EVERY
+ * immediate subfolder as a project, even folders with no code/git/config/docs, and make the
+ * single-root escape also resolve a signal-free root to itself when it has no subfolders to
+ * iterate (a junk folder pasted as the scan target must become one project, not zero).
  */
-export async function discoverProjects(baseDir) {
+export async function discoverProjects(baseDir, opts = {}) {
   if (!baseDir || typeof baseDir !== 'string') return [];
 
   try {
@@ -45,26 +49,27 @@ export async function discoverProjects(baseDir) {
       rootNames.has('console.config.json') ||
       [...rootNames].some(isContextFilename) ||
       rootNames.has('package.json') ||
-      hasRootPdf;
+      hasRootPdf ||
+      // Phase T: with "include every folder" on, a signal-free root holding no subfolders is
+      // itself the project (a junk folder pasted as the scan target must resolve to one
+      // project, not zero via the empty container path).
+      (opts.includeAll && !entries.some((e) => e.isDirectory()));
     if (looksLikeSingleProjectRoot) {
       const folderName = path.basename(baseDir);
-      const single = await scanSingleProject(folderName, baseDir);
+      const single = await scanSingleProject(folderName, baseDir, opts);
       return single ? [single] : [];
     }
 
-    const projects = [];
-
-    for (const entry of entries) {
-      if (!entry.isDirectory()) continue;
+    // Scans one candidate subfolder, returning the project object or null. Each project's
+    // scan is independently guarded: this used to be unguarded, so a single throw anywhere
+    // in one project's indexing (e.g. the 2026-08-10 prototype-pollution bug in
+    // computeSymbolReferences, or any future per-file parse error) unwound all the way to the
+    // outer try/catch and silently zeroed out the ENTIRE scan directory — a folder full of
+    // real, working projects would report "no projects found" because of one bad file in one
+    // of them, with nothing surfaced in the UI. One bad project should be skipped, not fatal
+    // to everyone else's.
+    async function scanOne(entry) {
       const projectPath = path.join(baseDir, entry.name);
-
-      // Each project's scan is independently guarded: this used to be unguarded, so a single
-      // throw anywhere in one project's indexing (e.g. the 2026-08-10 prototype-pollution bug in
-      // computeSymbolReferences, or any future per-file parse error) unwound all the way to the
-      // outer try/catch and silently zeroed out the ENTIRE scan directory — a folder full of
-      // real, working projects would report "no projects found" because of one bad file in one
-      // of them, with nothing surfaced in the UI. One bad project should be skipped, not fatal
-      // to everyone else's.
       try {
         let config = null;
         try {
@@ -131,12 +136,12 @@ export async function discoverProjects(baseDir) {
           }
         }
 
-        if (!config && contextFiles.length === 0 && isRecognizableByCodeAlone(codebaseIndex)) {
-          config = buildFallbackConfig(entry.name, codebaseIndex);
+        if (!config && contextFiles.length === 0 && (isRecognizableByCodeAlone(codebaseIndex) || opts.includeAll)) {
+          config = buildFallbackConfig(entry.name, codebaseIndex, opts.includeAll);
         }
 
         if (config || contextFiles.length > 0) {
-          projects.push({
+          return {
             id: entry.name.toLowerCase().replace(/[^a-z0-9_-]/g, '-'),
             folderName: entry.name,
             name: config?.projectName || entry.name,
@@ -146,13 +151,38 @@ export async function discoverProjects(baseDir) {
             contextFiles: contextFiles,
             parsedKnowledge,
             codebaseIndex
-          });
+          };
         }
+        return null;
       } catch (err) {
         console.error(`Skipping project "${entry.name}" — failed to scan it:`, err.message);
+        return null;
       }
     }
 
+    // Phase 6 (2026-08-17): per-project scans were serial — one project's slow index (TS
+    // symbol extraction, doc parsing) delayed every later project. Each project's scan is
+    // read-only (config/doc reads + codebase indexing with mtime caches), so a small worker
+    // pool overlaps them. Results land by readdir index so the returned order is unchanged.
+    // Deliberately bounded: an unbounded Promise.all over a 100-folder container would
+    // hammer the disk and the TS compiler at once.
+    const results = new Array(entries.length);
+    const POOL_SIZE = 6;
+    let nextIdx = 0;
+    const worker = async () => {
+      while (nextIdx < entries.length) {
+        const idx = nextIdx++;
+        const entry = entries[idx];
+        if (!entry.isDirectory()) continue;
+        results[idx] = await scanOne(entry);
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(POOL_SIZE, entries.length) }, () => worker()));
+
+    const projects = [];
+    for (const r of results) {
+      if (r) projects.push(r);
+    }
     return projects;
   } catch (err) {
     console.error(`Failed to scan directory at "${baseDir}":`, err.message);

@@ -1,8 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { FolderSearch, RefreshCw, Send, Check, CheckCircle2, File, FileText, FolderOpen, Image, Music, Video, Archive, Table } from 'lucide-react';
+import { FolderSearch, RefreshCw, Send, Check, CheckCircle2, File, FileText, FolderOpen, Image, Music, Video, Archive, Table, ExternalLink, X, Eye } from 'lucide-react';
 import { apiFetchJson } from '../utils/apiFetch';
+import { projectApi } from '../utils/projectApi';
 import { cn } from '../lib/utils';
 import type { Project } from '../types';
+
+// Phase T (2026-08-14): in-console HTML preview — .html rows get a Preview button that loads
+// the file through the project-scoped static mount (/api/projects/:id/static/*, see
+// fileToolsRoutes.js) into an iframe overlay, so relative assets (./style.css, ./app.js)
+// resolve against the same mount. "Open in browser" sends the normal chat command
+// (project.action.open_html) — the terminal stays the single source of truth.
 
 // Phase 2 catch-up (UPGRADE-ROADMAP.md, 2026-08-12): the File Tools panel — Finder-style
 // file list + dedicated duplicate-finder layout per the Design Tokens Appendix. Mutations
@@ -34,6 +41,8 @@ interface DuplicateGroup {
 interface FileToolsPanelProps {
   project: Project | null;
   onSendMessage: (text: string) => void;
+  /** Phase T (2026-08-14): the tab whose workspace this panel's REST calls address. */
+  tabId?: string | null;
 }
 
 const POLL_MS = 15000;
@@ -61,7 +70,7 @@ function fileIcon(name: string) {
   return <File size={14} className="text-fg-dim shrink-0" />;
 }
 
-export function FileToolsPanel({ project, onSendMessage }: FileToolsPanelProps) {
+export function FileToolsPanel({ project, onSendMessage, tabId = null }: FileToolsPanelProps) {
   const [view, setView] = useState<'search' | 'tidy' | 'duplicates'>('search');
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
@@ -73,13 +82,23 @@ export function FileToolsPanel({ project, onSendMessage }: FileToolsPanelProps) 
   const [lastSent, setLastSent] = useState<string | null>(null);
   const lastSentTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Phase T: in-console preview — the static-mount URL of the file currently being previewed,
+  // or null when the overlay is closed.
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [previewName, setPreviewName] = useState<string>('');
+
+  const previewFile = (relPath: string) => {
+    if (!project?.id) return;
+    setPreviewUrl(projectApi(`/api/projects/${encodeURIComponent(project.id)}/static/${relPath.split('/').map(encodeURIComponent).join('/')}`, tabId));
+    setPreviewName(relPath.split('/').pop() || relPath);
+  };
 
   const fetchFiles = useCallback(async (dirPath?: string) => {
     if (!project?.id) return;
     setLoading(true);
     const p = dirPath ?? currentPath;
     const data = await apiFetchJson<{ entries: FileEntry[]; error?: string }>(
-      `/api/projects/${encodeURIComponent(project.id)}/files?path=${encodeURIComponent(p)}`
+      projectApi(`/api/projects/${encodeURIComponent(project.id)}/files?path=${encodeURIComponent(p)}`, tabId)
     );
     setLoading(false);
     if (!data) { setError('Could not load files.'); return; }
@@ -87,7 +106,7 @@ export function FileToolsPanel({ project, onSendMessage }: FileToolsPanelProps) 
     setError(null);
     setFileEntries(data.entries || []);
     setCurrentPath(p);
-  }, [project?.id, currentPath]);
+  }, [project?.id, currentPath, tabId]);
 
   useEffect(() => {
     if (project?.id) {
@@ -100,13 +119,13 @@ export function FileToolsPanel({ project, onSendMessage }: FileToolsPanelProps) 
     if (!project?.id || !q.trim()) return;
     setLoading(true);
     const data = await apiFetchJson<{ results: SearchResult[] }>(
-      `/api/projects/${encodeURIComponent(project.id)}/search-files?q=${encodeURIComponent(q.trim())}`
+      projectApi(`/api/projects/${encodeURIComponent(project.id)}/search-files?q=${encodeURIComponent(q.trim())}`, tabId)
     );
     setLoading(false);
     if (!data) { setError('Search failed.'); return; }
     setError(null);
     setSearchResults(data.results || []);
-  }, [project?.id]);
+  }, [project?.id, tabId]);
 
   const handleSearchKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter') {
@@ -119,7 +138,7 @@ export function FileToolsPanel({ project, onSendMessage }: FileToolsPanelProps) 
     if (!project?.id) return;
     setLoading(true);
     const data = await apiFetchJson<{ groups: DuplicateGroup[] }>(
-      `/api/projects/${encodeURIComponent(project.id)}/duplicates`
+      projectApi(`/api/projects/${encodeURIComponent(project.id)}/duplicates`, tabId)
     );
     setLoading(false);
     if (!data) { setError('Could not scan for duplicates.'); return; }
@@ -137,7 +156,7 @@ export function FileToolsPanel({ project, onSendMessage }: FileToolsPanelProps) 
       }
       return next;
     });
-  }, [project?.id]);
+  }, [project?.id, tabId]);
   useEffect(() => {
     if (view === 'duplicates' && project?.id) fetchDuplicates();
   }, [view, project?.id]);
@@ -152,7 +171,7 @@ export function FileToolsPanel({ project, onSendMessage }: FileToolsPanelProps) 
     if (!project?.id) return;
     setLoading(true);
     const data = await apiFetchJson<{ moves: { from: string; to: string }[] }>(
-      `/api/projects/${encodeURIComponent(project.id)}/tidy-plan?by=${byDate ? 'date' : 'type'}`
+      projectApi(`/api/projects/${encodeURIComponent(project.id)}/tidy-plan?by=${byDate ? 'date' : 'type'}`, tabId)
     );
     setLoading(false);
     if (!data) { setError('Could not build the tidy plan.'); return; }
@@ -160,7 +179,7 @@ export function FileToolsPanel({ project, onSendMessage }: FileToolsPanelProps) 
     setTidyPlan(data.moves || []);
     setTidyByDate(byDate);
     setTidySelected(new Set((data.moves || []).map((m) => m.from)));
-  }, [project?.id]);
+  }, [project?.id, tabId]);
   useEffect(() => {
     if (view === 'tidy' && project?.id) fetchTidyPlan(false);
   }, [view, project?.id]);
@@ -203,6 +222,15 @@ export function FileToolsPanel({ project, onSendMessage }: FileToolsPanelProps) 
       <span className="text-fg-dim text-[11px] hidden sm:block truncate max-w-[180px]" title={path}>{path}</span>
       {!isDir && <span className="text-fg-dim text-[11px] text-right w-[60px] shrink-0">{formatSize(size)}</span>}
       {!isDir && <span className="text-fg-dim text-[11px] text-right w-[100px] shrink-0 hidden sm:block">{formatDate(modifiedAt)}</span>}
+      {!isDir && /\.html?$/i.test(name) && (
+        <button
+          onClick={(e) => { e.stopPropagation(); previewFile(path); }}
+          title="Preview in the console"
+          className="shrink-0 flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-semibold text-accent-blue hover:bg-accent-blue/15 transition-colors"
+        >
+          <Eye size={11} /> Preview
+        </button>
+      )}
     </div>
   );
 
@@ -229,6 +257,15 @@ export function FileToolsPanel({ project, onSendMessage }: FileToolsPanelProps) 
               <span className="text-fg-strong truncate flex-1 font-mono" title={r.path}>{r.path}</span>
               <span className="text-fg-dim text-[11px]">{formatSize(r.size)}</span>
               <span className="text-fg-dim text-[11px] hidden sm:block">{formatDate(r.modifiedAt)}</span>
+              {/\.html?$/i.test(r.path) && (
+                <button
+                  onClick={() => previewFile(r.path)}
+                  title="Preview in the console"
+                  className="shrink-0 flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-semibold text-accent-blue hover:bg-accent-blue/15 transition-colors"
+                >
+                  <Eye size={11} /> Preview
+                </button>
+              )}
             </div>
           ))}
         </div>
@@ -380,7 +417,7 @@ export function FileToolsPanel({ project, onSendMessage }: FileToolsPanelProps) 
   }
 
   return (
-    <div className="h-full flex flex-col">
+    <div className="h-full flex flex-col relative">
       {/* Header row */}
       <div className="flex items-center justify-between px-4 py-2 border-b border-border-faint shrink-0">
         <div className="flex items-center gap-2">
@@ -437,6 +474,36 @@ export function FileToolsPanel({ project, onSendMessage }: FileToolsPanelProps) 
           </div>
         </div>
       </div>
+
+      {/* Phase T: in-console HTML preview overlay — iframe against the static mount. */}
+      {previewUrl && (
+        <div className="absolute inset-0 z-20 bg-scrim/90 backdrop-blur-sm flex flex-col p-4">
+          <div className="flex items-center gap-2 mb-3 shrink-0">
+            <div className="p-1 rounded-lg bg-accent-blue/15 text-accent-blue">
+              <Eye size={14} />
+            </div>
+            <h3 className="text-xs font-semibold text-fg-strong tracking-wide uppercase">Preview — {previewName}</h3>
+            <div className="flex-1" />
+            <button
+              onClick={() => onSendMessage(`open ${previewName} in the browser`)}
+              title="Open in your default browser"
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-bold bg-accent-blue text-white hover:opacity-90 transition-opacity"
+            >
+              <ExternalLink size={12} /> Open in browser
+            </button>
+            <button onClick={() => setPreviewUrl(null)} className="p-1.5 text-fg-dim hover:text-fg-strong rounded-lg transition-colors" title="Close preview">
+              <X size={16} />
+            </button>
+          </div>
+          <div className="flex-1 min-h-0 rounded-xl border border-border-strong bg-white overflow-hidden">
+            <iframe
+              src={previewUrl}
+              title={`Preview: ${previewName}`}
+              className="w-full h-full border-0"
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 }

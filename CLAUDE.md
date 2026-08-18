@@ -144,8 +144,11 @@ npm run lint    # tsc --noEmit
   Leaves: `toolConstants.js`, `toolEdit.js`, `toolScan.js`, `toolAllow.js` (ALLOWED_COMMANDS
   + env-var-prefix stripping), `toolGate.js` (the single approval-gate decision point:
   `GATED_TOOLS`, `ALWAYS_CONFIRM_TOOLS` (runTests, stopProcess), `CUSTOM_RISKY_TOOLS`,
-  `getToolPermission`, `toolGrantKey`, `resolveToolGate`), `toolProcess.js` (+
-  `findTestCommand` — shared with the trigger-mode `run_tests` handler), `toolSandbox.js`,
+  `getToolPermission`, `toolGrantKey`, `resolveToolGate`, `invalidatePluginManifest`
+  (pack installs invalidate the per-project manifest cache explicitly — connectionPackAdmin
+  calls it after `confirm install pack` merges; the file watcher does NOT cover it),
+  `toolProcess.js` (+ `findTestCommand` — shared with the trigger-mode `run_tests` handler),
+  `toolSandbox.js`,
    `toolFileOps.js`, `toolFileEdit.js`, `toolFileSearch.js`, `toolProjectInfo.js`
    (`undoLastChange` takes an optional `{path}` — if given, restores that file's pre-edit
    content from the aiGuardrails journal, which works even in projects with no git repo;
@@ -336,7 +339,13 @@ npm run lint    # tsc --noEmit
   (basename-validated download, routes/backupRoutes.js); panel `src/components/BackupPanel.tsx`
   (Time Machine simplified — reverse-chronological list with download/show-in-folder).
 - `server/conversationStore.js` — orchestration over `sessionPaths.js`/`sessionIndex.js`/
-  `messageLog.js`/`chatLog.js`/`sessionMigration.js` (see "How chat memory works")
+  `messageLog.js`/`chatLog.js`/`sessionMigration.js` (see "How chat memory works").
+  Session-metadata writes serialize through `sessionIndex.js`'s `serializePersistence`
+  chain (create/append/meta updates are queued one-at-a-time, fire-and-forget) — the
+  reentrancy bypass is a genuine `AsyncLocalStorage` holder-context (2026-08-17): external
+  calls queue while the chain holds the lock, only in-chain nesting bypasses, so a fast
+  AI turn can never race the greeting turn and drop a `messageCount` update (live-probed:
+  previously index said 3 with 4 persisted messages).
 - `server/sessionExport.js` — session export (Phase 0, 2026-08-10):
   `readFullSessionHistory()` reads the ring-buffer-UNCAPPED NDJSON message log (via the
   session index → per-project `.console/` path), then `formatExportMarkdown()` /
@@ -768,7 +777,13 @@ clusters in `useConsoleProcessDock`/`useConsoleToolHistory`/`useConsoleWorkspace
 first-render state in a case handler. `App.tsx` is render-only. Components: `Terminal.tsx`
 (~520 lines, thin orchestrator over `TerminalHeader`/`TerminalMessages`/`TerminalConfirmCards`/
 `TerminalOutputBlock`/`StructuredJsonBlock`/`TerminalSearchOverlay`/`TerminalEmptyState`),
-`SidebarDrawer.tsx` (collapsible left rail, collapses to ~48px icon rail), `WelcomeScreen.tsx`
+`SidebarDrawer.tsx` (collapsible left rail, collapses to ~48px icon rail),
+`ChatHistoryOverlay.tsx` (2026-08-14: full Chat History modal — General | Projects tab switch
+over ALL chats, search, inline rename/delete; rows show the chat's location (workspace folder
+for General chats, project name for projects) and opening a row goes through the normal
+switch-session path so it lands in the chat's own tab. The sidebar's Chats section has the
+same General | Projects mini-tabs instead of the old "show all chats" toggle, plus an expand
+button that opens the overlay; the chat top bar has an "All chats" icon too), `WelcomeScreen.tsx`
 (hero + BentoGrid + 4-step tour overlay, z-50), `Dashboard.tsx` (polls `/api/dashboard` 5s +
 immediate on `dashboard_update`), `ProcessDock.tsx` (logs + projects overview tabs + Phase 4 History tab — API routes, see
 `actionHistory.js` — rendered by `HistoryPanel.tsx`, revert via the normal chat flow),
@@ -812,14 +827,24 @@ collapsed header.
 - Sessions live at `<project.path>/.console/sessions/<id>.json` (inside the project);
   `<project.path>/.console/chat-log.md` is a parallel human-readable log (one `## Title`
   block per session). `.console/` is auto-gitignored on first session creation there.
-- `data/conversations/index.json` (in this repo) is a lookup index only (id → path/title/
-  updatedAt/messageCount) so `listSessions()` doesn't scan disk. Pre-project sessions fall
+- `data/conversations/index.json` (in this repo) is a fast lookup index (id → path/title/
+  updatedAt/messageCount) — `listSessions()` reconciles it against disk via
+  `reconcileIndexFromDisk` on each call (mtime fast-path: skipped when index.json is newer
+  than every project's `.console/sessions` dir and the legacy dir — sessionIndex.js), so an
+  index wipe self-heals while the common case stays cheap. Pre-project sessions fall
   back to `data/conversations/<id>.json` and migrate into `.console/` automatically.
 - **Session ↔ project linking**: every session is permanently tied to its project
   (`session.projectId`); `handleExecute` rejects messages sent against a different active
   project ("Session is locked to ..."). Session titles are NOT reliable (auto-renamed to the
   first message's first ~60 chars) — always trust `projectName`. Clicking a project card
   always creates a NEW session; `linkSessionToProject` exists but nothing calls it.
+- **Per-chat workspace memory (2026-08-14)**: sessions also store `workspacePath` — the scan
+  root they were created in (the tab's workspace, or the global default scan for the default
+  tab; see sessionRoutes.js POST /api/sessions). It rides the index and listSessions output
+  alongside `projectPath`, and is what lets a sidebar/history click on a GENERAL chat (which
+  has no `projectPath`) switch back to its folder: `findTabForSession` routes by
+  projectPath-or-workspacePath, and when no tab owns the folder `handleSwitchSession` calls
+  `tabs.openWorkspaceTab(path, sessionId)` to recreate the workspace in a fresh tab.
 - `connectionLifecycle.js`'s ws.send interceptor auto-persists answers (isMarkdown: true),
   buffered command output (role `'output'` — reloaded sessions keep collapsible block styling),
   tool_start/tool_result (role `'system'`), and warnings.
@@ -906,6 +931,19 @@ collapsed header.
   only matters when both the caller flags the command AND the setting is on.
 - `git status --short` / checkpoint commits guard risky manual commands. Checkpoints use
   `git add -A && commit`; `deploy`/`push live` is checkpoint + `git push`.
+- **Server-side command-risk classifier (Phase 3, 2026-08-17)**: `server/commandRisk.js`
+  (`isDestructiveCommand`) computes the EFFECTIVE risk of an `executeCommand` — git push/
+  reset --hard/clean/checkout . /rebase/commit --amend/branch -D/tag -d, npm|yarn|pnpm|bun|
+  cargo publish/unpublish, recursive deletes (rm -rf, del /s, rd /s, Remove-Item), mkfs/
+  diskpart/fdisk/shred/wipefs/format <drive>/dd. The gate treats executeCommand as gated
+  when `args.risky === true` OR the classifier fires — the caller-supplied flag can only
+  ADD risk, never waive it, so a `risky: false` claim still asks, checkpoints, and journals.
+  The hard blocklist (`dangerousPatterns.js`) stays the absolute prohibition layer on top.
+- **Cancel scoping (Phase 3, 2026-08-17)**: `cancel` kills ONLY the current AI turn's own
+  processes (`turnKey`-tagged, via `stopTrackedProcess`) — it can never tear down a dev
+  server the user started separately; with no AI turn in flight it keeps the historical
+  all-project behavior so a typed trigger-mode command still cancels. `abort_ai` stays
+  process-free by design.
 
 ## Matching pipeline — current behavior and known traps
 
@@ -1097,6 +1135,16 @@ no dispatch or matching logic). Notable functional additions made during the sty
 
 ## Known gotchas — keep fixed
 
+- **Dependency assessments (2026-08-17, Phase 7)**: node-nlp 5.0.0-alpha.5 is unmaintained
+  (alpha forever), but `nlpEngine.js` rebuilds its classifier fresh on every boot and it only
+  feeds the NLP matching stage — no persistence/security surface, no action. @xenova/
+  transformers 2.17.2 is archived; the successor is @huggingface/transformers v3 — migration
+  is a low-priority future item and must never become required (optional dep, embeddings
+  only). `natural` was REMOVED 2026-08-17: `server/porterStemmer.js` is a faithful port of its
+  WordTokenizer/PorterStemmer (byte-identical, parity-verified) — contextInjector.js only.
+  Keep the archiver@7 pin (v8 is a breaking rewrite — backupStore.js) and the electron 43 /
+  electron-builder 26 pins in desktop/package.json (lockfile generated; shell is main.cjs,
+  CommonJS by design).
 - **Stale `dist/server.js` silently shadows source changes** (bit twice). `start.bat`'s
   WEB_MODE runs `node dist/server.js` whenever `dist/` exists, with no staleness check.
   If `dist/` is ever rebuilt it will shadow server edits under `start.bat` until deleted or
@@ -1348,6 +1396,27 @@ no dispatch or matching logic). Notable functional additions made during the sty
    drifts remain); check-indexer 103/103 (+5 typo-resolver rows); check-handlers 200/200
    (the mode-admin rows now assert the trailing `end` — they were calibrated against the
    pre-fix handler that omitted it); check-intents unchanged at 1/7/82; check-ws-cases 122/122.
+   Phase T (2026-08-14, per-tab workspaces + scanAllFolders + open_html — see the Phase T
+   section below): check-handlers 209/209 (+9: 8 scanAllFolders temp-dir rows + 1 open_html
+   no-name ask); check-matcher 303/305 (+13 HTML-OPEN rows, SAME two pre-existing drifts);
+   check-intents unchanged at 1/7/82; check-docs 65/65 (+3 entries: open-html,
+   include-every-folder, tab strip); check-ws-cases 122/122; check-tools 156/156;
+   check-indexer 103/103.
+   Phase T2 (2026-08-14, Folder Explorer + open-with + tours — see the Phase T2 section
+   below): check-handlers 212/212 (+3 open_with/reveal_file ask rows); check-matcher
+   321/323 (+14 OPEN-WITH rows, SAME two pre-existing drifts); check-intents unchanged at
+   1/7/82; check-docs 68/68 (+3: open-with-IDE, reveal-in-folder, folder-explorer);
+   check-ws-cases 122/122; check-tools 156/156; check-indexer 103/103.
+   Phase T2 fix pass (2026-08-14, tab layout/close + chat-owner fixes): check-docs 69/69
+   (+1 chat-history entry; the tab-strip entry's keywords gained close-a-tab phrasings);
+   no other harness deltas (frontend layout + session-lookup fixes; conversationStore's
+   listSessions response gained the additive `projectPath` field, harness-neutral).
+   Audit phases 1-6 (2026-08-17, see AUDIT-PROMPT.md — phases landed in earlier passes;
+   Phase 6 latency + the persistence-chain fix landed 2026-08-17): check-handlers 225/225;
+   check-tools 175/175; check-matcher 337/339 (SAME two pre-existing drifts — "run the
+   calculation" → calculate, "extract the archive" → file_count); check-ws-cases 122/122;
+   check-indexer 103/103; check-intents 1/7/82; check-docs 69/69. Phase 7 (2026-08-17,
+   natural → server/porterStemmer.js, byte-identical parity): all counts unchanged.
    Run the relevant battery after ANY edit to the corresponding module.
 - **editFile** tolerates whitespace differences (normalized line-range fallback) but not
   wrong wording; on total failure the error names both attempts and tells the caller to
@@ -1669,6 +1738,222 @@ no dispatch or matching logic). Notable functional additions made during the sty
   exercised. Browser-click verification of the panel (drag/drop, in-panel confirm) still
   needs one manual pass on a live page.
 
+## Phase T (2026-08-14) — per-tab workspaces, scan-all setting, HTML opening (all live)
+
+Three independent features landed in one pass; server + client + harness rows + live drivers.
+
+- **Chrome-style project tabs with per-tab scan roots** (`src/hooks/useConsoleTabs.ts`,
+  `src/components/ProjectTabs.tsx`, `src/utils/projectApi.ts`): the tab strip is a FULL-WIDTH
+  TOP BAR inside `<main>` (which is always `flex flex-col`; the sidebar+chat row lives in an
+  inner `flex flex-col lg:flex-row` wrapper — the strip must never be a direct child of a
+  row layout or it collapses into a left column, the 2026-08-14 layout bug). Each tab owns
+  its own scan folder, project list, active project, and open chat. "+ New tab" duplicates
+  the current tab (so the first tab keeps its folder while the new one can scan elsewhere);
+  EVERY tab has an × — including the default (id `null`, the global workspace CLI/legacy
+  clients use) — closing the last remaining tab leaves a fresh default, so at least one
+  always exists. Layout persists via localStorage `console.tabs`/`console.activeTab`; on
+  reload `restoreTabs()` re-scans each tab's stored root server-side (tab workspaces are
+  session-lifetime) then fetches the active tab's list. Restore runs FIRE-AND-FORGET from
+  the mount effect (sessions fetch + WS connect start immediately — awaiting the restore
+  first left the chat list empty during slow multi-tab boots, the "history names gone" bug).
+  `activateTab(tabId, preferredSessionId?)` opens the CLICKED chat when a sidebar click
+  lands on another tab's workspace; `handleSwitchSession` finds the owning tab by
+  path-prefix match of `session.projectPath` against each tab's `scanPath` (win32
+  case-insensitive), using the `projectPath` field now returned by GET /api/sessions
+  (conversationStore.js listSessions).
+- **Server per-tab workspaces** (`server/state.js` `tabWorkspaces` Map + `getTabWorkspace`/
+  `setTabWorkspace`/`allKnownProjects`, and `resolveProject(projectId, tabId)`): `?tab=<id>`
+  on project-scoped REST routes and `tabId` in the WS execute payload scope resolution to
+  that tab's cache; callers without a tab fall back to the global cache (zero behavior
+  change for CLI/out-of-band work). Routes converted: projectRoutes (GET /api/projects,
+  POST /api/scan-path — mutation is now per-tab; `resolveScanTarget` moved inside the POST
+  handler so name-only picks resolve against the TAB's root), the `:id/index`/action-history/
+  chat-log handlers, sessionRoutes create, monitoringRoutes dashboard (cache signature
+  keyed by tab), pdf/fileTools/notes/csv/backup/knowledge routes, did_you_mean_pick, and
+  the AI workspace resolution in connectionExecute. `allKnownProjects()` feeds the global
+  matcher-intents/NLP/watcher-sync consumers so one tab's rescan never drops another tab's
+  projects from those views. Broadcasts stay global; the frontend's projectsUpdated/
+  projectUpdated WS cases apply only when the payload overlaps the active tab's current
+  list (membership filter — a foreign tab's list must never clobber the active view).
+  Panels thread the tab id through `projectApi()` (PdfTools/FileTools/Notes/Spreadsheet/
+  Backup/Documents/History/Dashboard).
+- **Session-lock path check** (connectionExecute.js): two tabs scanning different roots can
+  contain same-named folders (project ids are folder-name slugs), so the slug check alone
+  passed for the WRONG folder. The lock now also compares `session.projectPath` against the
+  resolved project's path — a root-A chat can never run commands against root-B's folder
+  ("same folder name, different location" error with the switch action).
+- **`scanAllFolders` profile setting** (`data/user-profile.json` via profileRoutes.js, toggle
+  in UserProfileModal): when ON, discovery includes EVERY immediate subfolder as a project
+  even with no code/git/config/docs — synthesized fallback config (buildFallbackConfig gains
+  an includeAll summary) + `'general'` classification; the container scan's single-root
+  escape also resolves a signal-free root with no subfolders to itself. Off by default.
+  Threaded through discoverProjects/scanSingleProject `{ includeAll }` opts from the boot
+  scan, both /api/projects + /api/scan-path, and the config-file watcher rescans.
+- **HTML opening, both ways**: (1) new intent `project.action.open_html` ("open index.html
+  in the browser" / "preview the page") opens the file in the OS default browser
+  (start/open/xdg-open on the absolute path — file association, all assets work), pinned by
+  three pre-semantic override rules BEFORE the open_file rule (which would otherwise send
+  .html names to VS Code); explicit vs-code/cursor mentions are pinned back to their editor
+  owners. (2) in-console preview: `GET /api/projects/:id/static/*` (fileToolsRoutes) serves
+  project files with proper content-types so relative assets resolve, and FileToolsPanel
+  adds a Preview button on .html rows opening an iframe overlay against it, with an
+  "Open in browser" button that sends the chat command.
+- **Harness rows**: check-handlers 209/209 (+9 — 8 scanAllFolders temp-dir rows incl. the
+  bare-root self-resolution + 1 open_html no-name ask; the mode-admin rows already carried
+  the trailing-`end` assert), check-matcher 303/305 (+13 HTML-OPEN rows; the SAME two
+  pre-existing drifts remain), check-intents unchanged at 1/7/82, check-docs 65/65 (+3
+  entries: open-html, include-every-folder, tab strip; README rows synced), check-ws-cases
+  122/122, check-tools 156/156, check-indexer 103/103. No new WS message types.
+- **Verified live 2026-08-14** (PORT=3005, two temp roots A/B each with a same-named
+  "shared" folder + notes.md): two-tab driver 15/15 — per-tab scan-path mutation (no
+  clobber), each tab lists only its own projects with paths under its own root, per-tab
+  notes resolution through the colliding slug id, no-tab global fallback intact, session
+  created against the right path, WS execute answers from the tab's own folder
+  ("show my notes" returns root A's note), and the cross-root session-lock rejection fires
+  ("same folder name, different location"). scanAllFolders live round-trip: off → junk
+  hidden, on → included as 'general', off → hidden again.
+
+## Phase T2 (2026-08-14) — Folder Explorer, open-with-IDE, sectioned/guided tours, expanded settings (all live)
+
+Four independent features in one pass; server + client + harness rows + live driver.
+
+- **Folder Explorer panel** (`src/components/FolderExplorerPanel.tsx`, registry entry
+  `folder-explorer`, icon `folder-open`): browses ANY absolute path on disk — NOT
+  project-scoped, so it works in General mode with no project (the File Tools panel stays
+  project-scoped by design). Path input (paste — the browser picker limitation documented),
+  folder-in-folder navigation with a breadcrumb trail, and a Windows/macOS-style bottom-bar
+  toggle: **Lines** (list rows: name/size/date) vs **Objects** (icon tiles with sm/md/lg
+  size tiers). Per-file action menu: Open in editor (per-extension default via chat), Open
+  with… (editor chooser overlay), direct editor shortcuts, Open in browser (.html), Reveal
+  in folder, Copy path. View/size/path persist in localStorage
+  (`console.explorerView`, `console.explorerSize`, `console.explorerPath`); the initial
+  view seeds from the profile's `explorerViewMode` when never toggled.
+- **Server: `server/routes/browseRoutes.js`** — `GET /api/browse?path=<abs>` (listing only,
+  2000-entry cap, folders-first sort, dotfiles included; path guard = absolute + exists +
+  is-directory — no shell, no project sandbox, same trust model as the scan box) and
+  `POST /api/browse/reveal` `{path}` (OS reveal: explorer /select / open -R / xdg-open,
+  same spawn pattern as pdfRoutes' reveal). Opening files deliberately goes through the
+  chat intents so the terminal stays the single source of truth.
+- **Editor/IDE registry** (`server/editorsStore.js` + `server/routes/editorRoutes.js`):
+  gitignored `data/editors.json` (env-overridable `EDITORS_FILE` for the harness —
+  machine-specific commands must never land in the git-tracked user-profile.json; same
+  class as schedules/notifications/tuning). Seeds 9 well-known editors (VS Code, Cursor,
+  PyCharm, IntelliJ, WebStorm, Sublime, Notepad++, Visual Studio, Android Studio) + a
+  per-extension default map (`.py`→pycharm, `.java`→idea, `.cpp/.ts/.c`→vscode,
+  `.cs`→visualstudio, `.kt`→androidstudio, `.html`→browser, …). `resolveEditor(name)`
+  (id or loose name match), `defaultEditorFor(file)` (extension → editor or the reserved
+  'browser' pseudo-editor). REST `GET/POST /api/editors`; POST replaces editors and/or
+  defaults wholesale (sanitized: ids a-z0-9_- , command required, 'browser' reserved).
+- **Chat intents** (builtinProjectActions.js): `project.action.open_with` ("open main.py
+  with PyCharm" / "open app.ts in IntelliJ" / "open X in the editor" — the last uses the
+  per-extension default; the browser pseudo-default opens via the same start/open/xdg-open
+  spawn as open_html, inline — NOT delegated, to avoid an import cycle through
+  builtinIntents.js; unknown editor → named guidance listing configured editors; ENOENT
+  and malformed-command (sync EINVAL — spawn needs a single executable, e.g. `node
+  script.js` fails) both answer guidance, never crash) and `project.action.reveal_file`
+  ("open main.py in the folder" / "show file.py in explorer" — reveals the FILE with the
+  folder opened to it). Both registered in BUILTIN_INTENTS; pinned by pre-semantic
+  overrides BEFORE the open_file rule (filename + with/in <editor> → open_with; filename +
+  "in the folder|in explorer" → reveal_file; guards keep "open the folder" on
+  open_in_explorer and vs-code/cursor/browser mentions on their owners).
+- **Expanded settings** (UserProfileModal): new **Editors & IDEs** section (editor rows
+  with editable launch commands, add/remove, per-extension default select incl. Browser —
+  saves via /api/editors), **Folder Explorer default view** (Lines/Objects → new profile
+  field `explorerViewMode`, profileRoutes + useUserProfile), and **Tours** section
+  (launch any tour section via a `lpc:launch-tour` CustomEvent; completion badges from
+  localStorage `console.toursTaken`).
+- **Tour system** (`src/tours.ts` + `src/components/TourOverlay.tsx`): 7 named sections
+  (Welcome, General mode, Tools panels, Developer mode, Chat & AI, Tabs & Folders,
+  Settings), each a step list `{icon, title, body, view?, target?}`. Two modes chosen in
+  the picker (WelcomeScreen "Take the Tour" → `TourPicker`): **card** (the proven modal
+  steps) and **guided** — steps with `view` dispatch `lpc:tour-view` (App switches the
+  main view: tools/dashboard/general/chat) and steps with `target` spotlight the real
+  control via `data-tour` attributes (sidebar, tools-button, settings-button, chat-input,
+  ai-toggle, tab-strip, tab-new, tool-folder-explorer, tool-pdf-tools — getBoundingClientRect
+  ring, scrollIntoView, resize re-measure). Esc/backdrop close; ←/→ navigate; completion
+  recorded via `markTourTaken`. App.tsx owns the overlay state + the two event listeners.
+  The old hardcoded TOUR_STEPS in WelcomeScreen was removed (superseded by the system).
+- **Harness rows**: check-handlers 212/212 (+3: open_with no-name ask, open_with
+  name-no-editor ask, reveal_file no-name ask; the earlier +9 Phase T rows unchanged),
+  check-matcher 321/323 (+14 OPEN-WITH rows — same TWO pre-existing drifts), check-intents
+  unchanged at 1/7/82 (the "pycharm vs PyCharm" case-dupe was removed before landing),
+  check-docs 68/68 (+3 entries: open-with-IDE, reveal-in-folder, folder-explorer; README
+  rows synced), check-ws-cases 122/122, check-tools 156/156, check-indexer 103/103.
+  No new WS message types (open_with/reveal_file are normal answer intents; tours use
+  CustomEvents client-side).
+- **Verified live 2026-08-14** (PORT=3006, temp fixture: scan/ tree with subfolder +
+  proj/main.py — main.py is valid JS that writes its own resolved path to a marker file so
+  the fake editor `node` proves both spawn success AND correct path passing): driver 18/18
+  — browse lists/descends/guards (relative 400, missing 404), reveal guards, editors seed
+  (.py→pycharm, .html→browser) + custom save + persist, open_with resolves the
+  per-extension default and spawns with the absolute path (marker polled — detached spawn
+  races the answer), reveal_file answers, unknown editor answers guidance. Stale-state
+  gotchas: the temp EDITORS_FILE persists across server restarts (delete before boot for a
+  clean seed check), and a detached fake-editor write needs a poll, not a synchronous read.
+
+## Bug fix pass (2026-08-14) — Folder Explorer usability (back/forward, search, open-in-default-app, Ctrl+K findability)
+
+Reported together after the Phase T2 Folder Explorer landed. Four items:
+
+- **No way to go back**: the panel had only an Up button and breadcrumbs. Added browser-style
+  **back/forward history** (`historyRef`/`historyIndexRef` in FolderExplorerPanel.tsx —
+  every navigation funnels through `browse(target, pushHistory)`; back/forward/up/
+  breadcrumbs pass `pushHistory=false`, folder clicks/typing push). The header now has
+  ChevronLeft/ChevronRight/Up/Home/Refresh.
+- **Search bar "not working"**: the panel had no search at all (the path input isn't a
+  search). Added a dedicated search bar under the header that **filters the current
+  listing by name** (client-side, Windows Explorer style — `filteredEntries` via
+  `searchQuery`), with a "N of M" counter and a no-match empty state; Esc clears. Search
+  resets on navigation. Deliberately name-filter-only — content search stays File Tools'
+  job (project-scoped).
+- **Enter/double-click should open the file in its default app**: new
+  `POST /api/browse/open` (browseRoutes.js — `cmd /c start ""` on win32, `open` on darwin,
+  `xdg-open` elsewhere, same absolute-path guard as reveal; detached, stdio ignore).
+  In the panel, double-click OR Enter on a file row (list + grid) opens it in its OS
+  default app via file association; folders still navigate. The per-file menu gained an
+  "Open (default app)" item (the one direct endpoint in the panel — same trust level as
+  reveal; everything else still goes through chat intents).
+- **Ctrl+K can't find "file explorer"**: the palette's Tools entries only carried
+  id-derived keywords (`folder explorer`), so "file explorer" never matched. Added an
+  optional `keywords` field to `ToolPanelDef` (types.ts + toolPanelRegistry.js — the
+  folder-explorer entry seeds `['file explorer', 'files', 'browse', 'explore', 'folders',
+  'navigate']`), and CommandDeck merges `p.keywords` into each Tools item's search terms.
+- **Docs**: folder-explorer catalog entry + README row updated (search bar, back/forward,
+  open-in-default-app, Ctrl+K phrasings). check-docs 69/69.
+- **Verified live 2026-08-14** (PORT=3009, temp folder + hello.txt): `/api/browse` lists,
+  `/api/browse/open` opens the file (`success: true`), relative-path guard 400s. Bundle
+  check confirms the `file explorer` keywords reached the built client.
+
+## Bug fix (2026-08-14) — tab strip rendered as a left column; default tab unclosable; chat history "gone" + sidebar clicks landed on the wrong workspace
+
+Reported together after the Phase T tabs landed. Three separate root causes:
+
+- **Tab strip on the LEFT**: `<main>`'s chat-mode className was `flex flex-col lg:flex-row
+  gap-6` with `ProjectTabs` as a direct child — on desktop the row layout laid the strip,
+  the sidebar, and the chat column out side by side, so the strip collapsed into a narrow
+  left column. Fix: `<main>` is now ALWAYS `flex flex-col`; the strip is its first child
+  (full-width top bar); the sidebar+chat row moved into an inner
+  `flex-1 min-h-0 flex flex-col lg:flex-row gap-6` wrapper. The dashboard/tools/command-ref
+  wrappers switched from `h-full` to `flex-1 min-h-0` so nothing overflows under the strip.
+- **Default tab unclosable**: `closeTab` hard-refused `tabId === null` and ProjectTabs hid
+  the × on it — the FIRST tab (the default/global workspace) had no close button at all,
+  and the left-column layout made the other tabs' × unreachable anyway. Fix: every tab gets
+  an ×; `closeTab` drops the null guard and the ≥1-tab invariant is enforced by the
+  existing fallback (closing the last tab leaves a fresh default).
+- **"Message history names gone" + sidebar clicks landing on the wrong workspace**: the
+  mount effect awaited `restoreTabs()` BEFORE `sessions.fetchSessions()` + WS connect — a
+  slow multi-tab restore left the chat list empty and the socket unconnected (history
+  looked wiped). And `handleSwitchSession` resolved the session's project against the ACTIVE
+  tab's list only, so a chat created in another tab's workspace failed the lookup (no
+  project/tab switch, and the server's session-lock then rejected messages). Fix: restore
+  is fire-and-forget (sessions + WS start immediately); `GET /api/sessions` now returns
+  `projectPath` per session; `handleSwitchSession` finds the owning tab by path-prefix
+  match of `session.projectPath` against each tab's `scanPath` (win32 case-insensitive) and
+  calls `activateTab(ownerId, sessionId)` — the new optional `preferredSessionId` threads
+  through the tab switcher so the CLICKED chat opens (not the arriving tab's saved one),
+  and the switcher sets the live active project from `projectsListRef` (a ref — the
+  switcher runs after an awaited fetchProjects, so a closure-captured list would be stale).
+
 ## Bug fix (2026-08-14) — mode-switch left the terminal stuck on "Running..."
 
 - **Symptom** (reported live, NetPulse): every "switch to developer mode" / "switch to
@@ -1688,7 +1973,9 @@ no dispatch or matching logic). Notable functional additions made during the sty
   after their `answer` send, matching every other admin handler's contract.
 - **Lesson**: any new pre-matcher admin handler added to connectionExecute.js's chain
   MUST send a trailing `end` — there's no wrapper that does it for you once a handler
-  returns `true`. Worth a check-handlers assert if this class of bug recurs.
+  returns `true`. checkHandlerCoverage.js's mode-admin rows now assert the answer +
+  trailing-`end` pair (recalibrated 2026-08-14) — mirror them for any new admin handler
+  so this class of bug fails the harness instead of the live app.
 
 ## Bug fix (2026-08-14) — accent-color picker (Stage H) didn't reach every "primary" control
 
@@ -1770,6 +2057,40 @@ all fixed + harness-pinned. Crosscheck notes per class:
 - Live-verified (temp fixtures, raw WS): the follow-up "app.tsx" resolves with imports; the
   "app.tx" typo answers with the matched-file note; the mode switch writes
   `console.config.json` to .gitignore; applyRequestedPort emits exactly one port flag.
+
+## Bug fix (2026-08-17) — NetPulse chat crosscheck (publish questions vs the deploy confirm)
+
+Live-session review of an exported NetPulse chat surfaced one wrong-reply class plus one catalog
+gap, both fixed + harness-pinned. Crosscheck notes per class:
+
+- **"How do I publish" fired the deploy confirm ("Cancelled: git push")** — the deploy example
+  cluster is saturated with publish-shaped phrases (`publish the site`, `publish to production`,
+  chitChatIntents.js), and `publish` was missing from the question-shape override's verb list
+  (preSemanticOverrides.js), so the question fell through to embedding and became a git-push
+  confirm. Same class as the Matchday deploy trap. Fixed by adding `publish` to the how_do_i
+  question override (it stays FIRST, before the bare deploy override). The catalog then answers
+  with **push-to-github first** (the user's own publishing = `git push` via the deploy docs
+  entry, which gained the `publish` keyword) **and the npm publish option second** — the
+  console-publishing entry (consoleCommandDocs.js) kept its `publish` keyword, and per-request
+  got `publish to npm` / `publish this` keywords so npm-specific questions lead with npm. The
+  suggestion chips carry both: `push to github` (matcher route) and `npm version patch && npm
+  publish` (direct command). Deliberate non-change: the imperative **`publish to production`
+  stays on deploy** (it's an explicit deploy example — checkpoint + git push confirm is the
+  designed flow), pinned by a guard row.
+- **"how do i use a command" answered "no documented answer"** — the help catalog entry's
+  keywords only covered the plural (`commands`), so the singular subject matched nothing. Added
+  `use a command` / `use commands` / `use the commands` to the help entry.
+- **"how do i export to pdf" wording**: the export entry claimed "the project chat log downloads
+  from the session list" — it actually lives in the chat header's ⚙ session menu. Wording fixed.
+- **Harness recalibration**: check-matcher 328/330 (baseline 321/323 + 7 PUBLISH rows — the
+  SAME two pre-existing drifts remain: "run the calculation" and "extract the archive");
+  check-handlers 215/215 (+3: how_do_i publish github-first + npm chip, how_do_i use-a-command
+  → help); check-docs 69/69 unchanged (keyword-only edits, no new entries; the publish catalog
+  keyword tie is order-based — push-to-github sits earlier in COMMAND_DOCS so generic publish
+  questions show it first, npm-specific shapes beat it on longer keywords).
+- Live-probed (catalog lookup): "how do i publish" → [push to github, how do i publish this];
+  "how do i publish to npm" → [how do i publish this, push to github]; "how do i publish this"
+  → [how do i publish this, push to github]; "how do i use a command" → [help].
 
 ## Conventions
 

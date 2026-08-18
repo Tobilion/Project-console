@@ -50,6 +50,7 @@ const FIXTURE_ROOT = path.join(os.tmpdir(), 'console-tools-fixtures');
 const tools = await import(pathToFileURL(base + 'tools.js').href);
 const toolAllow = await import(pathToFileURL(base + 'toolAllow.js').href);
 const toolGate = await import(pathToFileURL(base + 'toolGate.js').href);
+const commandRisk = await import(pathToFileURL(base + 'commandRisk.js').href);
 const toolSandbox = await import(pathToFileURL(base + 'toolSandbox.js').href);
 const toolFileTools = await import(pathToFileURL(base + 'toolFileTools.js').href);
 const toolProcess = await import(pathToFileURL(base + 'toolProcess.js').href);
@@ -237,6 +238,34 @@ try {
     { action: 'ask', grantKey: null });
   eq('risky executeCommand always asks', await toolGate.resolveToolGate('executeCommand', { risky: true }, proj, grants),
     { action: 'ask', grantKey: null });
+  // Phase 3 (2026-08-17): destructive commands are gated even when the caller omits risky.
+  eq('executeCommand git push asks without risky flag', await toolGate.resolveToolGate('executeCommand', { command: 'git push' }, proj, grants),
+    { action: 'ask', grantKey: null });
+  eq('executeCommand force-push asks without risky flag', await toolGate.resolveToolGate('executeCommand', { command: 'git push --force origin main' }, proj, grants),
+    { action: 'ask', grantKey: null });
+  eq('executeCommand npm publish asks without risky flag', await toolGate.resolveToolGate('executeCommand', { command: 'npm publish' }, proj, grants),
+    { action: 'ask', grantKey: null });
+  eq('executeCommand rm -rf asks without risky flag', await toolGate.resolveToolGate('executeCommand', { command: 'rm -rf node_modules' }, proj, grants),
+    { action: 'ask', grantKey: null });
+  eq('executeCommand git status stays ungated', await toolGate.resolveToolGate('executeCommand', { command: 'git status' }, proj, grants),
+    { action: 'allow' });
+  eq('executeCommand npm run dev stays ungated', await toolGate.resolveToolGate('executeCommand', { command: 'npm run dev' }, proj, grants),
+    { action: 'allow' });
+  eq('executeCommand git pull stays ungated', await toolGate.resolveToolGate('executeCommand', { command: 'git pull' }, proj, grants),
+    { action: 'allow' });
+  eq('executeCommand git checkout branch stays ungated', await toolGate.resolveToolGate('executeCommand', { command: 'git checkout main' }, proj, grants),
+    { action: 'allow' });
+  eq('risk classifier: git push', commandRisk.isDestructiveCommand('git push'), true);
+  eq('risk classifier: force-push branch', commandRisk.isDestructiveCommand('git push --force-with-lease origin develop'), true);
+  eq('risk classifier: npm publish', commandRisk.isDestructiveCommand('npm publish'), true);
+  eq('risk classifier: rm -rf', commandRisk.isDestructiveCommand('rm -rf build/'), true);
+  eq('risk classifier: del /s /q', commandRisk.isDestructiveCommand('del /s /q C:\\temp\\x'), true);
+  eq('risk classifier: Remove-Item recurse', commandRisk.isDestructiveCommand('Remove-Item -Recurse -Force .'), true);
+  eq('risk classifier: git status safe', commandRisk.isDestructiveCommand('git status'), false);
+  eq('risk classifier: git pull safe', commandRisk.isDestructiveCommand('git pull'), false);
+  eq('risk classifier: git format-patch safe', commandRisk.isDestructiveCommand('git format-patch -1'), false);
+  eq('risk classifier: npm run dev safe', commandRisk.isDestructiveCommand('npm run dev'), false);
+  eq('risk classifier: non-string safe', commandRisk.isDestructiveCommand(null), false);
   eq('saveMemory low ungated', await toolGate.resolveToolGate('saveMemory', { importance: 'low' }, proj, null), { action: 'allow' });
   eq('saveMemory judgment asks', await toolGate.resolveToolGate('saveMemory', { importance: 'judgment' }, proj, null),
     { action: 'ask', grantKey: null });

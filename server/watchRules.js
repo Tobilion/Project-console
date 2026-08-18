@@ -48,7 +48,8 @@ export function getWatchRules() {
   return [...rules];
 }
 
-/** Add a watch rule. id is `w<counter>`-shaped. Returns the created rule. */
+/** Add a watch rule. id is `w<counter>`-shaped. Returns the created rule. Rules default to
+ *  enabled; the panel's per-rule toggle flips it via setWatchRuleEnabled. */
 export function addWatchRule({ folder, event, days = null, projectId = null, projectName = null }) {
   const rule = {
     id: `w${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`,
@@ -58,6 +59,7 @@ export function addWatchRule({ folder, event, days = null, projectId = null, pro
     projectId,
     projectName,
     createdAt: Date.now(),
+    enabled: true,
   };
   rules.push(rule);
   schedulePersist();
@@ -70,6 +72,16 @@ export function removeWatchRule(id) {
   const [removed] = rules.splice(idx, 1);
   schedulePersist();
   return removed;
+}
+
+/** Flip a rule's enabled flag (audit 2026-08-17: per-rule enable toggle in the Notifications
+ *  panel). A disabled rule stays in the list but never fires. */
+export function setWatchRuleEnabled(id, enabled) {
+  const rule = rules.find((r) => r.id === id);
+  if (!rule) return null;
+  rule.enabled = !!enabled;
+  schedulePersist();
+  return rule;
 }
 
 export function getWatchRule(id) {

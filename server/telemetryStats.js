@@ -12,22 +12,33 @@ export function getIntentStats(projectId) {
     const intent = entry.finalIntent;
     if (!intent) continue;
     if (!stats.has(intent)) {
-      stats.set(intent, { matches: 0, confidences: [], falsePositives: 0, stages: {} });
+      stats.set(intent, { matches: 0, minConfidence: Infinity, maxConfidence: -Infinity, confSum: 0, labeled: 0, falsePositives: 0, stages: {} });
     }
     const s = stats.get(intent);
     s.matches++;
-    s.confidences.push(entry.finalConfidence || 0);
+    // Fold min/max into the loop instead of Math.min(...array) — a spread over an unbounded
+    // telemetry file would exceed the argument-count limit on huge logs (audit 2026-08-17).
+    const conf = entry.finalConfidence || 0;
+    s.confSum += conf;
+    if (conf < s.minConfidence) s.minConfidence = conf;
+    if (conf > s.maxConfidence) s.maxConfidence = conf;
     if (entry.winner) {
       s.stages[entry.winner] = (s.stages[entry.winner] || 0) + 1;
     }
-    if (entry.falsePositive === true) s.falsePositives++;
+    // falsePositiveRate is computed against LABELED matches only (audit 2026-08-17): an
+    // unlabeled entry (neither true nor false) never had a user outcome recorded, so
+    // counting it in the denominator would understate the true rate.
+    if (typeof entry.falsePositive === 'boolean') {
+      s.labeled++;
+      if (entry.falsePositive === true) s.falsePositives++;
+    }
   }
 
   for (const [, s] of stats) {
-    s.avgConfidence = s.confidences.reduce((a, b) => a + b, 0) / s.confidences.length;
-    s.minConfidence = Math.min(...s.confidences);
-    s.maxConfidence = Math.max(...s.confidences);
-    s.falsePositiveRate = s.matches > 0 ? s.falsePositives / s.matches : 0;
+    s.avgConfidence = s.confSum / s.matches;
+    s.minConfidence = s.matches > 0 ? s.minConfidence : 0;
+    s.maxConfidence = s.matches > 0 ? s.maxConfidence : 0;
+    s.falsePositiveRate = s.labeled > 0 ? s.falsePositives / s.labeled : 0;
   }
 
   return stats;

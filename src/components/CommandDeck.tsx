@@ -4,7 +4,7 @@ import { apiFetchJson } from '../utils/apiFetch';
 import {
   Search, Home, LayoutDashboard, Plus, PanelLeft, FolderGit2, Terminal as TerminalIcon,
   Clock, Flame, BookOpen, LayoutGrid, Settings, Moon, Sun, Maximize2, Bot, FileDown,
-  MessagesSquare, PanelBottom, ArrowLeftRight, History,
+  MessagesSquare, PanelBottom, ArrowLeftRight, History, Sparkles,
 } from 'lucide-react';
 
 interface DeckItem {
@@ -72,6 +72,8 @@ interface CommandDeckProps {
   onSetDockTab: (tab: 'logs' | 'projects' | 'history') => void;
   showToolHistory: boolean;
   onToggleToolHistory: () => void;
+  /** Audit 2026-08-17: Ctrl+K path to the tour picker (the help/walkthrough surface). */
+  onOpenTourPicker: () => void;
 }
 
 // Phase 11 (UPGRADE-ROADMAP.md, 2026-08-12): recency/frequency ranking for the palette —
@@ -134,7 +136,7 @@ export const CommandDeck = ({
   chatFullscreen, onToggleFullscreen, onOpenTools, onOpenPanel, toolPanels, workspaceTab,
   onSetWorkspaceTab, aiEnabled, onToggleAI, onExportMarkdown, onExportJson, onExportPdf,
   onExportProjectChatLog, dockExpanded, onToggleDock, dockTab, onSetDockTab,
-  showToolHistory, onToggleToolHistory,
+  showToolHistory, onToggleToolHistory, onOpenTourPicker,
 }: CommandDeckProps) => {
   const [query, setQuery] = useState('');
   const [sel, setSel] = useState(0);
@@ -157,6 +159,7 @@ export const CommandDeck = ({
     list.push({ id: 'nav-home', group: 'Navigation', label: 'Home', icon: <Home size={14} />, run: onHome });
     list.push({ id: 'nav-dashboard', group: 'Navigation', label: 'Dashboard', icon: <LayoutDashboard size={14} />, run: onToggleDashboard });
     list.push({ id: 'nav-commandref', group: 'Navigation', label: 'Command Reference', hint: 'book icon in the header', icon: <BookOpen size={14} />, run: onOpenCommandRef });
+    list.push({ id: 'nav-tour', group: 'Navigation', label: 'Take a tour / Help', keywords: ['help', 'tour', 'walkthrough', 'guide', 'tutorial'], icon: <Sparkles size={14} />, run: onOpenTourPicker });
     list.push({ id: 'nav-newchat', group: 'Navigation', label: 'New Chat', icon: <Plus size={14} />, run: onNewChat });
     list.push({ id: 'nav-fullscreen', group: 'Navigation', label: chatFullscreen ? 'Exit fullscreen chat' : 'Fullscreen chat', icon: <Maximize2 size={14} />, run: onToggleFullscreen });
     list.push({ id: 'nav-sidebar', group: 'Navigation', label: sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar', icon: <PanelLeft size={14} />, run: () => onSetSidebarCollapsed(!sidebarCollapsed) });
@@ -182,7 +185,10 @@ export const CommandDeck = ({
 
     list.push({ id: 'tools-grid', group: 'Tools', label: 'Open Tools grid', keywords: ['panels', 'utilities'], icon: <LayoutGrid size={14} />, run: onOpenTools });
     toolPanels.forEach((p) => {
-      list.push({ id: `tools-${p.id}`, group: 'Tools', label: `Open ${p.name}`, hint: p.chatHint, keywords: ['panel', 'tool', p.id.replace(/-/g, ' ')], icon: <LayoutGrid size={14} />, run: () => onOpenPanel(p.id) });
+      // Phase T2 fix: merge the panel's own search terms (e.g. "file explorer" for the
+      // Folder Explorer) with the id-derived ones — the palette must match how users
+      // actually name the panel, not just its registry id.
+      list.push({ id: `tools-${p.id}`, group: 'Tools', label: `Open ${p.name}`, hint: p.chatHint, keywords: ['panel', 'tool', p.id.replace(/-/g, ' '), ...(p.keywords || [])], icon: <LayoutGrid size={14} />, run: () => onOpenPanel(p.id) });
     });
 
     if (catalog) {
@@ -215,7 +221,7 @@ export const CommandDeck = ({
     });
 
     return list;
-  }, [projects, activeProject, sessions, catalog, toolPanels, onDirectCommand, onSendMessage, onSelectProject, onSwitchSession, onHome, onToggleDashboard, onOpenCommandRef, onNewChat, sidebarCollapsed, onSetSidebarCollapsed, theme, onToggleTheme, onOpenProfile, chatFullscreen, onToggleFullscreen, onOpenTools, onOpenPanel, workspaceTab, onSetWorkspaceTab, aiEnabled, onToggleAI, onExportMarkdown, onExportJson, onExportPdf, onExportProjectChatLog, dockExpanded, onToggleDock, dockTab, onSetDockTab, showToolHistory, onToggleToolHistory]);
+  }, [projects, activeProject, sessions, catalog, toolPanels, onDirectCommand, onSendMessage, onSelectProject, onSwitchSession, onHome, onToggleDashboard, onOpenCommandRef, onNewChat, sidebarCollapsed, onSetSidebarCollapsed, theme, onToggleTheme, onOpenProfile, chatFullscreen, onToggleFullscreen, onOpenTools, onOpenPanel, workspaceTab, onSetWorkspaceTab, aiEnabled, onToggleAI, onExportMarkdown, onExportJson, onExportPdf, onExportProjectChatLog, dockExpanded, onToggleDock, dockTab, onSetDockTab, showToolHistory, onToggleToolHistory, onOpenTourPicker]);
 
   useEffect(() => { setQuery(''); setSel(0); }, [open]);
 
@@ -257,7 +263,7 @@ export const CommandDeck = ({
     // The rendered list is capped (BROWSE_CAP/RESULT_CAP) while `filtered` is not — a
     // keyboard selection can never land past the visible items.
     if (sel >= visibleItems) return;
-    const it = filtered[sel];
+    const it = flatItems[sel];
     if (!it) return;
     onClose();
     // Record usage (recency + frequency) before running.
@@ -276,14 +282,20 @@ export const CommandDeck = ({
     el?.scrollIntoView({ block: 'nearest' });
   }, [sel, filtered.length]);
 
-  if (!open) return null;
-
   const sections: { key: string; label: string; icon?: React.ReactNode; items: DeckItem[] }[] = [];
   if (!q && ranked.recent.length > 0) sections.push({ key: 'recent', label: 'Recent', icon: <Clock size={10} />, items: ranked.recent });
   if (!q && ranked.frequent.length > 0) sections.push({ key: 'frequent', label: 'Frequent', icon: <Flame size={10} />, items: ranked.frequent });
   const cap = q ? RESULT_CAP : BROWSE_CAP;
   sections.push({ key: 'all', label: q ? 'Results' : 'All', items: ranked.rest.slice(0, cap) });
   const truncated = ranked.rest.length > cap;
+  // The exact items rendered on screen, in render order (Recent -> Frequent -> Results, each
+  // capped). runSelected must index THIS list — `filtered`/`ranked` order differs whenever
+  // usage reorders items (a lower-relevance item used recently sorts first in Recent), so
+  // indexing them ran a different action than the highlighted row (audit 2026-08-17).
+  const flatItems: DeckItem[] = sections.flatMap((s) => s.items);
+  const visibleItems = flatItems.length;
+
+  if (!open) return null;
 
   let rendered: React.ReactNode[] = [];
   let flatIndex = -1;
@@ -318,9 +330,6 @@ export const CommandDeck = ({
       </div>
     );
   }
-  // The number of selectable rows currently rendered (headers excluded) — bounds keyboard
-  // navigation and Enter so the selection can never land on an item the user can't see.
-  const visibleItems = flatIndex + 1;
 
   return (
     <div className="fixed inset-0 z-40" onMouseDown={onClose}>

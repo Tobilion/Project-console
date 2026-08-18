@@ -1,7 +1,4 @@
-import natural from 'natural';
-
-const { WordTokenizer, PorterStemmer } = natural;
-const tokenizer = new WordTokenizer();
+import { stem, tokenize } from './porterStemmer.js';
 
 const KEYWORD_FILE_MAP = {
   route: ['route', 'router', 'express', 'api', 'endpoint', 'controller'],
@@ -99,10 +96,10 @@ export function injectContext(input, intent, codebaseIndex) {
     case 'project.explain_more':
     case 'project.knowledge.architecture': {
       // Inject key files that match user keywords
-      const stemmedInput = (tokenizer.tokenize(inputLower) || []).map(t => PorterStemmer.stem(t));
+      const stemmedInput = tokenize(inputLower).map((t) => stem(t));
       if (codebaseIndex.fileSample) {
-        const matchedFiles = codebaseIndex.fileSample.filter(f => {
-          const stemmedFile = PorterStemmer.stem(f);
+        const matchedFiles = codebaseIndex.fileSample.filter((f) => {
+          const stemmedFile = stem(f);
           return stemmedInput.some(s => stemmedFile.includes(s));
         });
         if (matchedFiles.length > 0) {

@@ -37,6 +37,7 @@ export async function runMatchPipeline(matcher, input) {
   try {
     const sem = await runSemanticStage(inputStr, {
       extractor: matcher.extractor,
+      embedInput: (t) => matcher.embedInput(t),
       projectIntentVectors: matcher.projectIntentVectors,
       intentVectors: matcher.intentVectors,
       getFloor: getEffectiveThreshold,

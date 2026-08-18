@@ -170,4 +170,37 @@ export const MISC_INTENTS = {
     'open a file from the project', 'open the readme file',
   ],
 },
+// Phase T (2026-08-14): open a plain .html file in the DEFAULT BROWSER (not the editor) —
+// the .html-bearing shapes are pinned by a pre-semantic override (an "open X.html" ask means
+// render, never edit; the open_file override would otherwise send it to VS Code). Examples
+// deliberately avoid open_site's "open the site/url/link" territory and open_github_page's
+// "open the github page" — a browser-mention here means a local file, never a running server.
+'project.action.open_html': {
+  examples: [
+    'open index.html in the browser', 'open the html file in the browser',
+    'preview the page', 'preview index.html', 'open the page in the browser',
+    'show the html file in the browser', 'view the html file',
+    'open the html page in a browser',
+  ],
+},
+// Phase T2 (2026-08-14): open a file in a chosen IDE — the editor registry lives in
+// Settings → Editors & IDEs (data/editors.json); "in the editor" uses the per-extension
+// default. Examples deliberately avoid open_file's name-bearing seeds ("open a file") and
+// the open_in_* editor verbs (vs code/cursor are separate intents with their own pins).
+'project.action.open_with': {
+  examples: [
+    'open main.py with pycharm',
+    'open app.ts in intellij', 'open report.pdf in webstorm',
+    'open the config file in the editor', 'open file.py with the editor',
+    'open main.py in the default editor',
+  ],
+},
+// Phase T2: reveal a FILE in the OS file explorer (folder opens with the file selected).
+'project.action.reveal_file': {
+  examples: [
+    'open main.py in the folder', 'show file.py in explorer',
+    'open the config file in the folder', 'reveal main.py in file explorer',
+    'show index.html in the folder', 'open notes.txt in explorer',
+  ],
+},
 };

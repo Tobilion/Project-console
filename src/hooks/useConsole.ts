@@ -11,15 +11,29 @@ import { useConsoleProcessDock } from './useConsoleProcessDock';
 import { useConsoleToolHistory } from './useConsoleToolHistory';
 import { useConsoleWorkspace } from './useConsoleWorkspace';
 import { useConsoleExports } from './useConsoleExports';
+import { useConsoleTabs } from './useConsoleTabs';
 import { WS_MESSAGE_CASES } from './wsMessageCases';
 import type { WsCtx } from './wsCtx';
 import { waitForSocketOpen } from '../utils/waitForSocketOpen';
 import { apiFetchJson } from '../utils/apiFetch';
 import { makeMessage } from '../utils/makeMessage';
 
+// True when an absolute path sits inside (or equals) a scan root — case-insensitive, separator-
+// normalized prefix match on win32. Shared by findTabForSession and the orphan-workspace check.
+const pathInScanRoot = (path: string, root: string): boolean => {
+  const norm = (p: string) => p.replace(/\\/g, '/').toLowerCase();
+  const r = norm(root).replace(/\/+$/, '');
+  const q = norm(path);
+  return q.startsWith(r + '/') || q === r;
+};
+
 export function useConsole() {
   const projects = useProjects();
   const sessions = useSessions();
+  // Phase T (2026-08-14): Chrome-style tabs with per-tab scan roots. Owns the tab list +
+  // active tab; the live projects state above always reflects the ACTIVE tab (see the hook's
+  // doc comment). Created right after projects so restoreTabs can drive the mount fetch.
+  const tabs = useConsoleTabs(projects);
 
   // Phase 13: the WS router is a stable callback that reads the ctx bag through a ref, so
   // every event sees the latest state. This is also stricter than the old code: the original
@@ -63,11 +77,15 @@ export function useConsole() {
   // Ref-read getter for the dock hook — commands always run for the session's active
   // project, so live output chunks are attributed to whatever project is active at call time.
   const getActiveProject = useCallback(() => activeProjectRef.current, []);
+  // Phase T2: always-current project list for the tab switcher — it runs AFTER an awaited
+  // fetchProjects (tab activation), so a closure-captured list would be the pre-fetch state.
+  const projectsListRef = useRef(projects.projects);
+  projectsListRef.current = projects.projects;
 
   const dock = useConsoleProcessDock(wsHandler.wsRef, getActiveProject);
   const toolHistory = useConsoleToolHistory(wsHandler.wsRef, sessions.setMessages);
   const workspace = useConsoleWorkspace(wsHandler.wsRef, projects.activeProject);
-  const exports = useConsoleExports(projects.activeProject, sessions);
+  const exports = useConsoleExports(projects.activeProject, sessions, tabs.activeTabId);
   const ai = useAI(wsHandler.sendMessage, sessions.setMessages);
   const search = useSearch(sessions.setMessages);
 
@@ -80,6 +98,9 @@ export function useConsole() {
   // intermediate 'start'/'output' chunks, since a still-booting dev server keeps streaming text
   // without being "done"; only clears on a real end-of-turn signal) and different display text.
   const [commandPending, setCommandPending] = useState(false);
+  // Phase 5: bumped after New Chat / session switch so Terminal can refocus its input (a
+  // number, not a boolean — repeated bumps must always re-trigger the effect).
+  const [chatFocusSignal, setChatFocusSignal] = useState(0);
   const [activeServers, setActiveServers] = useState<Array<{projectId: string; command: string; pid: number | null; url: string | null}>>([]);
   const [dashboardUpdateSignal, setDashboardUpdateSignal] = useState(0);
   // URLs the console has authoritatively seen as dev-server sites (server_url events +
@@ -123,7 +144,13 @@ export function useConsole() {
     if (data) {
       setActiveServers(data);
       const urls = data.map(s => s.url).filter((u): u is string => !!u);
-      if (urls.length) setKnownDevUrls(prev => Array.from(new Set([...prev, ...urls])));
+      // Audit 2026-08-17: keep the array IDENTITY stable when nothing is actually new — the
+      // old Set-spread rebuilt the array on every poll even with zero additions, which
+      // re-rendered TerminalMessages (its URL-chip check reads this array) on every 5s poll.
+      if (urls.length) setKnownDevUrls(prev => {
+        const added = urls.filter(u => !prev.includes(u));
+        return added.length ? [...prev, ...added] : prev;
+      });
     }
   }, []);
 
@@ -189,6 +216,7 @@ export function useConsole() {
     projects: {
       projects: projects.projects,
       setProjects: projects.setProjects,
+      setActiveProject: projects.setActiveProject,
       setIndexingProjectId: projects.setIndexingProjectId,
     },
     workspace: { setWorkspaceProjects: workspace.setWorkspaceProjects },
@@ -231,14 +259,26 @@ export function useConsole() {
     if (!ai.aiEnabled) setCommandPending(true);
     wsHandler.wsRef.current.send(JSON.stringify({
       type: 'execute',
-      payload: { projectId: projects.activeProject?.id ?? GENERAL_PROJECT_ID, input: content, sessionId: sessions.activeSessionId }
+      payload: {
+        projectId: projects.activeProject?.id ?? GENERAL_PROJECT_ID,
+        input: content,
+        sessionId: sessions.activeSessionId,
+        // Phase T: the tab whose workspace this message belongs to (server resolves the
+        // project inside that tab's cache — two tabs with same-named folders stay separate).
+        tabId: tabs.activeTabId,
+      }
     }));
-  }, [projects.activeProject, wsHandler.wsRef, sessions.setMessages, sessions.activeSessionId, ai.aiEnabled, setCommandPending]);
+  }, [projects.activeProject, wsHandler.wsRef, sessions.setMessages, sessions.activeSessionId, ai.aiEnabled, setCommandPending, tabs.activeTabId]);
 
   useEffect(() => {
-    projects.fetchProjects();
+    // Phase T2 fix (2026-08-14): restoreTabs used to be awaited BEFORE fetchSessions/WS
+    // connect, so a slow multi-tab restore (each persisted tab re-scans its root server-side)
+    // left the chat list empty and the socket unconnected for a long time — history looked
+    // wiped. Sessions + WS now start immediately; tab restore runs in the background and
+    // swaps the active tab's project list in when it finishes.
     sessions.fetchSessions();
     wsHandler.connectWebSocket();
+    tabs.restoreTabs();
     fetch('/api/ollama/status').then(r => r.ok ? r.json() : null).then(s => { if (s) ai.fetchOllamaStatus(); }).catch(() => {});
     fetchActiveServers();
     dock.fetchProcesses();
@@ -298,7 +338,9 @@ export function useConsole() {
       // 2026-08-12: without an active project, start a General-workspace session (the server's
       // '__general__' pseudo-project) so chat works before picking a project — session-locked
       // to that id like any other session.
-      sessions.createSession(projects.activeProject?.id ?? GENERAL_PROJECT_ID, projects.activeProject?.name ?? 'General');
+      const s = await sessions.createSession(projects.activeProject?.id ?? GENERAL_PROJECT_ID, projects.activeProject?.name ?? 'General', tabs.activeTabId);
+      tabs.setActiveTabSession(s?.id ?? null);
+      setChatFocusSignal(n => n + 1);
     } catch (err) {
       // Belt-and-suspenders: this is the one button whose whole job is to force the
       // Welcome-screen tree to unmount and the full dashboard tree to mount with no active
@@ -340,9 +382,12 @@ export function useConsole() {
 
   const handleScan = async (e: React.FormEvent) => {
     e.preventDefault();
-    const result = await projects.scanNewPath(projects.scanPath);
+    // Phase T: the scan targets the ACTIVE tab's workspace — a duplicated tab scanning a new
+    // folder changes only that tab, never the other tabs' folders.
+    const result = await projects.scanNewPath(projects.scanPath, tabs.activeTabId);
     if (result.success) {
       sessions.setShowWelcome(false);
+      tabs.snapshotActiveTab();
     } else {
       // Surface the failure instead of silently doing nothing (this was the actual cause of
       // "the folder picker doesn't let me pick anything" — the request was failing server-side
@@ -371,8 +416,37 @@ export function useConsole() {
     // actually linked to another one — confusing and surprising either way). "New Chat" is the
     // only thing that starts a fresh, unlinked session; selecting a project is always a fresh
     // session tied to it from creation.
-    await sessions.createSession(p.id, p.name);
-    projects.handleSelectProject(p);
+    const s = await sessions.createSession(p.id, p.name, tabs.activeTabId);
+    tabs.setActiveTabSession(s?.id ?? null);
+    tabs.setActiveTabProject(p.id);
+    projects.handleSelectProject(p, tabs.activeTabId);
+    setChatFocusSignal(n => n + 1);
+  };
+
+  const handleSelectProjectReuse = async (p: any) => {
+    // Dashboard action buttons (Run/Stop/Push/Open chat) route through here instead of
+    // handleSelectProject: a one-click card control must not swap the current chat into an
+    // empty new session (audit 2026-08-17). Reuse the project's open chat when one exists,
+    // create one otherwise — the selected-project-is-always-fresh rule stays for the sidebar
+    // and BentoGrid, which call handleSelectProject.
+    handleAbortTurn();
+    terminal.setPendingConfirm(null);
+    terminal.setPendingToolConfirm(null);
+    terminal.setPendingMemorySuggestion(null);
+    await deleteCurrentSessionIfEmpty();
+    projects.setActiveProject(p);
+    sessions.setShowWelcome(false);
+    const existing = sessions.sessions.find((s) => s.projectId === p.id);
+    if (existing) {
+      await sessions.switchSession(existing.id);
+      tabs.setActiveTabSession(existing.id);
+    } else {
+      const s = await sessions.createSession(p.id, p.name, tabs.activeTabId);
+      tabs.setActiveTabSession(s?.id ?? null);
+    }
+    tabs.setActiveTabProject(p.id);
+    projects.handleSelectProject(p, tabs.activeTabId);
+    setChatFocusSignal(n => n + 1);
   };
 
   const handleDirectCommand = useCallback((command: string) => {
@@ -383,6 +457,26 @@ export function useConsole() {
       payload: { tool: 'executeCommand', args: { command, risky: false } }
     }));
   }, [wsHandler.wsRef, sessions.setMessages]);
+
+  // Phase T2 fix (2026-08-14): a chat may belong to ANOTHER tab's workspace (created while
+  // that tab was active). Match the session's location (projectPath, or workspacePath for
+  // General chats that have no project) against each tab's scan root — clicking a chat must
+  // land on the folder + project it actually lives in. Returns the owning tab's id, or null
+  // when the DEFAULT tab owns it / nothing owns it (caller disambiguates).
+  const findTabForSession = useCallback((projectPath?: string | null, workspacePath?: string | null): string | null => {
+    const path = projectPath || workspacePath;
+    if (!path) return null;
+    // The active tab's own workspace wins: a chat already visible under the current tab must
+    // never redirect to a different tab that happens to share the same scan root (duplicated
+    // tabs). Only fall through to other tabs when the active one doesn't contain this path.
+    const active = tabs.tabs.find((t) => t.id === tabs.activeTabId);
+    if (active && active.scanPath && pathInScanRoot(path, active.scanPath)) return active.id;
+    for (const t of tabs.tabs) {
+      if (t.id === active?.id || !t.scanPath) continue;
+      if (pathInScanRoot(path, t.scanPath)) return t.id;
+    }
+    return null;
+  }, [tabs.tabs, tabs.activeTabId]);
 
   const handleSwitchSession = useCallback(async (sessionId: string) => {
     handleAbortTurn();
@@ -399,17 +493,44 @@ export function useConsole() {
     // every other path (New Chat / Quick Start / project select / scan) hides it, this one
     // didn't, so the loaded chat rendered behind the canvas forever.
     sessions.setShowWelcome(false);
+    // Phase T2: find the owning tab BEFORE loading so a chat from another tab's workspace
+    // switches tabs first (activateTab re-loads the clicked session via the preferred id).
+    const meta = sessions.sessions.find((s) => s.id === sessionId);
+    const ownerId = findTabForSession(meta?.projectPath, meta?.workspacePath);
+    if (ownerId !== tabs.activeTabId) {
+      // ownerId null is ambiguous: the DEFAULT tab owns it, or nothing does. Check the default
+      // tab's scan root first, then fall back to recreating the chat's workspace in a fresh tab.
+      if (ownerId !== null) {
+        await tabs.activateTab(ownerId, sessionId);
+        return;
+      }
+      const path = meta?.projectPath || meta?.workspacePath;
+      const defaultTab = tabs.tabs.find((t) => t.id === null);
+      if (path && defaultTab?.scanPath && pathInScanRoot(path, defaultTab.scanPath)) {
+        await tabs.activateTab(null, sessionId);
+        return;
+      }
+      if (meta?.workspacePath) {
+        await tabs.openWorkspaceTab(meta.workspacePath, sessionId);
+        return;
+      }
+      // No tab owns the location and there's no workspace to recreate (legacy project-only
+      // session) — fall through and load the chat on the current tab as before.
+    }
     const s = await sessions.switchSession(sessionId);
     if (s?.projectId) {
+      tabs.setActiveTabSession(sessionId);
+      tabs.setActiveTabProject(s.projectId);
       const project = projects.projects.find(p => p.id === s.projectId);
       if (project) {
         projects.setActiveProject(project);
         if (!project.codebaseIndex) {
-          projects.handleSelectProject(project);
+          projects.handleSelectProject(project, tabs.activeTabId);
         }
       }
     }
-  }, [sessions, projects, terminal, handleAbortTurn]);
+    setChatFocusSignal(n => n + 1);
+  }, [sessions, projects, terminal, handleAbortTurn, tabs, findTabForSession]);
 
   // Recovery action for the "Session is locked to X" error: the currently-loaded chat and its
   // messages are already correct — the only thing out of sync is *which project is active*, so
@@ -418,13 +539,49 @@ export function useConsole() {
     const project = projects.projects.find(p => p.id === projectId);
     if (project) {
       projects.setActiveProject(project);
+      tabs.setActiveTabProject(projectId);
       if (!project.codebaseIndex) {
-        projects.handleSelectProject(project);
+        projects.handleSelectProject(project, tabs.activeTabId);
       }
     } else {
       sessions.setMessages(prev => [...prev, makeMessage('error', 'Couldn\'t find that project in the current list — try rescanning.')]);
     }
-  }, [projects, sessions]);
+  }, [projects, sessions, tabs]);
+
+  // Phase T: the tab-activation session switcher. Switching tabs reloads that tab's chat
+  // through the same path as clicking a chat in the sidebar (abort turn, clear pending,
+  // reload messages). A tab with no open chat yet starts a fresh session for its project
+  // (or the General workspace when it has no project).
+  tabs.setSessionSwitcher(async (target) => {
+    handleAbortTurn();
+    terminal.setPendingConfirm(null);
+    terminal.setPendingToolConfirm(null);
+    terminal.setPendingMemorySuggestion(null);
+    sessions.setShowWelcome(false);
+    // Phase T fix: clear the shared conversation buffer before resolving the target session so
+    // a failed load/create below can never leave the previous tab's chat visible here.
+    sessions.resetConversation();
+    if (target.activeSessionId) {
+      const s = await sessions.switchSession(target.activeSessionId);
+      if (s?.projectId) {
+        tabs.setActiveTabProject(s.projectId);
+        // The arriving tab's project list was just fetched — resolve the session's project
+        // against it (via the ref — this runs after an await) so the terminal header/commands
+        // point at the right folder (a chat from another tab's workspace must not keep the
+        // previous tab's project active).
+        const p = projectsListRef.current.find((pr) => pr.id === s.projectId);
+        if (p) projects.setActiveProject(p);
+      }
+    } else if (target.activeProjectId) {
+      const p = projectsListRef.current.find((pr) => pr.id === target.activeProjectId);
+      const s = await sessions.createSession(target.activeProjectId, p?.name, tabs.activeTabId);
+      tabs.setActiveTabSession(s?.id ?? null);
+    } else {
+      const s = await sessions.createSession(undefined, undefined, tabs.activeTabId);
+      tabs.setActiveTabSession(s?.id ?? null);
+    }
+    setChatFocusSignal(n => n + 1);
+  });
 
   return {
     projects: projects.projects,
@@ -440,6 +597,7 @@ export function useConsole() {
     aiThinking: ai.aiThinking,
     aiThinkingText: ai.aiThinkingText,
     commandPending,
+    chatFocusSignal,
     activeServers,
     knownDevUrls,
     dashboardUpdateSignal,
@@ -484,6 +642,7 @@ export function useConsole() {
     handleSetModel: ai.handleSetModel,
     handleSetMode: ai.handleSetMode,
     handleSelectProject,
+    handleSelectProjectReuse,
     handleSearch: search.handleSearch,
     handleDeepResearch: search.handleDeepResearch,
     handleNewChat,
@@ -493,6 +652,10 @@ export function useConsole() {
     switchSession: handleSwitchSession,
     deleteSession: sessions.deleteSession,
     renameSession: sessions.renameSession,
+    // Phase 6: session-history pagination ("load earlier").
+    historyTotal: sessions.historyTotal,
+    loadedHistory: sessions.loadedHistory,
+    loadEarlierMessages: sessions.loadEarlierMessages,
     handleSwitchToProject,
     connected,
     updateNotice,
@@ -504,5 +667,13 @@ export function useConsole() {
     toolPanels,
     toolPanelsError,
     fetchToolPanels,
+    // Phase T: Chrome-style tab strip (see useConsoleTabs.ts).
+    tabs: tabs.tabs,
+    activeTabId: tabs.activeTabId,
+    activateTab: tabs.activateTab,
+    duplicateTab: tabs.duplicateTab,
+    closeTab: tabs.closeTab,
+    registerViewSync: tabs.registerViewSync,
+    isTabSwitchingRef: tabs.isTabSwitchingRef,
   };
 }

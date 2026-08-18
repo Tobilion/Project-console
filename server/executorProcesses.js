@@ -159,16 +159,23 @@ async function verifyProcessStopped(procs, devUrl) {
  * phrase (connection.js), the `stop_process` WS message (dock stop button), and the AI-mode
  * `stopProcess` tool. Was previously copy-pasted three times; all three now route here so the
  * cleanup (kill + map delete + log delete + lastDevUrls delete + both broadcasts) can never
- *  drift. Stops every tracked process for the project — "stop server" is one user intent, and
- *  a single-slot-style "stop just one" would silently leave siblings running. Returns
- *  { ok: false } when nothing is tracked for that project, plus an optional `warning` when
- *  post-stop verification found survivors (process still alive / site still responding).
+ * drift. Stops every tracked process for the project — "stop server" is one user intent, and
+ * a single-slot-style "stop just one" would silently leave siblings running. Returns
+ * { ok: false } when nothing is tracked for that project, plus an optional `warning` when
+ * post-stop verification found survivors (process still alive / site still responding).
+ *
+ * `turnKey` (optional) restricts the stop to processes started by one AI turn — used by the
+ * `cancel` WS message so cancelling an AI turn never tears down a dev server the user started
+ * separately (audit 2026-08-17). With a turnKey, the project's dev URL and log buffer are only
+ * cleared when the turn's stop emptied the slot (a sibling process may still own them).
  */
-export async function stopTrackedProcess(projectId) {
-  const procs = getTrackedProcesses(projectId);
-  if (procs.length === 0) return { ok: false };
+export async function stopTrackedProcess(projectId, { turnKey } = {}) {
+  const slot = runningProcesses.get(projectId);
+  const entries = slot ? [...slot.entries()] : [];
+  const toStop = turnKey ? entries.filter(([, p]) => p.turnKey === turnKey) : entries;
+  if (toStop.length === 0) return { ok: false };
   const commands = [];
-  for (const proc of procs) {
+  for (const [pid, proc] of toStop) {
     if (process.platform === 'win32') {
       // taskkill /f /t kills the wrapper itself — no SIGTERM needed, and sending one first
       // would orphan the tree from the kill (see killProcessTree's sync note).
@@ -179,14 +186,14 @@ export async function stopTrackedProcess(projectId) {
       } catch {}
     }
     commands.push(proc.command);
+    removeTrackedProcess(projectId, pid);
   }
-  const devUrl = state.lastDevUrls.get(projectId) || null;
-  runningProcesses.delete(projectId);
-  processLogs.delete(projectId);
-  forgetDevUrl(projectId);
+  const slotNowEmpty = !runningProcesses.has(projectId);
+  const devUrl = slotNowEmpty ? (state.lastDevUrls.get(projectId) || null) : null;
+  if (slotNowEmpty) forgetDevUrl(projectId);
   broadcast({ type: 'dashboard_update' });
   broadcast({ type: 'processes_update' });
-  const warning = await verifyProcessStopped(procs, devUrl);
+  const warning = await verifyProcessStopped(toStop.map(([, p]) => p), devUrl);
   return { ok: true, command: commands.join('` and `'), warning };
 }
 

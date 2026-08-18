@@ -1,4 +1,5 @@
 import { checkOllama } from '../ollama.js';
+import crypto from 'crypto';
 import { appendMessage } from '../conversationStore.js';
 import { streamWithToolDetection } from './aiStream.js';
 import { analyzeAIExchange } from '../distillation.js';
@@ -51,6 +52,11 @@ export async function handleAIQuery(ws, project, input, sessionContext, workspac
   // request already finished has nothing stale to abort.
   const abortController = new AbortController();
   sessionContext.aiAbortController = abortController;
+  // Turn ownership tag for processes this turn starts via executeCommand — `cancel` uses it to
+  // kill ONLY this turn's processes, never a dev server the user started separately (audit
+  // 2026-08-17). Cleared in finally below alongside aiAbortController.
+  const turnKey = crypto.randomUUID();
+  sessionContext.turnKey = turnKey;
 
   try {
     ws.send(JSON.stringify({ type: 'ai_start', data: `Thinking... (${model})` }));
@@ -83,7 +89,7 @@ export async function handleAIQuery(ws, project, input, sessionContext, workspac
 
       const resultsSummary = [];
       for (const call of toolCalls) {
-        const result = await runToolCall(ws, project, tools, call, workspaceTools, workspaceProjects, sessionContext.toolGrants);
+        const result = await runToolCall(ws, project, tools, call, workspaceTools, workspaceProjects, sessionContext.toolGrants, turnKey);
         ws.send(JSON.stringify({ type: 'tool_result', data: { tool: call.tool, args: call.args, result } }));
         resultsSummary.push(`Tool ${call.tool} returned: ${JSON.stringify(result)}`);
         // Track tool call for distillation
@@ -140,7 +146,7 @@ export async function handleAIQuery(ws, project, input, sessionContext, workspac
     // warning is sent as its own message rather than editing finalText in place, because the
     // fabricated claim was already streamed to the user token-by-token before we get here — it
     // can't be un-shown, only corrected right after.
-    if (toolHistory.length === 0 && looksLikeFabricatedActionClaim(finalText)) {
+    if (looksLikeFabricatedActionClaim(finalText, toolHistory)) {
       const warning = '⚠ **Nothing was actually run** — no tool call was made during this exchange, so despite what I just said, nothing was actually pushed/committed/changed. Ask again if you want this done for real.';
       ws.send(JSON.stringify({ type: 'error_output', data: `${warning}\n` }));
       finalText = `${finalText}\n\n${warning}`;
@@ -200,6 +206,9 @@ export async function handleAIQuery(ws, project, input, sessionContext, workspac
   } finally {
     if (sessionContext.aiAbortController === abortController) {
       sessionContext.aiAbortController = null;
+    }
+    if (sessionContext.turnKey === turnKey) {
+      sessionContext.turnKey = null;
     }
   }
 

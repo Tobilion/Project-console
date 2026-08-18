@@ -335,6 +335,14 @@ App-global identity (name/title/custom role) edited from the ⚙ Settings modal;
 |---|---|
 | `create a file called X with the text "..."` | Non-AI file create (confirm-gated) |
 | `find the config file` / `where is main.py` | Locate files in the project |
+| `open index.html in the browser` / `preview the page` | Open a file in your default browser — HTML renders with all assets (no dev server needed), other types open/download per the OS association; `open <file> in vs code` / `open <file>` open in the editor instead. The File Tools panel adds an in-console Preview button for HTML files |
+| `open main.py with PyCharm` / `open app.ts in IntelliJ` / `open X in the editor` | Open a file in the IDE you choose — configured editors + per-extension defaults (`.py` → PyCharm, `.java` → IntelliJ, `.html` → browser, ...) live in Settings → Editors & IDEs (data/editors.json) |
+| `open main.py in the folder` / `show file.py in explorer` | Reveal the file in your OS file explorer (folder opens with the file selected) |
+| `Tools → Folder Explorer` | Browse ANY folder on disk — paste a path, folder-in-folder navigation with breadcrumbs + back/forward/up, a search bar that filters the current folder, Lines/Objects view toggle in the bottom bar; double-click (or Enter) opens a file in its OS default app; per-file open-in-IDE/browser/reveal actions. Works in General mode with no project. Ctrl+K "file explorer" finds it too |
+| Settings → Tours / "Take the Tour" | Sectioned tours (General / Tools / Developer / Chat & AI / Tabs / Settings) in card or guided mode — guided steps point at the real controls |
+| Settings → "Include every folder as a project" | `scanAllFolders`: every immediate subfolder appears as a project even with no code/git/config (classifies General) — off by default, rescan after toggling |
+| The tab strip at the top ("New tab") | Chrome-style tabs — each tab has its own scan folder, project list and open chat; duplicate a tab to scan another folder while the first keeps its own; every tab has an × (closing the last one leaves a fresh default tab); layout persists across reloads |
+| The Chats list in the left sidebar | Click any saved chat to reopen it — the console switches to the tab whose folder that project lives in, so the right project is active automatically |
 | `open in vs code` / `open in terminal` / `open in cursor` / `open in explorer` | Open the project in external tools |
 | `open main.py` / `open the config file` | Open a specific file |
 | `open the github page` | Open the project's GitHub repo page |

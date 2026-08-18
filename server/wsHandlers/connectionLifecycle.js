@@ -119,6 +119,10 @@ function onConnection(ws) {
     // it's an attribution label, not an account (no auth, no permissions — LAN trust only).
     displayName: 'local',
     workspaceProjectIds: [],
+    // Phase T (2026-08-14): the tab workspace this connection is scoped to (from the execute
+    // payload's tabId). Project resolution goes through this tab's own scan cache when set,
+    // so two tabs scanning different folders never cross-resolve. Null for legacy clients.
+    tabId: null,
     currentSessionId: null,
     aiEnabled: false,
     aiModel: null,

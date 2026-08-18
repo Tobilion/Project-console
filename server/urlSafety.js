@@ -11,7 +11,7 @@
 // IPv6 hostnames arrive bracket-wrapped from the WHATWG parser ("[fe80::1]"), so each IPv6
 // pattern appears in both bare and bracketed forms. fe80:: link-local is included because it
 // is a documented SSRF class (reachable without routing) and never a legitimate external target.
-const BLOCKED_HOSTNAME_RE = /^(localhost|127\.|10\.|192\.168\.|169\.254\.|0\.0\.0\.0|::1|\[::1\]|fe80::|\[fe80::)/i;
+const BLOCKED_HOSTNAME_RE = /^(localhost|127\.|10\.|192\.168\.|169\.254\.|0\.0\.0\.0|::1|\[::1\]|fe80::|\[fe80::|\[?::ffff:)/i;
 const PRIVATE_172_RE = /^172\.(1[6-9]|2\d|3[01])\./;
 
 export function isSafeExternalUrl(urlObj) {

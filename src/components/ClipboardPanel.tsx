@@ -67,6 +67,13 @@ export function ClipboardPanel({ onSendMessage }: ClipboardPanelProps) {
   const copyItem = (i: number) => send(`copy clipboard item ${i + 1}`);
   const copySnippet = (name: string) => send(`copy snippet ${name}`);
   const deleteSnippet = (name: string) => send(`delete snippet ${name}`);
+  // Phase 5: pin = one-click snippet save with a generated name (the panel already had
+  // typed-name saving; this is the Windows Clipboard History "pin to front" gesture).
+  const pinItem = (i: number, text: string) => {
+    const name = `pinned-${new Date().toISOString().slice(0, 16).replace(/[^\w-]/g, '')}`;
+    send(`save this as a snippet: ${name} : ${text}`);
+  };
+  const removeItem = (i: number) => send(`remove clipboard item ${i + 1}`);
   const saveFromClipboard = () => {
     if (!saveName.trim() || history.length === 0) return;
     send(`save this as a snippet: ${saveName.trim()} : ${history[0]}`);
@@ -228,8 +235,14 @@ export function ClipboardPanel({ onSendMessage }: ClipboardPanelProps) {
               <span className="flex-1 min-w-0 text-xs text-fg-muted font-mono truncate" title={h}>
                 {h.length > MAX_PREVIEW ? h.slice(0, MAX_PREVIEW) + '…' : h}
               </span>
+              <button onClick={() => pinItem(i, h)} className="p-1.5 text-fg-faint hover:text-accent-teal rounded transition-colors" title="Pin as a snippet">
+                <Pin size={13} />
+              </button>
               <button onClick={() => copyItem(i)} className="p-1.5 text-accent-blue/70 hover:text-accent-blue rounded transition-colors" title={`Copy item ${i + 1}`}>
                 <Copy size={13} />
+              </button>
+              <button onClick={() => removeItem(i)} className="p-1.5 text-fg-faint hover:text-accent-red rounded transition-colors" title={`Remove item ${i + 1}`}>
+                <Trash2 size={13} />
               </button>
             </div>
           ))}

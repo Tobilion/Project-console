@@ -102,6 +102,25 @@ export async function appendMemoryEntry(projectPath, content) {
     return { success: false, error: 'content is too long for a single memory entry (500 char max) — save one concise fact at a time.' };
   }
 
+  // Semantic redundancy check runs OUTSIDE the per-project write lock (audit 2026-08-17):
+  // it embeds up to MAX_LINES_TO_SCORE lines — seconds on first model use — and holding the
+  // lock across it would stall a concurrent saveMemory write for the same project. The
+  // string-dedupe check inside the lock re-verifies against the fresh file, so an append
+  // landing between this snapshot and the write is still caught (same-text races only; a
+  // same-fact-different-wording race is rare and the cost of one near-duplicate is low).
+  let snapshot = '';
+  try {
+    snapshot = await fs.readFile(memoryPath(projectPath), 'utf-8');
+  } catch (err) {
+    if (err.code !== 'ENOENT') throw err;
+  }
+  const snapshotLines = snapshot.split('\n').filter((l) => l.trim())
+    .map((l) => l.replace(/^- /, '').replace(/\s*\(\d{4}-\d{2}-\d{2}\)\s*$/, '').trim())
+    .filter(Boolean);
+  if (snapshotLines.length >= 1 && await isSemanticallyRedundant(snapshotLines, trimmed)) {
+    return { success: true, data: 'Already remembered (similar fact skipped).' };
+  }
+
   return withMemoryLock(projectPath, async () => {
     const filePath = memoryPath(projectPath);
     let existing = '';
@@ -116,18 +135,6 @@ export async function appendMemoryEntry(projectPath, content) {
     const isDuplicate = lines.some((l) => normalize(l.replace(/^- /, '').replace(/\s*\(\d{4}-\d{2}-\d{2}\)\s*$/, '')) === target);
     if (isDuplicate) {
       return { success: true, data: 'Already remembered (duplicate skipped).' };
-    }
-
-    // Semantic redundancy check (Phase 1, Part 1.3): re-saving the same fact with different
-    // wording used to append a near-duplicate entry — the string dedupe above only catches
-    // whitespace/case variations. Compare against the cleaned existing lines (no bullet
-    // prefix, no trailing date) via the shared embedding model; the check falls back to
-    // false when the model isn't loaded, so this never blocks or breaks a save.
-    const cleanLines = lines
-      .map((l) => l.replace(/^- /, '').replace(/\s*\(\d{4}-\d{2}-\d{2}\)\s*$/, '').trim())
-      .filter(Boolean);
-    if (cleanLines.length >= 1 && await isSemanticallyRedundant(cleanLines, trimmed)) {
-      return { success: true, data: 'Already remembered (similar fact skipped).' };
     }
 
     const date = new Date().toISOString().slice(0, 10);

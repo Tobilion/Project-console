@@ -35,7 +35,7 @@ const PROBE = process.argv.includes('--probe');
 const base = path.join(path.dirname(fileURLToPath(import.meta.url)), '..') + path.sep;
 
 const { semanticMatcher } = await import(pathToFileURL(base + 'semanticMatcher.js').href);
-const { matchInput } = await import(pathToFileURL(base + 'matcher.js').href);
+const { matchInput, isNlpBuiltinEligible } = await import(pathToFileURL(base + 'matcher.js').href);
 
 const ENTRIES = [
   { triggers: ['start flask server', 'run locally', 'start netpulse'], type: 'command', action: 'python main.py serve' },
@@ -403,6 +403,24 @@ const BATTERIES = [
     ],
   },
   {
+    // NetPulse crosscheck (2026-08-17): "How do I publish" fired the deploy git-push confirm —
+    // deploy's example cluster owns publish-shaped phrases and "publish" was missing from the
+    // question-shape override's verb list. Question shapes now pin to how_do_i (the catalog
+    // answers push-to-github first, npm publish as the suggestion); the imperative guard row
+    // keeps "publish to production" on deploy, where it belongs by design.
+    name: 'PUBLISH-2026-08-17 (publish question shapes vs the deploy confirm)',
+    items: [
+      ['how do i publish', 'BUILTIN=system.chit_chat.how_do_i'],
+      ['how do i publish to npm', 'BUILTIN=system.chit_chat.how_do_i'],
+      ['how do i publish this', 'BUILTIN=system.chit_chat.how_do_i'],
+      ['how to publish my changes', 'BUILTIN=system.chit_chat.how_do_i'],
+      ['what is the command to publish', 'BUILTIN=system.chit_chat.how_do_i'],
+      ['command to publish to npm', 'BUILTIN=system.chit_chat.how_do_i'],
+      // imperative guard: publishing to production IS the deploy flow — checkpoint + git push
+      ['publish to production', 'BUILTIN=system.chit_chat.deploy'],
+    ],
+  },
+  {
     name: 'CODE-SEARCH (Phase 7 semantic code search intent)',
     items: [
       ['where do we handle retries', 'BUILTIN=project.code.search'],
@@ -567,6 +585,8 @@ const BATTERIES = [
       ['clipboard history', 'BUILTIN=clipboard.show'],
       ['copy clipboard item 2', 'BUILTIN=clipboard.copy_item'],
       ['clear clipboard history', 'BUILTIN=clipboard.clear'],
+      ['remove clipboard item 2', 'BUILTIN=clipboard.remove_item'],
+      ['delete clipboard item 1', 'BUILTIN=clipboard.remove_item'],
       ['save this as a snippet: welcome', 'BUILTIN=snippet.save'],
       ['show my snippets', 'BUILTIN=snippet.show'],
       ['copy snippet welcome', 'BUILTIN=snippet.copy'],
@@ -627,6 +647,77 @@ const BATTERIES = [
       ['list all my files', 'BUILTIN=project.context.structure'],
     ],
   },
+  {
+    // Phase T (2026-08-14): "open X.html in the browser" / "preview the page" — pinned by the
+    // pre-semantic open_html override (the open_file rule's filename pattern would otherwise
+    // send .html names to the editor). Guards: the editor/repo/site owners keep their shapes.
+    name: 'HTML-OPEN (Phase T open-in-browser set)',
+    items: [
+      ['open index.html in the browser', 'BUILTIN=project.action.open_html'],
+      ['open index.html', 'BUILTIN=project.action.open_html'],
+      ['open the html file in the browser', 'BUILTIN=project.action.open_html'],
+      ['preview the page', 'BUILTIN=project.action.open_html'],
+      ['preview index.html', 'BUILTIN=project.action.open_html'],
+      ['open the page in the browser', 'BUILTIN=project.action.open_html'],
+      ['show the html file in the browser', 'BUILTIN=project.action.open_html'],
+      ['view the html file', 'BUILTIN=project.action.open_html'],
+      // Any file type with an explicit browser mention opens in the browser (rule d) — the
+      // OS association handles HTML (renders) and other types (open/download).
+      ['open report.pdf in the browser', 'BUILTIN=project.action.open_html'],
+      ['view main.py in the browser', 'BUILTIN=project.action.open_html'],
+      ['show app.ts in the browser', 'BUILTIN=project.action.open_html'],
+      // Guards: explicit editor/repo/site shapes stay with their owners; no-browser file
+      // opens default to the editor.
+      ['open index.html in vs code', 'BUILTIN=project.action.open_in_vscode'],
+      ['open main.py', 'BUILTIN=project.action.open_file'],
+      ['open the github page', 'BUILTIN=project.action.open_github_page'],
+      ['open the dev site', 'BUILTIN=project.action.open_site'],
+      ['open the folder', 'BUILTIN=project.action.open_in_explorer'],
+      ['open a file', 'BUILTIN=project.action.open_file'],
+    ],
+  },
+  {
+    // Phase T2 (2026-08-14): open-with-IDE + reveal-in-folder shapes, pinned by pre-semantic
+    // overrides (a filename + with/in <editor> is unambiguous; a filename + "in the folder"
+    // means reveal, never edit). Guards: the editor/repo/site/folder owners keep their shapes.
+    name: 'OPEN-WITH (Phase T2 open-with-IDE + reveal set)',
+    items: [
+      ['open main.py with pycharm', 'BUILTIN=project.action.open_with'],
+      ['open main.py with PyCharm', 'BUILTIN=project.action.open_with'],
+      ['open app.ts in intellij', 'BUILTIN=project.action.open_with'],
+      ['open the config file in the editor', 'BUILTIN=project.action.open_with'],
+      ['open file.py in the default editor', 'BUILTIN=project.action.open_with'],
+      ['open report.pdf in webstorm', 'BUILTIN=project.action.open_with'],
+      ['open main.py in the folder', 'BUILTIN=project.action.reveal_file'],
+      ['show file.py in explorer', 'BUILTIN=project.action.reveal_file'],
+      ['open the config file in the folder', 'BUILTIN=project.action.reveal_file'],
+      // Guards: pre-existing owners keep their shapes.
+      ['open the folder', 'BUILTIN=project.action.open_in_explorer'],
+      ['open index.html in vs code', 'BUILTIN=project.action.open_in_vscode'],
+      ['open the github page', 'BUILTIN=project.action.open_github_page'],
+      ['open index.html in the browser', 'BUILTIN=project.action.open_html'],
+      ['open the site', 'BUILTIN=run_project'],
+    ],
+  },
+  {
+    // Audit 2026-08-17: NLP-stage dispatch gate (isNlpBuiltinEligible). Unit rows — the full
+    // pipeline rarely reaches the NLP stage (semantic wins first), so the gate is asserted
+    // directly: registered canned intents pass unless the input looks like a real request;
+    // knowledge intents fail on file-naming queries; STALE ids (removed from the registry)
+    // and config-entry ids (project.action.N.M — resolved against config, never the registry)
+    // are never eligible.
+    name: 'NLP-GATE (isNlpBuiltinEligible — audit 2026-08-17)',
+    unit: true,
+    items: [
+      ['system.chit_chat.gratitude', 'thanks a lot', true],
+      ['system.chit_chat.gratitude', 'random garbage.txt', false],
+      ['system.chit_chat.time', 'what is the time', true],
+      ['stale.removed.intent', 'thanks a lot', false],
+      ['project.knowledge.overview', 'what is the overview', true],
+      ['project.knowledge.overview', 'what about main.py', false],
+      ['project.action.0.1', 'run the dev script', false],
+    ],
+  },
 ];
 
 await semanticMatcher.initialize();
@@ -641,7 +732,20 @@ for (const battery of BATTERIES) {
     continue;
   }
   console.log(`\n=== ${battery.name} ===`);
-  for (const [input, expect] of battery.items) {
+  for (const item of battery.items) {
+    if (battery.unit) {
+      // Unit-style rows (no embeddings): [intent, input, expected] against a pure predicate —
+      // same pattern as the fixture-based unit rows in checkHandlerCoverage.js.
+      const [intent, input, expected] = item;
+      const got = isNlpBuiltinEligible(intent, input);
+      const ok = got === expected;
+      total++;
+      if (!ok) failed++;
+      if (PROBE) console.log(`  ${JSON.stringify(intent).padEnd(44)} / ${JSON.stringify(input).padEnd(30)} -> ${got}`);
+      else if (!ok) console.log(`  FAIL ${JSON.stringify(intent)} / ${JSON.stringify(input)}\n    expected: ${expected}\n    got:      ${got}`);
+      continue;
+    }
+    const [input, expect] = item;
     const r = await matchInput(input, project, 0);
     const got = fmt(r);
     const ok = got === expect;

@@ -1,6 +1,7 @@
 import React from 'react';
 import { Project, ChatSession } from '../types';
-import { FolderSearch, Plus, MessageSquare, Trash2, Pencil, ChevronLeft, ChevronRight, Brain, FolderGit2, Star } from 'lucide-react';
+import { GENERAL_PROJECT_ID } from '../types';
+import { FolderSearch, Plus, MessageSquare, Trash2, Pencil, ChevronLeft, ChevronRight, Brain, FolderGit2, Star, Maximize2 } from 'lucide-react';
 import { WorkspaceToggleButton } from './ui/WorkspaceToggleButton';
 
 interface SidebarDrawerProps {
@@ -17,6 +18,8 @@ interface SidebarDrawerProps {
   deleteSession: (id: string) => void;
   renameSession: (id: string, title: string) => void;
   handleSelectProject: (p: Project) => void;
+  /** Feature B (2026-08-14): opens the full Chat History overlay. */
+  onOpenChatHistory: () => void;
   workspaceProjects: Project[];
   addToWorkspace: (p: Project) => void;
   removeFromWorkspace: (projectId: string) => void;
@@ -25,6 +28,18 @@ interface SidebarDrawerProps {
   activeServersCount: number;
   collapsed: boolean;
   onSetCollapsed: (v: boolean) => void;
+}
+
+// Feature B (2026-08-14): the sidebar's chat list is scoped by a General | Projects switch
+// instead of a per-project "show all" toggle — the user asked to always be able to see all
+// chats of a kind at once. General chats are those with no project (or the reserved General
+// pseudo-workspace); Projects covers everything else.
+function isGeneralChat(s: ChatSession): boolean {
+  return !s.projectId || s.projectId === GENERAL_PROJECT_ID;
+}
+
+function folderLabel(path: string): string {
+  return path.replace(/[\\/]+$/, '').split(/[\\/]/).pop() || path;
 }
 
 // Claude/ChatGPT-style scoping: when a project is active, the sidebar shows only that
@@ -36,12 +51,23 @@ export const SidebarDrawer = ({
   projects, activeProject, sessions, activeSessionId,
   scanPath, setScanPath, handleScan, handleBrowseFolder,
   createSession, switchSession, deleteSession, renameSession, handleSelectProject,
+  onOpenChatHistory,
   workspaceProjects, addToWorkspace, removeFromWorkspace,
   aiEnabled, aiModel, activeServersCount, collapsed, onSetCollapsed,
 }: SidebarDrawerProps) => {
-  const [showAllChats, setShowAllChats] = React.useState(false);
+  const [chatTab, setChatTab] = React.useState<'general' | 'projects'>('general');
   const [editingId, setEditingId] = React.useState<string | null>(null);
   const [draftTitle, setDraftTitle] = React.useState('');
+  // Phase 5: chat-list search filter (title + project name, client-side like the Dashboard
+  // filter — no server round-trip for a local list).
+  const [chatSearch, setChatSearch] = React.useState('');
+  // Phase 5: default the chat tab to the active project's chats when a project is active
+  // (per-project scoping is the intended default; the General | Projects switch stays the
+  // deliberate escape hatch — it only re-syncs when the active project changes, so a user
+  // who deliberately flipped to General isn't yanked back mid-session).
+  React.useEffect(() => {
+    if (activeProject?.id) setChatTab('projects');
+  }, [activeProject?.id]);
   // Phase 8 (2026-08-11): pinned/favorite projects — a browser-local preference (localStorage),
   // deliberately not server state: pinning is pure UI ordering, same class as the sidebar's
   // collapsed flag. Pinned projects render above the rest of the list.
@@ -95,12 +121,16 @@ export const SidebarDrawer = ({
     );
   }
 
-  const visibleSessions = (showAllChats || !activeProject)
-    ? sessions
-    : sessions.filter(s => s.projectId === activeProject.id);
+  const visibleSessions = chatTab === 'general'
+    ? sessions.filter(isGeneralChat)
+    : sessions.filter((s) => !isGeneralChat(s));
+  const searchNeedle = chatSearch.trim().toLowerCase();
+  const filteredSessions = searchNeedle
+    ? visibleSessions.filter((s) => s.title.toLowerCase().includes(searchNeedle) || (s.projectName || '').toLowerCase().includes(searchNeedle))
+    : visibleSessions;
 
   return (
-    <aside className="hidden lg:flex flex-col w-[240px] flex-shrink-0 h-full bg-overlay border-r border-border-faint overflow-hidden">
+    <aside data-tour="sidebar" className="hidden lg:flex flex-col w-[240px] flex-shrink-0 h-full bg-overlay border-r border-border-faint overflow-hidden">
       <div className="flex items-center gap-1.5 p-2.5 border-b border-border-faint flex-shrink-0">
         <button onClick={() => onSetCollapsed(true)} className="p-1 text-fg-dim hover:text-fg-strong transition-colors flex-shrink-0" title="Collapse sidebar">
           <ChevronLeft size={16} />
@@ -127,31 +157,47 @@ export const SidebarDrawer = ({
 
       <div className="p-2.5 flex-shrink-0">
         <button
-          onClick={() => createSession(activeProject?.id, activeProject?.name)}
+          onClick={() => chatTab === 'general' ? createSession(undefined, undefined) : createSession(activeProject?.id, activeProject?.name)}
           className="w-full flex items-center justify-center gap-1.5 py-1.5 bg-accent-blue/20 text-accent-blue rounded-lg text-[10px] font-bold tracking-wider uppercase hover:bg-accent-blue/30 transition-colors"
         >
           <Plus size={12} /> New Chat
         </button>
       </div>
 
-      <div className="px-2.5 mb-1 flex-shrink-0">
+      <div className="px-2.5 mb-1 flex items-center justify-between flex-shrink-0">
         <span className="text-[10px] tracking-[0.2em] uppercase text-fg-dim font-bold">Chats</span>
-      </div>
-      {activeProject && (
-        <button
-          onClick={() => setShowAllChats(v => !v)}
-          className="text-[10px] text-fg-dim hover:text-fg-muted text-left px-2.5 mb-1 transition-colors flex-shrink-0"
-        >
-          {showAllChats ? `Showing all projects — show only "${activeProject.name}"` : 'Show chats from all projects'}
+        <button onClick={onOpenChatHistory} className="p-1 text-fg-dim hover:text-fg-strong rounded transition-colors" title="Open full chat history">
+          <Maximize2 size={12} />
         </button>
-      )}
+      </div>
+      <div className="px-2.5 mb-1 flex items-center gap-0.5 flex-shrink-0">
+        {(['general', 'projects'] as const).map((t) => (
+          <button
+            key={t}
+            onClick={() => setChatTab(t)}
+            className={`flex-1 px-2 py-1 rounded-md text-[10px] font-semibold capitalize transition-colors ${chatTab === t ? 'bg-accent-blue/15 text-accent-blue' : 'text-fg-dim hover:text-fg-strong'}`}
+          >
+            {t}
+          </button>
+        ))}
+      </div>
+      <div className="px-2.5 mb-1 flex-shrink-0">
+        <input
+          value={chatSearch}
+          onChange={(e) => setChatSearch(e.target.value)}
+          placeholder={`Filter ${chatTab} chats...`}
+          className="w-full bg-surface/50 border border-border-soft rounded-md px-2 py-1 text-[11px] text-fg placeholder:text-fg-dim focus:outline-none focus:border-accent-blue/50"
+        />
+      </div>
       <div className="flex-1 min-h-0 overflow-y-auto px-2 pb-1">
-        {visibleSessions.length === 0 && (
-          <button onClick={() => createSession(activeProject?.id, activeProject?.name)} className="w-full text-xs text-fg-dim italic text-left py-2 px-2 rounded-lg hover:bg-panel transition-colors">
-            {activeProject && !showAllChats ? `No chats yet for "${activeProject.name}" — create one` : 'No chats yet — create one'}
+        {filteredSessions.length === 0 && (
+          <button onClick={() => chatTab === 'general' ? createSession(undefined, undefined) : createSession(activeProject?.id, activeProject?.name)} className="w-full text-xs text-fg-dim italic text-left py-2 px-2 rounded-lg hover:bg-panel transition-colors">
+            {visibleSessions.length === 0
+              ? (chatTab === 'general' ? 'No general chats yet — create one' : 'No project chats yet — create one')
+              : `No chats match "${chatSearch}".`}
           </button>
         )}
-        {visibleSessions.map(s => (
+        {filteredSessions.map(s => (
           <div
             key={s.id}
             role="button"
@@ -184,9 +230,12 @@ export const SidebarDrawer = ({
               ) : (
                 <span className="truncate">{s.title}</span>
               )}
-              {s.projectName && (
+              {s.projectName ? (
                 <span className="truncate text-[10px] text-fg-dim normal-case tracking-normal">{s.projectName}</span>
-              )}
+              ) : s.workspacePath ? (
+                // General chats have no project — show which workspace folder they belong to.
+                <span className="truncate text-[10px] text-fg-dim normal-case tracking-normal">{folderLabel(s.workspacePath)}</span>
+              ) : null}
             </span>
             {editingId !== s.id && (
               <button onClick={(e) => { e.stopPropagation(); setEditingId(s.id); setDraftTitle(s.title); }} className="opacity-0 group-hover:opacity-100 text-fg-dim hover:text-accent-blue transition-all flex-shrink-0" title="Rename chat">
@@ -203,7 +252,7 @@ export const SidebarDrawer = ({
       <div className="px-2.5 mt-1 mb-1 flex-shrink-0">
         <span className="text-[10px] tracking-[0.2em] uppercase text-fg-dim font-bold">Projects</span>
       </div>
-      <div className="max-h-44 overflow-y-auto px-2 pb-2 flex-shrink-0">
+      <div className="max-h-44 overflow-y-auto px-2 pb-2 flex-shrink-0 [scrollbar-width:thin]">
         {projects.length === 0 ? (
           <div className="text-[11px] text-fg-dim italic px-2 py-2">No projects found. Try scanning a different path.</div>
         ) : (

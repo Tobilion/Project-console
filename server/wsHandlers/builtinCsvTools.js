@@ -43,7 +43,7 @@ export const csvHandlers = {
     if (!agg) { answer(ws, 'Say it like: `sum column sales in data.csv`.'); return; }
     const { file, column } = agg;
     if (!isSafeParamValue(file) || !isSafeParamValue(column)) { answer(ws, 'Unsafe filename/column name.'); return; }
-    const csv = loadCsv(project.path, file);
+    const csv = await loadCsv(project.path, file);
     if (!csv.ok) { answer(ws, csv.error); return; }
     const idx = findColumn(csv.headers, column);
     if (idx === -1) { answer(ws, columnError(file, column)); return; }
@@ -57,7 +57,7 @@ export const csvHandlers = {
     if (!agg) { answer(ws, 'Say it like: `average column price in data.csv`.'); return; }
     const { file, column } = agg;
     if (!isSafeParamValue(file) || !isSafeParamValue(column)) { answer(ws, 'Unsafe filename/column name.'); return; }
-    const csv = loadCsv(project.path, file);
+    const csv = await loadCsv(project.path, file);
     if (!csv.ok) { answer(ws, csv.error); return; }
     const idx = findColumn(csv.headers, column);
     if (idx === -1) { answer(ws, columnError(file, column)); return; }
@@ -71,7 +71,7 @@ export const csvHandlers = {
     if (!clause) { answer(ws, 'Say it like: `count rows in data.csv where status equals done`.'); return; }
     const { file, column, op, value } = clause;
     if (!isSafeParamValue(file) || !isSafeParamValue(column)) { answer(ws, 'Unsafe filename/column name.'); return; }
-    const csv = loadCsv(project.path, file);
+    const csv = await loadCsv(project.path, file);
     if (!csv.ok) { answer(ws, csv.error); return; }
     const idx = findColumn(csv.headers, column);
     if (idx === -1) { answer(ws, columnError(file, column)); return; }
@@ -85,7 +85,7 @@ export const csvHandlers = {
     if (!clause) { answer(ws, 'Say it like: `filter data.csv where price greater than 50`.'); return; }
     const { file, column, op, value } = clause;
     if (!isSafeParamValue(file) || !isSafeParamValue(column)) { answer(ws, 'Unsafe filename/column name.'); return; }
-    const csv = loadCsv(project.path, file);
+    const csv = await loadCsv(project.path, file);
     if (!csv.ok) { answer(ws, csv.error); return; }
     const idx = findColumn(csv.headers, column);
     if (idx === -1) { answer(ws, columnError(file, column)); return; }

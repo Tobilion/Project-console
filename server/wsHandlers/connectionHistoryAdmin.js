@@ -21,6 +21,7 @@ const TYPE_LABELS = {
 };
 
 const answer = (ws, data) => ws.send(JSON.stringify({ type: 'answer', data }));
+const end = (ws) => ws.send(JSON.stringify({ type: 'end' }));
 
 function formatList(project, actions) {
   if (actions.length === 0) {
@@ -39,6 +40,7 @@ export async function handleHistoryCommand(ws, project, lowerInput, input) {
   if (showMatch) {
     const limit = showMatch[1] ? Math.min(parseInt(showMatch[1], 10), 100) : 15;
     answer(ws, formatList(project, listActions(project.path, { limit })));
+    end(ws);
     return true;
   }
 
@@ -48,6 +50,7 @@ export async function handleHistoryCommand(ws, project, lowerInput, input) {
     const action = getAction(project.path, id);
     if (!action) {
       answer(ws, `No action with id \`${id}\` in **[${project.name}]** — try \`show history\`.`);
+      end(ws);
       return true;
     }
     if (action.type.startsWith('file_')) {
@@ -75,6 +78,7 @@ export async function handleHistoryCommand(ws, project, lowerInput, input) {
     } else {
       ws.send(JSON.stringify({ type: 'error_output', data: `${result.error}\n` }));
     }
+    end(ws);
     return true;
   }
 

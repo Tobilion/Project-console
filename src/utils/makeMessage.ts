@@ -1,4 +1,5 @@
 import { TerminalMessage } from '../types';
+import { makeId } from '../hooks/wsCtx';
 
 /**
  * Builds a TerminalMessage with a fresh id — the overwhelmingly common shape across hooks is
@@ -11,5 +12,8 @@ export function makeMessage(
   content: string,
   extra?: Partial<Omit<TerminalMessage, 'type' | 'content'>>,
 ): TerminalMessage {
-  return { id: Date.now().toString(), type, content, timestamp: Date.now(), ...extra };
+  // makeId (crypto.randomUUID when available) instead of Date.now(): two messages created in
+  // the same millisecond used to get duplicate React keys and drop the last one (audit
+  // 2026-08-17).
+  return { id: makeId(), type, content, timestamp: Date.now(), ...extra };
 }

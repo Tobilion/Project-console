@@ -31,13 +31,21 @@ interface DashboardProps {
   workspaceMode?: 'dev' | 'general';
   /** Server's current scan directory (used to shorten project paths for display). */
   scanPath?: string;
+  /** Phase T (2026-08-14): the tab whose workspace the dashboard lists (null = global). */
+  tabId?: string | null;
   onSelectProject: (p: Project) => Promise<void> | void;
+  /** Phase 2 (2026-08-17): like onSelectProject but REUSES the project's open chat when one
+   *  exists — card action buttons (Run/Stop/Push/Open chat) must not hijack the view into an
+   *  empty new session. */
+  onSelectProjectReuse: (p: Project) => Promise<void> | void;
   onSendMessage: (content: string) => Promise<void> | void;
+  /** Phase 5: jump to the dock's log tab filtered to this project. */
+  onViewLogs: (projectId: string) => void;
 }
 
 type DashboardTab = 'projects' | 'live';
 
-export const Dashboard = ({ onClose, refreshSignal = 0, projects, workspaceMode = 'dev', scanPath, onSelectProject, onSendMessage }: DashboardProps) => {
+export const Dashboard = ({ onClose, refreshSignal = 0, projects, workspaceMode = 'dev', scanPath, tabId = null, onSelectProject, onSelectProjectReuse, onSendMessage, onViewLogs }: DashboardProps) => {
   const [entries, setEntries] = useState<DashboardEntry[]>([]);
   const [tab, setTab] = useState<DashboardTab>('projects');
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -47,6 +55,7 @@ export const Dashboard = ({ onClose, refreshSignal = 0, projects, workspaceMode 
   // True once the first dashboard fetch has resolved — the tab's empty states say "no
   // projects/URLs" which is misleading while the initial fetch is still in flight.
   const [loaded, setLoaded] = useState(false);
+  const [fetchError, setFetchError] = useState(false);
   const refreshingTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const copiedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Clear the transient-state timers on unmount so their delayed setState can't fire on a
@@ -65,12 +74,20 @@ export const Dashboard = ({ onClose, refreshSignal = 0, projects, workspaceMode 
   const entryMode = (e: DashboardEntry) => e.workspaceType ?? workspaceMode;
 
   const fetchDashboard = useCallback(async () => {
-    const data = await apiFetchJson<DashboardEntry[]>('/api/dashboard');
+    const q = tabId ? `?tab=${encodeURIComponent(tabId)}` : '';
+    const data = await apiFetchJson<DashboardEntry[]>(`/api/dashboard${q}`);
     if (data) {
       setEntries(data);
       setLoaded(true);
+      setFetchError(false);
+    } else {
+      // Server unreachable/failed — stop the perpetual "Loading…" spinner and surface the
+      // failure with a retry (audit 2026-08-17: the old code only set loaded on success, so a
+      // dead server left the Projects tab spinning forever).
+      setLoaded(true);
+      setFetchError(true);
     }
-  }, []);
+  }, [tabId]);
 
   useEffect(() => {
     fetchDashboard();
@@ -132,7 +149,7 @@ export const Dashboard = ({ onClose, refreshSignal = 0, projects, workspaceMode 
     // direct/bypassed command) so it goes through the same confirm_prompt flow as if the user
     // had typed it themselves — the button is a shortcut into chat, not a silent auto-push.
     const text = entry.uncommitted.length > 0 ? 'commit and push my changes' : 'push my changes';
-    await onSelectProject(project);
+    await onSelectProjectReuse(project);
     await onSendMessage(text);
     onClose();
   };
@@ -140,7 +157,7 @@ export const Dashboard = ({ onClose, refreshSignal = 0, projects, workspaceMode 
   const handleOpenChat = async (entry: DashboardEntry) => {
     const project = projects.find((p) => p.id === entry.id);
     if (!project) return;
-    await onSelectProject(project);
+    await onSelectProjectReuse(project);
     onClose();
   };
 
@@ -149,7 +166,7 @@ export const Dashboard = ({ onClose, refreshSignal = 0, projects, workspaceMode 
   const handleRun = async (entry: DashboardEntry) => {
     const project = projects.find((p) => p.id === entry.id);
     if (!project) return;
-    await onSelectProject(project);
+    await onSelectProjectReuse(project);
     await onSendMessage('run the site');
     onClose();
   };
@@ -157,7 +174,7 @@ export const Dashboard = ({ onClose, refreshSignal = 0, projects, workspaceMode 
   const handleStop = async (entry: DashboardEntry) => {
     const project = projects.find((p) => p.id === entry.id);
     if (!project) return;
-    await onSelectProject(project);
+    await onSelectProjectReuse(project);
     await onSendMessage('stop the server');
     onClose();
   };
@@ -240,6 +257,13 @@ export const Dashboard = ({ onClose, refreshSignal = 0, projects, workspaceMode 
       <div className="flex-1 overflow-y-auto space-y-2 pr-1">
         {!loaded && entries.length === 0 ? (
           <div className="text-sm text-fg-dim italic text-center py-12">Loading…</div>
+        ) : fetchError && entries.length === 0 ? (
+          <div className="flex flex-col items-center gap-3 py-12">
+            <p className="text-sm text-fg-muted">Could not reach the server.</p>
+            <button onClick={() => { setLoaded(false); setFetchError(false); fetchDashboard(); }} className="px-4 h-9 rounded-lg bg-accent-blue text-white text-xs font-semibold hover:bg-accent-blue/80 transition-colors">
+              Retry
+            </button>
+          </div>
         ) : tab === 'live' ? (
           liveEntries.length === 0 ? (
             <div className="text-sm text-fg-dim italic text-center py-12">
@@ -425,6 +449,15 @@ export const Dashboard = ({ onClose, refreshSignal = 0, projects, workspaceMode 
                       <MessageSquare size={12} />
                       Open in chat
                     </button>
+                    {!isGeneral && (entry.runningCommand || entry.devUrl) && (
+                      <button
+                        onClick={() => onViewLogs(entry.id)}
+                        className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg bg-scrim-faint hover:bg-panel-strong text-fg-strong border border-border-soft transition-colors"
+                      >
+                        <Terminal size={12} />
+                        View logs
+                      </button>
+                    )}
                     {!isGeneral && !entry.runningCommand && (
                       <button
                         onClick={() => handleRun(entry)}

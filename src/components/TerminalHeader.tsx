@@ -1,11 +1,13 @@
 import React, { useState } from 'react';
 import { Project, AIStatus, ToolCallEntry } from '../types';
-import { Terminal as TerminalIcon, Download, FileDown, ListChecks, Settings, XCircle, Maximize2, Minimize2 } from 'lucide-react';
+import { Terminal as TerminalIcon, Download, FileDown, ListChecks, Settings, XCircle, Maximize2, Minimize2, MessagesSquare } from 'lucide-react';
 
 interface TerminalHeaderProps {
   activeProject: Project | null;
   isFullscreen?: boolean;
   onToggleFullscreen?: () => void;
+  /** Feature B (2026-08-14): opens the full Chat History overlay. */
+  onOpenChatHistory?: () => void;
   ollamaStatus: AIStatus | null;
   workspaceProjects: Project[];
   removeFromWorkspace: (projectId: string) => void;
@@ -26,6 +28,7 @@ export function TerminalHeader({
   activeProject,
   isFullscreen,
   onToggleFullscreen,
+  onOpenChatHistory,
   ollamaStatus,
   workspaceProjects,
   removeFromWorkspace,
@@ -55,6 +58,11 @@ export function TerminalHeader({
       {onToggleFullscreen && (
         <button onClick={onToggleFullscreen} className="p-1.5 text-fg-dim hover:text-fg-strong transition-colors flex-shrink-0" title={isFullscreen ? 'Exit fullscreen' : 'Fullscreen chat'}>
           {isFullscreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
+        </button>
+      )}
+      {onOpenChatHistory && (
+        <button onClick={onOpenChatHistory} className="p-1.5 text-fg-dim hover:text-fg-strong transition-colors flex-shrink-0" title="Chat history (all chats)">
+          <MessagesSquare size={16} />
         </button>
       )}
       {ollamaStatus && (

@@ -1,16 +1,23 @@
-import { Calculator, FileText, ListChecks, FolderSearch, StickyNote, Table as TableIcon, ClipboardCopy, Archive, Bell, BookOpen, Store, LayoutGrid, ArrowLeft } from 'lucide-react';
+import { lazy, Suspense } from 'react';
+import { Calculator, FileText, ListChecks, FolderSearch, FolderOpen, StickyNote, Table as TableIcon, ClipboardCopy, Archive, Bell, BookOpen, Store, LayoutGrid, ArrowLeft } from 'lucide-react';
 import type { ToolPanelDef, Project } from '../types';
-import { PdfToolsPanel } from './PdfToolsPanel';
-import { RemindersPanel } from './RemindersPanel';
-import { FileToolsPanel } from './FileToolsPanel';
-import { NotesPanel } from './NotesPanel';
-import { CalculatorPanel } from './CalculatorPanel';
-import { SpreadsheetPanel } from './SpreadsheetPanel';
-import { ClipboardPanel } from './ClipboardPanel';
-import { BackupPanel } from './BackupPanel';
-import { NotificationsPanel } from './NotificationsPanel';
-import { DocumentsPanel } from './DocumentsPanel';
-import { MarketplacePanel } from './MarketplacePanel';
+
+// Phase 6 (2026-08-17): panels are one-at-a-time views — ideal code-split points. React.lazy
+// defers each panel's chunk (and its heavy deps: pdf-lib/pdf-parse, jspdf, mammoth, ...)
+// until the panel actually opens, keeping the main bundle lean. The static grid shell
+// renders instantly; only the opened panel suspends, behind a small loading fallback.
+const CalculatorPanel = lazy(() => import('./CalculatorPanel').then((m) => ({ default: m.CalculatorPanel })));
+const PdfToolsPanel = lazy(() => import('./PdfToolsPanel').then((m) => ({ default: m.PdfToolsPanel })));
+const RemindersPanel = lazy(() => import('./RemindersPanel').then((m) => ({ default: m.RemindersPanel })));
+const FileToolsPanel = lazy(() => import('./FileToolsPanel').then((m) => ({ default: m.FileToolsPanel })));
+const FolderExplorerPanel = lazy(() => import('./FolderExplorerPanel').then((m) => ({ default: m.FolderExplorerPanel })));
+const NotesPanel = lazy(() => import('./NotesPanel').then((m) => ({ default: m.NotesPanel })));
+const SpreadsheetPanel = lazy(() => import('./SpreadsheetPanel').then((m) => ({ default: m.SpreadsheetPanel })));
+const ClipboardPanel = lazy(() => import('./ClipboardPanel').then((m) => ({ default: m.ClipboardPanel })));
+const BackupPanel = lazy(() => import('./BackupPanel').then((m) => ({ default: m.BackupPanel })));
+const NotificationsPanel = lazy(() => import('./NotificationsPanel').then((m) => ({ default: m.NotificationsPanel })));
+const DocumentsPanel = lazy(() => import('./DocumentsPanel').then((m) => ({ default: m.DocumentsPanel })));
+const MarketplacePanel = lazy(() => import('./MarketplacePanel').then((m) => ({ default: m.MarketplacePanel })));
 
 // Phase 1.5 (UPGRADE-ROADMAP.md, 2026-08-11): the shared interactive "Tools" surface — a
 // card-grid launcher (icon + name + one-line description per registered tool, served by
@@ -24,6 +31,7 @@ const ICONS: Record<string, React.ComponentType<{ size?: number; className?: str
   'file-text': FileText,
   'list-checks': ListChecks,
   'folder-search': FolderSearch,
+  'folder-open': FolderOpen,
   'sticky-note': StickyNote,
   table: TableIcon,
   'clipboard-copy': ClipboardCopy,
@@ -32,6 +40,49 @@ const ICONS: Record<string, React.ComponentType<{ size?: number; className?: str
   'book-open': BookOpen,
   store: Store,
 };
+
+interface PanelProps {
+  project: Project | null;
+  onSendMessage: (text: string) => void;
+  aiEnabled?: boolean;
+  tabId?: string | null;
+}
+
+// Per-panel element factories — each panel takes only the props it actually uses, so the
+// lazy chunks stay decoupled from the full ToolsPanel prop surface.
+const PANEL_VIEWS: Record<string, (p: PanelProps) => React.ReactElement> = {
+  calculator: ({ onSendMessage }) => <CalculatorPanel onSendMessage={onSendMessage} />,
+  'pdf-tools': ({ project, onSendMessage, tabId }) => <PdfToolsPanel project={project} onSendMessage={onSendMessage} tabId={tabId} />,
+  reminders: ({ project, onSendMessage }) => <RemindersPanel project={project} onSendMessage={onSendMessage} />,
+  'file-tools': ({ project, onSendMessage, tabId }) => <FileToolsPanel project={project} onSendMessage={onSendMessage} tabId={tabId} />,
+  'folder-explorer': ({ onSendMessage, tabId }) => <FolderExplorerPanel onSendMessage={onSendMessage} tabId={tabId} />,
+  notes: ({ project, onSendMessage, tabId }) => <NotesPanel project={project} onSendMessage={onSendMessage} tabId={tabId} />,
+  'csv-tools': ({ project, onSendMessage, tabId }) => <SpreadsheetPanel project={project} onSendMessage={onSendMessage} tabId={tabId} />,
+  clipboard: ({ onSendMessage }) => <ClipboardPanel onSendMessage={onSendMessage} />,
+  backup: ({ project, onSendMessage, tabId }) => <BackupPanel project={project} onSendMessage={onSendMessage} tabId={tabId} />,
+  notifications: ({ project, onSendMessage }) => <NotificationsPanel project={project} onSendMessage={onSendMessage} />,
+  'knowledge-base': ({ project, onSendMessage, aiEnabled, tabId }) => <DocumentsPanel project={project} onSendMessage={onSendMessage} aiEnabled={aiEnabled} tabId={tabId} />,
+  marketplace: ({ project, onSendMessage }) => <MarketplacePanel project={project} onSendMessage={onSendMessage} />,
+};
+
+// Shared shell every panel view used to duplicate: back button + the scroll region that
+// owns the panel's vertical space (flex-1 min-h-0 — the panel scrolls, the shell never).
+function PanelShell({ onClose, children }: { onClose: () => void; children: React.ReactNode }) {
+  return (
+    <div className="h-full flex flex-col">
+      <div className="flex items-center gap-2 mb-3 shrink-0">
+        <button
+          onClick={onClose}
+          className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-fg-dim hover:text-fg-strong bg-scrim-faint rounded-lg border border-border-soft transition-colors"
+          title="Back to the tool grid"
+        >
+          <ArrowLeft size={14} /> Tools
+        </button>
+      </div>
+      <div className="flex-1 min-h-0">{children}</div>
+    </div>
+  );
+}
 
 interface ToolsPanelProps {
   panels: ToolPanelDef[];
@@ -47,208 +98,22 @@ interface ToolsPanelProps {
   onSendMessage: (text: string) => void;
   /** Phase 16 audit: AI-mode state — the Documents panel's ask box only shows when AI is on. */
   aiEnabled?: boolean;
+  /** Phase T (2026-08-14): the active tab whose workspace the panels' REST calls address. */
+  tabId?: string | null;
 }
 
-export function ToolsPanel({ panels, panelsError, onRetryPanels, activePanel, onOpenPanel, onClose, project, onSendMessage, aiEnabled }: ToolsPanelProps) {
+export function ToolsPanel({ panels, panelsError, onRetryPanels, activePanel, onOpenPanel, onClose, project, onSendMessage, aiEnabled, tabId = null }: ToolsPanelProps) {
   const active = activePanel ? panels.find(p => p.id === activePanel) : null;
 
   if (active) {
-    if (active.id === 'calculator') {
+    const view = PANEL_VIEWS[active.id];
+    if (view) {
       return (
-        <div className="h-full flex flex-col">
-          <div className="flex items-center gap-2 mb-3 shrink-0">
-            <button
-              onClick={() => onOpenPanel('')}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-fg-dim hover:text-fg-strong bg-scrim-faint rounded-lg border border-border-soft transition-colors"
-              title="Back to the tool grid"
-            >
-              <ArrowLeft size={14} /> Tools
-            </button>
-          </div>
-          <div className="flex-1 min-h-0">
-            <CalculatorPanel onSendMessage={onSendMessage} />
-          </div>
-        </div>
-      );
-    }
-    if (active.id === 'pdf-tools') {
-      return (
-        <div className="h-full flex flex-col">
-          <div className="flex items-center gap-2 mb-3 shrink-0">
-            <button
-              onClick={() => onOpenPanel('')}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-fg-dim hover:text-fg-strong bg-scrim-faint rounded-lg border border-border-soft transition-colors"
-              title="Back to the tool grid"
-            >
-              <ArrowLeft size={14} /> Tools
-            </button>
-          </div>
-          <div className="flex-1 min-h-0">
-            <PdfToolsPanel project={project} onSendMessage={onSendMessage} />
-          </div>
-        </div>
-      );
-    }
-    if (active.id === 'reminders') {
-      return (
-        <div className="h-full flex flex-col">
-          <div className="flex items-center gap-2 mb-3 shrink-0">
-            <button
-              onClick={() => onOpenPanel('')}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-fg-dim hover:text-fg-strong bg-scrim-faint rounded-lg border border-border-soft transition-colors"
-              title="Back to the tool grid"
-            >
-              <ArrowLeft size={14} /> Tools
-            </button>
-          </div>
-          <div className="flex-1 min-h-0">
-            <RemindersPanel project={project} onSendMessage={onSendMessage} />
-          </div>
-        </div>
-      );
-    }
-    if (active.id === 'file-tools') {
-      return (
-        <div className="h-full flex flex-col">
-          <div className="flex items-center gap-2 mb-3 shrink-0">
-            <button
-              onClick={() => onOpenPanel('')}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-fg-dim hover:text-fg-strong bg-scrim-faint rounded-lg border border-border-soft transition-colors"
-              title="Back to the tool grid"
-            >
-              <ArrowLeft size={14} /> Tools
-            </button>
-          </div>
-          <div className="flex-1 min-h-0">
-            <FileToolsPanel project={project} onSendMessage={onSendMessage} />
-          </div>
-        </div>
-      );
-    }
-    if (active.id === 'notes') {
-      return (
-        <div className="h-full flex flex-col">
-          <div className="flex items-center gap-2 mb-3 shrink-0">
-            <button
-              onClick={() => onOpenPanel('')}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-fg-dim hover:text-fg-strong bg-scrim-faint rounded-lg border border-border-soft transition-colors"
-              title="Back to the tool grid"
-            >
-              <ArrowLeft size={14} /> Tools
-            </button>
-          </div>
-          <div className="flex-1 min-h-0">
-            <NotesPanel project={project} onSendMessage={onSendMessage} />
-          </div>
-        </div>
-      );
-    }
-    if (active.id === 'csv-tools') {
-      return (
-        <div className="h-full flex flex-col">
-          <div className="flex items-center gap-2 mb-3 shrink-0">
-            <button
-              onClick={() => onOpenPanel('')}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-fg-dim hover:text-fg-strong bg-scrim-faint rounded-lg border border-border-soft transition-colors"
-              title="Back to the tool grid"
-            >
-              <ArrowLeft size={14} /> Tools
-            </button>
-          </div>
-          <div className="flex-1 min-h-0">
-            <SpreadsheetPanel project={project} onSendMessage={onSendMessage} />
-          </div>
-        </div>
-      );
-    }
-    if (active.id === 'clipboard') {
-      return (
-        <div className="h-full flex flex-col">
-          <div className="flex items-center gap-2 mb-3 shrink-0">
-            <button
-              onClick={() => onOpenPanel('')}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-fg-dim hover:text-fg-strong bg-scrim-faint rounded-lg border border-border-soft transition-colors"
-              title="Back to the tool grid"
-            >
-              <ArrowLeft size={14} /> Tools
-            </button>
-          </div>
-          <div className="flex-1 min-h-0">
-            <ClipboardPanel onSendMessage={onSendMessage} />
-          </div>
-        </div>
-      );
-    }
-    if (active.id === 'backup') {
-      return (
-        <div className="h-full flex flex-col">
-          <div className="flex items-center gap-2 mb-3 shrink-0">
-            <button
-              onClick={() => onOpenPanel('')}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-fg-dim hover:text-fg-strong bg-scrim-faint rounded-lg border border-border-soft transition-colors"
-              title="Back to the tool grid"
-            >
-              <ArrowLeft size={14} /> Tools
-            </button>
-          </div>
-          <div className="flex-1 min-h-0">
-            <BackupPanel project={project} onSendMessage={onSendMessage} />
-          </div>
-        </div>
-      );
-    }
-    if (active.id === 'notifications') {
-      return (
-        <div className="h-full flex flex-col">
-          <div className="flex items-center gap-2 mb-3 shrink-0">
-            <button
-              onClick={() => onOpenPanel('')}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-fg-dim hover:text-fg-strong bg-scrim-faint rounded-lg border border-border-soft transition-colors"
-              title="Back to the tool grid"
-            >
-              <ArrowLeft size={14} /> Tools
-            </button>
-          </div>
-          <div className="flex-1 min-h-0">
-            <NotificationsPanel project={project} onSendMessage={onSendMessage} />
-          </div>
-        </div>
-      );
-    }
-    if (active.id === 'knowledge-base') {
-      return (
-        <div className="h-full flex flex-col">
-          <div className="flex items-center gap-2 mb-3 shrink-0">
-            <button
-              onClick={() => onOpenPanel('')}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-fg-dim hover:text-fg-strong bg-scrim-faint rounded-lg border border-border-soft transition-colors"
-              title="Back to the tool grid"
-            >
-              <ArrowLeft size={14} /> Tools
-            </button>
-          </div>
-          <div className="flex-1 min-h-0">
-            <DocumentsPanel project={project} onSendMessage={onSendMessage} aiEnabled={aiEnabled} />
-          </div>
-        </div>
-      );
-    }
-    if (active.id === 'marketplace') {
-      return (
-        <div className="h-full flex flex-col">
-          <div className="flex items-center gap-2 mb-3 shrink-0">
-            <button
-              onClick={() => onOpenPanel('')}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-fg-dim hover:text-fg-strong bg-scrim-faint rounded-lg border border-border-soft transition-colors"
-              title="Back to the tool grid"
-            >
-              <ArrowLeft size={14} /> Tools
-            </button>
-          </div>
-          <div className="flex-1 min-h-0">
-            <MarketplacePanel project={project} onSendMessage={onSendMessage} />
-          </div>
-        </div>
+        <PanelShell onClose={() => onOpenPanel('')}>
+          <Suspense fallback={<div className="text-sm text-fg-muted bg-panel rounded-xl border border-border-soft p-6">Loading panel…</div>}>
+            {view({ project, onSendMessage, aiEnabled, tabId })}
+          </Suspense>
+        </PanelShell>
       );
     }
     const Icon = ICONS[active.icon] || LayoutGrid;
@@ -328,6 +193,7 @@ export function ToolsPanel({ panels, panelsError, onRetryPanels, activePanel, on
             return (
               <button
                 key={p.id}
+                data-tour={p.id === 'folder-explorer' ? 'tool-folder-explorer' : p.id === 'pdf-tools' ? 'tool-pdf-tools' : undefined}
                 onClick={() => onOpenPanel(p.id)}
                 className={`text-left bg-panel rounded-xl border border-border-soft p-4 transition-colors ${
                   p.available

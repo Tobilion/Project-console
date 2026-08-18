@@ -17,11 +17,14 @@
 //  - AI mode: the packaged app does NOT bundle or auto-install Ollama — the in-app message
 //    (FirstRunSetup's Ollama note + the AI toggle's own guidance) points at ollama.com. A
 //    separate, optional install, per the roadmap's explicit instruction.
-import { app, Tray, Menu, nativeImage } from 'electron';
-import { spawn } from 'child_process';
-import path from 'path';
-import fs from 'fs';
-import http from 'http';
+// This file is main.cjs (NOT main.js) on purpose: desktop/package.json has no "type" field,
+// so Electron loads it as CommonJS — an ESM import statement would throw a parse-time
+// SyntaxError and the shell could never start (audit 2026-08-17, Phase 7).
+const { app, Tray, Menu, nativeImage } = require('electron');
+const { spawn } = require('child_process');
+const path = require('path');
+const fs = require('fs');
+const http = require('http');
 
 const BASE_PORT = 3000;
 const MAX_PORT_ATTEMPTS = 10; // 3000-3009, same rule as start.bat / bin/cli.js

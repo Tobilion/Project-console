@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import { AIStatus, TerminalMessage } from '../types';
 import { makeMessage } from '../utils/makeMessage';
+import { makeId } from './wsCtx';
 
 export function useAI(sendWS: (data: object) => void, setMessages: React.Dispatch<React.SetStateAction<TerminalMessage[]>>) {
   const [aiEnabled, setAiEnabled] = useState(false);
@@ -20,6 +21,9 @@ export function useAI(sendWS: (data: object) => void, setMessages: React.Dispatc
   // model auto-pick), and rapid re-clicks used to run it several times over — each success
   // appended its own "AI Assistant activated" banner (seen 3x in a real exported NetPulse chat).
   const toggleBusyRef = useRef(false);
+  // In-flight guard for model pulls: a double click used to start two downloads at once
+  // (audit 2026-08-17).
+  const pullInFlightRef = useRef(false);
 
   const fetchOllamaStatus = async () => {
     try {
@@ -125,7 +129,12 @@ export function useAI(sendWS: (data: object) => void, setMessages: React.Dispatc
   };
 
   const handlePullModel = async (modelName: string) => {
-    const msgId = Date.now().toString();
+    if (pullInFlightRef.current) {
+      setMessages(prev => [...prev, makeMessage('error', 'A model download is already in progress — wait for it to finish first.')]);
+      return;
+    }
+    pullInFlightRef.current = true;
+    const msgId = makeId();
     setMessages(prev => [...prev, makeMessage('system', `Downloading ${modelName}...\n`, { id: msgId })]);
     try {
       const pullRes = await fetch('/api/ollama/pull', {
@@ -133,32 +142,45 @@ export function useAI(sendWS: (data: object) => void, setMessages: React.Dispatc
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ model: modelName })
       });
-      const reader = pullRes.body?.getReader();
-      if (reader) {
-        const decoder = new TextDecoder();
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          const text = decoder.decode(value);
-          for (const line of text.split('\n').filter(l => l.startsWith('data: '))) {
-            try {
-              const data = JSON.parse(line.slice(6));
-              if (data.type === 'done') {
-                if (data.success) {
-                 setMessages(prev => [...prev, makeMessage('system', `✓ ${data.message}`)]);
-                   fetchOllamaStatus();
-                   setAiModel(modelName);
-                   sendWS({ type: 'ai_set_model', payload: { model: modelName } });
-                 } else {
-                   setMessages(prev => [...prev, makeMessage('error', `Failed: ${data.error}`)]);
-                }
+      // A non-OK response or a missing body used to exit silently, leaving the "Downloading…"
+      // message stuck forever (audit 2026-08-17).
+      if (!pullRes.ok || !pullRes.body) {
+        setMessages(prev => [...prev, makeMessage('error', `Could not start the download (HTTP ${pullRes.status}). Is Ollama installed and running?`)]);
+        return;
+      }
+      const reader = pullRes.body.getReader();
+      const decoder = new TextDecoder();
+      let sawDone = false;
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        const text = decoder.decode(value);
+        for (const line of text.split('\n').filter(l => l.startsWith('data: '))) {
+          try {
+            const data = JSON.parse(line.slice(6));
+            if (data.type === 'done') {
+              sawDone = true;
+              if (data.success) {
+               setMessages(prev => [...prev, makeMessage('system', `✓ ${data.message}`)]);
+                 fetchOllamaStatus();
+                 setAiModel(modelName);
+                 sendWS({ type: 'ai_set_model', payload: { model: modelName } });
+               } else {
+                 setMessages(prev => [...prev, makeMessage('error', `Failed: ${data.error}`)]);
               }
-            } catch {}
-          }
+            }
+          } catch {}
         }
+      }
+      if (!sawDone) {
+        // The stream ended without a 'done' frame (connection dropped) — surface it instead
+        // of leaving the "Downloading…" message up forever (audit 2026-08-17).
+        setMessages(prev => [...prev, makeMessage('error', 'Download ended unexpectedly — try again.')]);
       }
      } catch (err: any) {
        setMessages(prev => [...prev, makeMessage('error', `Pull failed: ${err.message}`)]);
+    } finally {
+      pullInFlightRef.current = false;
     }
   };
 

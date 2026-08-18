@@ -5,6 +5,7 @@
   "license": "MIT",
   "private": false,
   "version": "1.0.7",
+  "packageManager": "npm@11.16.0",
   "bin": {
     "local-project-console": "bin/cli.js"
   },
@@ -43,7 +44,6 @@
     "figlet": "^1.11.4",
     "fuse.js": "^7.5.0",
     "mammoth": "^1.12.1",
-    "natural": "^8.1.1",
     "node-nlp": "^5.0.0-alpha.5",
     "pdf-lib": "^1.17.1",
     "pdf-parse": "^2.4.5",

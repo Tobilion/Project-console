@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { UserProfile } from '../hooks/useUserProfile';
-import { Settings, X, ChevronDown, ChevronRight } from 'lucide-react';
+import { Settings, X, ChevronDown, ChevronRight, Plus, Trash2, Save, Code, LayoutGrid, List, Compass } from 'lucide-react';
 import { ModalShell } from './ui/ModalShell';
 import { apiFetchJson } from '../utils/apiFetch';
 
@@ -15,6 +15,18 @@ interface TuningState {
   defaults: Record<string, number>;
   overrides: Record<string, number>;
 }
+
+// Phase T2 (2026-08-14): the editor/IDE registry shape from GET /api/editors.
+interface EditorsState {
+  editors: { id: string; name: string; command: string }[];
+  defaults: Record<string, string>;
+}
+
+const EXT_DEFAULT_HINTS: [string, string][] = [
+  ['.py', 'Python'], ['.java', 'Java'], ['.js', 'JavaScript'], ['.ts', 'TypeScript'],
+  ['.c', 'C'], ['.cpp', 'C++'], ['.cs', 'C#'], ['.kt', 'Kotlin'], ['.html', 'HTML'],
+  ['.md', 'Markdown'], ['.json', 'JSON'], ['.css', 'CSS'],
+];
 
 // Plain-language descriptions for the tuning knobs — one line each, drawn from the source
 // comments (tuningStore.js defaults + executor/verifyHarness constants) so the meaning is
@@ -56,6 +68,16 @@ export function UserProfileModal({ open, profile, onClose, onSave }: UserProfile
   const [sandboxRiskyCommands, setSandboxRiskyCommands] = useState(profile.sandboxRiskyCommands);
   const [clipboardHistory, setClipboardHistory] = useState(profile.clipboardHistory);
   const [clipboardPersist, setClipboardPersist] = useState(profile.clipboardPersist);
+  const [scanAllFolders, setScanAllFolders] = useState(profile.scanAllFolders);
+  const [explorerViewMode, setExplorerViewMode] = useState<'list' | 'grid'>(profile.explorerViewMode);
+  const [editors, setEditors] = useState<EditorsState | null>(null);
+  const [editorsDirty, setEditorsDirty] = useState(false);
+  const [editorsSaved, setEditorsSaved] = useState(false);
+  const editorsSavedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Phase T2: tours are defined in src/tours.ts; this section just records completion
+  // badges (localStorage, same inline style as pinned projects) and launches a tour via a
+  // custom event the App listens for.
+  const [tourSection, setTourSection] = useState<string | null>(null);
   const tuningSavedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Clear the "tuning saved" timer on unmount so its delayed setState can't fire on a dead
   // modal (and hold its closure alive after it unmounted).
@@ -94,8 +116,10 @@ export function UserProfileModal({ open, profile, onClose, onSave }: UserProfile
       setTitle(profile.title);
       setCustomRole(profile.customRole);
       setSandboxRiskyCommands(profile.sandboxRiskyCommands);
-  setClipboardHistory(profile.clipboardHistory);
-  setClipboardPersist(profile.clipboardPersist);
+      setClipboardHistory(profile.clipboardHistory);
+      setClipboardPersist(profile.clipboardPersist);
+      setScanAllFolders(profile.scanAllFolders);
+      setExplorerViewMode(profile.explorerViewMode === 'grid' ? 'grid' : 'list');
       setAdvancedOpen(false);
       setTuningSaved(false);
       apiFetchJson<TuningState>('/api/tuning').then((t) => {
@@ -106,25 +130,79 @@ export function UserProfileModal({ open, profile, onClose, onSave }: UserProfile
         for (const [k, v] of Object.entries(t.overrides)) merged[k] = String(v);
         setDraft(merged);
       });
+      apiFetchJson<EditorsState>('/api/editors').then((e) => {
+        if (e) setEditors(e);
+      });
+      setEditorsDirty(false);
+      setEditorsSaved(false);
     }
   }, [open, profile]);
 
   const canSave = name.trim() && title.trim() && customRole.trim();
+  // Audit 2026-08-17: the old disabled-Save gate gave zero feedback — a user with an empty
+  // field got a button that did nothing. Save is always clickable now; on click the modal
+  // shows inline per-field errors and stays open until all three are valid (still
+  // all-or-nothing: nothing persists unless every field passes).
+  const [showErrors, setShowErrors] = useState(false);
+  const [invalidTuningKeys, setInvalidTuningKeys] = useState<string[]>([]);
 
   const handleSave = () => {
-    onSave({ name: name.trim(), title: title.trim(), customRole: customRole.trim(), sandboxRiskyCommands, clipboardHistory, clipboardPersist });
+    if (!canSave) {
+      setShowErrors(true);
+      return;
+    }
+    onSave({ name: name.trim(), title: title.trim(), customRole: customRole.trim(), sandboxRiskyCommands, clipboardHistory, clipboardPersist, scanAllFolders, explorerViewMode });
     onClose();
   };
+
+  const fieldError = (value: string) => showErrors && !value.trim();
+
+  const handleSaveEditors = async () => {
+    if (!editors) return;
+    const res = await apiFetchJson<EditorsState>('/api/editors', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ editors: editors.editors, defaults: editors.defaults }),
+    });
+    if (res) {
+      setEditors(res);
+      setEditorsDirty(false);
+      setEditorsSaved(true);
+      if (editorsSavedTimer.current) clearTimeout(editorsSavedTimer.current);
+      editorsSavedTimer.current = setTimeout(() => setEditorsSaved(false), 2000);
+    }
+  };
+
+  const mutateEditors = (fn: (e: EditorsState) => EditorsState) => {
+    if (!editors) return;
+    setEditors(fn(editors));
+    setEditorsDirty(true);
+  };
+
+  const launchTour = (id: string) => {
+    // The App listens for this and opens TourOverlay for the section (see App.tsx).
+    window.dispatchEvent(new CustomEvent('lpc:launch-tour', { detail: { section: id } }));
+    setTourSection(id);
+  };
+
+  // Tour completion badges — shared localStorage key with TourOverlay.
+  const toursTaken = (() => {
+    try { return JSON.parse(localStorage.getItem('console.toursTaken') || '{}'); } catch { return {}; }
+  })();
 
   const handleSaveTuning = async () => {
     if (!tuning) return;
     const overrides: Record<string, number> = {};
+    const bad: string[] = [];
     for (const [k, def] of Object.entries(tuning.defaults)) {
       const raw = (draft[k] ?? '').trim();
       if (raw === '' || raw === String(def)) continue; // untouched → default, send nothing
       const num = Number(raw);
       if (Number.isFinite(num)) overrides[k] = num; // server re-validates bounds anyway
+      else bad.push(k); // audit 2026-08-17: non-numeric drafts were silently dropped — flag them
     }
+    setInvalidTuningKeys(bad);
+    if (bad.length > 0) return;
     const res = await apiFetchJson<{ applied: Record<string, number>; defaults: Record<string, number>; overrides: Record<string, number> }>(
       '/api/tuning',
       { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ overrides }) },
@@ -180,8 +258,9 @@ export function UserProfileModal({ open, profile, onClose, onSave }: UserProfile
             onChange={(e) => setName(e.target.value)}
             autoFocus
             placeholder="Your name"
-            className="w-full bg-surface border border-border-soft rounded-lg px-3 py-2 text-sm text-fg focus:outline-none focus:border-accent-blue transition-colors"
+            className={`w-full bg-surface border border-border-soft rounded-lg px-3 py-2 text-sm text-fg focus:outline-none focus:border-accent-blue transition-colors ${fieldError(name) ? 'border-accent-red' : ''}`}
           />
+          {fieldError(name) && <p className="text-[10px] text-accent-red mt-1">Name is required — the profile can't save without it.</p>}
         </div>
         <div>
           <label className="block text-xs text-fg-dim mb-1.5">Title</label>
@@ -191,8 +270,9 @@ export function UserProfileModal({ open, profile, onClose, onSave }: UserProfile
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             placeholder="e.g. Master (or 'none')"
-            className="w-full bg-surface border border-border-soft rounded-lg px-3 py-2 text-sm text-fg focus:outline-none focus:border-accent-blue transition-colors"
+            className={`w-full bg-surface border border-border-soft rounded-lg px-3 py-2 text-sm text-fg focus:outline-none focus:border-accent-blue transition-colors ${fieldError(title) ? 'border-accent-red' : ''}`}
           />
+          {fieldError(title) && <p className="text-[10px] text-accent-red mt-1">Title is required — type "none" if you don't use one.</p>}
           <datalist id="lpc-titles">
             <option value="Master" />
             <option value="Engineer" />
@@ -208,8 +288,9 @@ export function UserProfileModal({ open, profile, onClose, onSave }: UserProfile
             value={customRole}
             onChange={(e) => setCustomRole(e.target.value)}
             placeholder="e.g. Software Engineer"
-            className="w-full bg-surface border border-border-soft rounded-lg px-3 py-2 text-sm text-fg focus:outline-none focus:border-accent-blue transition-colors"
+            className={`w-full bg-surface border border-border-soft rounded-lg px-3 py-2 text-sm text-fg focus:outline-none focus:border-accent-blue transition-colors ${fieldError(customRole) ? 'border-accent-red' : ''}`}
           />
+          {fieldError(customRole) && <p className="text-[10px] text-accent-red mt-1">Custom role is required — type a role or "none".</p>}
         </div>
 
         {/* Stage H: accent-color picker — macOS-style, affects only accent-blue */}
@@ -329,6 +410,174 @@ export function UserProfileModal({ open, profile, onClose, onSave }: UserProfile
           </div>
         </div>
 
+        <div className="flex items-start gap-3 pt-3">
+          <button
+            type="button"
+            role="switch"
+            aria-checked={scanAllFolders}
+            onClick={() => setScanAllFolders(!scanAllFolders)}
+            className={`relative shrink-0 mt-0.5 w-9 h-5 rounded-full transition-colors ${scanAllFolders ? 'bg-accent-blue' : 'bg-panel border border-border-soft'}`}
+            title={scanAllFolders ? 'Every folder is included as a project' : 'Only recognized projects are shown'}
+          >
+            <span
+              className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white transition-transform ${scanAllFolders ? 'translate-x-4' : ''}`}
+            />
+          </button>
+          <div>
+            <p className="text-sm text-fg">Include every folder as a project</p>
+            <p className="text-[11px] text-fg-dim mt-0.5">
+              When on, every immediate subfolder of the scan root appears in the project list,
+              even folders with no code, git, or config (they classify as General). Off by
+              default — junk folders stay hidden until you opt in. Rescan to apply.
+            </p>
+          </div>
+        </div>
+
+        {/* Phase T2: Explorer — default view mode for the Folder Explorer panel */}
+        <div className="pt-1">
+          <label className="block text-xs text-fg-dim mb-1.5">Folder Explorer default view</label>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => setExplorerViewMode('list')}
+              className={`flex-1 flex items-center gap-2 px-3 py-2 rounded-lg border text-left transition-colors ${explorerViewMode === 'list' ? 'border-accent-blue bg-accent-blue/10' : 'border-border-soft bg-surface hover:border-border-strong'}`}
+            >
+              <List size={14} className="text-accent-blue" />
+              <span className="text-sm text-fg">Lines</span>
+              <span className="block text-[10px] text-fg-dim ml-auto">list rows</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setExplorerViewMode('grid')}
+              className={`flex-1 flex items-center gap-2 px-3 py-2 rounded-lg border text-left transition-colors ${explorerViewMode === 'grid' ? 'border-accent-blue bg-accent-blue/10' : 'border-border-soft bg-surface hover:border-border-strong'}`}
+            >
+              <LayoutGrid size={14} className="text-accent-blue" />
+              <span className="text-sm text-fg">Objects</span>
+              <span className="block text-[10px] text-fg-dim ml-auto">icon tiles</span>
+            </button>
+          </div>
+          <p className="text-[11px] text-fg-dim mt-1">The in-panel toggle overrides this for the current session.</p>
+        </div>
+
+        {/* Phase T2: Editors & IDEs — registry + per-extension defaults */}
+        <div className="pt-2 border-t border-border-faint">
+          <div className="flex items-center gap-1.5 mb-1.5">
+            <Code size={13} className="text-accent-blue" />
+            <p className="text-sm text-fg">Editors &amp; IDEs</p>
+          </div>
+          <p className="text-[11px] text-fg-dim mb-2">
+            Which editors open your files — "open main.py with PyCharm" in chat, or "open X in
+            the editor" uses the per-extension default below. The command is launched with the
+            file path as its argument.
+          </p>
+          {editors ? (
+            <>
+              <div className="space-y-1.5 max-h-44 overflow-y-auto pr-1">
+                {editors.editors.map((ed) => (
+                  <div key={ed.id} className="flex items-center gap-2">
+                    <span className="w-28 shrink-0 text-[11px] text-fg-strong truncate" title={ed.name}>{ed.name}</span>
+                    <input
+                      type="text"
+                      value={ed.command}
+                      onChange={(e) => mutateEditors((s) => ({
+                        ...s,
+                        editors: s.editors.map((x) => x.id === ed.id ? { ...x, command: e.target.value } : x),
+                      }))}
+                      className="flex-1 min-w-0 bg-surface border border-border-soft rounded-lg px-2 py-1 text-[11px] font-mono text-fg focus:outline-none focus:border-accent-blue transition-colors"
+                      placeholder="launch command (e.g. code)"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => mutateEditors((s) => ({
+                        ...s,
+                        editors: s.editors.filter((x) => x.id !== ed.id),
+                        defaults: Object.fromEntries(Object.entries(s.defaults).filter(([, v]) => v !== ed.id)),
+                      }))}
+                      className="p-1 text-fg-dim hover:text-accent-red transition-colors"
+                      title={`Remove ${ed.name}`}
+                    >
+                      <Trash2 size={12} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+              <button
+                type="button"
+                onClick={() => mutateEditors((s) => ({
+                  ...s,
+                  editors: [...s.editors, { id: `custom-${Date.now().toString(36)}`, name: 'New editor', command: '' }],
+                }))}
+                className="mt-1.5 flex items-center gap-1 px-2 py-1 text-[11px] text-accent-blue hover:bg-accent-blue/10 rounded-lg transition-colors"
+              >
+                <Plus size={12} /> Add editor
+              </button>
+              <div className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1">
+                {EXT_DEFAULT_HINTS.map(([ext, label]) => (
+                  <div key={ext} className="flex items-center gap-1.5">
+                    <span className="w-12 shrink-0 text-[10px] text-fg-dim font-mono">{ext}</span>
+                    <select
+                      value={editors.defaults[ext] || 'vscode'}
+                      onChange={(e) => mutateEditors((s) => ({
+                        ...s,
+                        defaults: { ...s.defaults, [ext]: e.target.value },
+                      }))}
+                      className="flex-1 min-w-0 bg-surface border border-border-soft rounded-lg px-1.5 py-0.5 text-[11px] text-fg-muted focus:outline-none focus:border-accent-blue transition-colors"
+                    >
+                      {editors.editors.map((ed) => <option key={ed.id} value={ed.id}>{ed.name}</option>)}
+                      <option value="browser">Browser</option>
+                    </select>
+                    <span className="text-[9px] text-fg-faint">{label}</span>
+                  </div>
+                ))}
+              </div>
+              <div className="flex items-center gap-2 mt-2">
+                <button
+                  type="button"
+                  onClick={handleSaveEditors}
+                  disabled={!editorsDirty}
+                  className="flex items-center gap-1 px-3 py-1.5 text-[10px] font-bold tracking-wider uppercase rounded-lg bg-accent-blue/15 text-accent-blue hover:bg-accent-blue/25 transition-colors disabled:opacity-40"
+                >
+                  <Save size={11} /> Save editors
+                </button>
+                {editorsSaved && <span className="text-[10px] text-accent-green">Saved — affects the next "open with"</span>}
+              </div>
+            </>
+          ) : (
+            <p className="text-[11px] text-fg-dim italic">Loading editors…</p>
+          )}
+        </div>
+
+        {/* Phase T2: Tours — replay any section */}
+        <div className="pt-2 border-t border-border-faint">
+          <div className="flex items-center gap-1.5 mb-1.5">
+            <Compass size={13} className="text-accent-teal" />
+            <p className="text-sm text-fg">Tours</p>
+          </div>
+          <p className="text-[11px] text-fg-dim mb-2">Replay any guided walkthrough, any time.</p>
+          <div className="grid grid-cols-2 gap-1.5">
+            {[
+              ['welcome', 'Welcome'],
+              ['general', 'General mode'],
+              ['tools', 'Tools panels'],
+              ['developer', 'Developer mode'],
+              ['chat-ai', 'Chat & AI'],
+              ['tabs', 'Tabs & Folders'],
+              ['settings', 'Settings'],
+            ].map(([id, label]) => (
+              <button
+                key={id}
+                type="button"
+                onClick={() => launchTour(id)}
+                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-border-soft text-[11px] text-fg-subtle hover:border-accent-teal/50 hover:text-fg-strong transition-colors"
+              >
+                <Compass size={11} className="text-accent-teal" />
+                {label}
+                {toursTaken[id] && <span className="ml-auto text-[9px] text-accent-green">done</span>}
+              </button>
+            ))}
+          </div>
+        </div>
+
         <div className="pt-1 border-t border-border-faint">
           <button
             type="button"
@@ -363,8 +612,8 @@ export function UserProfileModal({ open, profile, onClose, onSave }: UserProfile
                         <input
                           type="number"
                           value={draft[name] ?? ''}
-                          onChange={(e) => setDraft((d) => ({ ...d, [name]: e.target.value }))}
-                          className="w-24 bg-surface border border-border-soft rounded-lg px-2 py-1 text-[11px] font-mono text-fg focus:outline-none focus:border-accent-blue transition-colors text-right"
+                          onChange={(e) => { setDraft((d) => ({ ...d, [name]: e.target.value })); setInvalidTuningKeys((ks) => ks.filter((k) => k !== name)); }}
+                          className={`w-24 bg-surface border border-border-soft rounded-lg px-2 py-1 text-[11px] font-mono text-fg focus:outline-none focus:border-accent-blue transition-colors text-right ${invalidTuningKeys.includes(name) ? 'border-accent-red' : ''}`}
                         />
                       </div>
                     ))}
@@ -386,6 +635,11 @@ export function UserProfileModal({ open, profile, onClose, onSave }: UserProfile
                 >
                   Reset all
                 </button>
+                {invalidTuningKeys.length > 0 && (
+                  <span className="text-[10px] text-accent-red">
+                    Not numbers: {invalidTuningKeys.join(', ')} — fix or clear them, then Apply again.
+                  </span>
+                )}
                 {tuningSaved && <span className="text-[10px] text-accent-green">Saved — affects the next match/run</span>}
               </div>
             </div>
@@ -407,8 +661,7 @@ export function UserProfileModal({ open, profile, onClose, onSave }: UserProfile
         </button>
         <button
           onClick={handleSave}
-          disabled={!canSave}
-          className="px-4 py-2 bg-accent-blue text-white rounded-lg text-xs font-bold tracking-wider uppercase hover:opacity-90 transition-opacity disabled:opacity-40"
+          className="px-4 py-2 bg-accent-blue text-white rounded-lg text-xs font-bold tracking-wider uppercase hover:opacity-90 transition-opacity"
         >
           Save
         </button>

@@ -4,7 +4,7 @@
 // copy_to_clipboard WS event stays as a pure "here's what got copied, for display" notice.
 import { readProfile } from '../routes/profileRoutes.js';
 import {
-  getClipboardHistory, clearClipboardHistory, copyToOsClipboard,
+  getClipboardHistory, clearClipboardHistory, removeClipboardItem, copyToOsClipboard,
 } from '../clipboardHistory.js';
 import { listSnippets, saveSnippet, getSnippet, deleteSnippet } from '../snippetStore.js';
 
@@ -40,7 +40,7 @@ export const clipboardHandlers = {
       return;
     }
     const text = history[idx];
-    if (copyToOsClipboard(text)) {
+    if (await copyToOsClipboard(text)) {
       ws.send(JSON.stringify({ type: 'copy_to_clipboard', data: text }));
       answer(ws, `Copied clipboard item ${idx + 1} to the OS clipboard.`);
     } else {
@@ -51,6 +51,16 @@ export const clipboardHandlers = {
   'clipboard.clear': async (ws) => {
     clearClipboardHistory();
     answer(ws, 'Clipboard history cleared.');
+  },
+
+  'clipboard.remove_item': async (ws, action, input) => {
+    const m = input.match(/(?:remove|delete)\s+clipboard\s+item\s+(\d+)/i);
+    const idx = m ? parseInt(m[1], 10) - 1 : -1;
+    if (removeClipboardItem(idx)) {
+      answer(ws, `Removed clipboard item ${idx + 1}.`);
+    } else {
+      answer(ws, 'Which item? `show clipboard history` lists them — then `remove clipboard item N`.');
+    }
   },
 
   'snippet.save': async (ws, action, input) => {
@@ -92,7 +102,7 @@ export const clipboardHandlers = {
       answer(ws, `No snippet "${name}" — \`show my snippets\` lists them.`);
       return;
     }
-    if (copyToOsClipboard(snippet.text)) {
+    if (await copyToOsClipboard(snippet.text)) {
       ws.send(JSON.stringify({ type: 'copy_to_clipboard', data: snippet.text }));
       answer(ws, `Copied snippet "${snippet.name}" to the OS clipboard.`);
     } else {

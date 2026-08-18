@@ -120,6 +120,23 @@ export function markFired(id, at = Date.now()) {
   persistNow();
 }
 
+/** Record fire times for several schedules in ONE immediate write (audit 2026-08-17): a
+ *  tick that fires N schedules used to trigger N synchronous atomic writes — the store's
+ *  debounce made that harmless correctness-wise, but it is pure I/O churn. Same
+ *  crash-safety contract as markFired: the tick marks everything due BEFORE any fire work,
+ *  so a crash mid-loop can't regress the cadence. */
+export function markFiredBatch(ids, at = Date.now()) {
+  if (!Array.isArray(ids) || ids.length === 0) return;
+  let changed = false;
+  for (const id of ids) {
+    const schedule = schedules.find((s) => s.id === id);
+    if (!schedule) continue;
+    schedule.lastFiredAt = at;
+    changed = true;
+  }
+  if (changed) persistNow();
+}
+
 /** Remove a schedule by id regardless of project. Used only by the scheduler for expired
  *  oneshot reminders (a reminder is personal, not a project asset — cancel in chat goes
  *  through removeSchedule for command schedules, and the reminder-specific cancel path in

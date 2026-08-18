@@ -5,7 +5,7 @@
 // broken schedule can never kill the loop; cadence is lastFiredAt-based, so a restart mid-
 // interval never double-fires and a freshly created schedule waits a full period.
 
-import { loadSchedules, getSchedules, markFired, removeScheduleById } from './scheduleStore.js';
+import { loadSchedules, getSchedules, markFired, markFiredBatch, removeScheduleById } from './scheduleStore.js';
 import { fireSchedule } from './scheduleFire.js';
 import { checkStaleFolders } from '../watchEngine.js';
 import { watchProjectChanges } from '../fileWatcher.js';
@@ -57,23 +57,32 @@ function isDue(schedule, now) {
 
 function tick() {
   const now = Date.now();
+  const due = [];
   for (const schedule of getSchedules()) {
     try {
-      if (isDue(schedule, now)) {
-        fireSchedule(schedule);
-        if (schedule.type === 'oneshot') removeScheduleById(schedule.id);
-      }
+      if (isDue(schedule, now)) due.push(schedule);
+    } catch (err) {
+      console.error(`[scheduler] fire failed for schedule ${schedule.id}:`, err.message);
+    }
+  }
+  // Mark the whole due batch in ONE immediate write before any fire work (audit
+  // 2026-08-17) — crash-safety of the cadence is preserved (see markFiredBatch), and a
+  // tick firing N schedules no longer pays N synchronous atomic writes.
+  if (due.length > 0) markFiredBatch(due.map((s) => s.id));
+  for (const schedule of due) {
+    try {
+      fireSchedule(schedule, true);
+      if (schedule.type === 'oneshot') removeScheduleById(schedule.id);
     } catch (err) {
       console.error(`[scheduler] fire failed for schedule ${schedule.id}:`, err.message);
     }
   }
   // Phase 15: the folder-stale sweep reuses this same tick (guarded to once per day per rule
-  // inside checkStaleFolders — never a full folder walk on every 15s tick).
-  try {
-    checkStaleFolders();
-  } catch (err) {
+  // inside checkStaleFolders — never a full folder walk on every 15s tick). Async since
+  // 2026-08-17 so a large watched tree can't block the tick.
+  checkStaleFolders().catch((err) => {
     console.error('[scheduler] stale-folder check failed:', err.message);
-  }
+  });
 }
 
 /** Event handler installed per project watcher (file-save / git-commit triggers). */
@@ -82,8 +91,11 @@ function handleProjectFsEvent(project, schedule, eventType) {
     const nowMs = Date.now();
     const last = schedule.lastFiredAt || 0;
     if (nowMs - last < EVENT_THROTTLE_MS) return;
+    // Single write per event fire (events are throttled to once per minute per schedule) —
+    // fireSchedule is told the mark is already done so it doesn't write a second time
+    // (audit 2026-08-17).
     markFired(schedule.id);
-    fireSchedule(schedule);
+    fireSchedule(schedule, true);
   } catch (err) {
     console.error(`[scheduler] event fire failed for schedule ${schedule.id}:`, err.message);
   }

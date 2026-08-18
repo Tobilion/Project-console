@@ -39,6 +39,11 @@ export const PURE_CHITCHAT_INTENTS = new Set([
   // semantic bar once any stage claims a match, exactly the thanks/gratitude failure mode this
   // set guards against. A garbled request must not land on "It's 4:32 PM".
   'system.chit_chat.time', 'system.chit_chat.date', 'system.chit_chat.calculate',
+  // port (2026-08-17 audit): same zero-argument canned-shape answer as time/date — a garbled
+  // real request must not land on "The console runs on port 3000". explain_followup likewise:
+  // it's a canned "could you tell me more" reply, and its follow-up phrasing would be exactly
+  // what a garbled continuation sounds like.
+  'system.chit_chat.port', 'system.chit_chat.explain_followup',
 ]);
 
 export function looksLikeRealRequest(input) {

@@ -1,7 +1,7 @@
 ﻿import { listSessions, getSession, createSession, deleteSession, renameSession, linkSessionToProject } from '../conversationStore.js';
 import { readIndex } from '../sessionIndex.js';
 import { readFullSessionHistory, formatExportMarkdown, formatExportJson } from '../sessionExport.js';
-import { resolveProject } from '../state.js';
+import { resolveProject, getTabWorkspace, state } from '../state.js';
 import { asyncHandler } from '../asyncHandler.js';
 
 export function registerSessionRoutes(app) {
@@ -12,15 +12,32 @@ export function registerSessionRoutes(app) {
 
   app.post('/api/sessions', asyncHandler(async (req, res) => {
     const { projectId, projectName } = req.body || {};
-    const project = projectId ? resolveProject(projectId) : null;
-    const session = await createSession(projectId, projectName, project?.path);
+    // Phase T (2026-08-14): resolve inside the requesting tab's workspace so a session
+    // created from a second tab's project list captures THAT folder's path.
+    const project = projectId ? resolveProject(projectId, req.query.tab) : null;
+    // Per-chat workspace memory: remember which scan root this chat was created in (the tab's
+    // workspace, or the global default when the tab id is absent / the default tab) so a
+    // sidebar click can switch the app back to that location — including General chats, which
+    // have no projectPath to route by.
+    const ws = req.query.tab ? getTabWorkspace(req.query.tab) : null;
+    const workspacePath = ws?.scanDirectory || state.currentScanDirectory || null;
+    const session = await createSession(projectId, projectName, project?.path, workspacePath);
     res.json({ session });
   }));
 
   app.get('/api/sessions/:id', asyncHandler(async (req, res) => {
-    const session = await getSession(req.params.id);
+    // Phase 6 (2026-08-17): pagination — ?before=<N> skips the N newest messages (the page
+    // the client already holds), ?limit=<N> sizes the page (1..500, default 200 — existing
+    // clients without the params get exactly the old last-200 shape). `total` rides along so
+    // the client can show "load earlier" until it has everything; the index's messageCount is
+    // maintained on every append (sessionIndex.js), so no extra file read is needed.
+    const before = Math.max(0, parseInt(req.query.before ?? '0', 10) || 0);
+    const limit = Math.min(Math.max(parseInt(req.query.limit ?? '200', 10) || 200, 1), 500);
+    const session = await getSession(req.params.id, { limit, before });
     if (!session) return res.status(404).json({ error: 'Session not found' });
-    res.json({ session });
+    const idx = await readIndex();
+    const total = idx[req.params.id]?.messageCount ?? session.messages.length;
+    res.json({ session, total });
   }));
 
   // Complete-session export (Phase 0): the FULL persisted NDJSON history, not the 200-message

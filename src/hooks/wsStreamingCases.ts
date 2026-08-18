@@ -4,7 +4,7 @@ import { makeId } from './wsCtx';
 /**
  * The token-streaming trio (stream_start / token / stream_end) — the AI-mode chat-stream
  * machinery extracted verbatim from useConsole.ts's handleWebSocketMessage switch. Owns the
- * token buffer + 16ms flush timer and the wsRef._streamId bookkeeping. The flush timer
+ * token buffer + flush timer and the wsRef._streamId bookkeeping. The flush timer
  * captures ctx values at event time (safe: every member it uses — wsRef, stream refs,
  * setMessages — is stable across renders).
  */
@@ -23,6 +23,10 @@ export const tokenCase: WsCaseHandler = (ctx, payload) => {
   ctx.stream.streamHadTokenRef.current = true;
   ctx.stream.tokenBuffer.current += payload.data;
   if (!ctx.stream.flushTimer.current) {
+    // Phase 6: 16ms -> 45ms flush. Per-token the buffer is a pure string concat (cheap); the
+    // expensive part is the setMessages map over the whole list, which now runs ~3x less
+    // often. TerminalMessages' scroll effect is gated on the tail's identity+length, so the
+    // slower cadence changes nothing visually.
     ctx.stream.flushTimer.current = setTimeout(() => {
       const content = ctx.stream.tokenBuffer.current;
       ctx.stream.tokenBuffer.current = '';
@@ -33,7 +37,7 @@ export const tokenCase: WsCaseHandler = (ctx, payload) => {
       const currentStreamId = ctx.wsRef.current ? (ctx.wsRef.current as any)._streamId : null;
       if (currentStreamId !== streamId) return;
       ctx.sessions.setMessages(prev => prev.map(m => m.id === streamId ? { ...m, content: m.content + content } : m));
-    }, 16);
+    }, 45);
   }
 };
 

@@ -85,6 +85,7 @@ function makeFakeCtx() {
     projects: {
       get projects() { return state.projectsList; }, // live read — mirrors the orchestrator's fresh ctx per event
       setProjects: (u: any) => { state.projectsList = typeof u === 'function' ? u(state.projectsList) : u; },
+      setActiveProject: (u: any) => { state.activeProject = typeof u === 'function' ? u(state.activeProject) : u; },
       setIndexingProjectId: (u: any) => { state.indexingProjectId = typeof u === 'function' ? u(state.indexingProjectId) : u; },
     },
     workspace: {

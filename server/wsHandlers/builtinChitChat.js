@@ -3,7 +3,7 @@ import { performUndo, isGitRepo } from '../gitSafety.js';
 import { executeCommand } from '../executor.js';
 import { pendingConfirmations, state } from '../state.js';
 import { injectContext } from '../contextInjector.js';
-import { pickRandom, chatReplyPool, smartChitchatReply, enrichWithIndex, extractCommentMessage } from './builtinHelpers.js';
+import { pickRandom, chatReplyPool, smartChitchatReply, enrichWithIndex, extractCommentMessage, assertSafeCommitMessage } from './builtinHelpers.js';
 import { buildLiveStateLine, buildMemoryBlock } from './builtinLiveState.js';
 import { buildHelpMessage } from './builtinHelp.js';
 import { evaluateArithmetic, formatValue, convertUnits, percentageQuery } from '../mathEval.js';
@@ -339,9 +339,14 @@ export const chitChatHandlers = {
       }));
     } else {
       const commitMsg = extractCommentMessage(input);
+      const rejectReason = assertSafeCommitMessage(commitMsg);
+      if (rejectReason) {
+        ws.send(JSON.stringify({ type: 'answer', data: rejectReason }));
+        return true;
+      }
       const token = crypto.randomUUID();
       const command = commitMsg
-        ? `git add -A && git commit -m "${commitMsg.replace(/"/g, '\\"')}" && git push`
+        ? `git add -A && git commit -m "${commitMsg}" && git push`
         : 'git push';
       pendingConfirmations.set(token, {
         owner: ws,

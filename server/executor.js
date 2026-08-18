@@ -93,6 +93,9 @@ export function executeCommand(command, cwd, ws, projectId, opts = {}) {
   const finalCommand = rewriteVenvPython(command, cwd);
   const isDev = isDevServerCommand(finalCommand);
   const sandboxed = !!opts.sandboxed && readProfile().sandboxRiskyCommands;
+  // Optional turn ownership tag (set by AI-mode turns): lets `cancel` kill only the processes
+  // THIS turn started, never a dev server the user started separately (audit 2026-08-17).
+  const turnKey = opts?.turnKey || null;
   let detached = false;
 
   const sendEvent = (type, data) => {
@@ -135,6 +138,7 @@ export function executeCommand(command, cwd, ws, projectId, opts = {}) {
       detachTimer: null,
       forceDetachTimer: null,
       portPromptAsked: false,
+      turnKey,
     };
     trackedEntry.forceDetach = () => { if (!detached) detach(); };
 
@@ -184,6 +188,11 @@ export function executeCommand(command, cwd, ws, projectId, opts = {}) {
     // emits 'error' on the stdin stream — attach a listener once at spawn so that error never
     // surfaces as an uncaughtException from the port-prompt reply path (audit 2026-08-06).
     if (child.stdin) child.stdin.on('error', () => {});
+    // Same class of pipe-break errors on the output streams (audit 2026-08-17): the stdout
+    // handler's writable-check + push window is exactly as racy as the stdin one, and an
+    // unhandled stream 'error' is a process-level crash, not a message.
+    if (child.stdout) child.stdout.on('error', () => {});
+    if (child.stderr) child.stderr.on('error', () => {});
 
     sendEvent('start', `Executing: ${finalCommand}\n`);
 
@@ -341,11 +350,14 @@ export function executeCommand(command, cwd, ws, projectId, opts = {}) {
         // auto-retrying (e.g. a plain Node/Express server with no built-in port fallback). Offer a
         // one-click retry on the next port through the normal confirm-before-run flow, same as any
         // other command — this never runs anything without the user approving it.
-        offerPortRetry({ ws, projectId, command: finalCommand, stdout, stderr, isDev, exitCode: code });
-
-        // First push of a never-pushed branch — git exits 128 with "no upstream branch". Offer
-        // the `--set-upstream` retry git itself suggests, confirm-gated like the port retry.
-        offerUpstreamRetry({ ws, projectId, command: finalCommand, stdout, stderr, exitCode: code });
+        // Gated (audit 2026-08-17): a deliberately CANCELLED run (code === null — taskkill/
+        // SIGTERM via stopTrackedProcess) must never get a "retry?" card, and an AI-run command
+        // (turnKey set) owns its retries inside the AI tool loop — a confirm card interrupting
+        // the turn would go stale before the user could meaningfully act on it.
+        if (code !== null && !turnKey) {
+          offerPortRetry({ ws, projectId, command: finalCommand, stdout, stderr, isDev, exitCode: code });
+          offerUpstreamRetry({ ws, projectId, command: finalCommand, stdout, stderr, exitCode: code });
+        }
 
         sendEvent('end', `\nProcess exited with code ${code}`);
         resolve({
@@ -366,7 +378,27 @@ export function executeCommand(command, cwd, ws, projectId, opts = {}) {
       // lived on forever, reporting a phantom "running" server with a dead PID (audit 2026-08-06).
       if (!projectId) return;
       const lastUrl = state.lastDevUrls.get(projectId);
-      if (!lastUrl) return; // never had a URL — nothing to probe; keep the entry conservatively
+      // A detached process that never emitted a URL can't be probed — the old "keep the entry
+      // conservatively" return left its dock entry (and the project's log buffer) in
+      // runningProcesses forever (audit 2026-08-17). The wrapper-close-early concern only
+      // matters when there IS a URL to verify; a URL-less run has nothing that can be orphaned
+      // behind a probe, so clean it up after the same probe delay. POSIX keeps the entry when
+      // the tracked child is still alive (a still-running detached script); Windows always
+      // cleans up (the shell wrapper's pid is dead by definition of 'close' having fired).
+      if (!lastUrl) {
+        setTimeout(() => {
+          if (!runningProcesses.has(projectId)) return;
+          if (process.platform !== 'win32') {
+            try { process.kill(child.pid, 0); return; } catch {}
+          }
+          const removed = removeTrackedProcess(projectId, child.pid);
+          if (removed) {
+            broadcast({ type: 'dashboard_update' });
+            broadcast({ type: 'processes_update' });
+          }
+        }, DETACHED_EXIT_PROBE_DELAY_MS);
+        return;
+      }
       setTimeout(async () => {
         const probe = await probeUrl(lastUrl, DETACHED_EXIT_PROBE_TIMEOUT_MS);
         if (probe.alive) return; // real server still serving (wrapper-close-early case)

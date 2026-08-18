@@ -1,6 +1,14 @@
 import chokidar from 'chokidar';
 import path from 'path';
 import { scanSingleProject } from './projectScanner.js';
+import { readProfile } from './routes/profileRoutes.js';
+
+// Phase T (2026-08-14): a config-file change on a folder with no other recognition signals
+// would previously drop the folder when scanAllFolders is on — the config watcher must apply
+// the same includeAll rule as the full scans so the setting is consistent everywhere.
+function scanOpts() {
+  return { includeAll: readProfile().scanAllFolders };
+}
 
 export function watchProjectConfigs(projectsDir, onProjectChanged) {
   const watcher = chokidar.watch('**/console.config.json', {
@@ -20,7 +28,7 @@ export function watchProjectConfigs(projectsDir, onProjectChanged) {
       try {
         const folderName = path.dirname(relativePath);
         const projectPath = path.join(projectsDir, folderName);
-        const updated = await scanSingleProject(folderName, projectPath);
+        const updated = await scanSingleProject(folderName, projectPath, scanOpts());
         if (updated) {
           onProjectChanged(updated);
         }
@@ -36,7 +44,7 @@ export function watchProjectConfigs(projectsDir, onProjectChanged) {
       try {
         const folderName = path.dirname(relativePath);
         const projectPath = path.join(projectsDir, folderName);
-        const updated = await scanSingleProject(folderName, projectPath);
+        const updated = await scanSingleProject(folderName, projectPath, scanOpts());
         if (updated) {
           onProjectChanged(updated, true);
         }

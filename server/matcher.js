@@ -26,6 +26,29 @@ import { tryLookupEntry, captureTelemetry, getFallbackSuggestions, computeDidYou
 export { describeIntent, BUILTIN_INTENTS } from './intentRegistry.js';
 export { getFallbackSuggestions } from './matchHelpers.js';
 
+/** NLP-stage dispatch gate (audit 2026-08-17): the trained classifier can return intent ids
+ *  that no longer exist in BUILTIN_INTENTS (a stale learned phrase surviving an intent
+ *  rename/removal), and such an id used to pass this stage and then vanish at dispatch — the
+ *  message died with no fallback and no signal. Only registered intents may be returned as
+ *  builtins. Also applies the same trust guards the semantic stage uses: a pure-chitchat
+ *  result on a real-request input (filename/quote) and a project.knowledge result on a
+ *  file-naming query are both untrustworthy. Config-entry ids (project.action.N.M) are
+ *  resolved against the project config, never the registry, so they are deliberately not
+ *  eligible here — that branch stays below, untouched. */
+export function isNlpBuiltinEligible(intent, input) {
+  if (!BUILTIN_INTENTS.has(intent)) return false;
+  if ((intent.startsWith('system.chit_chat.') || intent.startsWith('project.context.')) && isTrustworthyChitChat(intent, input)) return true;
+  return KNOWLEDGE_CANON_MAP[intent] !== undefined && isTrustworthyKnowledgeIntent(intent, input);
+}
+
+const KNOWLEDGE_CANON_MAP = {
+  'project.knowledge.overview': 'project.knowledge.overview',
+  'project.knowledge.stack': 'project.knowledge.stack',
+  'project.knowledge.commands': 'project.knowledge.commands',
+  'project.knowledge.gotchas': 'project.knowledge.gotchas',
+  'project.knowledge.architecture': 'project.knowledge.architecture',
+};
+
 /** Unified 3-stage matching pipeline:
  *  1. Semantic (embedding cosine similarity — highest confidence)
  *  2. NLP.js (trained classifier — legacy fallback)
@@ -45,7 +68,21 @@ export async function matchInput(input, project, projectIndex, options = {}) {
   // close comment strings ("push the site with comment \"x\"") and removing them shifts the
   // embedding just enough to flip closeSecond markers on git/deploy rows (measured in the
   // harness).
-  input = input.replace(/(?:[?!.,;)\]}]+|\\+)$/g, '');
+  // Balanced-pair awareness (audit 2026-08-17): the old unconditional closer strip mangled
+  // balanced pairs — "(what is the tech stack)" became "what is the tech stack(", which then
+  // missed every question-shape override and left the embedding stage a dangling opener. A
+  // trailing closer is only junk when its opener is absent from the input ("what is main.py)"
+  // is a stray close); a dangling opener ("run the tests (") is always junk.
+  input = input.replace(/(?:[?!.,;]+|\\+)$/g, '');
+  const trailingClosers = input.match(/[)\]}]+$/);
+  if (trailingClosers) {
+    const closer = trailingClosers[0][trailingClosers[0].length - 1];
+    const opener = closer === ')' ? '(' : closer === ']' ? '[' : '{';
+    if (!input.includes(opener)) input = input.slice(0, -trailingClosers[0].length);
+  } else {
+    input = input.replace(/[({\[]+$/, '');
+  }
+  input = input.replace(/(?:[?!.,;]+|\\+)$/g, '');
 
   // 0. Check for multi-intent queries (split on conjunctions)
   const tMulti = Date.now();
@@ -199,20 +236,9 @@ export async function matchInput(input, project, projectIndex, options = {}) {
   if (nlpResult && nlpResult.score >= 0.45) {
     const intent = nlpResult.intent;
 
-    if ((intent.startsWith('system.chit_chat.') || intent.startsWith('project.context.')) && isTrustworthyChitChat(intent, input)) {
+    if (isNlpBuiltinEligible(intent, input)) {
       metrics.event({ type: 'match_result', input: input.slice(0, 80), outcome: 'nlp_builtin', duration: Date.now() - t0 });
       return { match: null, builtin: intent, suggestions: [], telemetryId };
-    }
-
-    const canonMap = {
-      'project.knowledge.overview': 'project.knowledge.overview',
-      'project.knowledge.stack': 'project.knowledge.stack',
-      'project.knowledge.commands': 'project.knowledge.commands',
-      'project.knowledge.gotchas': 'project.knowledge.gotchas',
-      'project.knowledge.architecture': 'project.knowledge.architecture',
-    };
-    if (canonMap[intent] && isTrustworthyKnowledgeIntent(intent, input)) {
-      return { match: null, builtin: canonMap[intent], suggestions: [], telemetryId };
     }
 
     if (intent.startsWith('project.action.') || intent.startsWith('project.knowledge.')) {

@@ -9,6 +9,19 @@ const KNOWN_SCRIPT_NAMES = ['dev', 'start', 'build', 'preview', 'lint', 'test', 
 // log doesn't grow unbounded and `review distillations` doesn't dredge up ancient guesses.
 const PRUNE_PENDING_AFTER_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 
+// Per-project promise chain serializing applyDistillation's console.config.json read-modify-
+// write: two approves in the same tick (web + CLI) would both read the base config, then both
+// write — last writer wins and one entry silently vanishes (audit 2026-08-17; same pattern as
+// memoryStore.js's memoryWriteChains).
+const configWriteChains = new Map();
+
+function withConfigLock(projectPath, fn) {
+  const prev = configWriteChains.get(projectPath) || Promise.resolve();
+  const next = prev.then(fn, fn);
+  configWriteChains.set(projectPath, next);
+  return next;
+}
+
 function ensureDir() {
   if (!fs.existsSync(DISTILL_DIR)) {
     fs.mkdirSync(DISTILL_DIR, { recursive: true });
@@ -233,9 +246,11 @@ export function generateDistillationSuggestions(projectId) {
 
 /**
  * Apply approved distillations — add entries to the project's console.config.json
- * and let the file watcher propagate the change.
+ * and let the file watcher propagate the change. Serialized per project via
+ * withConfigLock so two approves in the same tick (web + CLI) can't clobber each
+ * other's entry (audit 2026-08-17).
  */
-export function applyDistillation(projectId, suggestionIds, projectsCache) {
+export async function applyDistillation(projectId, suggestionIds, projectsCache) {
   const suggestions = generateDistillationSuggestions(projectId);
   const approved = suggestions.filter(s => suggestionIds.includes(s.id));
 
@@ -245,66 +260,68 @@ export function applyDistillation(projectId, suggestionIds, projectsCache) {
   const project = projectsCache.find(p => p.id === projectId);
   if (!project) return [];
 
-  const configPath = path.join(project.path, 'console.config.json');
-  let config = { entries: [] };
+  return withConfigLock(project.path, () => {
+    const configPath = path.join(project.path, 'console.config.json');
+    let config = { entries: [] };
 
-  try {
-    if (fs.existsSync(configPath)) {
-      config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
-    }
-  } catch {}
+    try {
+      if (fs.existsSync(configPath)) {
+        config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+      }
+    } catch {}
 
-  if (!Array.isArray(config.entries)) config.entries = [];
+    if (!Array.isArray(config.entries)) config.entries = [];
 
-  const added = [];
+    const added = [];
 
-  for (const s of approved) {
-    if (s.type === 'command_entry') {
-      // Check if this action already exists
-      const exists = config.entries.some(
-        e => e.type === 'command' && e.action?.trim() === s.action?.trim()
-      );
-      if (exists) continue;
+    for (const s of approved) {
+      if (s.type === 'command_entry') {
+        // Check if this action already exists
+        const exists = config.entries.some(
+          e => e.type === 'command' && e.action?.trim() === s.action?.trim()
+        );
+        if (exists) continue;
 
-      config.entries.push({
-        triggers: [s.trigger || `run ${s.action?.split(' ').pop() || 'script'}`],
-        type: 'command',
-        action: s.action,
-        risky: /deploy|publish|release|--prod|force/i.test(s.action || ''),
-        auto: true,
-      });
-      added.push({ type: 'command_entry', action: s.action, trigger: s.trigger });
+        config.entries.push({
+          triggers: [s.trigger || `run ${s.action?.split(' ').pop() || 'script'}`],
+          type: 'command',
+          action: s.action,
+          risky: /deploy|publish|release|--prod|force/i.test(s.action || ''),
+          auto: true,
+        });
+        added.push({ type: 'command_entry', action: s.action, trigger: s.trigger });
 
-    } else if (s.type === 'knowledge_entry') {
-      const exists = config.entries.some(
-        e => e.type === 'knowledge' && e.triggers?.includes(s.trigger)
-      );
-      if (exists) continue;
+      } else if (s.type === 'knowledge_entry') {
+        const exists = config.entries.some(
+          e => e.type === 'knowledge' && e.triggers?.includes(s.trigger)
+        );
+        if (exists) continue;
 
-      config.entries.push({
-        triggers: [s.trigger],
-        type: 'knowledge',
-        answer: s.answer || 'Information derived from AI analysis.',
-        auto: true,
-      });
-      added.push({ type: 'knowledge_entry', trigger: s.trigger });
-    }
-  }
-
-  if (added.length > 0) {
-    // Write the updated config back to disk — the file watcher will pick it up
-    writeFileAtomicSync(configPath, JSON.stringify(config, null, 2));
-
-    // Mark these records as applied
-    const allRecords = readDistillations(projectId);
-    for (const record of allRecords) {
-      if (suggestionIds.includes(record.id) || approved.some(s => s.ids?.includes(record.id))) {
-        record.status = 'applied';
+        config.entries.push({
+          triggers: [s.trigger],
+          type: 'knowledge',
+          answer: s.answer || 'Information derived from AI analysis.',
+          auto: true,
+        });
+        added.push({ type: 'knowledge_entry', trigger: s.trigger });
       }
     }
-    const fp = filePath(projectId);
-    writeFileAtomicSync(fp, allRecords.map(r => JSON.stringify(r)).join('\n') + '\n');
-  }
 
-  return added;
+    if (added.length > 0) {
+      // Write the updated config back to disk — the file watcher will pick it up
+      writeFileAtomicSync(configPath, JSON.stringify(config, null, 2));
+
+      // Mark these records as applied
+      const allRecords = readDistillations(projectId);
+      for (const record of allRecords) {
+        if (suggestionIds.includes(record.id) || approved.some(s => s.ids?.includes(record.id))) {
+          record.status = 'applied';
+        }
+      }
+      const fp = filePath(projectId);
+      writeFileAtomicSync(fp, allRecords.map(r => JSON.stringify(r)).join('\n') + '\n');
+    }
+
+    return added;
+  });
 }

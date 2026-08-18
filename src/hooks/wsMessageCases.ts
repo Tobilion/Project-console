@@ -133,13 +133,30 @@ const confirmPromptCase: WsCaseHandler = (ctx, payload) => {
 };
 
 const projectsUpdatedCase: WsCaseHandler = (ctx, payload) => {
-  if (payload.data) ctx.projects.setProjects(payload.data);
+  // Phase T (2026-08-14): broadcasts are global but each tab has its own workspace — a full
+  // list from the config watcher belongs to the boot root, not necessarily this tab. Apply
+  // only when the payload overlaps the tab's current set (membership filter); a foreign
+  // tab's list must never clobber the active tab's view.
+  if (payload.data && Array.isArray(payload.data)) {
+    const current = ctx.projects.projects;
+    const overlaps = current.length === 0 || payload.data.some((p: any) => current.some((c) => c.id === p?.id));
+    if (overlaps) ctx.projects.setProjects(payload.data);
+  }
 };
 
 const projectUpdatedCase: WsCaseHandler = (ctx, payload) => {
   if (payload.data) {
-    ctx.projects.setProjects(prev => prev.map(p => p.id === payload.data.id ? payload.data : p));
-    ctx.projects.setIndexingProjectId(prev => prev === payload.data.id ? null : prev);
+    // Phase T: same membership rule — an update for a project this tab doesn't have
+    // (another tab's scan set) is ignored rather than appended.
+    const known = ctx.projects.projects.some((p) => p.id === payload.data.id);
+    if (known) {
+      ctx.projects.setProjects(prev => prev.map(p => p.id === payload.data.id ? payload.data : p));
+      // Keep the active project object in sync too — a mode switch (workspaceType) or index
+      // refresh that only updated the list left derived state stale until the next selection
+      // (audit 2026-08-17).
+      ctx.projects.setActiveProject(prev => prev?.id === payload.data.id ? payload.data : prev);
+      ctx.projects.setIndexingProjectId(prev => prev === payload.data.id ? null : prev);
+    }
   }
 };
 
@@ -217,7 +234,10 @@ const toolResultCase: WsCaseHandler = (ctx, payload) => {
 };
 
 const workspaceUpdatedCase: WsCaseHandler = (ctx, payload) => {
-  if (payload.data) {
+  // Array.isArray guard: a malformed payload used to throw inside .map and silently desync
+  // the workspace (the learningSuggestionCase comment documents the same lesson — audit
+  // 2026-08-17).
+  if (payload.data && Array.isArray(payload.data.projectIds)) {
     const wsProjects = payload.data.projectIds
       .map((id: string) => ctx.projects.projects.find(p => p.id === id))
       .filter(Boolean);

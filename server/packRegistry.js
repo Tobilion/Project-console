@@ -92,11 +92,16 @@ export async function fetchPackManifest(pack) {
   } catch (err) {
     return { ok: false, error: `${pack.name}: could not fetch the manifest — ${err.message}` };
   }
-  if (pack.checksum) {
-    const hash = crypto.createHash('sha256').update(text, 'utf-8').digest('hex');
-    if (hash.toLowerCase() !== pack.checksum.toLowerCase()) {
-      return { ok: false, error: `${pack.name}: checksum mismatch — the manifest does not match the registry index's declared checksum (refusing to install).` };
-    }
+  // A remote manifest with no declared checksum is refused outright — HTTPS alone isn't
+  // integrity (a compromised registry could ship anything), so verification must never be
+  // silently skipped (audit 2026-08-17). The declared value must also be a real sha256 hex.
+  const declared = typeof pack.checksum === 'string' ? pack.checksum.trim().toLowerCase() : '';
+  if (!/^[0-9a-f]{64}$/.test(declared)) {
+    return { ok: false, error: `${pack.name}: the registry index declares no sha256 checksum for this pack — refusing to install.` };
+  }
+  const hash = crypto.createHash('sha256').update(text, 'utf-8').digest('hex');
+  if (hash !== declared) {
+    return { ok: false, error: `${pack.name}: checksum mismatch — the manifest does not match the registry index's declared checksum (refusing to install).` };
   }
   let parsedManifest;
   try {

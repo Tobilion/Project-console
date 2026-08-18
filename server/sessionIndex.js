@@ -6,6 +6,7 @@
  */
 import fs from 'fs/promises';
 import path from 'path';
+import { AsyncLocalStorage } from 'async_hooks';
 import { LEGACY_STORE_DIR, INDEX_PATH, projectSessionsDir } from './sessionPaths.js';
 
 // Global persistence serialization chain: every read→mutate→write cycle over the index (and
@@ -16,16 +17,26 @@ import { LEGACY_STORE_DIR, INDEX_PATH, projectSessionsDir } from './sessionPaths
 // Phase 2). Global, not per-session, because the index is shared.
 let persistenceChain = Promise.resolve();
 let persistenceHeld = false;
+
+// Genuine reentrancy is detected via the async context: chain items run their fn inside
+// persistenceContext, so a nested serializePersistence call from WITHIN the holder's stack
+// sees the store and runs inline (avoids the self-deadlock of a chain item awaiting its own
+// queue entry — e.g. migrateLegacySession -> ensureProjectConsoleDir -> ensureGitignored).
+// The old check ran inline for ANY call that arrived while the lock was held, and fire-and-
+// forget callers (handleExecute's user-message append, the ws.send interceptor's answer
+// append) frequently landed inside that window: the bypassed call then ran CONCURRENTLY with
+// the holder, both read the index at the same count and the later write won — losing an
+// increment and permanently drifting messageCount (caught live 2026-08-17: GET /api/sessions
+// reported total=3 while the NDJSON log held 4 lines). External callers now queue behind the
+// holder like any other item; only the holder's own nested calls bypass.
+const persistenceContext = new AsyncLocalStorage();
+
 export function serializePersistence(fn) {
-  // Reentrant call from inside the lock holder: run directly instead of queuing. Safe because
-  // everything else is queued behind the holder, so a bypassed call cannot run concurrently
-  // with anyone — and it avoids the self-deadlock of a chain item awaiting its own chain
-  // (e.g. migrateLegacySession -> ensureProjectConsoleDir -> ensureGitignored).
-  if (persistenceHeld) return fn();
+  if (persistenceHeld && persistenceContext.getStore()) return fn();
   const next = persistenceChain.then(async () => {
     persistenceHeld = true;
     try {
-      return await fn();
+      return await persistenceContext.run({ holder: true }, fn);
     } finally {
       persistenceHeld = false;
     }
@@ -73,9 +84,6 @@ export async function writeIndex(idx) {
  * metadata. Callers pass the scan directory + known project paths as roots.
  */
 export async function reconcileIndexFromDisk(roots = []) {
-  const idx = await readIndex();
-  let changed = false;
-
   const dirs = new Set(roots.filter(Boolean));
   for (const root of roots) {
     if (!root) continue;
@@ -86,6 +94,31 @@ export async function reconcileIndexFromDisk(roots = []) {
       }
     } catch {}
   }
+
+  // Phase 6 (2026-08-17): mtime fast-path. The index is rewritten on every session write
+  // (appendMessage -> setIndexEntry), while session files appear/disappear only when sessions
+  // are created/deleted — which bumps the containing .console/sessions dir's own mtime. So
+  // when index.json is newer than every candidate session dir, reconcile has nothing new to
+  // absorb and can skip the per-dir file reads. A missing or empty index still falls through
+  // to the full scan (real wipe / truncated-wipe self-heal, per the comment below).
+  let indexMtime = 0;
+  try {
+    indexMtime = (await fs.stat(INDEX_PATH)).mtimeMs;
+  } catch {}
+  const idx = await readIndex();
+  if (indexMtime > 0 && Object.keys(idx).length > 0) {
+    let newestDirMtime = 0;
+    for (const dir of dirs) {
+      try {
+        newestDirMtime = Math.max(newestDirMtime, (await fs.stat(projectSessionsDir(dir))).mtimeMs);
+      } catch {}
+    }
+    try {
+      newestDirMtime = Math.max(newestDirMtime, (await fs.stat(LEGACY_STORE_DIR)).mtimeMs);
+    } catch {}
+    if (indexMtime >= newestDirMtime) return false;
+  }
+  let changed = false;
 
   const absorb = (id, meta, fallbackPath) => {
     if (idx[id]) return false;
@@ -174,6 +207,7 @@ export async function setIndexEntry(session) {
     projectId: session.projectId,
     projectName: session.projectName,
     projectPath: session.projectPath || null,
+    workspacePath: session.workspacePath || null,
     title: session.title,
     createdAt: session.createdAt,
     updatedAt: session.updatedAt,

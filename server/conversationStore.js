@@ -13,7 +13,7 @@
  */
 import fs from 'fs/promises';
 import crypto from 'crypto';
-import { state } from './state.js';
+import { state, allKnownProjects, tabWorkspaces } from './state.js';
 import { LEGACY_STORE_DIR, legacyFilePath, projectSessionMetaFile, projectSessionLogFile, legacySessionLogFile, projectChatLog } from './sessionPaths.js';
 import { ensureLegacyDir, readIndex, writeIndex, setIndexEntry, reconcileIndexFromDisk, serializePersistence } from './sessionIndex.js';
 import { appendChatLogEntry } from './chatLog.js';
@@ -39,9 +39,13 @@ export async function listSessions() {
 
   // Self-healing: merge any on-disk session metas missing from the index (an index wipe can
   // drop every entry while all the session files survive — see writeIndex's comment).
+  // allKnownProjects() + every tab's scan root (Phase T): a session living under a tab-
+  // scanned project or a tab's own scan root must be found even when it never appeared in
+  // the global cache.
   await reconcileIndexFromDisk([
     state.currentScanDirectory,
-    ...state.activeProjectsCache.map((p) => p.path),
+    ...allKnownProjects().map((p) => p.path),
+    ...tabWorkspaces.values().map((ws) => ws.scanDirectory),
   ]);
 
   const fresh = await readIndex();
@@ -50,6 +54,15 @@ export async function listSessions() {
     title: meta.title,
     projectId: meta.projectId,
     projectName: meta.projectName,
+    // Phase T2 fix (2026-08-14): expose the project path so the frontend can find which
+    // tab's workspace a chat belongs to (path-prefix match against tab scan roots) — a
+    // sidebar click must land on the right folder + project even when that chat lives in
+    // another tab's workspace.
+    projectPath: meta.projectPath || null,
+    // The scan root this chat was created in — the tab-level counterpart to projectPath.
+    // General chats (no project) have no projectPath but DO carry a workspacePath, so tapping
+    // one from another tab can still switch back to its folder.
+    workspacePath: meta.workspacePath || null,
     messageCount: meta.messageCount || 0,
     createdAt: meta.createdAt,
     updatedAt: meta.updatedAt,
@@ -58,7 +71,7 @@ export async function listSessions() {
   return sessions;
 }
 
-export async function createSession(projectId, projectName, projectPath) {
+export async function createSession(projectId, projectName, projectPath, workspacePath) {
   return serializePersistence(async () => {
     const session = {
       id: crypto.randomUUID(),
@@ -66,6 +79,7 @@ export async function createSession(projectId, projectName, projectPath) {
       projectId: projectId || null,
       projectName: projectName || null,
       projectPath: projectPath || null,
+      workspacePath: workspacePath || null,
       messageCount: 0,
       createdAt: Date.now(),
       updatedAt: Date.now(),
@@ -102,7 +116,10 @@ export async function deleteSession(id) {
       await writeIndex(idx);
     }
 
-    return deleted || legacyDeleted || !!meta;
+    // Honest delete (audit 2026-08-17): success means a file actually went away, not just
+    // that an index entry was found — an index-only entry whose meta failed to unlink would
+    // otherwise report success and then be resurrected by reconcileIndexFromDisk.
+    return deleted || legacyDeleted;
   });
 }
 
@@ -126,6 +143,7 @@ export async function renameSession(id, title) {
           projectId: meta.projectId,
           projectName: meta.projectName,
           projectPath: meta.projectPath,
+          workspacePath: meta.workspacePath,
           messageCount: meta.messageCount,
           createdAt: meta.createdAt,
           updatedAt: meta.updatedAt,
@@ -190,7 +208,7 @@ export async function appendMessage(sessionId, message) {
     // Write updated meta file if project-scoped (atomic — a torn meta file used to make the
     // whole session unrecoverable from the sidebar; audit 2026-08-06, Phase 2)
     if (meta.projectPath) {
-      const sessionMeta = { id: sessionId, title: meta.title, projectId: meta.projectId, projectName: meta.projectName, projectPath: meta.projectPath, messageCount: meta.messageCount, createdAt: meta.createdAt, updatedAt: meta.updatedAt };
+      const sessionMeta = { id: sessionId, title: meta.title, projectId: meta.projectId, projectName: meta.projectName, projectPath: meta.projectPath, workspacePath: meta.workspacePath, messageCount: meta.messageCount, createdAt: meta.createdAt, updatedAt: meta.updatedAt };
       await writeFileAtomic(projectSessionMetaFile(meta.projectPath, sessionId), JSON.stringify(sessionMeta, null, 2)).catch((err) => {
         console.error('[conversationStore] appendMessage: meta write failed:', err.message);
       });
@@ -209,6 +227,7 @@ export async function appendMessage(sessionId, message) {
       projectId: meta.projectId,
       projectName: meta.projectName,
       projectPath: meta.projectPath,
+      workspacePath: meta.workspacePath,
       title: meta.title,
       messageCount: meta.messageCount,
       createdAt: meta.createdAt,

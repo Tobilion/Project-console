@@ -36,6 +36,7 @@ export interface WsCtx {
   projects: {
     projects: Project[];
     setProjects: React.Dispatch<React.SetStateAction<Project[]>>;
+    setActiveProject: React.Dispatch<React.SetStateAction<Project | null>>;
     setIndexingProjectId: React.Dispatch<React.SetStateAction<string | null>>;
   };
   workspace: {

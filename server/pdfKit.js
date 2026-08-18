@@ -128,7 +128,7 @@ function formatBytes(n) {
   return n + 'B';
 }
 
-function readPdfBytes(root, rel) {
+async function readPdfBytes(root, rel) {
   const abs = createResolveSafe(root)(rel);
   if (!fs.existsSync(abs)) return { error: `${rel} does not exist.` };
   let st;
@@ -139,7 +139,8 @@ function readPdfBytes(root, rel) {
     return { error: `${rel} is ${formatBytes(st.size)} — the PDF tools cap input files at ${formatBytes(MAX_PDF_BYTES)}.` };
   }
   try {
-    return { bytes: fs.readFileSync(abs) };
+    // Phase 6: async read — files can reach 150MB and a sync read pinned the event loop.
+    return { bytes: await fs.promises.readFile(abs) };
   } catch (err) {
     return { error: `Could not read ${rel}: ${err.message}` };
   }
@@ -176,8 +177,8 @@ async function writeOutput(root, rel, bytes) {
   const abs = createResolveSafe(root)(rel);
   const guard = refuseExistingOutput(root, rel);
   if (guard) return guard;
-  fs.mkdirSync(path.dirname(abs), { recursive: true });
-  fs.writeFileSync(abs, bytes);
+  await fs.promises.mkdir(path.dirname(abs), { recursive: true });
+  await fs.promises.writeFile(abs, bytes);
   journalCreated(root, rel);
   return null;
 }
@@ -187,7 +188,7 @@ export async function mergePdfs(root, inputs, output) {
   const target = await PDFDocument.create();
   let pages = 0;
   for (const rel of inputs) {
-    const read = readPdfBytes(root, rel);
+    const read = await readPdfBytes(root, rel);
     if (read.error) return { ok: false, error: read.error };
     const loaded = await loadDocument(read.bytes, rel);
     if (loaded.error) return { ok: false, error: loaded.error };
@@ -214,7 +215,7 @@ export async function mergePdfs(root, inputs, output) {
 /** Split one PDF. spec.kind 'perPage' -> one file per page; 'at' -> two parts around page N.
  *  Returns { ok, outputs: [{path, pages}], totalPages } or { ok:false, error }. */
 export async function splitPdf(root, input, spec) {
-  const read = readPdfBytes(root, input);
+  const read = await readPdfBytes(root, input);
   if (read.error) return { ok: false, error: read.error };
   const loaded = await loadDocument(read.bytes, input);
   if (loaded.error) return { ok: false, error: loaded.error };
@@ -257,7 +258,7 @@ export async function splitPdf(root, input, spec) {
 
 /** Extract plain text (pdf-parse). Returns { ok, text, preview, pages } or { ok:false, error }. */
 export async function extractText(root, input) {
-  const read = readPdfBytes(root, input);
+  const read = await readPdfBytes(root, input);
   if (read.error) return { ok: false, error: read.error };
   try {
     const parser = new PDFParse({ data: read.bytes });
@@ -287,7 +288,7 @@ export async function extractPdfTextBytes(bytes) {
 
 /** Extract a page range into one new PDF. Returns { ok, output, pages } or { ok:false, error }. */
 export async function extractPages(root, input, from, to, output) {
-  const read = readPdfBytes(root, input);
+  const read = await readPdfBytes(root, input);
   if (read.error) return { ok: false, error: read.error };
   const loaded = await loadDocument(read.bytes, input);
   if (loaded.error) return { ok: false, error: loaded.error };
@@ -312,7 +313,7 @@ export async function extractPages(root, input, from, to, output) {
 /** Draw a centered diagonal-ish watermark word across every page. Returns
  *  { ok, output, pages } or { ok:false, error }. */
 export async function watermarkPdf(root, input, text, output) {
-  const read = readPdfBytes(root, input);
+  const read = await readPdfBytes(root, input);
   if (read.error) return { ok: false, error: read.error };
   const loaded = await loadDocument(read.bytes, input);
   if (loaded.error) return { ok: false, error: loaded.error };

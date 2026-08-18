@@ -10,8 +10,10 @@ import { cosineSimilarity } from './intentVectorScan.js';
 // Bounds keep a single search bounded regardless of how many projects/entries exist: memory.md
 // itself caps at 200 entries per project (memoryStore.js's MAX_ENTRIES), so MAX_TOTAL_LINES is
 // generous headroom for a handful of projects with substantial memory, not a realistic ceiling
-// for a single-user local install.
-const MAX_LINES_PER_PROJECT = 100;
+// for a single-user local install. Per-project is deliberately small (audit 2026-08-17): each
+// line costs one model embed on the WS turn, and 20 lines/project across many projects already
+// covers "which project did I set up X in" without ever serializing hundreds of embeds.
+const MAX_LINES_PER_PROJECT = 20;
 const MAX_TOTAL_LINES = 400;
 export const RESULT_LIMIT = 8;
 

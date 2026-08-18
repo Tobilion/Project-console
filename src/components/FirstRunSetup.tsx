@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { ModalShell } from './ui/ModalShell';
 import { UserProfile } from '../hooks/useUserProfile';
 import { Sparkles, FolderSearch, ArrowRight, ChevronDown, TerminalSquare } from 'lucide-react';
@@ -28,11 +28,15 @@ export function FirstRunSetup({ open, scanPath, setScanPath, handleScan, onFinis
   const [name, setName] = useState('');
   const [workspaceType, setWorkspaceType] = useState<'dev' | 'general'>('dev');
   const [showDev, setShowDev] = useState(false);
+  // The pre-filled path as it was when the wizard mounted — a user who leaves it untouched
+  // shouldn't pay for a pointless ~2s rescan (and an empty path previously dumped a "No path
+  // given." error into a chat that may not even exist yet; audit 2026-08-17).
+  const initialPathRef = useRef(scanPath);
 
   const handleContinue = (e: React.FormEvent<HTMLFormElement>) => {
-    // Only actually rescan if the user changed the pre-filled path — the default scan
-    // directory has usually already been scanned once by the time this wizard renders.
-    handleScan(e);
+    e.preventDefault();
+    const pathChanged = scanPath.trim() && scanPath.trim() !== (initialPathRef.current || '').trim();
+    if (pathChanged) handleScan(e);
     onFinish({ name: name.trim(), setupComplete: true, defaultWorkspaceType: workspaceType });
   };
 

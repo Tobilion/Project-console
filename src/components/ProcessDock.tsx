@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Terminal as TerminalIcon, ChevronDown, ChevronUp, Square, LayoutGrid, FolderOpen, History as HistoryIcon } from 'lucide-react';
 import { shortCommand, portFromUrl } from '../utils/process';
@@ -26,6 +26,8 @@ interface ProcessDockProps {
   projects?: { id: string; name: string }[];
   activeProjectId?: string | null;
   onSendMessage?: (msg: string) => void;
+  /** Phase T (2026-08-14): the tab whose workspace the History tab's REST call addresses. */
+  tabId?: string | null;
 }
 
 /**
@@ -55,16 +57,57 @@ export function ProcessDock({
   projects = [],
   activeProjectId = null,
   onSendMessage,
+  tabId = null,
 }: ProcessDockProps) {
   const lines = selectedProcessId ? (processLogs[selectedProcessId] || []) : [];
-  const logText = lines.join('\n');
-  const logEndRef = useRef<HTMLDivElement>(null);
+  // Audit 2026-08-17: join once per actual log change, not per render — the log body re-renders
+  // on every chat message/dock state change otherwise.
+  const logText = useMemo(() => lines.join('\n'), [lines]);
 
+  // Phase 5: auto-scroll ONLY while the user is at (or near) the bottom of the log — reading
+  // old output must not be yanked down by new chunks (same contract as TerminalMessages).
+  // Switching the selected process forces a jump to the live tail regardless.
+  const logContainerRef = useRef<HTMLDivElement>(null);
+  const atBottomRef = useRef(true);
+  const prevSelectedRef = useRef<string | null>(null);
+  const handleLogScroll = () => {
+    const el = logContainerRef.current;
+    if (!el) return;
+    atBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
+  };
   useEffect(() => {
-    if (expanded && dockTab === 'logs' && lines.length > 0) {
-      logEndRef.current?.scrollIntoView({ block: 'end' });
+    if (!expanded || dockTab !== 'logs') return;
+    const el = logContainerRef.current;
+    if (!el) return;
+    const selectionChanged = prevSelectedRef.current !== selectedProcessId;
+    prevSelectedRef.current = selectedProcessId;
+    if (selectionChanged || atBottomRef.current) {
+      el.scrollTop = el.scrollHeight;
     }
-  }, [expanded, dockTab, lines.length]);
+  }, [expanded, dockTab, selectedProcessId, lines.length]);
+
+  // Phase 5: out-of-band attribution. Output that arrives for a project the user is NOT
+  // currently watching (scheduled fires, watchers, verify runs, auto-start) is invisible in
+  // the chat and easy to miss in the dock — so a non-selected project that grows its log
+  // gets an amber activity dot on its tab, cleared on selection. The log header also names
+  // the selected project when it differs from the chat's active project.
+  const [dirty, setDirty] = React.useState<Record<string, boolean>>({});
+  const seenLengthsRef = useRef<Record<string, number>>({});
+  useEffect(() => {
+    for (const p of processes) {
+      const len = (processLogs[p.projectId] || []).length;
+      const seen = seenLengthsRef.current[p.projectId] ?? 0;
+      if (len > seen && p.projectId !== selectedProcessId) {
+        setDirty((d) => (d[p.projectId] ? d : { ...d, [p.projectId]: true }));
+      }
+      seenLengthsRef.current[p.projectId] = len;
+    }
+  }, [processes, processLogs, selectedProcessId]);
+
+  const selectedProjectName = selectedProcessId
+    ? projects.find((p) => p.id === selectedProcessId)?.name
+    : undefined;
+  const isOutOfBand = !!selectedProcessId && !!activeProjectId && selectedProcessId !== activeProjectId;
 
   // A project can track several processes at once (e.g. NetPulse's dashboard + watch loop).
   // The overview shows one row per project — prefer the process that exposes a URL so the
@@ -116,6 +159,12 @@ export function ProcessDock({
                                 disabled={!running}
                                 onClick={() => {
                                   if (!running) return;
+                                  setDirty((d) => {
+                                    if (!d[proj.id]) return d;
+                                    const next = { ...d };
+                                    delete next[proj.id];
+                                    return next;
+                                  });
                                   onSelectProcess(proj.id);
                                   onSetDockTab?.('logs');
                                 }}
@@ -152,11 +201,19 @@ export function ProcessDock({
                     projects={projects}
                     activeProjectId={activeProjectId}
                     onSendMessage={onSendMessage || (() => {})}
+                    tabId={tabId}
                   />
                 ) : (
                   <>
                     <div className="flex items-center justify-between px-4 pt-2">
-                      <span className="text-[10px] text-fg-dim uppercase">Live output</span>
+                      <span className="text-[10px] text-fg-dim uppercase">
+                        Live output
+                        {isOutOfBand && selectedProjectName && (
+                          <span className="ml-2 normal-case text-accent-orange" title="This output belongs to a project other than the one you are chatting in">
+                            — {selectedProjectName}
+                          </span>
+                        )}
+                      </span>
                       <CopyButton
                         text={logText}
                         title="Copy log"
@@ -166,9 +223,8 @@ export function ProcessDock({
                         className="flex items-center gap-1 px-2 py-0.5 rounded bg-panel hover:bg-panel-strong text-fg-dim hover:text-fg-strong transition-colors text-[10px]"
                       />
                     </div>
-                    <div className="max-h-64 overflow-y-auto p-3 font-mono text-xs text-fg-muted leading-relaxed whitespace-pre-wrap">
+                    <div ref={logContainerRef} onScroll={handleLogScroll} className="max-h-64 overflow-y-auto p-3 font-mono text-xs text-fg-muted leading-relaxed whitespace-pre-wrap">
                       {logText || 'No output yet.'}
-                      <div ref={logEndRef} />
                     </div>
                   </>
                 )}
@@ -247,6 +303,13 @@ export function ProcessDock({
                 >
                   <button
                     onClick={() => {
+                      // Clearing the activity dot when the user actually looks at the log.
+                      setDirty((d) => {
+                        if (!d[p.projectId]) return d;
+                        const next = { ...d };
+                        delete next[p.projectId];
+                        return next;
+                      });
                       onSelectProcess(p.projectId);
                       onSetDockTab?.('logs');
                       if (!expanded) onToggleExpanded();
@@ -260,6 +323,9 @@ export function ProcessDock({
                       <span className={`text-[10px] ${selected ? 'text-accent-blue/70' : 'text-fg-dim'}`}>
                         :{port}
                       </span>
+                    )}
+                    {dirty[p.projectId] && (
+                      <span className="w-1.5 h-1.5 rounded-full bg-accent-orange flex-shrink-0" title="New output arrived — click to view" />
                     )}
                   </button>
                   <button

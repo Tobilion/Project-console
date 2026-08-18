@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Archive, RefreshCw, Send, CheckCircle2, Download, FolderOpen } from 'lucide-react';
 import { apiFetchJson } from '../utils/apiFetch';
+import { projectApi } from '../utils/projectApi';
 import { cn } from '../lib/utils';
 import type { Project } from '../types';
 
@@ -19,6 +20,8 @@ interface BackupInfo {
 interface BackupPanelProps {
   project: Project | null;
   onSendMessage: (text: string) => void;
+  /** Phase T (2026-08-14): the tab whose workspace this panel's REST calls address. */
+  tabId?: string | null;
 }
 
 const POLL_MS = 15000;
@@ -29,7 +32,7 @@ function formatSize(n: number): string {
   return n + ' B';
 }
 
-export function BackupPanel({ project, onSendMessage }: BackupPanelProps) {
+export function BackupPanel({ project, onSendMessage, tabId = null }: BackupPanelProps) {
   const [backups, setBackups] = useState<BackupInfo[]>([]);
   const [folders, setFolders] = useState<string[]>([]);
   const [subFolder, setSubFolder] = useState('');
@@ -44,12 +47,12 @@ export function BackupPanel({ project, onSendMessage }: BackupPanelProps) {
   const fetchBackups = useCallback(async () => {
     if (!project?.id) return;
     setLoading(true);
-    const data = await apiFetchJson<{ backups: BackupInfo[] }>(`/api/projects/${encodeURIComponent(project.id)}/backups`);
+    const data = await apiFetchJson<{ backups: BackupInfo[] }>(projectApi(`/api/projects/${encodeURIComponent(project.id)}/backups`, tabId));
     setLoading(false);
     if (!data) { setError('Could not load backups.'); return; }
     setError(null);
     setBackups(data.backups || []);
-  }, [project?.id]);
+  }, [project?.id, tabId]);
 
   useEffect(() => {
     if (project?.id) {
@@ -63,9 +66,9 @@ export function BackupPanel({ project, onSendMessage }: BackupPanelProps) {
   // panel just never exposed it. Populate the picker from the project's one-level dirs.
   const fetchFolders = useCallback(async () => {
     if (!project?.id) return;
-    const data = await apiFetchJson<{ folders: string[] }>(`/api/projects/${encodeURIComponent(project.id)}/folders`);
+    const data = await apiFetchJson<{ folders: string[] }>(projectApi(`/api/projects/${encodeURIComponent(project.id)}/folders`, tabId));
     if (data) setFolders(data.folders || []);
-  }, [project?.id]);
+  }, [project?.id, tabId]);
 
   useEffect(() => {
     if (project?.id) {
@@ -83,11 +86,11 @@ export function BackupPanel({ project, onSendMessage }: BackupPanelProps) {
   };
 
   const downloadUrl = (name: string) =>
-    `/api/projects/${encodeURIComponent(project?.id || '')}/backup-file?name=${encodeURIComponent(name)}`;
+    projectApi(`/api/projects/${encodeURIComponent(project?.id || '')}/backup-file?name=${encodeURIComponent(name)}`, tabId);
 
   const reveal = async (name: string) => {
     try {
-      await fetch(`/api/projects/${encodeURIComponent(project?.id || '')}/reveal`, {
+      await fetch(projectApi(`/api/projects/${encodeURIComponent(project?.id || '')}/reveal`, tabId), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ path: `backups/${name}` }),
