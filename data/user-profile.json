@@ -9,7 +9,8 @@
     "clipboardPersist": true,
     "defaultWorkspaceType": "dev",
     "locale": "en",
-    "accentColor": "#FF375F",
-    "scanAllFolders": false
+    "accentColor": "auto",
+    "scanAllFolders": false,
+    "explorerViewMode": "list"
   }
 }
