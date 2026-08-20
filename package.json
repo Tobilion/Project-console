@@ -4,7 +4,7 @@
   "author": "Tobi",
   "license": "MIT",
   "private": false,
-  "version": "1.0.7",
+  "version": "1.0.8",
   "packageManager": "npm@11.16.0",
   "bin": {
     "local-project-console": "bin/cli.js"
