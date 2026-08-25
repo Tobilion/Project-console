@@ -39,11 +39,20 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          # Electron 43 requires node >= 22.12 (the EBADENGINE warnings below are its
+          # own build toolchain); the repo root's engines field is >=20, satisfied here.
+          node-version: 22
           cache: npm
           cache-dependency-path: |
             package-lock.json
             desktop/package-lock.json
+
+      # stage-server.mjs builds the frontend through the repo root's own vite binary
+      # (`node_modules/vite/bin/vite.js`), so the ROOT dependencies must be installed
+      # before staging — the first CI run failed exactly here (MODULE_NOT_FOUND).
+      - name: Install repo-root dependencies (vite, build tooling)
+        run: npm ci
+        working-directory: ${{ github.workspace }}
 
       - name: Install desktop build tools (electron, electron-builder)
         run: npm ci
