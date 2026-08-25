@@ -24,7 +24,9 @@ jobs:
           - os: macos-latest
             target: mac
             flags: --mac dmg
-            artifact: Project Console-1.0.0.dmg
+            # macos-latest is an arm64 runner; electron-builder appends the arch
+            # suffix on Apple Silicon builds (Project Console-1.0.0-arm64.dmg).
+            artifact: Project Console-1.0.0-arm64.dmg
           - os: ubuntu-latest
             target: linux
             flags: --linux AppImage
