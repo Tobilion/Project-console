@@ -20,7 +20,7 @@ The result is a console that behaves identically offline and online — same com
 
 ### Command dispatcher (works without AI)
 
-- **Intent matching**: every message is resolved through a multi-stage pipeline — embedding similarity (all-MiniLM-L6-v2), literal pre-checks for known trap phrases, fuzzy matching, keyword rules, a trained NLP classifier, and a bounded local-model classification call for novel phrasings. 147 intents with ~2,903 example phrases, split across `server/intents/*.js` and merged in `intentsData.js`.
+- **Intent matching**: every message is resolved through a multi-stage pipeline — embedding similarity (all-MiniLM-L6-v2), literal pre-checks for known trap phrases, fuzzy matching, keyword rules, a trained NLP classifier, and a bounded local-model classification call for novel phrasings. 148 intents with ~2,907 example phrases, split across `server/intents/*.js` and merged in `intentsData.js`.
 - **Self-learning**: confirmed phrases are promoted into the permanent example set automatically as the console is used (near-miss logging → `learningEngine.js`), persisted across restarts, and used to retrain both the embedding matcher and the NLP classifier.
 - **Chit-chat**: greeting, status, gratitude, farewell, acknowledgment, and joke replies with varied templates — no LLM call involved. Greetings/status are enriched with live state (console port, projects indexed, running dev server + URL, uncommitted-file count) and what the console remembers about the project. With AI mode on, greeting/status also ask the active model for a tailored reply (bounded timeout, falls back to the canned reply on any error).
 - **Calculator**: safe arithmetic (`+ - * / ( )`, no eval) plus offline unit conversion (length/weight/volume/temperature), percentage/tip/tax phrases (`convert 5 km to miles`, `what is 15% of 80`, `whats 18% tip on 64.50`, `add 8.25% tax to 120`). The Calculator panel (Tools) is a live iOS-style widget — button presses are instant, `=` evaluates through the same server-side evaluator chat uses.
@@ -163,7 +163,7 @@ The result is a console that behaves identically offline and online — same com
 
 ## Requirements
 
-- Node.js 18+ (developed on Node 24)
+- Node.js 20+ (developed on Node 24)
 - npm (or bun)
 - Optional: [Ollama](https://ollama.com/download/windows) for AI mode — local models, or `ollama signin` for Ollama Cloud
 
@@ -453,7 +453,7 @@ server/
 ├── matcher.js            — matchInput() pipeline: multi-intent → semantic → NLP → local router → fallback
 ├── semanticMatcher.js    — Embedding + Fuse.js matching + PRE_SEMANTIC_OVERRIDES literal rules
 ├── localRouter.js        — Bounded single-call local-model classification (last resort, AI-toggle independent)
-├── intentsData.js        — Merges 141 intents (~2,860 phrases) from server/intents/*
+├── intentsData.js        — Merges 148 intents (~2,907 phrases) from server/intents/*
 ├── nlpEngine.js          — Trained NLP.js classifier; retrains from confirmed near-miss promotions
 ├── tools.js              — Sandboxed file/git/memory/process/test tools + resolveToolGate approval point
 ├── executor.js           — Shell command spawner, URL detection, port retry, buffered output streaming
@@ -491,14 +491,14 @@ scripts/                  — Daemon launchers (start/stop/add-to-startup)
 
 ```powershell
 npm run lint                # tsc --noEmit
-npm test                    # node:test suite: 478 tests (345 matcher cases + 133 WS case tables)
+npm test                    # node:test suite: 482 tests (349 matcher cases + 133 WS case tables)
 npm run test:coverage       # same suite with a coverage report (server-wide, line/function/branch)
 npm run check-intents       # static exact/near-duplicate phrase scanner
-npm run check-matcher       # matching-pipeline regression battery (339 inputs)
+npm run check-matcher       # matching-pipeline regression battery (349 inputs)
 npm run check-indexer       # codebase indexer regression battery
 npm run check-tools         # sandbox/gate/tool regression battery
 npm run check-handlers      # intent-handler coverage + dispatch checks
-npm run check-ws-cases      # frontend WS message-case regression battery (node:test, 122 tests)
+npm run check-ws-cases      # frontend WS message-case regression battery (node:test, 133 tests)
 npm run build               # vite build + esbuild server bundle -> dist/
 ```
 
@@ -565,7 +565,7 @@ local-project-console cli               # global install
 ```
 
 Either way it opens the same setup flow as running from source: pick or type a folder to scan,
-and the first-run wizard walks through the rest. It needs Node 18+ and, for AI mode, a local
+and the first-run wizard walks through the rest. It needs Node 20+ and, for AI mode, a local
 [Ollama](https://ollama.com) install — everything else (the matcher, trigger-mode commands, git
 integration) works with zero setup.
 
