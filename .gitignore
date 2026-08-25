@@ -1,6 +1,10 @@
 node_modules/
 build/
 dist/
+# The desktop shell's build-resources icon must ship (CI mac/linux packaging reads it) —
+# the generic `build/` pattern above would otherwise ignore it.
+!desktop/build/
+!desktop/build/icon.png
 coverage/
 .DS_Store
 Thumbs.db
@@ -66,3 +70,20 @@ data/auto-start.json
 data/auto-start-log.md
 # Phase 7: intent-collision baseline for the boot-time sweep (see collisions.js)
 data/collisions.json
+
+# Runtime stores documented as gitignored (CLAUDE.md/features.md) that lacked an entry — a
+# backup zip, snippet, learned phrase, registry URL or workspace file would otherwise be an
+# un-ignored, easy-to-commit artifact. data/registry-config.json + metadata.json were tracked
+# before this entry and were `git rm --cached`ed so the ignore is authoritative.
+data/editors.json
+data/snippets.json
+data/learned-intents.json
+data/registry-config.json
+data/backups/
+data/workspace-exports/
+data/distillations/
+data/general-workspace/
+metadata.json
+
+# electron-builder staging dir (desktop builds)
+desktop/stage/

@@ -3,6 +3,7 @@ import { Archive, RefreshCw, Send, CheckCircle2, Download, FolderOpen } from 'lu
 import { apiFetchJson } from '../utils/apiFetch';
 import { projectApi } from '../utils/projectApi';
 import { cn } from '../lib/utils';
+import { EmptyState } from './ui/EmptyState';
 import type { Project } from '../types';
 
 // Phase 9 (UPGRADE-ROADMAP.md, 2026-08-12): the Backup panel — Time Machine's chronological
@@ -152,9 +153,12 @@ export function BackupPanel({ project, onSendMessage, tabId = null }: BackupPane
             <div>
               <h3 className="text-xs font-semibold text-fg-strong mb-2.5 px-1">Previous backups</h3>
               {backups.length === 0 ? (
-                <p className="text-xs text-fg-dim italic px-1">
-                  No backups yet. Hit "Backup now" above, or type <code className="font-mono text-accent-teal">backup this folder</code> in chat.
-                </p>
+                <EmptyState
+                  icon={<Archive size={18} />}
+                  title="No backups yet"
+                  hint="Hit Backup now above, or type backup this folder in chat."
+                  className="py-6"
+                />
               ) : (
                 <div className="space-y-2">
                   {backups.map((b) => (

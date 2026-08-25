@@ -12,6 +12,8 @@ import { validateToolCall, withFileLock, FILE_MUTATING_TOOLS } from '../aiGuardr
 import { scheduleVerification } from '../verifyHarness.js';
 import { appendAction } from '../actionHistory.js';
 import { getCommandDir } from '../commandDir.js';
+import { isAskModeBlocked } from '../toolGate.js';
+import { readProfile } from '../routes/profileRoutes.js';
 
 /** Direct tool invocation from the frontend (not via AI chat). Scoped to the client's active project. */
 export async function handleToolCall(ws, parsed, sessionContext) {
@@ -20,6 +22,12 @@ export async function handleToolCall(ws, parsed, sessionContext) {
   if (!tool) {
     metrics.inc('tool_call.error');
     ws.send(JSON.stringify({ type: 'tool_result', data: { success: false, error: 'Missing tool name.' } }));
+    return;
+  }
+  // Round-6 audit (2026-08-24): read-only "Ask" mode applies to the direct path exactly like
+  // the AI path — a mutating/executing tool is blocked with a plain tool_result, no prompt.
+  if (readProfile().permissionMode === 'ask' && isAskModeBlocked(tool)) {
+    ws.send(JSON.stringify({ type: 'tool_result', data: { success: false, error: `Ask mode is on — "${tool}" is a mutating or executing tool and is blocked. Only read-only tools run in Ask mode.` } }));
     return;
   }
   metrics.inc(`tool_call.${tool}`);

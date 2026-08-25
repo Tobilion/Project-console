@@ -135,7 +135,9 @@ export function readAutoStartLog(n = 20) {
 function deliverResult(project, text) {
   for (const [ws, ctx] of connectionRegistry) {
     if (ctx.activeProjectId === project.id && ws.readyState === 1) {
-      ws.send(JSON.stringify({ type: 'answer', data: text }));
+      // toast: true — boot-time auto-start results are out-of-band (the user may not be in
+      // the chat); the web client surfaces them as a toast in addition to the bubble.
+      ws.send(JSON.stringify({ type: 'answer', data: text, toast: true }));
       return 'connected session';
     }
   }

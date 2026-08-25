@@ -30,6 +30,9 @@ export function useConsoleProcessDock(
 ) {
   const [processes, setProcesses] = useState<ProcessInfo[]>([]);
   const [processLogs, setProcessLogs] = useState<Record<string, string[]>>({});
+  // True while a first-selection ring-buffer replay is in flight — the dock shows skeleton
+  // lines instead of the misleading "No output yet." (2026-08-24).
+  const [logLoading, setLogLoading] = useState(false);
   const [selectedProcessId, setSelectedProcessId] = useState<string | null>(null);
   const [dockExpanded, setDockExpanded] = useState(false);
   // Phase 14 (PASS 3d): which expanded view the dock shows — the live process logs (default,
@@ -61,7 +64,9 @@ export function useConsoleProcessDock(
 
   // Phase 6 (PASS 6.2): replay the server ring buffer for a process log into the dock.
   const fetchProcessLog = useCallback(async (projectId: string) => {
+    setLogLoading(true);
     const data = await apiFetchJson<{ lines: string[] }>(`/api/processes/${encodeURIComponent(projectId)}/log`);
+    setLogLoading(false);
     if (!data) return;
     if (Array.isArray(data.lines)) setProcessLogs(prev => ({ ...prev, [projectId]: data.lines }));
   }, []);
@@ -105,6 +110,7 @@ export function useConsoleProcessDock(
   return {
     processes,
     processLogs,
+    logLoading,
     selectedProcessId,
     setSelectedProcessId,
     dockExpanded,

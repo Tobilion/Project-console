@@ -1,15 +1,14 @@
-import { Mutex } from 'async-mutex';
 import Fuse from 'fuse.js';
 import { INTENTS } from './intentsData.js';
-import { broadcast } from './wsServer.js';
 import { bestProjectActionVector } from './intentVectorScan.js';
 import { runMatchPipeline } from './matcherMatch.js';
 import { computeNearestIntent } from './matcherNearest.js';
 import { matchMultiParts } from './matcherMulti.js';
 import { computeIntentCollisions } from './matcherCollisions.js';
-import { computeProjectDiff } from './matcherProjectDiff.js';
 import { searchFuseSuggestions } from './matcherFuse.js';
 import { getTuning } from './tuningStore.js';
+import { initializeMatcher } from './semanticMatcherInit.js';
+import { createProjectIntentStore } from './semanticMatcherProjects.js';
 
 // Tunable knobs (Phase 4: magic numbers standardized).
 // 0.4 was cutting off single-edit typos on short inputs (e.g. "hep" -> "help") before
@@ -54,9 +53,9 @@ class SemanticMatcher {
     this.initializing = false;
     this.initError = null;
     this._lastTelemetry = null;
-    this.lastProjectIntents = null;
-    // Serializes addProjectIntents / clearProjectIntents mutations (see those methods).
-    this._projectIntentsMutex = new Mutex();
+    // Project-intent vector store (diff + embed + Fuse update loop — see
+    // semanticMatcherProjects.js); its mutex serializes add/clear mutations.
+    this.projectIntents = createProjectIntentStore(this);
     // LRU cache of input-string embedding vectors, keyed by the normalized input (see
     // embedInput below). Never invalidated mid-process: an input maps to the same vector for
     // the lifetime of the loaded model, so eviction is size-only (Phase 6).
@@ -112,80 +111,10 @@ class SemanticMatcher {
   }
 
   async initialize() {
-    if (this.ready) return;
-    // A prior download/embedding failure must short-circuit instead of re-running the whole
-    // 120s download attempt on every match() call (match() → semantic stage → initialize()).
-    // Callers already degrade gracefully to the fuzzy/NLP stages on initError.
-    if (this.initError) throw this.initError;
-    if (this.initializing) {
-      while (!this.ready && !this.initError) {
-        await new Promise(r => setTimeout(r, getTuning('INIT_WAIT_POLL_MS', INIT_WAIT_POLL_MS)));
-      }
-      if (this.initError) throw this.initError;
-      return;
-    }
-    this.initializing = true;
-
-    try {
-      // Lazy load — see the note at the top of this file about why this is not a static import.
-      const { pipeline, env } = await import('@xenova/transformers');
-      env.cacheDir = './.cache/xenova';
-      broadcast({ type: 'semantic_matcher_progress', data: { stage: 'downloading', percent: 0 } });
-      console.log('[SemanticMatcher] Loading embedding model (first load downloads ~23MB)...');
-      // A stalled HuggingFace download (an offline/proxied/rate-limited connection that
-      // neither resolves nor rejects) previously hung initialize() forever: index.js awaits it
-      // before the port-fallback listen loop, so the whole server never bound, and every
-      // concurrent caller's ready/initError poll loop spun forever (audit 2026-08-06, Phase 2).
-      // Race the download against a deadline — on timeout this fails exactly like a real
-      // download failure (initError set, callers already degrade gracefully to the fuzzy/NLP
-      // stages), and the losing pipeline promise can't clobber anything because the race
-      // settled first.
-      let downloadTimer;
-      this.extractor = await Promise.race([
-        pipeline('feature-extraction', 'Xenova/all-MiniLM-L6-v2', { quantized: true }),
-        new Promise((_, reject) => {
-          downloadTimer = setTimeout(
-            () => reject(new Error(`Embedding model download timed out after ${INIT_DOWNLOAD_TIMEOUT_MS / 1000}s — semantic matching unavailable this session.`)),
-            INIT_DOWNLOAD_TIMEOUT_MS
-          );
-        }),
-      ]).finally(() => clearTimeout(downloadTimer));
-      broadcast({ type: 'semantic_matcher_progress', data: { stage: 'embedding', percent: 50 } });
-      console.log('[SemanticMatcher] Model loaded, computing intent embeddings...');
-
-      this.intentVectors = {};
-      // Phase 6: embed the whole phrase corpus in one bounded-concurrency batch instead of
-      // serially — ~2500 phrases at 8 in flight is the single largest boot-time reduction.
-      const phraseTasks = [];
-      for (const [intent, config] of Object.entries(INTENTS)) {
-        for (const example of config.examples) {
-          phraseTasks.push({ intent, example });
-        }
-      }
-      const phraseResults = await this._embedBatch(phraseTasks.map((t) => t.example));
-      for (let i = 0; i < phraseTasks.length; i++) {
-        const { intent } = phraseTasks[i];
-        if (!this.intentVectors[intent]) this.intentVectors[intent] = [];
-        this.intentVectors[intent].push(phraseResults[i].data);
-      }
-
-      this._rebuildFuseIndex();
-
-      this.ready = true;
-      broadcast({ type: 'semantic_matcher_progress', data: { stage: 'ready', percent: 100 } });
-      console.log(`[SemanticMatcher] Ready — ${Object.keys(INTENTS).length} base intents, ${Object.values(INTENTS).reduce((s, c) => s + c.examples.length, 0)} phrases`);
-      // First-message warm-up (Phase 6): the phrase batch above warms the model runtime, but
-      // the first INPUT embed still pays one-off tokenizer/thread-pool setup inside the model.
-      // Fire one throwaway embed (cached under 'warm-up check', harmless) so the first real
-      // user message doesn't pay it. Fire-and-forget — never blocks ready.
-      this.embedInput('warm-up check').catch(() => {});
-    } catch (err) {
-      this.initError = err;
-      console.error('[SemanticMatcher] Failed:', err.message);
-      throw err;
-    } finally {
-      this.initializing = false;
-    }
+    // Boot sequence (model download race, phrase batch, ready/initError transitions) lives
+    // in semanticMatcherInit.js — the module needs this class's constants, so the import
+    // cycle between the two files is deliberate and benign (read at call time, not load time).
+    return initializeMatcher(this);
   }
 
   _rebuildFuseIndex() {
@@ -242,133 +171,12 @@ class SemanticMatcher {
     }
   }
 
-  /** Compute diff between last known state and current projects, returning only added/changed entries. */
-  _computeProjectDiff(projects) {
-    const diff = computeProjectDiff(projects, this.lastProjectIntents);
-    this.lastProjectIntents = diff.next;
-    return { full: diff.full, changed: diff.changed, removed: diff.removed };
-  }
-
   async addProjectIntents(projects) {
-    if (!this.extractor) return;
-    if (!projects) return;
-    // Watcher-driven (index.js) and scan-driven (projectRoutes.js) updates can arrive
-    // concurrently and all mutate the same project-intent vectors + Fuse items; route every
-    // mutation through one mutex so diffs and index rebuilds stay atomic.
-    await this._projectIntentsMutex.runExclusive(() => this._applyProjectIntents(projects));
-  }
-
-  async _applyProjectIntents(projects) {
-    const diff = this._computeProjectDiff(projects);
-
-    if (diff.full) {
-      const totalEntries = projects.reduce((s, p) => s + (p.config?.entries?.length || 0), 0);
-      if (totalEntries === 0) return;
-      console.log(`[SemanticMatcher] Adding ${totalEntries} project-specific intents (full recompute)...`);
-      this.projectIntentVectors = {};
-      this.projectFuseItems = [];
-      // Phase 6: collect every trigger first, embed the whole set in one bounded-concurrency
-      // batch (same results as the serial loop, a fraction of the wall-clock), then assign
-      // vectors back to their entries by index.
-      const triggerGroups = new Map();
-      for (let pIdx = 0; pIdx < projects.length; pIdx++) {
-        const project = projects[pIdx];
-        const entries = project.config?.entries || [];
-        for (let eIdx = 0; eIdx < entries.length; eIdx++) {
-          const entry = entries[eIdx];
-          const triggers = entry.triggers || [];
-          if (triggers.length === 0) continue;
-          const intentName = entry.type === 'command'
-            ? `project.action.${pIdx}.${eIdx}`
-            : `project.knowledge.${pIdx}.${eIdx}`;
-          triggerGroups.set(intentName, { pIdx, eIdx, triggers });
-        }
-      }
-      const allTriggers = [];
-      for (const group of triggerGroups.values()) {
-        allTriggers.push(...group.triggers);
-      }
-      const results = await this._embedBatch(allTriggers);
-      let rIdx = 0;
-      let count = 0;
-      for (const [intentName, group] of triggerGroups) {
-        const vectors = [];
-        for (const trigger of group.triggers) {
-          vectors.push(results[rIdx++].data);
-          this.projectFuseItems.push({ intent: intentName, text: trigger, isProject: true });
-        }
-        this.projectIntentVectors[intentName] = { vectors, projectIndex: group.pIdx, entryIndex: group.eIdx };
-        count++;
-      }
-      this._rebuildFuseIndex();
-      console.log(`[SemanticMatcher] ${count} project intents added`);
-      return;
-    }
-
-    // Entries removed from a project no longer have vectors — drop them so removed entries
-    // stop matching (and stop leaking memory). Runs before the changed-loop below: both can
-    // arrive in the same diff (an entry replaced by another is reported as remove + add).
-    const removedEntries = diff.removed || [];
-    for (const { pIdx, eIdx, type } of removedEntries) {
-      const intentName = type === 'command'
-        ? `project.action.${pIdx}.${eIdx}`
-        : `project.knowledge.${pIdx}.${eIdx}`;
-      delete this.projectIntentVectors[intentName];
-      this.projectFuseItems = this.projectFuseItems.filter(f => f.intent !== intentName);
-    }
-
-    if (!diff.changed || diff.changed.length === 0) {
-      if (removedEntries.length > 0) {
-        this._rebuildFuseIndex();
-        console.log(`[SemanticMatcher] Removed ${removedEntries.length} deleted entries`);
-      } else {
-        console.log('[SemanticMatcher] No project intent changes detected');
-      }
-      return;
-    }
-
-    console.log(`[SemanticMatcher] Incremental update: ${diff.changed.length} entries changed`);
-    // Phase 6: embed every changed entry's triggers in one bounded-concurrency batch, then
-    // assign vectors back by index (identical results to the serial loop).
-    const changedResults = await this._embedBatch(diff.changed.flatMap(({ entry }) => entry.triggers || []));
-    let cIdx = 0;
-    for (const { pIdx, eIdx, entry } of diff.changed) {
-      const intentName = entry.type === 'command'
-        ? `project.action.${pIdx}.${eIdx}`
-        : `project.knowledge.${pIdx}.${eIdx}`;
-
-      // Remove old Fuse items for this intent
-      this.projectFuseItems = this.projectFuseItems.filter(f => f.intent !== intentName);
-
-      const triggers = entry.triggers || [];
-      if (triggers.length === 0) {
-        delete this.projectIntentVectors[intentName];
-        continue;
-      }
-
-      const vectors = [];
-      for (const trigger of triggers) {
-        vectors.push(changedResults[cIdx++].data);
-        this.projectFuseItems.push({ intent: intentName, text: trigger, isProject: true });
-      }
-      this.projectIntentVectors[intentName] = { vectors, projectIndex: pIdx, entryIndex: eIdx };
-    }
-    this._rebuildFuseIndex();
-    console.log(`[SemanticMatcher] Incremental update complete — ${diff.changed.length} intents rebuilt`);
+    return this.projectIntents.add(projects);
   }
 
   async clearProjectIntents() {
-    // Same mutex as addProjectIntents — a clear landing mid-add would otherwise wipe state the
-    // in-flight add is still writing to (watcher events call clear then add back-to-back).
-    await this._projectIntentsMutex.runExclusive(() => {
-      this.projectIntentVectors = {};
-      this.projectFuseItems = [];
-      // Drop the diff snapshot too: the next addProjectIntents must see the cleared state as a
-      // full recompute, otherwise an unchanged project set diff's to "no changes" and the empty
-      // vector store silently stays empty until restart (confirmed live 2026-08-06 audit).
-      this.lastProjectIntents = null;
-      if (this.ready) this._rebuildFuseIndex();
-    });
+    return this.projectIntents.clear();
   }
 
   async match(input) {

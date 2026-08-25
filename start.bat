@@ -109,7 +109,13 @@ if /i "!PROBE_RESULT:~0,2!"=="UP" (
     start http://localhost:!PROBE_RESULT:~3!
 ) ELSE (
     echo %ESC%[32m  [+] Starting server and opening the browser...%ESC%[0m
-    start http://localhost:3000
+    REM The server binds 3000-3009 via its own fallback loop, so the browser must open on the
+    REM ACTUALLY-bound port, not a hardcoded 3000 (audit 2026-08-24: with 3000 occupied the old
+    REM line opened localhost:3000 - the wrong service - every time). A background watcher
+    REM (start /B, same console, dies with this window) probes the port range the same way the
+    REM already-running probe above does - proxy disabled, 5s per-port timeout, up to ~95s for
+    REM a cold boot - then opens the browser on whatever port the server landed on.
+    start "" /B powershell -NoProfile -Command "[Net.WebRequest]::DefaultWebProxy=$null; $deadline=(Get-Date).AddSeconds(95); $f=$null; while((Get-Date) -lt $deadline -and $null -eq $f){ foreach($i in 3000..3009){ try { $r=Invoke-RestMethod -Uri ('http://127.0.0.1:'+$i+'/api/projects') -TimeoutSec 5; if($r.projects){$f=$i;break} } catch {} }; if($null -eq $f){ Start-Sleep -Seconds 3 } }; if($null -ne $f){ Start-Process ('http://localhost:'+$f) } else { Write-Host 'Console did not become ready - open the printed URL manually' }"
     IF EXIST "dist\server.js" (
         call npm start
     ) ELSE (

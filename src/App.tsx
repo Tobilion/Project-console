@@ -1,26 +1,17 @@
 import React, { useEffect, useMemo, useRef } from 'react';
+import { X } from 'lucide-react';
 import { GlowOrbs } from './components/GlowOrbs';
-import { TextScramble } from './components/TextScramble';
-import { SidebarDrawer } from './components/SidebarDrawer';
-import { Terminal } from './components/Terminal';
-import { WelcomeScreen } from './components/WelcomeScreen';
-import { Dashboard } from './components/Dashboard';
-import { ToolsPanel } from './components/ToolsPanel';
-import { ProjectTabs } from './components/ProjectTabs';
-import { CommandDeck } from './components/CommandDeck';
-import { ChatHistoryOverlay } from './components/ChatHistoryOverlay';
+import { AppHeader } from './components/AppHeader';
+import { AppMainView } from './components/AppMainView';
+import { AppOverlays } from './components/AppOverlays';
 import { useConsole } from './hooks/useConsole';
 import { useUserProfile } from './hooks/useUserProfile';
 import { useTheme } from './hooks/useTheme';
+import { useAppGlobalListeners } from './hooks/useAppGlobalListeners';
+import { useAppViewState } from './hooks/useAppViewState';
 import { getRandomGreeting } from './utils/greetings';
-import { Home, LayoutDashboard, LayoutGrid, Search, Settings, Loader2, X, BookOpen, HelpCircle } from 'lucide-react';
-import { ThemeToggle } from './components/ui/ThemeToggle';
-import { UserProfileModal } from './components/UserProfileModal';
-import { FirstRunSetup } from './components/FirstRunSetup';
-import { CommandReference } from './components/CommandReference';
-import { ConfirmCardsOverlay } from './components/ConfirmCardsOverlay';
-import { TourOverlay, TourPicker } from './components/TourOverlay';
-import { getTourSection, TourSection } from './tours';
+import { readWorkspaceTabs, readToolPanels, WORKSPACE_TAB_KEY, TOOL_PANEL_KEY } from './utils/appStorage';
+import type { TourSection } from './tours';
 import { GENERAL_PROJECT_ID } from './types';
 import type { Project } from './types';
 
@@ -38,38 +29,6 @@ const GENERAL_PROJECT: Project = {
   codebaseIndex: { languages: [], keyFiles: {}, entryPoints: [] },
 } as Project;
 
-// Phase 1 per-project workspace tab persistence — key + helpers live next to the component
-// that owns them (same convention as the pinned-projects rail's inline localStorage usage in
-// SidebarDrawer). A plain JSON map of projectId -> 'dev' | 'general'; malformed/stale entries
-// are ignored and simply re-derived from the project's server-side workspaceType.
-const WORKSPACE_TAB_KEY = 'console.workspaceTabByProject';
-function readWorkspaceTabs(): Record<string, 'dev' | 'general'> {
-  try {
-    const raw = localStorage.getItem(WORKSPACE_TAB_KEY);
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) return parsed;
-    }
-  } catch {}
-  return {};
-}
-
-// Phase 1.5 per-project last-open tool panel — same inline-localStorage style as the
-// workspace tab above. A plain JSON map of projectId -> tool panel id ('' = grid). Restored
-// into the Tools surface's selection when the project changes; the Tools view itself only
-// opens on an explicit gesture (header button or the chat's `openPanel` instruction).
-const TOOL_PANEL_KEY = 'console.toolPanelByProject';
-function readToolPanels(): Record<string, string> {
-  try {
-    const raw = localStorage.getItem(TOOL_PANEL_KEY);
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) return parsed;
-    }
-  } catch {}
-  return {};
-}
-
 function App() {
   const folderInputRef = useRef<HTMLInputElement>(null);
   // Requested directly — the chat panel always shared the screen with the sessions sidebar and
@@ -80,6 +39,8 @@ function App() {
   const [showCommandRef, setShowCommandRef] = React.useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = React.useState(false);
   const [deckOpen, setDeckOpen] = React.useState(false);
+  // "?" keyboard-shortcuts overlay (2026-08-24) — shortcuts should be discoverable, not memory.
+  const [shortcutsOpen, setShortcutsOpen] = React.useState(false);
   const [profileOpen, setProfileOpen] = React.useState(false);
   // Feature B (2026-08-14): the full Chat History overlay (General/Projects tabs), opened
   // from the sidebar's Chats header or the chat's top bar.
@@ -125,41 +86,6 @@ function App() {
     }
   }, [profile.accentColor]);
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
-        e.preventDefault();
-        setDeckOpen(v => !v);
-      }
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, []);
-
-  // Phase T2: guided-tour plumbing. 'lpc:tour-view' switches the main view so a guided
-  // step can point at the Tools grid / dashboard / chat; 'lpc:launch-tour' starts a section
-  // (dispatched by the settings modal's Tours section).
-  useEffect(() => {
-    const onTourView = (e: Event) => {
-      const view = (e as CustomEvent).detail?.view;
-      if (view === 'tools') { setShowDashboard(false); setShowCommandRef(false); setToolsOpen(true); }
-      else if (view === 'dashboard') { setShowDashboard(true); setShowCommandRef(false); setToolsOpen(false); }
-      else if (view === 'general') { setShowDashboard(false); setToolsOpen(false); setShowCommandRef(false); }
-      else { setShowDashboard(false); setToolsOpen(false); setShowCommandRef(false); }
-    };
-    const onLaunchTour = (e: Event) => {
-      const sectionId = (e as CustomEvent).detail?.section;
-      const section = sectionId ? getTourSection(sectionId) : null;
-      if (section) { setTourPickerOpen(false); setTourSection(section); }
-    };
-    window.addEventListener('lpc:tour-view', onTourView);
-    window.addEventListener('lpc:launch-tour', onLaunchTour);
-    return () => {
-      window.removeEventListener('lpc:tour-view', onTourView);
-      window.removeEventListener('lpc:launch-tour', onLaunchTour);
-    };
-  }, []);
-
   const {
     projects, activeProject, scanPath, setScanPath, messages,
     pendingConfirm, sessions, activeSessionId,
@@ -175,47 +101,28 @@ function App() {
     handleDirectCommand, activeServers, knownDevUrls, dashboardUpdateSignal,
     historyTotal, loadedHistory, loadEarlierMessages,
     workspaceProjects, addToWorkspace, removeFromWorkspace, clearWorkspace,
-    processes, processLogs, selectedProcessId, setSelectedProcessId,
-     dockExpanded, setDockExpanded, dockTab, setDockTab, handleStopProcess,
-     handleDidYouMeanPick, connected,
-     updateNotice, onDismissUpdate,
-     toolsOpen, setToolsOpen, activeToolPanel, setActiveToolPanel,
-     toolPanels, toolPanelsError, fetchToolPanels,
-     tabs, activeTabId, activateTab, duplicateTab, closeTab,
-     registerViewSync, isTabSwitchingRef,
-   } = useConsole();
+    processes, processLogs, logLoading, selectedProcessId, setSelectedProcessId,
+    dockExpanded, setDockExpanded, dockTab, setDockTab, handleStopProcess,
+    handleDidYouMeanPick, connected,
+    updateNotice, onDismissUpdate,
+    toolsOpen, setToolsOpen, activeToolPanel, setActiveToolPanel,
+    toolPanels, toolPanelsError, fetchToolPanels,
+    tabs, activeTabId, activateTab, duplicateTab, closeTab,
+    registerViewSync, isTabSwitchingRef,
+  } = useConsole();
 
-  // Per-tab view restoration (Phase T fix, 2026-08-14): the top-level view (chat / dashboard /
-  // tools / command reference) and the open tool panel used to be purely global state, so a
-  // tab that was in the Folder Explorer came back on the previous tab's chat/dashboard view.
-  // The tabs hook snapshots this before switching away and calls restore() after switching to
-  // the arriving tab — re-registered whenever the view state changes so snapshot() always
-  // reads the current (leaving) tab's view.
-  useEffect(() => {
-    registerViewSync({
-      snapshot: () => {
-        const view = showCommandRef ? 'commandRef' : toolsOpen ? 'tools' : showDashboard ? 'dashboard' : 'chat';
-        return { view, activeToolPanel };
-      },
-      restore: (saved) => {
-        setShowCommandRef(saved.view === 'commandRef');
-        setToolsOpen(saved.view === 'tools');
-        setShowDashboard(saved.view === 'dashboard');
-        setActiveToolPanel(saved.activeToolPanel ?? null);
-      },
-    });
-  }, [registerViewSync, showCommandRef, toolsOpen, showDashboard, activeToolPanel, setToolsOpen, setActiveToolPanel]);
+  // Phase 9 (2026-08-24 split): global keyboard + tour CustomEvent listeners.
+  useAppGlobalListeners({ setDeckOpen, setShortcutsOpen, setShowDashboard, setShowCommandRef, setToolsOpen, setTourPickerOpen, setTourSection });
 
-  // Phase 1: restore the active project's last-selected tab. Runs only when the active
-  // project changes (never on a tab switch — that path writes, it doesn't read back).
-  // 2026-08-12: no active project -> 'general' (the General workspace is the landing surface
-  // before a project is picked; per-project tabs still win once one is active). Phase 13: the
-  // profile's first-run defaultWorkspaceType is the fallback when a project isn't classified.
-  useEffect(() => {
-    const tabs = readWorkspaceTabs();
-    const saved = activeProject?.id ? tabs[activeProject.id] : undefined;
-    setWorkspaceTab(saved ?? activeProject?.workspaceType ?? profile.defaultWorkspaceType ?? 'general');
-  }, [activeProject?.id, activeProject?.workspaceType, profile.defaultWorkspaceType]);
+  // Phase 9 (2026-08-24 split): view-restore effects (per-tab view sync, workspace tab,
+  // tool panel, tools fetch, General-tools-first landing).
+  useAppViewState({
+    registerViewSync, showCommandRef, setShowCommandRef, toolsOpen, setToolsOpen,
+    showDashboard, setShowDashboard, activeToolPanel, setActiveToolPanel,
+    isTabSwitchingRef, workspaceTab, setWorkspaceTab, activeProject,
+    defaultWorkspaceType: profile.defaultWorkspaceType,
+    fetchToolPanels, chatFullscreen,
+  });
 
   // Phase 5: dashboard "View logs" jumps to the chat view with the dock open on that
   // project's log tab (the dock's selection IS its filter).
@@ -255,21 +162,6 @@ function App() {
     handleSendMessage(mode === 'dev' ? 'switch to developer mode' : 'switch to general mode');
   };
 
-  // 2026-08-12: General is tools-first — whenever the General tab is active and nothing else
-  // has claimed the main view (dashboard off, no explicit tool panel pick yet), land on the
-  // Tools card grid so a non-technical user immediately sees the panels. Chat stays reachable
-  // through the grid's close/back and the header Tools toggle.
-  // 2026-08-14: only when a project is active. With no project picked the General workspace is
-  // chat-first (the user can talk before choosing a project), so the tools grid is not forced.
-  useEffect(() => {
-    // A tab switch restores the arriving tab's own view — never force the tools grid open
-    // while that restore is in flight (the user chose "tab's saved view wins").
-    if (isTabSwitchingRef.current) return;
-    if (workspaceTab === 'general' && activeProject?.id && !showDashboard && !activeToolPanel && !chatFullscreen) {
-      setToolsOpen(true);
-    }
-  }, [workspaceTab, activeProject?.id, showDashboard, activeToolPanel, chatFullscreen]);
-
   // Phase 19 (2026-08-12): LAN display-name attribution — when the server is bound to
   // 0.0.0.0 (HOST env), claim the profile name so action-history/notes/reminders attribute
   // to this person. Single-user 127.0.0.1 installs never trigger this (lanBound is false) —
@@ -290,25 +182,6 @@ function App() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [profile.name, setDisplayName]);
-
-  // Phase 1.5: the Tools surface (shared interactive tool panels). Clicking a card opens that
-  // tool's dedicated panel in the same top-level view space Terminal/Dashboard use; the
-  // "back" button returns to the card grid ('' keeps the Tools view open, just unpicked).
-  // The per-project last-open panel persists via console.toolPanelByProject (restore effect
-  // below), mirroring Phase 1's workspace-tab persistence.
-  useEffect(() => {
-    // Skip during a tab switch — the tabs hook restores the arriving tab's own panel (via
-    // viewSync.restore) and that must not be overwritten by this project-keyed persistence.
-    if (isTabSwitchingRef.current) return;
-    const saved = activeProject?.id ? readToolPanels()[activeProject.id] : undefined;
-    setActiveToolPanel(saved ?? null);
-  }, [activeProject?.id]);
-
-  // The registry is fetched lazily the first time the Tools view opens — server-driven so a
-  // later phase can report per-tool availability without a client restructure.
-  useEffect(() => {
-    if (toolsOpen) fetchToolPanels();
-  }, [toolsOpen, fetchToolPanels]);
 
   const handleOpenToolPanel = (id: string) => {
     setActiveToolPanel(id === '' ? null : id);
@@ -384,83 +257,24 @@ function App() {
       <GlowOrbs />
 
       {!chatFullscreen && (
-      <header className="relative z-10 flex-shrink-0 flex items-center gap-3 h-[52px] px-6 bg-background border-b border-border-faint">
-        <div className="flex items-center gap-3 min-w-0">
-          <h1 className="text-[18px] leading-6 font-semibold italic text-fg-strong whitespace-nowrap">
-            <TextScramble text="Project Console" />
-          </h1>
-          <p className="text-caption tracking-[0.2em] uppercase text-fg-dim font-bold hidden sm:inline">
-            Local Project Engine
-          </p>
-          {indexingProjectId && (
-            <span className="text-xs text-accent-orange animate-pulse"><Loader2 size={12} className="inline-block mr-1 animate-spin" />Indexing...</span>
-          )}
-        </div>
-        <div className="flex items-center gap-2 ml-auto flex-shrink-0">
-          <div className="flex items-center gap-1 bg-overlay rounded-full p-1 border border-border-faint">
-            <button
-              onClick={() => handleWorkspaceTabChange('dev')}
-              className={`px-3 py-1 text-xs rounded-full transition-colors ${workspaceTab === 'dev' ? 'bg-accent-blue text-white' : 'text-fg-dim hover:text-fg-strong'}`}
-              title="Developer workspace — git/npm/run/diagnostics suggestions"
-            >
-              Developer
-            </button>
-            <button
-              onClick={() => handleWorkspaceTabChange('general')}
-              className={`px-3 py-1 text-xs rounded-full transition-colors ${workspaceTab === 'general' ? 'bg-accent-blue text-white' : 'text-fg-dim hover:text-fg-strong'}`}
-              title="General workspace — file tools, notes, reminders, PDF tools"
-            >
-              General
-            </button>
-          </div>
-          {activeServers.length > 0 && (
-            <span className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-accent-green bg-accent-green/10 rounded-lg border border-accent-green/20 whitespace-nowrap flex-shrink-0">
-              <span className="w-1.5 h-1.5 rounded-full bg-accent-green inline-block animate-pulse" />
-              {activeServers.length} running
-            </span>
-          )}
-          {window.location.port && (
-            <span className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-fg-strong font-mono bg-scrim-faint rounded-lg border border-border-soft whitespace-nowrap flex-shrink-0"
-              title={`Console running at http://${window.location.hostname}:${window.location.port}`}>
-              <span className="w-1.5 h-1.5 rounded-full bg-accent inline-block animate-pulse" />
-              :{window.location.port}
-            </span>
-          )}
-          <button onClick={() => { setShowDashboard(false); setToolsOpen(false); setChatFullscreen(false); setShowCommandRef(false); setShowWelcome(true); }} className="p-3 text-fg-dim hover:text-fg-strong transition-colors" title="Home">
-            <Home size={18} />
-          </button>
-          <button onClick={() => setDeckOpen(v => !v)} className="p-3 text-fg-dim hover:text-fg-strong transition-colors" title="Command deck (Ctrl+K)">
-            <Search size={18} />
-          </button>
-          <button onClick={() => { setShowDashboard(false); setToolsOpen(false); setShowCommandRef(v => !v); }} className={`p-3 transition-colors ${showCommandRef ? 'text-accent-blue' : 'text-fg-dim hover:text-fg-strong'}`} title="Command reference (all commands)">
-            <BookOpen size={18} />
-          </button>
-          <button onClick={() => { setToolsOpen(false); setShowDashboard(v => !v); }} className={`p-3 transition-colors ${showDashboard ? 'text-accent-blue' : 'text-fg-dim hover:text-fg-strong'}`} title="Dashboard">
-            <LayoutDashboard size={18} />
-          </button>
-          {/* Stage B: the Tools icon is visible in BOTH Developer and General modes — a
-              functional fix, not just visual (the panels were previously General-only). */}
-          <button data-tour="tools-button" onClick={() => { setShowDashboard(false); setShowCommandRef(false); setToolsOpen(v => !v); }} className={`p-3 transition-colors ${toolsOpen ? 'text-accent-blue' : 'text-fg-dim hover:text-fg-strong'}`} title="Interactive tools">
-            <LayoutGrid size={18} />
-          </button>
-          <button data-tour="settings-button" onClick={() => setProfileOpen(true)} className="p-3 text-fg-dim hover:text-fg-strong transition-colors" title="User profile">
-            <Settings size={18} />
-          </button>
-          <button onClick={() => setTourPickerOpen(true)} className="p-3 text-fg-dim hover:text-fg-strong transition-colors" title="Help — walkthroughs & tours">
-            <HelpCircle size={18} />
-          </button>
-          <ThemeToggle />
-        </div>
-        <input
-          ref={folderInputRef}
-          type="file"
-          onChange={handleFolderPick}
-          className="hidden"
-          /* @ts-ignore */
-          webkitdirectory=""
-          directory=""
+        <AppHeader
+          workspaceTab={workspaceTab}
+          onWorkspaceTabChange={handleWorkspaceTabChange}
+          activeServersCount={activeServers.length}
+          indexingProjectId={indexingProjectId}
+          showCommandRef={showCommandRef}
+          toolsOpen={toolsOpen}
+          showDashboard={showDashboard}
+          onHome={() => { setShowDashboard(false); setToolsOpen(false); setChatFullscreen(false); setShowCommandRef(false); setShowWelcome(true); }}
+          onToggleDeck={() => setDeckOpen(v => !v)}
+          onToggleCommandRef={() => { setShowDashboard(false); setToolsOpen(false); setShowCommandRef(v => !v); }}
+          onToggleDashboard={() => { setToolsOpen(false); setShowDashboard(v => !v); }}
+          onToggleTools={() => { setShowDashboard(false); setShowCommandRef(false); setToolsOpen(v => !v); }}
+          onOpenProfile={() => setProfileOpen(true)}
+          onOpenTourPicker={() => setTourPickerOpen(true)}
+          folderInputRef={folderInputRef}
+          onFolderPick={handleFolderPick}
         />
-      </header>
       )}
 
       {updateNotice && (
@@ -475,274 +289,223 @@ function App() {
       )}
 
       <main className="relative z-10 flex-1 min-h-0 overflow-hidden flex flex-col">
-        {/* Phase T: Chrome-style project tabs — each tab owns its own scan folder + project
-            list + open chat. Always a full-width top bar (never a column in the side row);
-            hidden only in chat fullscreen. */}
-        {!chatFullscreen && (
-          <ProjectTabs
-            tabs={tabs}
-            activeTabId={activeTabId}
-            activeProjectName={activeProject?.name ?? null}
-            onActivate={activateTab}
-            onDuplicate={duplicateTab}
-            onClose={closeTab}
-          />
-        )}
-        {showCommandRef ? (
-          <div className="flex-1 min-h-0 p-6">
-            <CommandReference onClose={() => setShowCommandRef(false)} />
-          </div>
-        ) : toolsOpen ? (
-          <div className="flex-1 min-h-0 p-6">
-            <ToolsPanel
-              key={activeTabId ?? 'default'}
-              panels={toolPanels}
-              panelsError={toolPanelsError}
-              onRetryPanels={fetchToolPanels}
-              activePanel={activeToolPanel}
-              onOpenPanel={handleOpenToolPanel}
-              onClose={handleCloseTools}
-              project={activeProject ?? GENERAL_PROJECT}
-              onSendMessage={handleSendMessage}
-              aiEnabled={aiEnabled}
-              tabId={activeTabId}
-            />
-          </div>
-        ) : showDashboard ? (
-          <div className="flex-1 min-h-0 p-6">
-            <Dashboard
-              onClose={() => setShowDashboard(false)}
-              refreshSignal={dashboardUpdateSignal}
-              projects={projects}
-              workspaceMode={workspaceTab}
-              scanPath={scanPath}
-              tabId={activeTabId}
-              onSelectProject={handleSelectProject}
-              onSelectProjectReuse={handleSelectProjectReuse}
-              onSendMessage={handleSendMessage}
-              onViewLogs={handleViewLogs}
-            />
-          </div>
-        ) : (
-        <div className={chatFullscreen ? 'flex-1 min-h-0' : 'flex-1 min-h-0 flex flex-col lg:flex-row gap-6'}>
-        {!chatFullscreen && (
-          <SidebarDrawer
-            projects={projects}
-            activeProject={activeProject}
-            sessions={sessions}
-            activeSessionId={activeSessionId}
-            scanPath={scanPath}
-            setScanPath={setScanPath}
-            handleScan={handleScan}
-            handleBrowseFolder={handleBrowseFolder}
-            createSession={createSession}
-            switchSession={switchSession}
-            deleteSession={deleteSession}
-            renameSession={renameSession}
-            handleSelectProject={handleSelectProject}
-            onOpenChatHistory={() => setChatHistoryOpen(true)}
-            workspaceProjects={workspaceProjects}
-            addToWorkspace={addToWorkspace}
-            removeFromWorkspace={removeFromWorkspace}
-            aiEnabled={aiEnabled}
-            aiModel={aiModel}
-            activeServersCount={activeServers.length}
-            collapsed={sidebarCollapsed}
-            onSetCollapsed={setSidebarCollapsed}
-          />
-        )}
-
-        <div className={chatFullscreen ? 'h-full w-full' : 'flex-1 min-h-0 min-w-0'}>
-          <div className={`h-full w-full ${chatFullscreen ? '' : 'max-w-4xl mx-auto'}`}>
-            {showWelcome && !chatFullscreen ? (
-            <WelcomeScreen
-              projects={projects}
-              activeProject={activeProject}
-              ollamaStatus={ollamaStatus}
-              aiEnabled={aiEnabled}
-              greeting={heroGreeting}
-              onAIToggle={handleAIToggle}
-              onSelectProject={handleSelectProject}
-              onNewChat={handleNewChat}
-              onQuickStart={handleQuickStart}
-              workspaceProjects={workspaceProjects}
-              addToWorkspace={addToWorkspace}
-              removeFromWorkspace={removeFromWorkspace}
-              onOpenTourPicker={() => setTourPickerOpen(true)}
-            />
-            ) : (
-            <Terminal
-              isFullscreen={chatFullscreen}
-              onToggleFullscreen={() => setChatFullscreen(v => !v)}
-              messages={messages}
-              onSendMessage={handleSendMessage}
-              onSearch={handleSearch}
-              onDeepResearch={handleDeepResearch}
-              activeProject={activeProject}
-              tabId={activeTabId}
-              pendingConfirm={pendingConfirm}
-              onConfirm={handleConfirm}
-              pendingToolConfirm={pendingToolConfirm}
-              onToolConfirm={handleToolConfirm}
-              onApproveTask={handleApproveTask}
-              pendingMemorySuggestion={pendingMemorySuggestion}
-              onMemorySuggestionRespond={handleMemorySuggestionRespond}
-              aiEnabled={aiEnabled}
-              aiThinking={aiThinking}
-              aiThinkingText={aiThinkingText}
-              commandPending={commandPending}
-              focusSignal={chatFocusSignal}
-              onCancel={handleCancel}
-              ollamaStatus={ollamaStatus}
-              aiModel={aiModel}
-              aiMode={aiMode}
-              onAIToggle={handleAIToggle}
-              onSetModel={handleSetModel}
-              onSetMode={handleSetMode}
-              toolHistory={toolHistory}
-              showToolHistory={showToolHistory}
-              onToggleToolHistory={() => setShowToolHistory(v => !v)}
-              onRerunToolCall={rerunToolCall}
-              onExportMarkdown={exportAsMarkdown}
-              onExportJson={exportAsJson}
-              onExportPdf={exportAsPdf}
-              onExportProjectChatLog={exportProjectChatLog}
-onDirectCommand={handleDirectCommand}
-               onDidYouMeanPick={handleDidYouMeanPick}
-               onOpenChatHistory={() => setChatHistoryOpen(true)}
-              workspaceProjects={workspaceProjects}
-              addToWorkspace={addToWorkspace}
-              removeFromWorkspace={removeFromWorkspace}
-              clearWorkspace={clearWorkspace}
-              onSwitchToProject={handleSwitchToProject}
-              processes={processes}
-              processLogs={processLogs}
-              selectedProcessId={selectedProcessId}
-              onSelectProcess={setSelectedProcessId}
-              onStopProcess={handleStopProcess}
-              dockExpanded={dockExpanded}
-              onToggleDock={() => setDockExpanded(v => !v)}
-              dockTab={dockTab}
-              onSetDockTab={setDockTab}
-              projects={projects}
-              knownDevUrls={knownDevUrls}
-               userName={profile.name}
-               connected={connected}
-               historyHasMore={loadedHistory > 0 && loadedHistory < historyTotal}
-               onLoadEarlier={loadEarlierMessages}
-             />
-            )}
-          </div>
-        </div>
-        </div>)}
-      </main>
-
-      {/* 2026-08-12 audit fix: confirm cards render as a fixed overlay so they are visible
-          regardless of which top-level view is active (chat, Tools panels, dashboard) — a
-          confirm-gated action triggered from a panel must never strand the user. When the
-          chat itself IS the active view, the cards render inline in the thread instead
-          (TerminalMessages) — the overlay only covers the views where that thread is
-          unmounted. */}
-      {!chatViewActive && (
-      <ConfirmCardsOverlay
-        pendingConfirm={pendingConfirm}
-        onConfirm={handleConfirm}
-        pendingToolConfirm={pendingToolConfirm}
-        onToolConfirm={handleToolConfirm}
-        onApproveTask={handleApproveTask}
-        pendingMemorySuggestion={pendingMemorySuggestion}
-        onMemorySuggestionRespond={handleMemorySuggestionRespond}
-      />
-      )}
-
-      <CommandDeck
-        open={deckOpen}
-        onClose={() => setDeckOpen(false)}
-        projects={projects}
-        activeProject={activeProject}
-        sessions={sessions}
-        onSelectProject={handleSelectProject}
-        onSwitchSession={switchSession}
-        onDirectCommand={handleDirectCommand}
-        onSendMessage={handleSendMessage}
-        onHome={() => { setShowDashboard(false); setToolsOpen(false); setChatFullscreen(false); setShowCommandRef(false); setShowWelcome(true); }}
-        onToggleDashboard={() => { setToolsOpen(false); setShowDashboard(v => !v); }}
-        onOpenCommandRef={() => { setShowDashboard(false); setToolsOpen(false); setShowCommandRef(true); }}
-        onNewChat={handleNewChat}
-        sidebarCollapsed={sidebarCollapsed}
-        onSetSidebarCollapsed={setSidebarCollapsed}
-        theme={theme}
-        onToggleTheme={toggleTheme}
-        onOpenProfile={() => setProfileOpen(true)}
-        chatFullscreen={chatFullscreen}
-        onToggleFullscreen={() => setChatFullscreen(v => !v)}
-        onOpenTools={() => { setShowDashboard(false); setShowCommandRef(false); setToolsOpen(true); }}
-        onOpenPanel={handleOpenToolPanel}
-        toolPanels={toolPanels}
-        workspaceTab={workspaceTab}
-        onSetWorkspaceTab={handleWorkspaceTabChange}
-        aiEnabled={aiEnabled}
-        onToggleAI={handleAIToggle}
-        onExportMarkdown={exportAsMarkdown}
-        onExportJson={exportAsJson}
-        onExportPdf={exportAsPdf}
-        onExportProjectChatLog={exportProjectChatLog}
-        dockExpanded={dockExpanded}
-        onToggleDock={() => setDockExpanded(v => !v)}
-        dockTab={dockTab}
-        onSetDockTab={setDockTab}
-        showToolHistory={showToolHistory}
-        onToggleToolHistory={() => setShowToolHistory(v => !v)}
-        onOpenTourPicker={() => setTourPickerOpen(true)}
-      />
-
-      <ChatHistoryOverlay
-        open={chatHistoryOpen}
-        onClose={() => setChatHistoryOpen(false)}
-        sessions={sessions}
-        activeSessionId={activeSessionId}
-        onSwitchSession={switchSession}
-        onNewChat={handleNewChat}
-        onDeleteSession={deleteSession}
-        onRenameSession={renameSession}
-      />
-
-      <UserProfileModal
-        open={profileOpen}
-        profile={profile}
-        onClose={() => setProfileOpen(false)}
-        onSave={updateProfile}
-      />
-
-      <FirstRunSetup
-        open={showFirstRunSetup}
-        scanPath={scanPath}
-        setScanPath={setScanPath}
-        handleScan={handleScan}
-        onFinish={updateProfile}
-      />
-
-      {/* Phase T2: tour system — the section picker (Welcome "Take the Tour") and the
-          active overlay. Guided steps switch the main view via the lpc:tour-view listener. */}
-      {tourPickerOpen && (
-        <TourPicker
-          onClose={() => setTourPickerOpen(false)}
-          onPick={(sectionId, mode) => {
-            const section = getTourSection(sectionId);
-            if (!section) return;
-            setTourPickerOpen(false);
-            setTourSection(section);
-            setTourMode(mode);
+        {/* Phase 9 (2026-08-24 split): project tabs + the top-level view switcher
+            (Command Reference / Tools / Dashboard / chat). */}
+        <AppMainView
+          chatFullscreen={chatFullscreen}
+          tabs={tabs}
+          activeTabId={activeTabId}
+          activeProjectName={activeProject?.name ?? null}
+          activateTab={activateTab}
+          duplicateTab={duplicateTab}
+          closeTab={closeTab}
+          showCommandRef={showCommandRef}
+          setShowCommandRef={setShowCommandRef}
+          toolsOpen={toolsOpen}
+          toolPanels={toolPanels}
+          toolPanelsError={toolPanelsError}
+          fetchToolPanels={fetchToolPanels}
+          activeToolPanel={activeToolPanel}
+          handleOpenToolPanel={handleOpenToolPanel}
+          handleCloseTools={handleCloseTools}
+          activeProject={activeProject ?? GENERAL_PROJECT}
+          handleSendMessage={handleSendMessage}
+          aiEnabled={aiEnabled}
+          showDashboard={showDashboard}
+          setShowDashboard={setShowDashboard}
+          dashboardUpdateSignal={dashboardUpdateSignal}
+          projects={projects}
+          workspaceTab={workspaceTab}
+          scanPath={scanPath}
+          handleSelectProject={handleSelectProject}
+          handleSelectProjectReuse={handleSelectProjectReuse}
+          handleViewLogs={handleViewLogs}
+          chatWorkspace={{
+            chatFullscreen,
+            onToggleFullscreen: () => setChatFullscreen(v => !v),
+            showWelcome,
+            onOpenChatHistory: () => setChatHistoryOpen(true),
+            onOpenTourPicker: () => setTourPickerOpen(true),
+            sidebar: {
+              projects,
+              activeProject,
+              sessions,
+              activeSessionId,
+              scanPath,
+              setScanPath,
+              handleScan,
+              handleBrowseFolder,
+              createSession,
+              switchSession,
+              deleteSession,
+              renameSession,
+              handleSelectProject,
+              workspaceProjects,
+              addToWorkspace,
+              removeFromWorkspace,
+              aiEnabled,
+              aiModel,
+              activeServersCount: activeServers.length,
+              collapsed: sidebarCollapsed,
+              onSetCollapsed: setSidebarCollapsed,
+            },
+            welcome: {
+              projects,
+              activeProject,
+              ollamaStatus,
+              aiEnabled,
+              greeting: heroGreeting,
+              onAIToggle: handleAIToggle,
+              onSelectProject: handleSelectProject,
+              onNewChat: handleNewChat,
+              onQuickStart: handleQuickStart,
+              workspaceProjects,
+              addToWorkspace,
+              removeFromWorkspace,
+            },
+            terminal: {
+              messages,
+              onSendMessage: handleSendMessage,
+              onSearch: handleSearch,
+              onDeepResearch: handleDeepResearch,
+              activeProject,
+              tabId: activeTabId,
+              pendingConfirm,
+              onConfirm: handleConfirm,
+              pendingToolConfirm,
+              onToolConfirm: handleToolConfirm,
+              onApproveTask: handleApproveTask,
+              pendingMemorySuggestion,
+              onMemorySuggestionRespond: handleMemorySuggestionRespond,
+              aiEnabled,
+              aiThinking,
+              aiThinkingText,
+              commandPending,
+              focusSignal: chatFocusSignal,
+              onCancel: handleCancel,
+              ollamaStatus,
+              aiModel,
+              aiMode,
+              onAIToggle: handleAIToggle,
+              onSetModel: handleSetModel,
+              onSetMode: handleSetMode,
+              toolHistory,
+              showToolHistory,
+              onToggleToolHistory: () => setShowToolHistory(v => !v),
+              onRerunToolCall: rerunToolCall,
+              onExportMarkdown: exportAsMarkdown,
+              onExportJson: exportAsJson,
+              onExportPdf: exportAsPdf,
+              onExportProjectChatLog: exportProjectChatLog,
+              onDirectCommand: handleDirectCommand,
+              onDidYouMeanPick: handleDidYouMeanPick,
+              workspaceProjects,
+              addToWorkspace,
+              removeFromWorkspace,
+              clearWorkspace,
+              onSwitchToProject: handleSwitchToProject,
+              processes,
+              processLogs,
+              logLoading,
+              selectedProcessId,
+              onSelectProcess: setSelectedProcessId,
+              onStopProcess: handleStopProcess,
+              dockExpanded,
+              onToggleDock: () => setDockExpanded(v => !v),
+              dockTab,
+              onSetDockTab: setDockTab,
+              projects,
+              knownDevUrls,
+              userName: profile.name,
+              connected,
+              historyHasMore: loadedHistory > 0 && loadedHistory < historyTotal,
+              onLoadEarlier: loadEarlierMessages,
+            },
           }}
         />
-      )}
-      {tourSection && (
-        <TourOverlay
-          section={tourSection}
-          mode={tourMode}
-          onClose={() => setTourSection(null)}
-        />
-      )}
+      </main>
+
+      {/* 2026-08-24 split: every fixed overlay (confirm cards, deck, modals, tours,
+          shortcuts, toasts) lives in AppOverlays. */}
+      <AppOverlays
+        chatViewActive={chatViewActive}
+        pendingConfirm={pendingConfirm}
+        handleConfirm={handleConfirm}
+        pendingToolConfirm={pendingToolConfirm}
+        handleToolConfirm={handleToolConfirm}
+        handleApproveTask={handleApproveTask}
+        pendingMemorySuggestion={pendingMemorySuggestion}
+        handleMemorySuggestionRespond={handleMemorySuggestionRespond}
+        deckOpen={deckOpen}
+        setDeckOpen={setDeckOpen}
+        deck={{
+          projects,
+          activeProject,
+          sessions,
+          onSelectProject: handleSelectProject,
+          onSwitchSession: switchSession,
+          onDirectCommand: handleDirectCommand,
+          onSendMessage: handleSendMessage,
+          onHome: () => { setShowDashboard(false); setToolsOpen(false); setChatFullscreen(false); setShowCommandRef(false); setShowWelcome(true); },
+          onToggleDashboard: () => { setToolsOpen(false); setShowDashboard(v => !v); },
+          onOpenCommandRef: () => { setShowDashboard(false); setToolsOpen(false); setShowCommandRef(true); },
+          onNewChat: handleNewChat,
+          sidebarCollapsed,
+          onSetSidebarCollapsed: setSidebarCollapsed,
+          theme,
+          onToggleTheme: toggleTheme,
+          onOpenProfile: () => setProfileOpen(true),
+          chatFullscreen,
+          onToggleFullscreen: () => setChatFullscreen(v => !v),
+          onOpenTools: () => { setShowDashboard(false); setShowCommandRef(false); setToolsOpen(true); },
+          onOpenPanel: handleOpenToolPanel,
+          toolPanels,
+          workspaceTab,
+          onSetWorkspaceTab: handleWorkspaceTabChange,
+          aiEnabled,
+          onToggleAI: handleAIToggle,
+          onExportMarkdown: exportAsMarkdown,
+          onExportJson: exportAsJson,
+          onExportPdf: exportAsPdf,
+          onExportProjectChatLog: exportProjectChatLog,
+          dockExpanded,
+          onToggleDock: () => setDockExpanded(v => !v),
+          dockTab,
+          onSetDockTab: setDockTab,
+          showToolHistory,
+          onToggleToolHistory: () => setShowToolHistory(v => !v),
+          onOpenTourPicker: () => setTourPickerOpen(true),
+        }}
+        chatHistoryOpen={chatHistoryOpen}
+        setChatHistoryOpen={setChatHistoryOpen}
+        history={{
+          sessions,
+          activeSessionId,
+          onSwitchSession: switchSession,
+          onNewChat: handleNewChat,
+          onDeleteSession: deleteSession,
+          onRenameSession: renameSession,
+        }}
+        profileOpen={profileOpen}
+        setProfileOpen={setProfileOpen}
+        profile={profile}
+        updateProfile={updateProfile}
+        firstRun={{
+          open: showFirstRunSetup,
+          scanPath,
+          setScanPath,
+          handleScan,
+          onFinish: updateProfile,
+        }}
+        tourPickerOpen={tourPickerOpen}
+        setTourPickerOpen={setTourPickerOpen}
+        tourSection={tourSection}
+        setTourSection={setTourSection}
+        tourMode={tourMode}
+        setTourMode={setTourMode}
+        shortcutsOpen={shortcutsOpen}
+        setShortcutsOpen={setShortcutsOpen}
+      />
     </div>
   );
 }

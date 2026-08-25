@@ -4,261 +4,181 @@ import * as p from '@clack/prompts';
 import chalk from 'chalk';
 import boxen from 'boxen';
 import figlet from 'figlet';
-import cowsay from 'cowsay';
-import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
+import {
+  BASE_PORT,
+  HOST,
+  MAX_PORT_ATTEMPTS,
+  CONNECT_TIMEOUT_MS,
+  C,
+  isTTY,
+  SCRIPTED,
+  JSON_MODE,
+  QUERY_INPUT,
+  DRY_RUN_INPUT,
+  EXPORT_ID,
+  EXPORT_FORMAT,
+  RESUME_ID,
+  WANT_LAST,
+  generalPseudoProject,
+} from './cliOptions.js';
+import { stripMarkdown, discoverServer, pickResumeSession } from './cliDiscovery.js';
+import { selectProject, findProjectFromArgs } from './cliProjectPicker.js';
+import { renderMascot } from './cliMascot.js';
+import { createCliRenderer } from './cliRenderer.js';
 
-// Mirrors server/index.js's own PORT..PORT+9 fallback range — if something else already had
-// BASE_PORT (a stale console instance, another dev server, anything), the real server may have
-// landed anywhere in this range, and this client used to have no way to find it.
-const BASE_PORT = parseInt(process.env.PORT, 10) || 3000;
-const HOST = process.env.HOST || 'localhost';
-const MAX_PORT_ATTEMPTS = 10;
-// Bumped again 2026-07-30 (40s → 90s) based on a real measured cold boot of ~41s — right at the
-// old timeout's edge, meaning some boots were likely already failing silently before this. The
-// 2026-07-30 intent-expansion batch also grew intentsData.js by roughly a third (more phrases for
-// semanticMatcher.js to embed, more training data for nlpEngine.js), which pushes real startup
-// time up further, not down. 90s gives real headroom above the one measured data point rather
-// than guessing a new number outright — re-measure and adjust again if a real boot ever gets
-// close to this new ceiling. (Previous bump: 20s → 40s, same underlying cause.)
-const CONNECT_TIMEOUT_MS = 90000;
-const RETRY_INTERVAL_MS = 750;
-
-// Mirrors the web UI's reserved '__general__' pseudo-workspace (src/types.ts): the server resolves
-// this projectId to a synthetic "no project" session so a user can chat before picking a project.
-const GENERAL_PROJECT_ID = '__general__';
-
-function generalPseudoProject() {
-  return {
-    id: GENERAL_PROJECT_ID,
-    name: 'General workspace',
-    path: '(no project selected)',
-    folderName: 'general',
-    workspaceType: 'general',
-  };
-}
-
-const C = {
-  reset: '\x1b[0m', green: '\x1b[32m', blue: '\x1b[34m',
-  yellow: '\x1b[33m', red: '\x1b[31m', cyan: '\x1b[36m',
-  magenta: '\x1b[35m', gray: '\x1b[90m', bold: '\x1b[1m', dim: '\x1b[2m',
-  bgBlue: '\x1b[44m',
-};
-
-// @clack/prompts requires an interactive TTY (raw-mode input) and throws on piped/redirected
-// stdin, so every clack call below is gated on this and falls back to the plain readline
-// implementations the CLI had before — those still work in non-interactive shells.
-const isTTY = Boolean(process.stdin.isTTY && process.stdout.isTTY);
-
-function stripMarkdown(text) {
-  return text.replace(/\*\*(.+?)\*\*/g, '$1').replace(/`(.+?)`/g, '$1').replace(/### /g, '');
-}
-
-async function tryFetchProjects(port) {
-  try {
-    // 5s, not 2s: measured live 2026-08-10 — this machine's /api/projects takes ~1.7s on a
-    // freshly booted server (project discovery rescans 15 folders), so a 2s abort fired on
-    // most retry cycles and the CLI reported "could not connect" against a healthy server.
-    const res = await fetch(`http://${HOST}:${port}/api/projects`, { signal: AbortSignal.timeout(5000) });
-    if (!res.ok) return null;
-    const data = await res.json();
-    return { projects: data.projects || [], port };
-  } catch {
-    return null;
+// Real-shell Ctrl+C (2026-08-24): send the server's `cancel` (which stops only the current AI
+// turn's own processes) instead of Node's default abrupt kill, then exit 130 like a shell. A
+// second Ctrl+C force-exits without waiting. `activeWs` is set by main() once connected.
+let activeWs = null;
+let sigintCount = 0;
+process.on('SIGINT', () => {
+  sigintCount++;
+  if (sigintCount > 1) process.exit(130);
+  process.stdout.write('\n^C — cancelling…\n');
+  if (activeWs && activeWs.readyState === 1) {
+    try { activeWs.send(JSON.stringify({ type: 'cancel' })); } catch {}
   }
-}
+  setTimeout(() => process.exit(130), 300);
+});
 
 /**
- * Finds which port the server actually bound to and waits out its startup time, instead of the
- * old single-shot fetch that failed instantly if the server wasn't listening yet on the exact
- * moment this ran (confirmed live: "npm run dev" starting via start.bat is not instant — route
- * registration, Vite middleware setup, and the embedding model used by semanticMatcher.js all
- * take real time) or if it had fallen back off BASE_PORT.
+ * Scripted mode (--json / --query, 2026-08-24): no banner, no spinner, no readline prompt.
+ *  - --json emits every server message as one compact JSON line on stdout (jq-friendly) and
+ *    reads chat input from piped stdin, line by line. Scriptable pipelines end on EOF.
+ *  - --query "<text>" sends one message then exits with a real status code: 0 on a clean turn,
+ *    1 if any error_output arrived or the connection failed — so CI can detect command failure.
+ *  Risky-command / tool confirm prompts are auto-DECLINED: a scripted run must never silently
+ *  approve anything (mirrors the server's own "never auto-approve" invariant).
  */
-async function discoverServer(onCycle) {
-  const deadline = Date.now() + CONNECT_TIMEOUT_MS;
-  const startedAt = Date.now();
-  let printedDots = false;
-  while (Date.now() < deadline) {
-    for (let i = 0; i < MAX_PORT_ATTEMPTS; i++) {
-      const result = await tryFetchProjects(BASE_PORT + i);
-      if (result) {
-        if (printedDots) process.stdout.write('\n');
-        return result;
-      }
+function runScriptedMode(ws, project, sessionId) {
+  let sawError = false;
+  const emitJson = (msg) => process.stdout.write(JSON.stringify({ type: msg.type, data: msg.data ?? null }) + '\n');
+  ws.on('message', (raw) => {
+    let msg;
+    try { msg = JSON.parse(raw); } catch { return; }
+    if (JSON_MODE) { emitJson(msg); return; }
+    switch (msg.type) {
+      case 'answer':
+        if (msg.data) process.stdout.write(stripMarkdown(String(msg.data)) + '\n');
+        break;
+      case 'output':
+        if (msg.data) process.stdout.write(String(msg.data));
+        break;
+      case 'warning':
+        if (msg.data) process.stdout.write(String(msg.data) + '\n');
+        break;
+      case 'error_output':
+        sawError = true;
+        if (msg.data) process.stdout.write(String(msg.data) + '\n');
+        break;
+      case 'confirm_prompt':
+      case 'tool_confirm_prompt':
+        process.stdout.write(`(declined confirm for ${msg.command || msg.tool})\n`);
+        ws.send(JSON.stringify({ type: 'confirm_response', payload: { token: msg.token, confirmed: false } }));
+        break;
+      case 'end':
+        if (msg.data) process.stdout.write(String(msg.data) + '\n');
+        break;
+      default:
+        break;
     }
-    // TTY path: main() drives a @clack/prompts spinner via this callback; the non-TTY path
-    // keeps the original dot-printing so piped/redirected output stays readable.
-    if (onCycle) {
-      onCycle(Math.floor((Date.now() - startedAt) / 1000));
-    } else {
-      process.stdout.write('.');
-      printedDots = true;
-    }
-    await new Promise((r) => setTimeout(r, RETRY_INTERVAL_MS));
-  }
-  if (printedDots) process.stdout.write('\n');
-  return null;
-}
-
-// TTY: interactive arrow-key select via @clack/prompts. Clack only accepts listed options, so
-// the confirmed-live 2026-07-30 bug class ("anything that wasn't an in-range number silently
-// resolved to projects[0] with zero feedback") can't happen here; Esc/Ctrl+C cancels cleanly.
-// Non-TTY (piped/CI stdin): clack throws without a TTY, so fall back to the numbered readline
-// picker, which keeps the exact re-ask behavior that fixed that 2026-07-30 report.
-function selectProject(projects) {
-  return isTTY ? selectProjectInteractive(projects) : selectProjectLegacy(projects);
-}
-
-async function selectProjectInteractive(projects) {
-  const selected = await p.select({
-    message: 'Select a project to open in CLI session:',
-    options: [
-      { value: generalPseudoProject(), label: 'General workspace', hint: chalk.dim('chat + tools, no project selected') },
-      ...projects.map((proj) => ({
-        value: proj,
-        label: proj.name,
-        hint: chalk.dim(proj.path),
-      })),
-    ],
   });
-  if (p.isCancel(selected)) {
-    p.cancel('CLI Session cancelled.');
-    process.exit(0);
-  }
-  return selected;
-}
-
-// Confirmed live 2026-07-30 (real transcript): typing anything that wasn't a valid in-range
-// number — a stray chat message sent before the picker was answered ("what port are you running
-// on"), or a mistyped number ("1100") — used to silently resolve to `projects[0]` with zero
-// feedback. That's how a session ended up on the wrong project with no visible error at all: the
-// user thought they'd typed a chat message or picked project #11, but actually got whichever
-// project happened to be first in the list. Now it re-asks instead of ever guessing.
-function selectProjectLegacy(projects) {
-  return new Promise((resolve) => {
-    // crlfDelay: Infinity — without it, Node's readline docs warn that an interface can emit
-    // TWO 'line' events for one Enter press if the \r and \n bytes of a Windows-style line ending
-    // arrive in separate reads (default crlfDelay is only 100ms). This matches a real report:
-    // typing "10" for project #10 registered each digit as if pressed twice. Windows terminals
-    // (ConPTY in particular) are exactly the case docs call out as prone to this. Applied to all
-    // three readline.createInterface() calls in this file for the same reason.
-    const rl = readline.createInterface({ input: process.stdin, output: process.stdout, crlfDelay: Infinity });
-    console.log(`\n${C.bold}${C.cyan}Available Projects:${C.reset}\n`);
-    console.log(`  ${C.bold}0${C.reset}. ${C.green}General workspace${C.reset}\n     ${C.dim}chat + tools, no project selected${C.reset}`);
-    projects.forEach((p, i) => {
-      console.log(`  ${C.bold}${i + 1}${C.reset}. ${C.green}${p.name}${C.reset}\n     ${C.dim}${p.path}${C.reset}`);
-    });
-    const ask = () => {
-      rl.question(`\n${C.bold}Select project (0 = General, 1-${projects.length}):${C.reset} `, (answer) => {
-        const idx = parseInt(answer.trim(), 10);
-        if (Number.isInteger(idx) && idx >= 0 && idx <= projects.length) {
-          rl.close();
-          resolve(idx === 0 ? generalPseudoProject() : projects[idx - 1]);
-        } else {
-          console.log(`${C.red}"${answer.trim()}" isn't a number between 0 and ${projects.length} — try again.${C.reset}`);
-          ask();
+  ws.on('error', (err) => {
+    process.stderr.write(`WebSocket error: ${err.message}\n`);
+    process.exit(1);
+  });
+  ws.on('close', () => process.exit(sawError ? 1 : 0));
+  const startScripted = () => {
+    if (QUERY_INPUT || DRY_RUN_INPUT) {
+      // --dry-run / --explain send the same execute message with the additive dryRun flag —
+      // the server resolves + reports, never executes (see explainInput in connectionMatching.js).
+      ws.send(JSON.stringify({
+        type: 'execute',
+        payload: { projectId: project.id, input: QUERY_INPUT || DRY_RUN_INPUT, sessionId, dryRun: !!DRY_RUN_INPUT },
+      }));
+      // One-shot exit: command turns end with an 'end' message; answer-only turns (pure
+      // chit-chat / read-only intents) never send one — so ALSO exit on an 800ms quiet window
+      // after the first real message, plus a 30s hard cap in case nothing ever comes back.
+      // (The node:test harness docs explicitly reserve quiet-windows for answer-only turns.)
+      let lastActivity = Date.now();
+      let received = false;
+      const quietTimer = setInterval(() => {
+        if (received && Date.now() - lastActivity > 800) {
+          clearInterval(quietTimer);
+          try { ws.close(); } catch {}
+        } else if (!received && Date.now() - lastActivity > 30000) {
+          clearInterval(quietTimer);
+          process.stderr.write('No response from the server within 30s.\n');
+          try { ws.close(); } catch {}
         }
+      }, 250);
+      ws.on('message', (raw) => {
+        let m;
+        try { m = JSON.parse(raw); } catch { return; }
+        if (m.type === 'end') {
+          clearInterval(quietTimer);
+          try { ws.close(); } catch {}
+          return;
+        }
+        lastActivity = Date.now();
+        received = true;
       });
-    };
-    ask();
-  });
-}
-
-// Requested directly: a way to skip the interactive picker entirely and jump straight to a known
-// project directory, e.g. `node server/cli-client.js --dir "C:\Users\tobil\Desktop\Projects\netpulse"`
-// (also accepts `--project <name>` for a case-insensitive name/folder-name match). Matched against
-// whatever the server's own discovery already returned — this never re-implements project
-// discovery client-side, it just picks from the same list `selectProject()` would show.
-function findProjectFromArgs(projects) {
-  const args = process.argv.slice(2);
-  const dirIdx = args.findIndex((a) => a === '--dir' || a === '-d');
-  if (dirIdx !== -1 && args[dirIdx + 1]) {
-    const target = args[dirIdx + 1].replace(/[\\/]+$/, '').toLowerCase();
-    const match = projects.find((p) => p.path.replace(/[\\/]+$/, '').toLowerCase() === target);
-    if (match) return match;
-    console.log(`${C.yellow}No discovered project has path "${args[dirIdx + 1]}" — falling back to the picker.${C.reset}`);
-    return null;
-  }
-  const projIdx = args.findIndex((a) => a === '--project' || a === '-p');
-  if (projIdx !== -1 && args[projIdx + 1]) {
-    const target = args[projIdx + 1].toLowerCase();
-    // 2026-08-14: "general" maps to the reserved General workspace (no project) instead of a
-    // discovered folder — e.g. `--project general` to chat before picking a project.
-    if (target === 'general') return generalPseudoProject();
-    const match = projects.find((p) => p.name.toLowerCase() === target || p.folderName?.toLowerCase() === target);
-    if (match) return match;
-    console.log(`${C.yellow}No discovered project matches name "${args[projIdx + 1]}" — falling back to the picker.${C.reset}`);
-    return null;
-  }
-  return null;
-}
-
-// ASCII mascot greeting shown above the project picker (TTY path only, matching the figlet
-// banner). The animal is picked at random from a curated list validated against the installed
-// cowsay package's cows/ directory (2026-08-10: cat/owl/dragon/robot/stegosaurus all present);
-// the fallback exists because cowsay.say() throws on an unknown f value, and the greeting name
-// comes from the tracked user profile when available, never hardcoded per user.
-const MASCOT_COWS = ['cat', 'owl', 'dragon', 'robot', 'stegosaurus', 'tux', 'doge'];
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-
-function renderMascot() {
-  // Generic fallback, not a hardcoded person's name — data/user-profile.json isn't published
-  // with the npm package and only exists once a user sets their own profile, so a fresh install
-  // used to greet every stranger as "Tobi" (the original author) by name (audit 2026-08-10,
-  // raised while generalizing for npm/public distribution).
-  let name = 'there';
-  try {
-    const profile = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'data', 'user-profile.json'), 'utf8'));
-    if (profile.userProfile?.name) name = profile.userProfile.name;
-  } catch {
-    // Missing/corrupt profile must not fail the whole CLI — keep the fallback name.
-  }
-  const animal = MASCOT_COWS[Math.floor(Math.random() * MASCOT_COWS.length)];
-  let art;
-  try {
-    art = cowsay.say({ text: `Welcome back, ${name}! Select a project to initialize session:`, e: 'oO', T: 'U ', f: animal });
-  } catch {
-    art = cowsay.say({ text: `Welcome back, ${name}!`, f: 'cat' });
-  }
-  console.log(chalk.cyan(art));
+    } else {
+      // --json with piped stdin: chat line-by-line; EOF ends the session.
+      const rl = readline.createInterface({ input: process.stdin, crlfDelay: Infinity });
+      rl.on('line', (line) => {
+        const t = line.trim();
+        if (!t) return;
+        if (t === 'quit' || t === 'exit') { try { ws.close(); } catch {} return; }
+        ws.send(JSON.stringify({ type: 'execute', payload: { projectId: project.id, input: t, sessionId } }));
+      });
+      rl.on('close', () => { try { ws.close(); } catch {} });
+    }
+  };
+  // The socket may already be OPEN when runScriptedMode runs (a fast localhost handshake can
+  // complete before listeners attach) — an 'open'-only attach would silently never fire.
+  if (ws.readyState === 1) startScripted();
+  else ws.once('open', startScripted);
 }
 
 async function main() {
-  console.clear();
-  if (isTTY) {
-    console.log(chalk.cyan(figlet.textSync('PROJECT CONSOLE', { horizontalLayout: 'full' })));
-    console.log(
-      boxen(chalk.dim('Local Project Engine — Offline Project & AI Assistant'), {
-        padding: { left: 2, right: 2 },
-        margin: { bottom: 1 },
-        borderStyle: 'round',
-        borderColor: 'cyan',
-      })
-    );
-    renderMascot();
-  } else {
-    console.log(`\n${C.bgBlue}${C.bold}  Local Project Console — CLI Chat  ${C.reset}\n`);
+  // Scripted runs (--json/--query/--export) keep stdout clean for piping — no banner, no
+  // mascot, no picker chrome.
+  if (!SCRIPTED) {
+    console.clear();
+    if (isTTY) {
+      console.log(chalk.cyan(figlet.textSync('PROJECT CONSOLE', { horizontalLayout: 'full' })));
+      console.log(
+        boxen(chalk.dim('Local Project Engine — Offline Project & AI Assistant'), {
+          padding: { left: 2, right: 2 },
+          margin: { bottom: 1 },
+          borderStyle: 'round',
+          borderColor: 'cyan',
+        })
+      );
+      renderMascot();
+    } else {
+      console.log(`\n${C.bgBlue}${C.bold}  Local Project Console — CLI Chat  ${C.reset}\n`);
+    }
+    console.log(`${C.dim}Tip: skip the picker next time with --dir "<full project path>" or --project "<name>".${C.reset}`);
   }
-  console.log(`${C.dim}Tip: skip the picker next time with --dir "<full project path>" or --project "<name>".${C.reset}`);
 
-  const spinner = isTTY ? p.spinner() : null;
+  const spinner = !SCRIPTED && isTTY ? p.spinner() : null;
   if (spinner) {
     spinner.start(`Connecting to local server (ports ${BASE_PORT}-${BASE_PORT + MAX_PORT_ATTEMPTS - 1})...`);
-  } else {
+  } else if (!SCRIPTED) {
     console.log(`${C.dim}Connecting (checking ports ${BASE_PORT}-${BASE_PORT + MAX_PORT_ATTEMPTS - 1}, retrying for up to ${CONNECT_TIMEOUT_MS / 1000}s)...${C.reset}`);
   }
 
   const discovered = await discoverServer(
     spinner
       ? (elapsed) => spinner.message(`Still connecting (${elapsed}s elapsed, checking ports ${BASE_PORT}-${BASE_PORT + MAX_PORT_ATTEMPTS - 1})...`)
-      : null
+      : (SCRIPTED ? () => {} : null)
   );
   if (!discovered || discovered.projects.length === 0) {
     if (spinner) spinner.stop(chalk.red(`✖ Could not connect to a server on ports ${BASE_PORT}-${BASE_PORT + MAX_PORT_ATTEMPTS - 1}`));
-    else console.log(`${C.red}✖ Could not connect to a server on ports ${BASE_PORT}-${BASE_PORT + MAX_PORT_ATTEMPTS - 1}${C.reset}`);
-    console.log(`${C.yellow}  Make sure "npm run dev" is running (or still finishing startup), then try again.${C.reset}`);
+    else process.stderr.write(`${C.red}✖ Could not connect to a server on ports ${BASE_PORT}-${BASE_PORT + MAX_PORT_ATTEMPTS - 1}${C.reset}\n`);
+    process.stderr.write(`${C.yellow}  Make sure "npm run dev" is running (or still finishing startup), then try again.${C.reset}\n`);
     process.exit(1);
   }
 
@@ -267,11 +187,28 @@ async function main() {
   // still-animating spinner line (clack owns that line until .stop()).
   if (spinner) {
     spinner.stop(chalk.green(`✔ Connected to Local Engine on port ${PORT}`));
-  } else {
+  } else if (!SCRIPTED) {
     console.log(`${C.green}✔ Connected.${C.reset}`);
   }
-  if (PORT !== BASE_PORT) {
+  if (PORT !== BASE_PORT && !SCRIPTED) {
     console.log(`${C.yellow}Note: server is on port ${PORT}, not ${BASE_PORT} (something else had ${BASE_PORT}).${C.reset}`);
+  }
+
+  // --export <id>: dump a session's full record to stdout (the same uncapped server formatter
+  // the web downloads use) — scriptable, no chat involved.
+  if (EXPORT_ID) {
+    try {
+      const res = await fetch(`http://${HOST}:${PORT}/api/sessions/${encodeURIComponent(EXPORT_ID)}/export?format=${EXPORT_FORMAT}`, { signal: AbortSignal.timeout(15000) });
+      if (!res.ok) {
+        process.stderr.write(`Export failed: HTTP ${res.status}\n`);
+        process.exit(1);
+      }
+      process.stdout.write(await res.text());
+      process.exit(0);
+    } catch (err) {
+      process.stderr.write(`Export failed: ${err.message}\n`);
+      process.exit(1);
+    }
   }
 
   // Phase 13 (2026-08-12): first-run onboarding mirror — when the server's profile hasn't
@@ -283,7 +220,7 @@ async function main() {
     const profRes = await fetch(`http://${HOST}:${PORT}/api/profile`);
     const profData = await profRes.json();
     const userProfile = profData?.userProfile;
-    if (isTTY && userProfile && !userProfile.setupComplete) {
+    if (!SCRIPTED && isTTY && userProfile && !userProfile.setupComplete) {
       console.log(`\n${C.bold}${C.bgBlue}  First run — a few quick questions  ${C.reset}\n`);
       const firstName = await p.text({
         message: 'What should we call you? (optional, Enter to skip)',
@@ -321,14 +258,59 @@ async function main() {
   // 2026-08-14: General-workspace chat. Interactive (TTY) runs always show the picker so a user
   // can choose "General workspace" and chat before picking a project; piped/CI runs keep the old
   // single-project auto-pick so scripted runs are not broken by an extra prompt.
-  let project = findProjectFromArgs(projects)
-    || (isTTY ? await selectProject(projects)
-        : (projects.length === 1 ? projects[0] : await selectProject(projects)));
+  //
+  // --resume/--last (2026-08-24): continue an existing session instead of starting a fresh one.
+  // Sessions are locked to their project server-side, so the active project is resolved from
+  // the session's own projectPath — sending the resumed sessionId with the WRONG projectId
+  // would trip the session-lock check ("Session is locked to ...").
+  let sessionId = null;
+  let resumed = false;
+  let project = null;
+  if (RESUME_ID || WANT_LAST) {
+    const sess = await pickResumeSession(PORT);
+    if (!sess) {
+      process.stderr.write(`${C.red}No session found for --resume${WANT_LAST ? ' (last)' : ` "${RESUME_ID}"`}.${C.reset}\n`);
+      process.exit(1);
+    }
+    sessionId = sess.id;
+    resumed = true;
+    const sessPath = (sess.projectPath || sess.workspacePath || '').replace(/[\\/]+$/, '').toLowerCase();
+    const matched = sessPath
+      ? projects.find((pr) => pr.path.replace(/[\\/]+$/, '').toLowerCase() === sessPath)
+      : null;
+    project = matched || generalPseudoProject();
+  }
+
+  if (!project) project = findProjectFromArgs(projects);
+  if (!project) {
+    if (resumed || SCRIPTED) {
+      project = generalPseudoProject();
+    } else {
+      project = isTTY
+        ? await selectProject(projects)
+        : (projects.length === 1 ? projects[0] : await selectProject(projects));
+    }
+  }
 
   console.log(`\n${C.dim}─── Project: ${C.green}${project.name}${C.dim} ───────${C.reset}`);
-  console.log(`${C.gray}Type a message, 'projects' to switch/rescan, or 'quit' to exit.${C.reset}\n`);
+  if (resumed) {
+    console.log(`${C.dim}Resuming session ${sessionId}${C.reset}`);
+  }
+  if (!SCRIPTED) {
+    console.log(`${C.gray}Type a message, 'projects' to switch/rescan, or 'quit' to exit.${C.reset}\n`);
+  }
 
   const ws = new WebSocket(`ws://${HOST}:${PORT}/stream`);
+  activeWs = ws;
+  // Scripted modes take over the socket immediately — runScriptedMode attaches its own open/
+  // message/error/close handlers and never returns. MUST run before the LAN-display-name
+  // fetch below: that await yields to the event loop, and a fast localhandshake can emit
+  // 'open' during it — a listener attached after the fact would never fire (seen live
+  // 2026-08-24: --query hung with readyState=1 and zero listeners).
+  if (SCRIPTED) {
+    runScriptedMode(ws, project, sessionId);
+    return;
+  }
   // Phase 19 (2026-08-12): LAN display-name attribution — when the server is bound to
   // 0.0.0.0 (HOST env), the CLI asks for a display name on connect exactly like the web UI.
   // When the server is 127.0.0.1-only the prompt is skipped entirely and attribution stays
@@ -343,333 +325,44 @@ async function main() {
         validate: (v) => (v.trim().length <= 40 ? undefined : 'Keep it under 40 characters.'),
       }).catch(() => null);
       if (name && name.trim()) {
-        ws.on('open', () => {
-          ws.send(JSON.stringify({ type: 'set_display_name', payload: { name: name.trim() } }));
-        });
+        // The socket may already be OPEN when this runs (the fetch above yielded the event
+        // loop long enough for a localhost handshake to complete) — an 'open'-only attach
+        // would silently never fire. Guard both states.
+        const sendName = () => ws.send(JSON.stringify({ type: 'set_display_name', payload: { name: name.trim() } }));
+        if (ws.readyState === 1) sendName();
+        else ws.once('open', sendName);
       }
     }
   } catch {
     // endpoint unreachable — attribution stays "local", no prompt
   }
-  let rl;
-  let waitingForInput = false;
-  // Confirmed live 2026-07-29: the server sends a 'confirm_prompt' AND (for that same turn) an
-  // 'end' message — fine for the web UI (a confirmation card + hiding a spinner are independent
-  // concerns there), but the CLI's 'end' handler used to unconditionally call `rl.prompt(true)`
-  // on whatever `rl` currently pointed to. `questionAsync()` below closes `rl` the instant a
-  // confirm prompt starts and doesn't reassign it until the user actually answers — so an 'end'
-  // arriving in that window called `.prompt()` on an already-closed readline interface and
-  // crashed the whole client with ERR_USE_AFTER_CLOSE. This flag makes 'end' a no-op while a
-  // confirm/tool-confirm prompt owns the terminal; `questionAsync`'s own `setupReadline()` call
-  // (after the user answers) is what re-prompts, so nothing is lost by skipping it here.
-  let confirmPending = false;
 
-  // Numbered option picks for the server's chip-style messages ('suggestions' / 'did_you_mean').
-  // The web UI renders these as clickable chips; the CLI renders them as numbers the user types
-  // in the input line. Entries are cleared on ANY next input — a non-number just falls through
-  // as a normal message (the web UI's chips are non-blocking too), so a stray "1" typed later
-  // can never fire a stale pick.
-  let pendingOptions = [];
+  // Interactive path: the readline + WS-message renderer (see cliRenderer.js). The state bag
+  // holds the mutable project/projects/port the renderer's 'projects' command updates.
+  const state = { project, projects, port: PORT };
+  const { handleMessage, setupReadline } = createCliRenderer({ ws, sessionId, state });
 
-  // stdout.write() calls below don't reliably end in '\n' — some WS message types (start/output/
-  // token) are meant to run together mid-stream. But 'answer' is always a discrete reply, and the
-  // server can send more than one in a single turn (e.g. an "answer" from npm_run immediately
-  // followed by a fallback "answer" from projectTypeSuggestions) — those used to print back-to-
-  // back with no separator ("No script called dev found in package.json.Could not detect project
-  // type..."), unlike the web UI where each 'answer' becomes its own chat bubble. Track whether
-  // the last thing written ended in a newline and force one before any new discrete message.
-  let atLineStart = true;
-  function writeLine(text) {
-    if (!atLineStart) process.stdout.write('\n');
-    process.stdout.write(text);
-    atLineStart = text.endsWith('\n');
-  }
-  function writeRaw(text) {
-    process.stdout.write(text);
-    atLineStart = text.endsWith('\n');
-  }
-
-  // Renders a numbered block for server chip messages and records the options so the next bare
-  // in-range number input picks one (see setupReadline). Numbering continues across successive
-  // chip messages within the same turn — the fallback path sends did_you_mean before suggestions.
-  function addPendingOptions(entries, header) {
-    const start = pendingOptions.length + 1;
-    const lines = entries.map((e, i) => {
-      const label = e.kind === 'didYouMean' ? e.label : e.text;
-      return `  ${C.cyan}${start + i}${C.reset}) ${C.green}${label}${C.reset}`;
-    });
-    writeLine(`${C.dim}${header}:${C.reset}\n${lines.join('\n')}\n`);
-    pendingOptions.push(...entries);
-  }
-
-  async function refreshProjects() {
-    const result = await tryFetchProjects(PORT);
-    if (result && result.projects.length > 0) projects = result.projects;
-    return projects;
-  }
-
-  async function switchProject() {
-    await refreshProjects();
-    const next = await selectProject(projects);
-    project = next;
-    console.log(`\n${C.dim}─── Project: ${C.green}${project.name}${C.dim} ───────${C.reset}\n`);
-    atLineStart = true;
-  }
-
-  function setupReadline() {
-    if (rl) rl.close();
-    rl = readline.createInterface({ input: process.stdin, output: process.stdout, crlfDelay: Infinity });
-    // Piped/redirected stdin (echo foo | cli-client, CI) hits EOF, which closes the interface
-    // under us — a server 'end' arriving afterwards used to crash with ERR_USE_AFTER_CLOSE
-    // (reproduced 2026-08-10). Track liveness via a close listener so the 'end' handler's
-    // existing `&& rl` guard actually works; real TTY sessions never EOF, so this only affects
-    // scripted runs.
-    rl.on('close', () => { rl = null; });
-    rl.setPrompt(`${C.cyan}${C.bold}chat>${C.reset} `);
-    waitingForInput = true;
-    rl.prompt();
-    rl.on('line', (line) => {
-      const trimmed = line.trim();
-      if (!trimmed) { rl.prompt(); return; }
-
-      // If waiting for confirm/consent, route to the pending handler
-      if (pendingConfirm) {
-        const { resolve } = pendingConfirm;
-        pendingConfirm = null;
-        const ok = trimmed.toLowerCase() === 'y' || trimmed.toLowerCase() === 'yes';
-        resolve(ok);
-        return;
-      }
-      // If a chip-style question is pending, a bare in-range number picks that option (the web
-      // UI equivalent of clicking a chip). Anything else clears the options and flows on as a
-      // normal message — same non-blocking semantics as the web UI's chip bar.
-      if (pendingOptions.length > 0) {
-        const numeric = /^\d+$/.test(trimmed) ? parseInt(trimmed, 10) : NaN;
-        const chosen = Number.isInteger(numeric) && numeric >= 1 && numeric <= pendingOptions.length
-          ? pendingOptions[numeric - 1]
-          : null;
-        pendingOptions = [];
-        if (chosen) {
-          if (chosen.kind === 'didYouMean') {
-            ws.send(JSON.stringify({ type: 'did_you_mean_pick', payload: { intent: chosen.intent } }));
-          } else {
-            ws.send(JSON.stringify({ type: 'execute', payload: { projectId: project.id, input: chosen.text, sessionId: null } }));
-          }
-          return;
-        }
-      }
-      const lower = trimmed.toLowerCase();
-      if (lower === 'quit' || lower === 'exit') {
-        console.log(`\n${C.yellow}Bye!${C.reset}`);
-        ws.close();
-        process.exit(0);
-      }
-      // Handled entirely client-side — these never had a way to work without restarting the
-      // whole process before, since the project was only ever picked once at startup. Nothing
-      // server-side needs to change: handleExecute() already trusts whatever projectId is sent
-      // on each individual message, so switching is just a matter of changing what this client
-      // sends next.
-      if (lower === 'projects' || lower === 'switch project' || lower === 'change project' || lower === 'scan projects' || lower === 'rescan projects') {
-        waitingForInput = false;
-        rl.pause();
-        switchProject().then(() => { waitingForInput = true; rl.prompt(true); });
-        return;
-      }
-      // Normal message
-      waitingForInput = false;
-      rl.pause();
-      ws.send(JSON.stringify({
-        type: 'execute',
-        payload: { projectId: project.id, input: trimmed, sessionId: null },
-      }));
-    });
-  }
-
-  let pendingConfirm = null;    // { resolve, question }
-
-  function questionAsync(prompt) {
-    return new Promise((resolve) => {
-      if (rl) rl.close();
-      const q = readline.createInterface({ input: process.stdin, output: process.stdout, crlfDelay: Infinity });
-      q.question(`${C.yellow}${prompt} ${C.reset}`, (answer) => {
-        q.close();
-        resolve(answer.trim().toLowerCase());
-        setupReadline();
-      });
-    });
-  }
-
-  ws.on('open', setupReadline);
+  // Same already-open guard as the scripted path (2026-08-24): the LAN-display-name fetch
+  // above yields the event loop, and a fast localhost handshake can complete before this
+  // attaches — an 'open'-only listener would never fire and the CLI would sit with no prompt.
+  if (ws.readyState === 1) setupReadline();
+  else ws.on('open', setupReadline);
 
   ws.on('message', (raw) => {
     let msg;
     try { msg = JSON.parse(raw); } catch { return; }
-
-    switch (msg.type) {
-      case 'answer':
-        // Phase 1.5 (UPGRADE-ROADMAP.md): web-UI tool panels (`openPanel` on the answer
-        // payload) are deliberately ignored here — PERMANENTLY. There is no terminal-native
-        // equivalent of a live button grid or a file-drop picker, and the numbered-option-list
-        // pattern is a worse fit for it than plain text. The same answer's `data` text is the
-        // CLI-usable half of the contract: panel opers (e.g. "open calculator") always phrase
-        // the chat command equivalent ("use 'calculate ...' directly"). Do not "fix" this.
-        // A new answer starts a fresh turn (or continues one whose options already fired) —
-        // stale options from a previous turn must not linger, or a later "1" could fire a pick
-        // from a dead conversation (seen live: fallback suggestions from turn N still pending
-        // when turn N+1's suggestions arrived, mis-numbering them 8-13).
-        pendingOptions = [];
-        if (msg.data) writeLine(`${C.reset}${stripMarkdown(msg.data)}\n`);
-        break;
-      case 'error_output':
-        pendingOptions = [];
-        if (msg.data) writeLine(`${C.red}${msg.data}${C.reset}`);
-        break;
-      case 'warning':
-        // Informational notices (the LF/CRLF collapse summary, sandbox-mode confirmations,
-        // "process survived kill" heads-ups) — the web UI renders an amber banner, so this used
-        // to fall through to default and be silently dropped in the CLI. Same stale-chip guard
-        // as error_output: a warning starts a fresh read of the situation, not a pick from a
-        // dead turn.
-        pendingOptions = [];
-        if (msg.data) writeLine(`${C.yellow}${msg.data}${C.reset}\n`);
-        break;
-      case 'output':
-        if (msg.data) writeRaw(`${C.green}${msg.data}${C.reset}`);
-        break;
-      case 'start':
-        if (msg.data) writeRaw(`${C.dim}${msg.data}${C.reset}`);
-        break;
-      case 'stream_start':
-        writeRaw(C.reset);
-        break;
-      case 'token':
-        if (msg.data) writeRaw(msg.data);
-        break;
-      case 'stream_end':
-        writeRaw('\n');
-        break;
-      case 'end':
-        // The web renders 'end' with an optional summary (msg.data) — print it so the CLI
-        // shows the same command summary the web shows (audit Phase 5).
-        if (msg.data) writeRaw(`${msg.data}\n`);
-        writeRaw(`\n`);
-        if (!waitingForInput && !confirmPending && rl) { waitingForInput = true; rl.prompt(true); }
-        break;
-      case 'clear_console':
-        console.clear();
-        atLineStart = true;
-        break;
-      case 'confirm_prompt':
-        pendingOptions = [];
-        confirmPending = true;
-        questionAsync(`Risky command "${msg.command}"? (y/N):`).then((ans) => {
-          confirmPending = false;
-          ws.send(JSON.stringify({ type: 'confirm_response', payload: { token: msg.token, confirmed: ans === 'y' || ans === 'yes' } }));
-        });
-        break;
-      case 'tool_confirm_prompt':
-        pendingOptions = [];
-        confirmPending = true;
-        questionAsync(`AI wants to run ${C.bold}${msg.tool}${C.reset}${C.yellow} with ${JSON.stringify(msg.args)} — approve? (y/N):`).then((ans) => {
-          confirmPending = false;
-          ws.send(JSON.stringify({ type: 'confirm_response', payload: { token: msg.token, confirmed: ans === 'y' || ans === 'yes' } }));
-        });
-        break;
-      case 'ai_start':
-        process.stdout.write(`${C.yellow}${msg.data || 'AI thinking...'}${C.reset}\n`);
-        break;
-      case 'tool_start':
-        if (msg.data) process.stdout.write(`${C.dim}${msg.data}${C.reset}\n`);
-        break;
-      case 'tool_result':
-        if (msg.data?.result?.error || msg.data?.error) process.stdout.write(`${C.red}✖ ${msg.data.result?.error || msg.data.error}${C.reset}\n`);
-        else process.stdout.write(`${C.green}✔ ${msg.data?.tool || 'Tool'} done${C.reset}\n`);
-        break;
-      case 'suggestions':
-        // Run-command suggestions (config entries, npm scripts, documented commands) — the web
-        // UI renders clickable chips; render them as a numbered list the user can pick from.
-        if (Array.isArray(msg.data) && msg.data.length > 0) {
-          addPendingOptions(msg.data.map((text) => ({ kind: 'suggestion', text })), 'Options');
-          writeLine(`${C.dim}(type a number to run it, or type your own message)${C.reset}\n`);
-        }
-        break;
-      case 'did_you_mean':
-        // Non-blocking "did you mean" chip (matcher's closeSecond / nearest-intent hint).
-        if (msg.data && typeof msg.data.intent === 'string' && typeof msg.data.label === 'string') {
-          addPendingOptions([{ kind: 'didYouMean', intent: msg.data.intent, label: msg.data.label }], 'Did you mean');
-          writeLine(`${C.dim}(type its number to pick it)${C.reset}\n`);
-        }
-        break;
-      case 'memory_suggestion':
-        // Accept/reject card for a suggested CLAUDE.md memory note. The reply is plain text
-        // ("yes"/"no") handled by the server's pending-memory-suggestion interceptor, so this
-        // only renders the card — no interception needed.
-        if (msg.data?.topic) {
-          writeLine(`${C.yellow}[Memory suggestion]${C.reset} ${C.bold}${msg.data.topic}${C.reset}${msg.data.content ? `: ${msg.data.content}` : ''}\n${C.dim}(reply "yes" to add this to CLAUDE.md, "no" to skip)${C.reset}\n`);
-        }
-        break;
-      case 'learning_suggestion': {
-        // "review learning" output — mirror the web UI's formatting and offer the same
-        // per-item "approve N" chips as numbered options (text replies also work).
-        const lSuggestions = msg.data?.suggestions;
-        if (!Array.isArray(lSuggestions) || lSuggestions.length === 0) {
-          writeLine('No learning suggestions yet — keep using the console and check back later!\n');
-        } else {
-          const lines = ['Learning suggestions:'];
-          lSuggestions.forEach((s) => {
-            const phrases = (s.phrases || []).slice(0, 5).join(', ');
-            const extra = (s.phrases || []).length > 5 ? ` (+${s.phrases.length - 5} more)` : '';
-            lines.push(`  ${C.bold}${s.intent}${C.reset} (${s.confidence}) — ${s.count} occurrences, ${s.accepted} accepted, ${s.rejected} rejected`);
-            lines.push(`    Phrases: ${phrases}${extra}`);
-          });
-          lines.push('Type "approve suggestions" to add all, or "approve suggestions 1 3" to approve specific ones.');
-          writeLine(lines.join('\n') + '\n');
-          addPendingOptions(lSuggestions.map((_, i) => ({ kind: 'suggestion', text: `approve ${i + 1}` })), 'Approve');
-        }
-        break;
-      }
-      case 'server_url':
-        // "This is the project's dev-server site" — the web UI renders a clickable chip; the
-        // CLI has nothing to click, so print the URL plainly.
-        if (msg.data) writeLine(`${C.green}Site running at: ${msg.data}${C.reset}\n`);
-        break;
-      case 'update_available':
-        // One-shot newer-version notice (see updateChecker.js). Mirrors the web UI's
-        // malformed-payload guard: a partial object is ignored, never rendered.
-        if (msg.data?.current && msg.data?.latest) {
-          writeLine(`${C.yellow}Update available: v${msg.data.current} -> v${msg.data.latest} (run 'update console')${C.reset}\n`);
-        }
-        break;
-      // Deliberately-not-rendered CLI no-ops: each of these is handled meaningfully by the web
-      // UI but has no terminal equivalent, and every one used to fall through to `default` with
-      // zero signal that it was considered. CLI parity for new WS message types is enforced by
-      // scripts/checkWsMessageCases.ts — a key in WS_CORE_CASES without a `case` here (rendered
-      // OR this kind of explicit no-op) fails the harness.
-      case 'projects_updated': // project-list refresh — the CLI refetches on demand via 'projects'
-      case 'project_updated': break; // single-project update — same
-      case 'ai_status': break; // AI toggle state — a UI switch, not terminal info
-      case 'thinking': break; // reasoning-model trace — an italic panel in the web UI
-      case 'task_granted': break; // "approved" acknowledgement — the CLI already saw the y/N prompt
-      case 'workspace_updated': break; // workspace-project set — UI-only (SidebarDrawer)
-      case 'copy_to_clipboard': break; // display notice only since Phase 8 — the server-side OS clipboard write happens inside the intent handler, so the CLI copies for real without a browser
-      case 'dashboard_update': break; // dashboard refresh signal — no dashboard in the CLI
-      case 'processes_update': break; // dock refresh signal — no dock in the CLI
-      case 'semantic_matcher_progress': break; // boot-time embedding progress — the CLI connects after boot
-      case 'display_name_set': break; // name-claim ack — the CLI already knows the name it sent
-      default:
-        break;
-    }
+    handleMessage(msg);
   });
 
   ws.on('close', () => {
+    activeWs = null;
     console.log(`\n${C.yellow}Connection closed.${C.reset}`);
-    if (rl) rl.close();
     process.exit(0);
   });
 
   ws.on('error', (err) => {
+    activeWs = null;
     console.log(`\n${C.red}WebSocket error: ${err.message}${C.reset}`);
-    if (rl) rl.close();
     process.exit(1);
   });
 }

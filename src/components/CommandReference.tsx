@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { BookOpen, Search, X, TerminalSquare, LayoutGrid } from 'lucide-react';
 import { apiFetchJson } from '../utils/apiFetch';
 import { cn } from '../lib/utils';
+import { EmptyState } from './ui/EmptyState';
 
 // Phase 10 (UPGRADE-ROADMAP.md, 2026-08-12): the Command Reference tab — Stripe/GitHub-CLI
 // docs style: left category sidebar, searchable command list on the right, each entry showing
@@ -137,8 +138,9 @@ export function CommandReference({ onClose }: CommandReferenceProps) {
         {error && <p className="text-xs text-accent-red mb-3">{error}</p>}
 
         <div className="flex gap-4 flex-1 min-h-0">
-          {/* Left category rail — 220px, --overlay */}
-          <aside className="w-[220px] shrink-0 bg-overlay border-r border-border-faint p-3 overflow-y-auto">
+          {/* Left category rail — 220px, --overlay. Hidden below md: at 375px the rail plus
+              the content column leaves the table ~135px wide (2026-08-24 responsive pass). */}
+          <aside className="hidden md:block w-[220px] shrink-0 bg-overlay border-r border-border-faint p-3 overflow-y-auto">
             <button
               onClick={() => setActiveCategory(null)}
               className={cn('w-full text-left px-2.5 py-1.5 text-xs rounded-lg transition-colors mb-0.5', !activeCategory ? 'bg-accent-blue/15 text-accent-blue font-semibold' : 'text-fg-muted hover:text-fg-strong hover:bg-panel-strong/60')}
@@ -175,7 +177,12 @@ export function CommandReference({ onClose }: CommandReferenceProps) {
               {loading ? (
                 <p className="text-xs text-fg-dim italic py-8 text-center">Loading commands…</p>
               ) : filtered.length === 0 && (
-                <p className="text-xs text-fg-dim italic py-8 text-center">No commands match "{query}".</p>
+                <EmptyState
+                  icon={<BookOpen size={18} />}
+                  title={`No commands match "${query}"`}
+                  hint="Try a broader phrase — the reference covers every chat command and intent."
+                  className="py-8"
+                />
               )}
               {filtered.map((cat) => (
                 <div key={cat.label}>

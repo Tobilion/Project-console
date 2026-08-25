@@ -1,5 +1,6 @@
 import { loadPluginManifest } from './pluginTools.js';
 import { isDestructiveCommand } from './commandRisk.js';
+import { BUILTIN_TOOL_DEFS } from './toolDefs.js';
 
 // Tool-approval gate + per-project permissions policy (Phase 9 split, 2026-08-04 — extracted
 // from tools.js; re-exported from tools.js so external importers are untouched). This is the
@@ -77,6 +78,25 @@ export function isGatedToolCall(toolName, args) {
 export function isCustomToolRisky(toolName, projectRoot) {
   const riskySet = CUSTOM_RISKY_TOOLS.get(projectRoot);
   return riskySet ? riskySet.has(toolName) : false;
+}
+
+// Round-6 audit (2026-08-24): the read-only "Ask" permission mode. When the profile's
+// permissionMode is 'ask', these tools never run — no confirm prompt, no checkpoint, no
+// execution. Deliberately a superset of GATED_TOOLS + ALWAYS_CONFIRM_TOOLS: executeCommand
+// (even a "non-risky" one — any command can have side effects), saveMemory (writes
+// memory.md) and undoLastChange (restores a file) are all mutations of project state. The
+// check happens BEFORE resolveToolGate so Ask mode can never be softened by a session grant
+// or an allow-after-first-ask policy — the gate hierarchy itself is untouched.
+export const ASK_MODE_BLOCKED_TOOLS = new Set([
+  ...GATED_TOOLS, ...ALWAYS_CONFIRM_TOOLS, 'executeCommand', 'saveMemory', 'undoLastChange',
+]);
+
+/** Whether a tool is blocked by Ask mode: the built-in mutators above, or any custom
+ *  manifest tool (custom tools wrap shell commands — read-only Ask mode blocks them all).
+ *  Built-in read-only tools (readFile/searchCode/findFiles/listFiles/getGitStatus/...) pass. */
+export function isAskModeBlocked(toolName) {
+  if (ASK_MODE_BLOCKED_TOOLS.has(toolName)) return true;
+  return !BUILTIN_TOOL_DEFS.some((t) => t.name === toolName);
 }
 
 /**

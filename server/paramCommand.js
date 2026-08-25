@@ -12,7 +12,9 @@
 // a parameter answer, on top of the existing isCommandBlocked() dangerous-pattern check that
 // still runs on the fully-substituted command before it's executed.
 
-const UNSAFE_VALUE_RE = /[;&|`$<>\r\n]/;
+// 2026-08-24: also reject `"` and `'` — a quoted value could break out of a template's quoted
+// argument and smuggle shell syntax past the blocklist. Backslash stays allowed (Windows paths).
+const UNSAFE_VALUE_RE = /[;&|`$<>\r\n"']/;
 const MAX_VALUE_LENGTH = 300;
 
 /**

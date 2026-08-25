@@ -72,7 +72,10 @@ function deliverResult(schedule, text) {
     // the CLI sends sessionId null; persistence inside the interceptor stays gated on
     // currentSessionId, so a session-less delivery renders without persisting).
     if (ctx.activeProjectId === schedule.projectId && ws.readyState === 1) {
-      ws.send(JSON.stringify({ type: 'answer', data: text }));
+      // toast: true — the web client fires a toast for this out-of-band answer (the bubble
+      // still renders + persists); the CLI ignores the field like openPanel. The user may
+      // not be looking at the chat when a scheduled command fires.
+      ws.send(JSON.stringify({ type: 'answer', data: text, toast: true }));
       return 'connected session';
     }
   }
@@ -136,7 +139,7 @@ function deliverReminder(schedule) {
     }
   }
   if (target) {
-    target.send(JSON.stringify({ type: 'answer', data: text }));
+    target.send(JSON.stringify({ type: 'answer', data: text, toast: true }));
     // Phase 15: fired reminders are ALSO eligible for desktop/webhook notification (a user
     // who isn't watching the console still gets buzzed). Delivery to the live session is
     // unaffected — the notification is additive.

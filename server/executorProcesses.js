@@ -181,8 +181,11 @@ export async function stopTrackedProcess(projectId, { turnKey } = {}) {
       // would orphan the tree from the kill (see killProcessTree's sync note).
       killProcessTree(proc.child);
     } else {
+      // POSIX: the child was spawned `detached: true` (executor.js), so it owns a process
+      // group — signal the whole group (-pid). A bare SIGTERM on the shell wrapper leaves the
+      // grandchild (the real server) running as an orphan; the group kill reaches it too.
       try {
-        proc.child.kill('SIGTERM');
+        process.kill(-proc.child.pid, 'SIGTERM');
       } catch {}
     }
     commands.push(proc.command);
@@ -202,7 +205,7 @@ process.on('exit', () => {
   for (const [, slot] of runningProcesses) {
     for (const [, proc] of slot) {
       if (process.platform === 'win32') killProcessTree(proc.child);
-      else { try { proc.child.kill('SIGTERM'); } catch {} }
+      else { try { process.kill(-proc.child.pid, 'SIGTERM'); } catch {} }
     }
   }
   runningProcesses.clear();
@@ -211,7 +214,7 @@ process.on('SIGTERM', () => {
   for (const [, slot] of runningProcesses) {
     for (const [, proc] of slot) {
       if (process.platform === 'win32') killProcessTree(proc.child);
-      else { try { proc.child.kill('SIGTERM'); } catch {} }
+      else { try { process.kill(-proc.child.pid, 'SIGTERM'); } catch {} }
     }
   }
   runningProcesses.clear();

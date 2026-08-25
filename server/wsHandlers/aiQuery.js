@@ -6,6 +6,7 @@ import { analyzeAIExchange } from '../distillation.js';
 import { trackFileEdit, trackQuestion, addCandidateAddition } from '../projectMemory.js';
 import { metrics } from '../metrics.js';
 import { MAX_TOOL_ROUNDS, runToolCall } from './aiQueryToolRun.js';
+import { readProfile } from '../routes/profileRoutes.js';
 import { buildAIQueryContext } from './aiQueryContext.js';
 import { looksLikeUnexecutedToolIntent, looksLikeFabricatedActionClaim } from './aiQueryDetectors.js';
 
@@ -58,6 +59,11 @@ export async function handleAIQuery(ws, project, input, sessionContext, workspac
   const turnKey = crypto.randomUUID();
   sessionContext.turnKey = turnKey;
 
+  // Round-6 audit (2026-08-24): read-only "Ask" permission mode — read once per turn so the
+  // whole exchange behaves consistently even if the profile changes mid-turn. Passed into
+  // runToolCall, which blocks mutating tools with a plain error (no prompts, no checkpoint).
+  const askMode = readProfile().permissionMode === 'ask';
+
   try {
     ws.send(JSON.stringify({ type: 'ai_start', data: `Thinking... (${model})` }));
     ws.send(JSON.stringify({ type: 'stream_start' }));
@@ -89,7 +95,7 @@ export async function handleAIQuery(ws, project, input, sessionContext, workspac
 
       const resultsSummary = [];
       for (const call of toolCalls) {
-        const result = await runToolCall(ws, project, tools, call, workspaceTools, workspaceProjects, sessionContext.toolGrants, turnKey);
+        const result = await runToolCall(ws, project, tools, call, workspaceTools, workspaceProjects, sessionContext.toolGrants, turnKey, askMode);
         ws.send(JSON.stringify({ type: 'tool_result', data: { tool: call.tool, args: call.args, result } }));
         resultsSummary.push(`Tool ${call.tool} returned: ${JSON.stringify(result)}`);
         // Track tool call for distillation

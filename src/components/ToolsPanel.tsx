@@ -1,5 +1,6 @@
 import { lazy, Suspense } from 'react';
-import { Calculator, FileText, ListChecks, FolderSearch, FolderOpen, StickyNote, Table as TableIcon, ClipboardCopy, Archive, Bell, BookOpen, Store, LayoutGrid, ArrowLeft } from 'lucide-react';
+import { motion } from 'motion/react';
+import { Calculator, FileText, ListChecks, FolderSearch, FolderOpen, StickyNote, Table as TableIcon, ClipboardCopy, Archive, Bell, BookOpen, Store, Map as MapIcon, LayoutGrid, ArrowLeft } from 'lucide-react';
 import type { ToolPanelDef, Project } from '../types';
 
 // Phase 6 (2026-08-17): panels are one-at-a-time views — ideal code-split points. React.lazy
@@ -18,6 +19,7 @@ const BackupPanel = lazy(() => import('./BackupPanel').then((m) => ({ default: m
 const NotificationsPanel = lazy(() => import('./NotificationsPanel').then((m) => ({ default: m.NotificationsPanel })));
 const DocumentsPanel = lazy(() => import('./DocumentsPanel').then((m) => ({ default: m.DocumentsPanel })));
 const MarketplacePanel = lazy(() => import('./MarketplacePanel').then((m) => ({ default: m.MarketplacePanel })));
+const RepoMapPanel = lazy(() => import('./RepoMapPanel').then((m) => ({ default: m.RepoMapPanel })));
 
 // Phase 1.5 (UPGRADE-ROADMAP.md, 2026-08-11): the shared interactive "Tools" surface — a
 // card-grid launcher (icon + name + one-line description per registered tool, served by
@@ -39,6 +41,7 @@ const ICONS: Record<string, React.ComponentType<{ size?: number; className?: str
   bell: Bell,
   'book-open': BookOpen,
   store: Store,
+  map: MapIcon,
 };
 
 interface PanelProps {
@@ -55,7 +58,7 @@ const PANEL_VIEWS: Record<string, (p: PanelProps) => React.ReactElement> = {
   'pdf-tools': ({ project, onSendMessage, tabId }) => <PdfToolsPanel project={project} onSendMessage={onSendMessage} tabId={tabId} />,
   reminders: ({ project, onSendMessage }) => <RemindersPanel project={project} onSendMessage={onSendMessage} />,
   'file-tools': ({ project, onSendMessage, tabId }) => <FileToolsPanel project={project} onSendMessage={onSendMessage} tabId={tabId} />,
-  'folder-explorer': ({ onSendMessage, tabId }) => <FolderExplorerPanel onSendMessage={onSendMessage} tabId={tabId} />,
+  'folder-explorer': ({ project, onSendMessage, tabId }) => <FolderExplorerPanel project={project} onSendMessage={onSendMessage} tabId={tabId} />,
   notes: ({ project, onSendMessage, tabId }) => <NotesPanel project={project} onSendMessage={onSendMessage} tabId={tabId} />,
   'csv-tools': ({ project, onSendMessage, tabId }) => <SpreadsheetPanel project={project} onSendMessage={onSendMessage} tabId={tabId} />,
   clipboard: ({ onSendMessage }) => <ClipboardPanel onSendMessage={onSendMessage} />,
@@ -63,13 +66,19 @@ const PANEL_VIEWS: Record<string, (p: PanelProps) => React.ReactElement> = {
   notifications: ({ project, onSendMessage }) => <NotificationsPanel project={project} onSendMessage={onSendMessage} />,
   'knowledge-base': ({ project, onSendMessage, aiEnabled, tabId }) => <DocumentsPanel project={project} onSendMessage={onSendMessage} aiEnabled={aiEnabled} tabId={tabId} />,
   marketplace: ({ project, onSendMessage }) => <MarketplacePanel project={project} onSendMessage={onSendMessage} />,
+  'repo-map': ({ project, tabId }) => <RepoMapPanel project={project} tabId={tabId} />,
 };
 
 // Shared shell every panel view used to duplicate: back button + the scroll region that
 // owns the panel's vertical space (flex-1 min-h-0 — the panel scrolls, the shell never).
 function PanelShell({ onClose, children }: { onClose: () => void; children: React.ReactNode }) {
   return (
-    <div className="h-full flex flex-col">
+    <motion.div
+      className="h-full flex flex-col"
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.18, ease: 'easeOut' }}
+    >
       <div className="flex items-center gap-2 mb-3 shrink-0">
         <button
           onClick={onClose}
@@ -80,7 +89,7 @@ function PanelShell({ onClose, children }: { onClose: () => void; children: Reac
         </button>
       </div>
       <div className="flex-1 min-h-0">{children}</div>
-    </div>
+    </motion.div>
   );
 }
 

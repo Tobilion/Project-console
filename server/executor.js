@@ -1,16 +1,19 @@
 // Phase 12: orchestrator for command execution. Pure logic lives in the Phase 12 leaves:
-//   - executorOutput.js      ANSI/URL/LF-CRLF transforms + createBufferedSender
-//   - executorPorts.js       port-conflict detection, prompt ask, retry offer
-//   - executorProcesses.js   runningProcesses map + ring buffer + stopTrackedProcess
-//   - executorDevServer.js   dev-server pattern detection + detach message builder
+//   - executorOutput.js       ANSI/URL/LF-CRLF transforms + createBufferedSender
+//   - executorPorts.js        port-conflict detection, prompt ask, retry offer
+//   - executorProcesses.js    runningProcesses map + ring buffer + stopTrackedProcess
+//   - executorDevServer.js    dev-server pattern detection + detach message builder
+//   - executorConstants.js    tuning knobs (data/tuning.json can override each at use time)
+//   - executorUrlRecovery.js  post-detach candidate-port probe (servers that never print a URL)
+//   - executorClose.js        the 'close' handler (cleanup + summary + retries + notifications)
+// This file owns only the spawn lifecycle itself: venv rewrite, the tracked entry, the
+// stream wiring, detach, and the close/error handlers.
 import { spawn } from 'child_process';
 import path from 'path';
 import fs from 'fs';
 import { broadcast } from './wsServer.js';
 import { recordDevUrl, forgetDevUrl } from './devUrlStore.js';
-import { state, allKnownProjects } from './state.js';
-import { probeUrl, candidateDevUrls } from './livenessProbe.js';
-import { summarizeCommandOutput } from './outputSummarizer.js';
+import { state } from './state.js';
 import { readProfile } from './routes/profileRoutes.js';
 import { buildSandboxEnv } from './executorSandbox.js';
 import {
@@ -24,52 +27,26 @@ import {
   stopTrackedProcess,
 } from './executorProcesses.js';
 import { ANSI_RE, URL_PATTERN, collapseLfCrlfWarnings, createBufferedSender } from './executorOutput.js';
-import { buildPortPromptConfirmation, offerPortRetry } from './executorPorts.js';
-import { offerUpstreamRetry } from './executorGitRetry.js';
+import { buildPortPromptConfirmation } from './executorPorts.js';
 import { isDevServerCommand, buildDetachMessage } from './executorDevServer.js';
-import { notify } from './notify.js';
 import { getTuning } from './tuningStore.js';
+import { createCloseHandler } from './executorClose.js';
+import { recoverDevUrlAfterDetach } from './executorUrlRecovery.js';
+import {
+  DEV_URL_DETACH_GRACE_MS,
+  DEV_SERVER_FORCE_DETACH_MS,
+  LONG_RUNNING_FORCE_DETACH_MS,
+  PORT_PROMPT_ANSWER_TIMEOUT_MS,
+} from './executorConstants.js';
 
 // Re-exports so every external importer keeps using `../executor.js` unchanged:
 // monitoringRoutes (runningProcesses, getProcessLog), toolProcess (runningProcesses,
 // stopTrackedProcess), builtinFileNpm/builtinProjectContext/builtinLiveState/connectionConfirm/
 // connectionDevServer/connectionRoutes (runningProcesses), connectionDevServer/connectionRoutes
-// (stopTrackedProcess), processLogs (no external importer today — kept for the Phase 6 harness).
-export { runningProcesses, processLogs, getProcessLog, stopTrackedProcess };
-
-// Tunable knobs (Phase 4: magic numbers standardized).
-// Phase 8 (2026-08-11): like semanticMatcher's knobs, these exports are the DEFAULTS;
-// data/tuning.json overrides (tuningStore.js) shadow them at each use site via getTuning.
-/** Grace after a dev-server URL appears before detaching, so trailing output can flush. */
-export const DEV_URL_DETACH_GRACE_MS = 500;
-/** Force-detach for recognized dev servers that never printed a URL. */
-export const DEV_SERVER_FORCE_DETACH_MS = 10000;
-/** Longer force-detach for unrecognized long-running commands (some one-shot scripts legitimately take a while). */
-export const LONG_RUNNING_FORCE_DETACH_MS = 20000;
-/** Final stdout/stderr caps for the tool-result summary — the UI only needs the tail. */
-export const STDOUT_SUMMARY_CAP = 4000;
-export const STDERR_SUMMARY_CAP = 2000;
-/** Delay before probing a detached process that exited on its own (Windows npm wrappers can
- *  close the tracked child early while the real server keeps serving — give it a moment). */
-export const DETACHED_EXIT_PROBE_DELAY_MS = 2000;
-/** Timeout for that liveness probe. */
-export const DETACHED_EXIT_PROBE_TIMEOUT_MS = 1500;
-/** Bound on how long a dev server may sit at an unanswered port-conflict prompt before it is
- *  force-detached (matches the 5-minute confirmation TTL in state.js's sweep). */
-export const PORT_PROMPT_ANSWER_TIMEOUT_MS = 5 * 60 * 1000;
-// Post-detach dev-URL recovery (2026-08-18): a slow cold start can print the "Local:"
-// banner AFTER the force-detach deadline (Matchday Exchange's vite took >10s on a loaded
-// machine — console + NetPulse + tsx watch all running). The old detach() removed every
-// stdout listener, so the banner was dropped forever: no recordDevUrl, no server_url
-// event, no open-site chip, and the Live Sites tab (filtered on devUrl) showed nothing.
-// The stdout handler now stays attached in URL-scan-only mode after detach; these bound
-// the fallback probe that covers servers which never print a URL at all.
-/** Delay before the post-detach recovery probe starts — gives a slow server time to bind. */
-export const DEV_URL_RECOVERY_PROBE_DELAY_MS = 3000;
-/** Per-candidate probe timeout for the recovery pass. */
-export const DEV_URL_RECOVERY_PROBE_TIMEOUT_MS = 1000;
-/** Max candidate URLs probed per recovery pass (candidateDevUrls caps at 3 anyway). */
-export const DEV_URL_RECOVERY_MAX_CANDIDATES = 3;
+// (stopTrackedProcess), connectionConfirm (PORT_PROMPT_ANSWER_TIMEOUT_MS), processLogs (no
+// external importer today — kept for the Phase 6 harness). The remaining knobs stay importable
+// from executorConstants.js (getTuning callers use the defaults here or the constants module).
+export { runningProcesses, processLogs, getProcessLog, stopTrackedProcess, PORT_PROMPT_ANSWER_TIMEOUT_MS };
 
 /** Rewrites `python ...` to the project's venv interpreter when a venv exists (verbatim rule). */
 function rewriteVenvPython(command, cwd) {
@@ -180,6 +157,12 @@ export function executeCommand(command, cwd, ws, projectId, opts = {}) {
         // inherits the server's env exactly as before — undefined = inherit.
         env: sandboxed ? buildSandboxEnv(process.env, cwd) : undefined,
         shell: true,
+        // POSIX: give the shell wrapper its own process group (detached) so a stop can
+        // SIGTERM the whole tree via -pid, not just the wrapper — killing the wrapper alone
+        // orphans the real server it spawned (the 2026-08-10 Windows orphan class, still live
+        // on mac/Linux; see killProcessTree's note in executorProcesses.js). Windows keeps its
+        // synchronous taskkill /t tree-kill and must not change process-creation semantics here.
+        detached: process.platform !== 'win32',
         // stdin used to be 'ignore', which meant an interactive "port already in use, run on
         // another one instead? (Y/n)" prompt (react-scripts/CRA) had no way to ever be answered
         // — the process would just hang. 'pipe' costs nothing when nothing writes to it; only
@@ -340,124 +323,22 @@ export function executeCommand(command, cwd, ws, projectId, opts = {}) {
       if (!detached) detach();
     }, isDev ? getTuning('DEV_SERVER_FORCE_DETACH_MS', DEV_SERVER_FORCE_DETACH_MS) : getTuning('LONG_RUNNING_FORCE_DETACH_MS', LONG_RUNNING_FORCE_DETACH_MS));
 
-    child.on('close', (code) => {
-      // Clear BOTH timers — the URL-grace detach timer used to survive a natural exit or a
-      // "stop server", firing after the close handler had already sent its end and emitting a
-      // second, contradictory "still running in the background" end (audit 2026-08-06, Phase 2).
-      if (trackedEntry.detachTimer) clearTimeout(trackedEntry.detachTimer);
-      if (trackedEntry.forceDetachTimer) clearTimeout(trackedEntry.forceDetachTimer);
-      // Confirmed live 2026-07-30 (Matchday Exchange transcript): "stop server" reported "No
-      // running server" seconds after "what's the link?" confirmed the dev server was still
-      // serving requests. Root cause — this used to delete the runningProcesses entry
-      // unconditionally on 'close', including after detach() had already run. On at least some
-      // Windows npm/vite invocations, the tracked `child` (the shell wrapper around `npm run
-      // dev`) can fire its own 'close' well before the actual dev server process it spawned
-      // stops serving, orphaning the real server from the handle we were tracking it under —
-      // wiping the map entry at that point permanently breaks "stop server" for a process that's
-      // still very much alive. Once detached, "stop server" (connection.js) is the only code
-      // that should ever remove this entry.
-      if (!detached) {
-        // Delete only this command's own slot — sibling processes of the same project keep
-        // their tracking, so a short build exiting next to a dev server can't orphan it.
-        const removed = removeTrackedProcess(projectId, child.pid);
-        if (removed) {
-          broadcast({ type: 'dashboard_update' });
-          broadcast({ type: 'processes_update' });
-        }
-        stdoutSender.flush();
-        stderrSender.flush();
-        // Requested explicitly (2026-07-29, in response to the LF/CRLF flood): don't just stream
-        // the raw log and stop — always look at what the command actually produced and call out
-        // the parts that matter (errors, package counts, commit/push results). Heuristic/regex-
-        // based (see outputSummarizer.js), not an LLM call. Returns null for short/uninteresting
-        // output — nothing extra is sent in that case.
-        const summary = summarizeCommandOutput({ command: finalCommand, stdout, stderr, exitCode: code });
-        if (summary) sendEvent('answer', summary);
-
-        // Hard port-conflict failure — the process crashed outright instead of prompting or
-        // auto-retrying (e.g. a plain Node/Express server with no built-in port fallback). Offer a
-        // one-click retry on the next port through the normal confirm-before-run flow, same as any
-        // other command — this never runs anything without the user approving it.
-        // Gated (audit 2026-08-17): a deliberately CANCELLED run (code === null — taskkill/
-        // SIGTERM via stopTrackedProcess) must never get a "retry?" card, and an AI-run command
-        // (turnKey set) owns its retries inside the AI tool loop — a confirm card interrupting
-        // the turn would go stale before the user could meaningfully act on it.
-        if (code !== null && !turnKey) {
-          offerPortRetry({ ws, projectId, command: finalCommand, stdout, stderr, isDev, exitCode: code });
-          offerUpstreamRetry({ ws, projectId, command: finalCommand, stdout, stderr, exitCode: code });
-        }
-
-        sendEvent('end', `\nProcess exited with code ${code}`);
-        resolve({
-          success: code === 0,
-          data: {
-            code,
-            stdout: stdout.length > getTuning('STDOUT_SUMMARY_CAP', STDOUT_SUMMARY_CAP) ? `...${stdout.slice(-getTuning('STDOUT_SUMMARY_CAP', STDOUT_SUMMARY_CAP))}` : stdout,
-            stderr: stderr.length > getTuning('STDERR_SUMMARY_CAP', STDERR_SUMMARY_CAP) ? `...${stderr.slice(-getTuning('STDERR_SUMMARY_CAP', STDERR_SUMMARY_CAP))}` : stderr
-          }
-        });
-        return;
-      }
-
-      // Detached process exited on its own (crashed, or killed outside the console). The tracked
-      // child can also close early while the real server keeps serving (Windows npm wrapper
-      // above), so don't clean up immediately — probe the last-known dev URL after a short delay
-      // and only drop the entry when nothing answers. Previously the entry (and its recorded URL)
-      // lived on forever, reporting a phantom "running" server with a dead PID (audit 2026-08-06).
-      if (!projectId) return;
-      const lastUrl = state.lastDevUrls.get(projectId);
-      // A detached process that never emitted a URL can't be probed — the old "keep the entry
-      // conservatively" return left its dock entry (and the project's log buffer) in
-      // runningProcesses forever (audit 2026-08-17). The wrapper-close-early concern only
-      // matters when there IS a URL to verify; a URL-less run has nothing that can be orphaned
-      // behind a probe, so clean it up after the same probe delay. POSIX keeps the entry when
-      // the tracked child is still alive (a still-running detached script); Windows always
-      // cleans up (the shell wrapper's pid is dead by definition of 'close' having fired).
-      if (!lastUrl) {
-        setTimeout(() => {
-          if (!runningProcesses.has(projectId)) return;
-          if (process.platform !== 'win32') {
-            try { process.kill(child.pid, 0); return; } catch {}
-          }
-          const removed = removeTrackedProcess(projectId, child.pid);
-          if (removed) {
-            broadcast({ type: 'dashboard_update' });
-            broadcast({ type: 'processes_update' });
-          }
-        }, DETACHED_EXIT_PROBE_DELAY_MS);
-        return;
-      }
-      setTimeout(async () => {
-        // 2026-08-18: a single probe timeout is NOT proof the server is dead — a busy machine
-        // or cold JIT can exceed the 1.5s bound while the site still serves (same class as the
-        // dashboard forget fix). Only a definitive refusal — or two consecutive timeouts —
-        // declares death; a timeout gets one retry after the same delay. This used to
-        // removeTrackedProcess + forgetDevUrl + fire a false `dev-server-crash` notification
-        // on the first timeout, silently dropping the open-site chip for a live server.
-        let probe = await probeUrl(lastUrl, DETACHED_EXIT_PROBE_TIMEOUT_MS);
-        if (!probe.alive && probe.error === 'timeout') {
-          await new Promise((r) => setTimeout(r, DETACHED_EXIT_PROBE_DELAY_MS));
-          probe = await probeUrl(lastUrl, DETACHED_EXIT_PROBE_TIMEOUT_MS);
-        }
-        if (probe.alive) return; // real server still serving (wrapper-close-early case)
-        const removed = removeTrackedProcess(projectId, child.pid);
-        if (removed) {
-          // The recorded URL can belong to a sibling process still running (serve + watch) —
-          // only forget it when this project no longer has anything tracked.
-          if (!runningProcesses.has(projectId)) forgetDevUrl(projectId);
-          broadcast({ type: 'dashboard_update' });
-          broadcast({ type: 'processes_update' });
-          console.log(`[Executor] Detached process for ${projectId} exited and its server is down — tracked entry cleaned up.`);
-          // Phase 2: an entry that was still tracked when the process died means it was never
-          // deliberately stopped (stopTrackedProcess removes entries first) — that's a crash,
-          // so surface it through the notify dispatcher. Fire-and-forget by design.
-          notify(projectId, 'dev-server-crash', {
-            title: 'Dev server stopped',
-            body: `\`${finalCommand}\` exited with code ${code} and no longer answers at ${lastUrl}.`,
-          });
-        }
-      }, DETACHED_EXIT_PROBE_DELAY_MS);
-    });
+    child.on('close', createCloseHandler({
+      trackedEntry,
+      child,
+      projectId,
+      finalCommand,
+      turnKey,
+      isDev,
+      ws,
+      sendEvent,
+      resolve,
+      getDetached: () => detached,
+      getStdout: () => stdout,
+      getStderr: () => stderr,
+      stdoutSender,
+      stderrSender,
+    }));
 
     child.on('error', (err) => {
       if (trackedEntry.detachTimer) clearTimeout(trackedEntry.detachTimer);
@@ -475,52 +356,4 @@ export function executeCommand(command, cwd, ws, projectId, opts = {}) {
       resolve({ success: false, error: err.message });
     });
   });
-}
-
-/**
- * Fire-and-forget fallback for a dev server that detached without printing a URL (2026-08-18,
- * Matchday Exchange: vite's "Local:" banner arrived after the 10s force-detach on a loaded
- * machine, and detach() used to drop every stdout listener, so the URL was lost forever — no
- * recordDevUrl, no server_url event, no Live Sites row or open-site chip). The stdout data
- * handler now stays attached post-detach and scans for late banners; this probe covers servers
- * that NEVER print a URL at all (or print it to a stream we can't see).
- *
- * Probes the project's candidate ports (package.json --port hints first, COMMON_DEV_PORTS
- * fallback — see candidateDevUrls), bounded: one delay + up to 3 candidates at ~1s each, never
- * blocks the turn. A hit is recorded through the SAME path as live URL detection (recordDevUrl
- * + server_url event + broadcasts), so Live Sites and the click-chip light up for servers the
- * force-detach window missed. The server_url event also posts a chat bubble, matching what the
- * user would have seen had the banner been caught in time.
- */
-async function recoverDevUrlAfterDetach(projectId, ws) {
-  try {
-    const project = allKnownProjects().find((p) => p.id === projectId);
-    if (!project) return;
-    const candidates = candidateDevUrls(project).slice(0, DEV_URL_RECOVERY_MAX_CANDIDATES);
-    if (candidates.length === 0) return;
-    // Give a slow cold start a moment to finish binding before probing.
-    await new Promise((r) => setTimeout(r, DEV_URL_RECOVERY_PROBE_DELAY_MS));
-    // The stdout URL scan (kept alive after detach) may have caught the banner meanwhile —
-    // or the user stopped the process — so re-check between probes. Deliberately NO
-    // runningProcesses guard here: the Windows npm wrapper can close early (removing the
-    // tracked entry in the close handler) while the real server keeps serving — this probe
-    // is that server's only chance to be discovered (same philosophy as connectionDevServer's
-    // on-demand candidate scan for servers started outside the console).
-    if (state.lastDevUrls.has(projectId)) return;
-    for (const url of candidates) {
-      if (state.lastDevUrls.has(projectId)) return;
-      const probe = await probeUrl(url, DEV_URL_RECOVERY_PROBE_TIMEOUT_MS);
-      if (probe.alive) {
-        recordDevUrl(projectId, url);
-        if (ws.readyState === 1) {
-          ws.send(JSON.stringify({ type: 'server_url', data: url }));
-        }
-        broadcast({ type: 'dashboard_update' });
-        broadcast({ type: 'processes_update' });
-        return;
-      }
-    }
-  } catch {
-    // Best-effort recovery — never crash the turn it runs behind.
-  }
 }

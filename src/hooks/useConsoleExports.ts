@@ -1,6 +1,7 @@
 import { useCallback } from 'react';
 import type { Project, TerminalMessage, ChatSession } from '../types';
 import { makeMessage } from '../utils/makeMessage';
+import { addToast } from '../components/ui/toastStore';
 
 /** The pieces of useSessions' return the export callbacks read. */
 interface ExportSessions {
@@ -58,6 +59,7 @@ export function useConsoleExports(
         return;
       }
       downloadBlob(new Blob([text], { type: 'text/markdown' }), `${fileBase}.md`);
+      addToast({ title: `Exported session as Markdown`, description: fileBase });
     })();
   }, [fetchSessionExport, downloadBlob, fileBase, pushError]);
 
@@ -69,6 +71,7 @@ export function useConsoleExports(
         return;
       }
       downloadBlob(new Blob([text], { type: 'application/json' }), `${fileBase}.json`);
+      addToast({ title: 'Exported session as JSON', description: fileBase });
     })();
   }, [fetchSessionExport, downloadBlob, fileBase, pushError]);
 
@@ -120,6 +123,7 @@ export function useConsoleExports(
           ensureSpace(14);
         }
         doc.save(`${fileBase}.pdf`);
+        addToast({ title: 'Exported session as PDF', description: fileBase });
       } catch {
         pushError('Could not build the PDF — the export data was unreadable.');
       }
@@ -140,6 +144,7 @@ export function useConsoleExports(
         }
         const blob = await res.blob();
         downloadBlob(blob, `${activeProject.name || 'project'}-chat-log.md`.replace(/[^a-zA-Z0-9._-]/g, '_'));
+        addToast({ title: 'Downloaded project chat log' });
       } catch {
         pushError('Could not download the project chat log — try again in a moment.');
       }

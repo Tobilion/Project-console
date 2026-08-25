@@ -165,7 +165,7 @@ function refuseExistingOutput(root, rel) {
 }
 
 function journalCreated(root, rel) {
-  appendAction(root, {
+  return appendAction(root, {
     type: 'file_write',
     description: `Created ${rel} (PDF toolkit)`,
     path: rel,
@@ -173,14 +173,17 @@ function journalCreated(root, rel) {
   });
 }
 
+/** Writes one output file (never overwriting) and journals it. Returns `{ error }` on
+ *  refusal/failure, else `{ actionId }` — the journal id rides the op result so the
+ *  confirm-branch answer can offer an undo toast (`revert action <id>` deletes the file). */
 async function writeOutput(root, rel, bytes) {
   const abs = createResolveSafe(root)(rel);
   const guard = refuseExistingOutput(root, rel);
   if (guard) return guard;
   await fs.promises.mkdir(path.dirname(abs), { recursive: true });
   await fs.promises.writeFile(abs, bytes);
-  journalCreated(root, rel);
-  return null;
+  const actionId = journalCreated(root, rel);
+  return actionId ? { actionId } : {};
 }
 
 /** Merge N PDFs into one. Returns { ok, output, pages, bytes } or { ok:false, error }. */
@@ -207,9 +210,9 @@ export async function mergePdfs(root, inputs, output) {
     }
   }
   const bytes = await target.save();
-  const err = await writeOutput(root, output, bytes);
-  if (err) return { ok: false, error: err.error };
-  return { ok: true, output, pages, bytes: bytes.length };
+  const out = await writeOutput(root, output, bytes);
+  if (out.error) return { ok: false, error: out.error };
+  return { ok: true, output, pages, bytes: bytes.length, actionIds: out.actionId ? [out.actionId] : [] };
 }
 
 /** Split one PDF. spec.kind 'perPage' -> one file per page; 'at' -> two parts around page N.
@@ -242,6 +245,7 @@ export async function splitPdf(root, input, spec) {
     ranges.push({ label: `${stem}-part-2.pdf`, pages: rest });
   }
   const outputs = [];
+  const actionIds = [];
   for (const range of ranges) {
     const guard = refuseExistingOutput(root, range.label);
     if (guard) return { ok: false, error: guard.error };
@@ -249,11 +253,12 @@ export async function splitPdf(root, input, spec) {
     const copied = await part.copyPages(loaded.doc, range.pages);
     copied.forEach((p) => part.addPage(p));
     const bytes = await part.save();
-    const err = await writeOutput(root, range.label, bytes);
-    if (err) return { ok: false, error: err.error };
+    const out = await writeOutput(root, range.label, bytes);
+    if (out.error) return { ok: false, error: out.error };
+    if (out.actionId) actionIds.push(out.actionId);
     outputs.push({ path: range.label, pages: range.pages.length });
   }
-  return { ok: true, outputs, totalPages: total };
+  return { ok: true, outputs, totalPages: total, actionIds };
 }
 
 /** Extract plain text (pdf-parse). Returns { ok, text, preview, pages } or { ok:false, error }. */
@@ -305,9 +310,9 @@ export async function extractPages(root, input, from, to, output) {
   const copied = await out.copyPages(loaded.doc, indices);
   copied.forEach((p) => out.addPage(p));
   const bytes = await out.save();
-  const err = await writeOutput(root, output, bytes);
-  if (err) return { ok: false, error: err.error };
-  return { ok: true, output, pages: copied.length };
+  const written = await writeOutput(root, output, bytes);
+  if (written.error) return { ok: false, error: written.error };
+  return { ok: true, output, pages: copied.length, actionIds: written.actionId ? [written.actionId] : [] };
 }
 
 /** Draw a centered diagonal-ish watermark word across every page. Returns
@@ -335,7 +340,7 @@ export async function watermarkPdf(root, input, text, output) {
     });
   }
   const bytes = await loaded.doc.save();
-  const err = await writeOutput(root, output, bytes);
-  if (err) return { ok: false, error: err.error };
-  return { ok: true, output, pages: loaded.doc.getPageCount() };
+  const written = await writeOutput(root, output, bytes);
+  if (written.error) return { ok: false, error: written.error };
+  return { ok: true, output, pages: loaded.doc.getPageCount(), actionIds: written.actionId ? [written.actionId] : [] };
 }

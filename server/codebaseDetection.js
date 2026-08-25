@@ -22,7 +22,7 @@ export function detectLanguages(tree) {
     '.jsx': 'React JS', '.py': 'Python', '.rs': 'Rust', '.go': 'Go',
     '.java': 'Java', '.c': 'C', '.cpp': 'C++', '.h': 'C/C++ Header', '.hpp': 'C/C++ Header', '.cs': 'C#',
     '.rb': 'Ruby', '.php': 'PHP', '.swift': 'Swift', '.kt': 'Kotlin',
-    '.vue': 'Vue', '.svelte': 'Svelte', '.css': 'CSS', '.scss': 'SCSS',
+    '.vue': 'Vue', '.svelte': 'Svelte', '.dart': 'Dart', '.css': 'CSS', '.scss': 'SCSS',
     '.html': 'HTML', '.sql': 'SQL', '.sh': 'Shell', '.bat': 'Batch',
     '.ps1': 'PowerShell', '.yaml': 'YAML', '.yml': 'YAML', '.json': 'JSON',
     '.md': 'Markdown', '.toml': 'TOML', '.xml': 'XML'

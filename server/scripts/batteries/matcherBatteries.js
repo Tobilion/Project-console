@@ -437,6 +437,17 @@ const BATTERIES = [
       ['delete duplicates keep newest', 'BUILTIN=general.files.duplicates_delete'],
       // Phase 2 audit: the panel's per-row checkbox subset.
       ['delete duplicates, keep newest: dup-b.txt', 'BUILTIN=general.files.duplicates_delete'],
+      // Phase 8 follow-up (2026-08-24): rename + move — the Folder Explorer's in-place rename
+      // and drag-and-drop move ride chat commands. The "rename X to Y" shape is pinned by a
+      // pre-semantic override (deploy's "merge X into Y" cluster owns verb+into shapes, and
+      // "rename ... to ..." drifted to file ops without it); move+into is embedding-driven and
+      // verified not to collide with pdf.merge's override (no .pdf mention).
+      ['rename main.py to app.py', 'BUILTIN=general.files.rename'],
+      ['rename notes.txt as diary.txt', 'BUILTIN=general.files.rename'],
+      ['rename this file to newname.txt', 'BUILTIN=general.files.rename'],
+      ['move main.py into src', 'BUILTIN=general.files.move'],
+      ['move report.pdf into documents', 'BUILTIN=general.files.move'],
+      ['move the file into archive', 'BUILTIN=general.files.move'],
     ],
   },
   {
@@ -601,6 +612,19 @@ const BATTERIES = [
     items: [
       ['open marketplace', 'BUILTIN=system.tools.open_marketplace'],
       ['open the pack marketplace', 'BUILTIN=system.tools.open_marketplace'],
+    ],
+  },
+  {
+    // Round-6 audit (2026-08-24): repo-map panel opener — the visual counterpart of the
+    // whole-project symbol map the AI prompt receives. "show me the repo map" shapes could
+    // drift onto the structure/knowledge cluster ("show me the todos"), so the opener's own
+    // examples carry the "repo map" noun and the battery pins the routing.
+    name: 'REPO-MAP (round-6 panel opener)',
+    items: [
+      ['open repo map', 'BUILTIN=system.tools.open_repo_map'],
+      ['open the repo map', 'BUILTIN=system.tools.open_repo_map'],
+      ['show the repo map', 'BUILTIN=system.tools.open_repo_map'],
+      ['show me the repo map', 'BUILTIN=system.tools.open_repo_map'],
     ],
   },
   {

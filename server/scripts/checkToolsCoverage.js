@@ -283,6 +283,15 @@ try {
   eq('isGatedToolCall file tool', toolGate.isGatedToolCall('writeFile', {}), true);
   eq('isGatedToolCall readFile', toolGate.isGatedToolCall('readFile', {}), false);
   eq('isGatedToolCall saveMemory low', toolGate.isGatedToolCall('saveMemory', { importance: 'low' }), false);
+  // Round-6 audit (2026-08-24): Ask-mode block set — mutators/executors blocked, read-only
+  // builtins pass, custom manifest tools blocked.
+  eq('ask-mode blocks writeFile', toolGate.isAskModeBlocked('writeFile'), true);
+  eq('ask-mode blocks executeCommand', toolGate.isAskModeBlocked('executeCommand'), true);
+  eq('ask-mode blocks saveMemory', toolGate.isAskModeBlocked('saveMemory'), true);
+  eq('ask-mode blocks undoLastChange', toolGate.isAskModeBlocked('undoLastChange'), true);
+  eq('ask-mode allows readFile', toolGate.isAskModeBlocked('readFile'), false);
+  eq('ask-mode allows searchCode', toolGate.isAskModeBlocked('searchCode'), false);
+  eq('ask-mode blocks custom manifest tool', toolGate.isAskModeBlocked('greet'), true);
 
   console.log('\n=== PRESENCE (createProjectTools + findTestCommand) ===');
   const baseTools = await tools.createProjectTools(project);
@@ -410,13 +419,15 @@ try {
   eq('trigger custom script fallback', distillation.inferTriggerFromInput('start the server', 'custom'), 'run custom');
 
   console.log('\n=== EDIT (editFile exact / fallback / multi-hunk) ===');
-  eq('editFile exact', await baseTools.editFile({ path: 'src/edits.txt', oldString: 'line two', newString: 'LINE TWO' }),
-    { success: true, data: 'Edited src/edits.txt' });
+  // The result carries an additive `actionId` (2026-08-24 undo-toast plumbing) — assert
+  // success + data, not the full object shape.
+  const editExact = await baseTools.editFile({ path: 'src/edits.txt', oldString: 'line two', newString: 'LINE TWO' });
+  eq('editFile exact', editExact.success === true && editExact.data === 'Edited src/edits.txt' && typeof editExact.actionId === 'string', true);
   eq('editFile whitespace fallback', (await baseTools.editFile({ path: 'src/edits.txt', oldString: 'line   three', newString: 'line THREE' })).data,
     'Edited src/edits.txt (matched via whitespace-normalized fallback — verify the result looks right)');
   eq('editFile identical replacement errors', (await baseTools.editFile({ path: 'src/edits.txt', oldString: 'LINE TWO', newString: 'LINE TWO' })).success, false);
   const multiOk = await baseTools.editFile({ path: 'src/edits.txt', oldStrings: ['LINE TWO', 'line THREE'], newStrings: ['X', 'Y'] });
-  eq('editFile multi-hunk ok', multiOk, { success: true, data: 'Edited src/edits.txt (2 hunks)' });
+  eq('editFile multi-hunk ok', multiOk.success === true && multiOk.data === 'Edited src/edits.txt (2 hunks)' && typeof multiOk.actionId === 'string', true);
   const multiFail = await baseTools.editFile({ path: 'src/edits.txt', oldStrings: ['X', 'NOPE'], newStrings: ['Z', 'W'] });
   eq('editFile multi-hunk failure names hunk', multiFail.success === false && multiFail.error.includes('Hunk 2 of 2'), true);
   const afterFail = await fs.readFile(path.join(proj, 'src', 'edits.txt'), 'utf-8');

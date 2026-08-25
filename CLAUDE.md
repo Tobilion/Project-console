@@ -9,7 +9,9 @@ A local, offline command dispatcher + optional local-AI (Ollama) chat for Tobi's
 folders (`C:\Users\tobil\Desktop\Projects\<name>`). Express + WebSocket backend, React 19 +
 Vite frontend. Full description: `README.md` (current, professional-facing). This file is
 the source of truth for "what's actually here now". `BUILD-SPEC-v4.md` is a historical
-design doc â€” describes intent at the time, not current state.
+design doc â€” describes intent at the time, not current state. `features.md` (added
+2026-08-24) is the exhaustive user-facing feature map â€” an extended README + CLAUDE.md
+combination covering every feature, command, endpoint, and subsystem.
 
 ## Run it
 
@@ -17,8 +19,19 @@ design doc â€” describes intent at the time, not current state.
 Set-Location -Path "C:\Users\tobil\Desktop\project-console"
 npm install
 npm run dev     # tsx server/index.js, http://127.0.0.1:3000
+npm run launcher   # start.bat-equivalent W/C/Q menu, terminal-native (see below)
 npm run lint    # tsc --noEmit
 ```
+
+- **Launcher without the batch file (2026-08-24)**: `npm run launcher` runs `node
+  bin/cli.js launcher` â€” a terminal-native replica of `start.bat`'s W/C/Q menu (same ANSI
+  styling, `probeRunningPort()` scans 3000-3009 for an answering /api/projects and hands
+  off instead of starting a duplicate instance; [W] opens the browser to the running port
+  or starts the server in-process and opens it; [C] hands to `server/cli-client.js` after
+  starting the server in-process when none is running). Starting in-process via
+  `startServer()` loads all models (embeddings, NLP classifier) exactly like the batch's
+  foreground `npm run dev`. Interactive readline uses `crlfDelay: Infinity` per the ConPTY
+  gotcha; the browser-open + probe helpers are shared with the default/`cli` modes.
 
 - `start.bat` (styled W/C/Q launcher, ANSI colors, ASCII-only file) probes ports 3000-3009
   first and skips starting a server if one already responds â€” no duplicate instance landing on
@@ -220,7 +233,7 @@ npm run lint    # tsc --noEmit
   always excluded) + `scanProjectServers` (probe only when asked, never in the background)
 - `server/diffPreview.js` â€” pure LCS line diff + `simulateEditContent()` for file-edit
   confirm cards; never blocks confirmation, null on any failure, skips >400-line files
-- `server/executor.js` â€” ~164-line orchestrator (`executeCommand` + venv rewrite; refuses only
+- `server/executor.js` â€” ~359-line orchestrator (`executeCommand` + venv rewrite; refuses only
   a literal duplicate of an already-tracked command, everything else runs concurrently) over
   leaves: `executorOutput.js` (ANSI/URL regexes, `collapseLfCrlfWarnings`, `createBufferedSender`
   150ms coalescing; stderr batches may reroute to a `warning` WS channel),
@@ -269,7 +282,7 @@ npm run lint    # tsc --noEmit
   `semanticMatcher.js` exports `FUSE_THRESHOLD`/`FUSE_MIN_MATCH_CHAR_LENGTH`/
   `INIT_WAIT_POLL_MS`/`SUGGESTION_DEFAULT_LIMIT`/`COLLISION_DEFAULT_THRESHOLD` â€” edit those,
   not inline literals.
-- `server/matcher.js` â€” ~253-line orchestrator; leaves: `intentRegistry.js` (`BUILTIN_INTENTS`
+- `server/matcher.js` â€” ~312-line orchestrator; leaves: `intentRegistry.js` (`BUILTIN_INTENTS`
   â€” the dispatch gate that has silently killed intents 6+ times; `CONFIG_RUN_ENTRY_FLOOR` 0.55,
   `OPEN_PROJECT_RE`, `ROUTER_REPO_MAP_CHARS` 1200, `describeIntent`; plus the Phase 1
   suggestion-filter tags `WORKSPACE_DEV_ONLY_INTENTS`/`intentWorkspaceEligible`), `intentTrust.js`
@@ -793,7 +806,7 @@ npm run lint    # tsc --noEmit
   gained the `ng serve/build/test` pattern (the README parser never recognized Angular CLI
   commands)
 
-Frontend (`src/`): `hooks/useConsole.ts` ~368-line orchestrator owning all state + WS/fetch
+Frontend (`src/`): `hooks/useConsole.ts` ~389-line orchestrator owning all state + WS/fetch
 handlers (WS message cases live in `hooks/wsMessageCases.ts` + `wsStreamingCases.ts`, state
 clusters in `useConsoleProcessDock`/`useConsoleToolHistory`/`useConsoleWorkspace`/
 `useConsoleExports` â€” see Phase 13; exports are downloads-only now (Phase 0, 2026-08-10):
@@ -994,7 +1007,7 @@ routing when an intent intentionally changes). Batteries live in
   keyword tier (hardcoded 0.4-0.55 confidences) becomes unreachable.
 - **`BUILTIN_INTENTS` membership is the gate that has silently killed intents 6+ times**
   (missing from the Set â†’ unreachable from any stage, despite real handlers/examples).
-  Every new intent goes in `intentRegistry.js`'s Set AND gets a check-handlers row. 141
+  Every new intent goes in `intentRegistry.js`'s Set AND gets a check-handlers row. 147
   members today; `npm run check-handlers` (200 checks) verifies bidirectionally.
 - **`PRE_SEMANTIC_OVERRIDES`**: deliberately narrow literal rules for CONFIRMED embedding
   traps (git init / gitignore / deploy-push-live / add-file-without-git-context /
@@ -1416,7 +1429,7 @@ no dispatch or matching logic). Notable functional additions made during the sty
    extractBranchWithoutUpstream unit shapes incl. the shell-hostile refusal + the
    offerUpstreamRetry offer/no-offer matrix â€” plus 7 rows added during Phase 18 that were never
    recorded in a per-phase delta; the 10 retry rows live at checkHandlerCoverage.js:749-767).
-   Phase 21 (2026-08-13): check-docs 57 catalog entries + 131 generated intent entries, 0
+   Phase 21 (2026-08-13): check-docs 57 catalog entries + 135 generated intent entries, 0
    unmapped README rows (the new coverage assertion fails when an eligible BUILTIN_INTENTS
    member lacks a generated entry; live-verified endpoint: 57 commands + 131 intents, 36
    panel-tagged). No other harness deltas (deck/reference are frontend rendering).
@@ -1448,7 +1461,7 @@ no dispatch or matching logic). Notable functional additions made during the sty
    the batteries on 2026-08-18, so the harness and the node:test suite are both green);
    check-ws-cases 122/122; check-indexer 103/103; check-intents 1/7/82; check-docs 69/69. Phase 7 (2026-08-17,
    natural â†’ server/porterStemmer.js, byte-identical parity): all counts unchanged.
-   Push hardening (2026-08-18): check-handlers 232/232 (+6 GIT-UPSTREAM rows â€” the
+   Push hardening (2026-08-18): check-handlers 232/232 (+6 GIT-UPSTREAM rows - the
    pushCommandWithUpstream offer matrix over a temp bare remote + the quoted-trigger
    checkpoint -F row; the git-retry trigger row from the earlier fix pass is folded in).
    Run the relevant battery after ANY edit to the corresponding module.
@@ -2148,3 +2161,116 @@ gap, both fixed + harness-pinned. Crosscheck notes per class:
   in the repo (delete or gitignore them); consistent formatting; any hack carries a comment
   justifying it. This repo's one-off spec/prompt files were deleted 2026-08-05 â€” don't drop
   new ones in the root; keep history in CLAUDE.md instead.
+
+# Audit round 5 (2026-08-24) — desktop packaging, undo toasts, daemon, splits, differentiation
+
+## Desktop app is now actually buildable + working (was broken by design)
+
+- **The old packaging could never work**: desktop/package.json's iles globbed
+  server/**/in/**/data/** relative to desktop/ (they live at the repo root), and
+  even if they had landed, main.cjs spawned 
+ode <entry> from inside the asar — plain
+  Node cannot execute a script inside an asar. Verified live 2026-08-24: the first installer
+  produced a crash-looping app (hundreds of Electron helper processes, no server).
+- **Fix**: desktop/scripts/stage-server.mjs stages a runnable server runtime into
+  desktop/stage/ (server source + in/ + data/ + the vite-built frontend INSIDE
+  server/ — production mode serves static from __dirname — plus 
+pm ci --omit=dev
+  node_modules); electron-builder extraResources copies it into esources/ and an
+  fterPack hook (desktop/scripts/after-pack.cjs) adds node_modules (electron-builder
+  excludes node_modules from extraResources by default). main.cjs resolves the server
+  root as process.resourcesPath when packaged and spawns with **ELECTRON_RUN_AS_NODE=1**
+  (without it, process.execPath is the Electron binary and the "server" relaunches as
+  another app instance). desktop/build/icon.png (512×512, placeholder upscaled from the
+  256px one) satisfies mac/linux icon size requirements. Scripts: 
+pm run dist /
+  dist:mac / dist:linux (each stages first). desktop/stage/ is gitignored.
+- **CI**: .github/workflows/desktop-build.yml builds .dmg (macos-latest) and .AppImage
+  (ubuntu-latest) on push to main or via Actions ? "Desktop Builds" ? Run workflow; artifacts
+  download from the run's Artifacts section (AppImage contents smoke-checked via
+  --appimage-extract). Windows NSIS stays local: cd desktop && npm run dist ?
+  desktop/dist/Project Console Setup 1.0.0.exe (verified working end-to-end on this machine
+  — server boots from resources, frontend serves, clean quit).
+
+## Daemon scripts are cross-platform now
+
+- scripts/daemon.mjs — start/stop/status/kill-by-port in plain Node (works on
+  mac/Linux/Windows): detached spawn, probe 3000-3009 for a real console (/api/projects
+  shape check), writes logs/daemon.port + daemon.pid, and every kill VERIFIES the
+  listening PID's command line (server/index.js | dist/server.js | repo path) before killing
+  — a recycled port can never kill an unrelated service. npm scripts: daemon,
+  daemon:start, daemon:stop, daemon:status. Windows stop-daemon.ps1 gained the same
+  command-line verification + the taskkill fallback. Verified live (start ? handoff ? stop ?
+  unrelated-process refusal). Uses natural exit with process.exitCode — process.exit()
+  with undici keep-alive sockets pending trips a libuv assertion on Windows.
+
+## Undo-toast plumbing (chat-driven destructive actions)
+
+- Journaled destructive answers now carry an additive ctionIds array (web answer case ?
+  8s Undo toast ? sends evert action <id1>,<id2> through the normal chat flow; CLI ignores
+  the field). Sites: confirm-branch fileOps (via tools.js's wrapMutatingTool, which now
+  attaches the journal id to successful results), generalFileOp (tidy/dedupe/rename/move —
+  the perform* functions return their journal ids), pdfOps (pdfKit writeOutput returns the
+  id), backup.create. Batch revert: evert action <id1>,<id2> confirms into ONE card and
+  the confirm branch loops evertAction per id (mixed git/command batches refused — those
+  are answer-only by design). Frontend: WsCtx.sendMessage (ctxRef built after
+  handleSendMessage), answerCase fires the toast.
+
+## Differentiation items (trigger-mode-first thesis)
+
+1. **Matcher-stage transcript logging**: every trigger-mode user message now persists
+   meta.match = { stage, intent, confidence, ... } — ecordMatchInfo/uildMatchInfo
+   in connectionMatching.js, patchMessageMeta in conversationStore.js (NDJSON line patch
+   under serializePersistence). Stages: presemantic shows as its semantic source,
+   semantic/fuzzy/keyword, nlp, router, config-entry, multi, disambiguate, context, guess,
+   fallback. **Gotcha found live**: the user-message append must be AWAITED — with a warm
+   model matchInput resolves faster than the serialized append, and a fire-and-forget .then
+   lost the race.
+2. **Zero-network-floor (verified)**: every outbound fetch in server/ is AI-mode-only,
+   admin-command-gated, localhost probing, or the boot-time embedding download (cached,
+   graceful degradation to fuzzy/NLP). Trigger-mode chat makes zero outbound calls.
+3. **Capability probe**: server/capabilityProbe.js (boot-cached where/which presence of
+   npm/yarn/pnpm/bun/python/python3/node/git/docker/flutter/dart/cargo/go); un suggestions
+   mention yarn when both it and a scripts-bearing project are present.
+4. **CLI --dry-run / --explain**: both flags send the execute payload with additive
+   dryRun: true; explainInput (connectionMatching.js) resolves what WOULD happen
+   (typed-command bypass ? matchInput ? stage/intent/command) and never executes/confirms.
+5. **Planned (not built)**: scoped permission modes ("Code"/"Ask"/"Debug" — any variant that
+   auto-approves mutations weakens the confirm-gate invariant; the read-only 'Ask' variant is
+   additive but touches handleExecute + the tool gate + UI = a real phase); repo-map
+   visibility panel (codebaseIndexer's epoMap/symbolIndex feed only the AI prompt today —
+   a viewable artifact needs a new panel + REST surface).
+
+## File splits (>400-line convention, all verified by lint + vite build + full suite)
+
+- server/executor.js 532?359 (+ executorConstants/executorClose/executorUrlRecovery)
+- server/cli-client.js 900?364 (+ cliOptions/cliDiscovery/cliProjectPicker/cliMascot/
+  cliRenderer — checkWsMessageCases now scans cli-client + cliRenderer)
+- server/semanticMatcher.js 447?255 (+ semanticMatcherInit/semanticMatcherProjects)
+- server/wsHandlers/builtinProjectActions.js 465?358 (+ projectFileOpen)
+- src/hooks/useConsole.ts 686?389 (+ useConsoleNavigation/useConsoleWsActions/
+  useConsolePolling, utils/sessionLocation)
+- src/App.tsx 768?513 (+ AppHeader/AppMainView/AppOverlays, hooks/useAppGlobalListeners/
+  useAppViewState, utils/appStorage)
+- src/components/UserProfileModal.tsx 671?379 (+ profile/EditorsSection, TuningSection)
+- src/components/FolderExplorerPanel.tsx 921?602 (+ folderExplorer/{utils,menus,views,header})
+- src/components/Dashboard.tsx 550?343 (+ dashboard/projectCard)
+- src/components/FileToolsPanel.tsx 515?237 (+ fileTools/{utils,views})
+- src/components/TerminalMessages.tsx 440?296 (+ terminal/messageContent)
+- src/components/PdfToolsPanel.tsx 497?399 (+ pdfTools/{utils,mergeCard})
+- src/components/SpreadsheetPanel.tsx 435?385 (+ spreadsheet/resultTable)
+- App.tsx (513) is the documented exception — its remaining bulk is composition-root prop
+  wiring (three child prop bags + deck/overlays), deliberately not split further.
+
+## Other round-5 changes
+
+- Contrast tokens: dark --color-fg-dim #7A7A7F?#86868B (4.70:1 on panel, was 3.98) and
+  light --color-fg-muted #8E8E93?#6E6E74 (4.54:1 on the base background — the proposed
+  #76767C only reached 4.04). Light fg-muted now visually merges with light fg-dim (logged
+  trade-off).
+- start.bat WEB_MODE no longer hardcodes http://localhost:3000 — a background
+  PowerShell watcher (start /B, 95s deadline) probes 3000-3009 and opens the ACTUALLY-bound
+  port (ASCII-only + paren-balanced, verified).
+- Harness counts moved: check-ws-cases 133 (undo-toast rows), check-handlers 253
+  (undo-plumbing + explain rows), check-tools rows updated for the additive ctionId
+  (assert success+data, not exact object shape).

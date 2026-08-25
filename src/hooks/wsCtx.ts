@@ -70,6 +70,10 @@ export interface WsCtx {
     setActiveToolPanel: React.Dispatch<React.SetStateAction<string | null>>;
     setToolsOpen: React.Dispatch<React.SetStateAction<boolean>>;
   };
+  /** Trigger-mode message send (the same path the input box uses). 2026-08-24: lets the
+   *  answer case's undo toast fire `revert action <id>` through the normal chat flow —
+   *  confirm cards and journaling stay in the terminal, the single source of truth. */
+  sendMessage: (text: string) => void;
 }
 
 export type WsCaseHandler = (ctx: WsCtx, payload: any) => void;

@@ -3,6 +3,7 @@ import { ChatSession } from '../types';
 import { GENERAL_PROJECT_ID } from '../types';
 import { MessageSquare, Search, Plus, X, Pencil, Trash2, FolderGit2, MessagesSquare } from 'lucide-react';
 import { ModalShell } from './ui/ModalShell';
+import { EmptyState } from './ui/EmptyState';
 import { cn } from '../lib/utils';
 
 // Feature B (2026-08-14): the full Chat History overlay. A General | Projects tab switcher
@@ -190,9 +191,11 @@ export function ChatHistoryOverlay({
         <div className="flex-1 min-h-0 overflow-y-auto px-2 py-2">
           {filtered.length === 0 && (
             <div className="h-full flex items-center justify-center">
-              <p className="text-xs text-fg-dim italic">
-                {query ? `No ${tab} chats match "${query}".` : `No ${tab} chats yet.`}
-              </p>
+              <EmptyState
+                icon={<MessagesSquare size={18} />}
+                title={query ? `No ${tab} chats match "${query}"` : `No ${tab} chats yet`}
+                hint="Start a chat from the sidebar, and it will show up here."
+              />
             </div>
           )}
           {tab === 'projects' ? (

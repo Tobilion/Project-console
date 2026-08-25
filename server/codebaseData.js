@@ -171,7 +171,7 @@ const DJANGO_PATH_RE = /\bpath\(\s*r?['"]([^'"]*)['"]/g;
 // should NOT pass this check even though some of those extensions are legitimately reported in
 // idx.languages elsewhere.
 const REAL_CODE_EXTS = new Set([
-  ...CODE_EXTS, '.c', '.cpp', '.h', '.hpp', '.swift', '.kt', '.vue', '.svelte', '.sh', '.ps1',
+  ...CODE_EXTS, '.c', '.cpp', '.h', '.hpp', '.swift', '.kt', '.vue', '.svelte', '.dart', '.sh', '.ps1',
 ]);
 
 // Known npm/pip package names → a human-readable framework/stack label. Deliberately a static
@@ -199,7 +199,7 @@ const PY_FRAMEWORK_MAP = {
 // underneath), not just a project with a deeply-nested file structure.
 const MONOREPO_MANIFESTS = new Set([
   'package.json', 'pyproject.toml', 'requirements.txt', 'Cargo.toml', 'go.mod',
-  'composer.json', 'Gemfile', 'pom.xml', 'build.gradle', 'build.gradle.kts',
+  'composer.json', 'Gemfile', 'pom.xml', 'build.gradle', 'build.gradle.kts', 'pubspec.yaml',
 ]);
 
 const TODO_RE = /\b(TODO|FIXME|HACK|XXX)\b:?\s*(.*)$/;

@@ -1,0 +1,79 @@
+name: Desktop Builds
+
+# Cross-platform installer builds for the Electron desktop shell (2026-08-24). The Windows
+# NSIS build is run locally (`cd desktop && npm run dist`); this matrix produces the .dmg and
+# .AppImage on hosts that can actually build them, so the mac/linux targets stop being
+# real-but-unverified config. The designed brand icon ships as build/icon.png (Linux),
+# build/icon.ico (Windows NSIS) and build/icon.icns (mac dmg) — generated from the source
+# JPEG by the round-6 audit pass; the mac build fails loudly if the icon is ever missing.
+#
+# How to trigger a build WITHOUT pushing code: GitHub -> Actions -> "Desktop Builds" ->
+# "Run workflow" -> Run. The installers land in the run's "Artifacts" section (bottom of the
+# run summary page), downloaded per-OS (.dmg from macos, .AppImage from ubuntu).
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            target: mac
+            flags: --mac dmg
+            artifact: Project Console-1.0.0.dmg
+          - os: ubuntu-latest
+            target: linux
+            flags: --linux AppImage
+            artifact: Project Console-1.0.0.AppImage
+    runs-on: ${{ matrix.os }}
+    env:
+      # No code-signing identity exists for these builds — electron-builder must not try to
+      # discover one on the mac runner (it would fail the build without a cert).
+      CSC_IDENTITY_AUTO_DISCOVERY: "false"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            desktop/package-lock.json
+
+      - name: Install desktop build tools (electron, electron-builder)
+        run: npm ci
+        working-directory: desktop
+
+      - name: Stage the server runtime (source + built frontend + prod node_modules)
+        run: npm run stage
+        working-directory: desktop
+
+      - name: Build ${{ matrix.target }} installer
+        run: npx electron-builder ${{ matrix.flags }} --publish never
+        working-directory: desktop
+
+      - name: Verify installer artifact exists
+        run: |
+          ls -la "dist/${{ matrix.artifact }}"
+          test -s "dist/${{ matrix.artifact }}"
+          echo "installer verified: $(stat -c%s "dist/${{ matrix.artifact }}" 2>/dev/null || stat -f%z "dist/${{ matrix.artifact }}") bytes"
+
+      - name: Smoke-check AppImage contents (linux)
+        if: matrix.target == 'linux'
+        run: |
+          chmod +x "dist/${{ matrix.artifact }}"
+          ./"dist/${{ matrix.artifact }}" --appimage-extract >/dev/null
+          test -d squashfs-root && test -f squashfs-root/resources/app.asar
+          echo "AppImage extraction OK"
+
+      - name: Upload ${{ matrix.target }} installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: project-console-${{ matrix.target }}-installer
+          path: desktop/dist/${{ matrix.artifact }}
+          if-no-files-found: error

@@ -7,7 +7,7 @@ import { pickRandom, chatReplyPool, smartChitchatReply, enrichWithIndex, extract
 import { buildLiveStateLine, buildMemoryBlock } from './builtinLiveState.js';
 import { buildHelpMessage } from './builtinHelp.js';
 import { evaluateArithmetic, formatValue, convertUnits, percentageQuery } from '../mathEval.js';
-import { lookupCommandDocs } from '../consoleCommandDocs.js';
+import { lookupCommandDocs, resolveShell } from '../consoleCommandDocs.js';
 import { aiDockInstruction } from '../aiDockHints.js';
 
 /**
@@ -216,7 +216,8 @@ export const chitChatHandlers = {
     }
     const lines = matches.map((m, i) => {
       let out = `  ${i + 1}. **\`${m.command}\`** — ${m.explain}`;
-      if (m.shell) out += `\n     - Command: \`${m.shell}\``;
+      const shell = resolveShell(m);
+      if (shell) out += `\n     - Command: \`${shell}\``;
       if (m.phrases?.length) out += `\n     - Try saying: "${m.phrases.join('", "')}"`;
       return out;
     });
@@ -229,7 +230,8 @@ export const chitChatHandlers = {
     // phrasing (routes through the normal matcher + confirm flows). Deduped, up to three.
     const chips = [];
     for (const m of matches) {
-      const chip = m.shell && /^(npm|npx|python|node)\s/.test(m.shell) ? m.shell : m.command;
+      const shell = resolveShell(m);
+      const chip = shell && /^(npm|npx|python|node)\s/.test(shell) ? shell : m.command;
       if (!chips.includes(chip)) chips.push(chip);
       if (chips.length === 3) break;
     }
@@ -242,7 +244,7 @@ export const chitChatHandlers = {
     // line each (phrase -> shell command when one exists). No new WS type — a normal answer.
     const { COMMAND_DOCS } = await import('../consoleCommandDocs.js');
     const lines = COMMAND_DOCS.map((e) => {
-      const shell = e.shell ? ` → \`${e.shell}\`` : '';
+      const shell = resolveShell(e) ? ` → \`${resolveShell(e)}\`` : '';
       return `- \`${e.command}\`${shell}`;
     });
     ws.send(JSON.stringify({

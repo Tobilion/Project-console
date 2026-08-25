@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { motion } from 'motion/react';
 import { Check, ChevronLeft, ChevronRight, X, Sparkles } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { TourSection, TourStep, markTourTaken, TOUR_SECTIONS, readToursTaken } from '../tours';
@@ -87,13 +88,23 @@ export function TourOverlay({ section, mode, onClose }: TourOverlayProps) {
         />
       )}
 
-      <div className="fixed inset-0 z-50 flex items-center justify-center">
+      <motion.div
+        className="fixed inset-0 z-50 flex items-center justify-center"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ duration: 0.15, ease: 'easeOut' }}
+      >
         {mode === 'guided' ? (
           <div className="absolute inset-0 bg-scrim-strong/60 backdrop-blur-[2px]" onClick={onClose} />
         ) : (
           <div className="absolute inset-0 bg-scrim-strong backdrop-blur-sm" onClick={onClose} />
         )}
-        <div className="relative z-10 w-full max-w-lg mx-4 bg-panel/95 backdrop-blur-xl border border-border-strong rounded-2xl shadow-modal overflow-hidden">
+        <motion.div
+          className="relative z-10 w-full max-w-lg mx-4 bg-panel/95 backdrop-blur-xl border border-border-strong rounded-2xl shadow-modal overflow-hidden"
+          initial={{ opacity: 0, scale: 0.97, y: 8 }}
+          animate={{ opacity: 1, scale: 1, y: 0 }}
+          transition={{ duration: 0.18, ease: 'easeOut' }}
+        >
           <div className="flex items-center justify-between px-6 pt-6 pb-2">
             <div className="flex items-center gap-3">
               <div className="p-2 bg-accent-teal/10 rounded-lg text-accent-teal">
@@ -105,7 +116,7 @@ export function TourOverlay({ section, mode, onClose }: TourOverlayProps) {
                 {mode === 'guided' && <span className="ml-1.5 text-[10px] text-accent-teal">guided</span>}
               </div>
             </div>
-            <button onClick={onClose} className="p-1 text-fg-dim hover:text-fg-muted transition-colors">
+            <button onClick={onClose} className="p-1 text-fg-dim hover:text-fg-muted transition-colors" aria-label="Close tour">
               <X size={18} />
             </button>
           </div>
@@ -138,8 +149,8 @@ export function TourOverlay({ section, mode, onClose }: TourOverlayProps) {
               )}
             </div>
           </div>
-        </div>
-      </div>
+        </motion.div>
+      </motion.div>
     </>
   );
 }
@@ -149,9 +160,19 @@ export function TourPicker({ onPick, onClose }: { onPick: (sectionId: string, mo
   const [mode, setMode] = useState<'card' | 'guided'>('guided');
   const taken = readToursTaken();
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
+    <motion.div
+      className="fixed inset-0 z-50 flex items-center justify-center"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={{ duration: 0.15, ease: 'easeOut' }}
+    >
       <div className="absolute inset-0 bg-scrim-strong backdrop-blur-sm" onClick={onClose} />
-      <div className="relative z-10 w-full max-w-md mx-4 bg-panel/95 backdrop-blur-xl border border-border-strong rounded-2xl shadow-modal overflow-hidden">
+      <motion.div
+        className="relative z-10 w-full max-w-md mx-4 bg-panel/95 backdrop-blur-xl border border-border-strong rounded-2xl shadow-modal overflow-hidden"
+        initial={{ opacity: 0, scale: 0.97, y: 8 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        transition={{ duration: 0.18, ease: 'easeOut' }}
+      >
         <div className="flex items-center justify-between px-6 pt-6 pb-2">
           <div className="flex items-center gap-3">
             <div className="p-2 bg-accent-teal/10 rounded-lg text-accent-teal"><Sparkles size={18} /></div>
@@ -196,7 +217,7 @@ export function TourPicker({ onPick, onClose }: { onPick: (sectionId: string, mo
         <div className="flex items-center justify-end px-6 pb-6 pt-2">
           <button onClick={onClose} className="px-4 py-2 text-xs text-fg-subtle hover:text-fg-strong transition-colors">Close</button>
         </div>
-      </div>
-    </div>
+      </motion.div>
+    </motion.div>
   );
 }

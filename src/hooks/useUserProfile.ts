@@ -28,6 +28,9 @@ export interface UserProfile {
   scanAllFolders: boolean;
   // Phase T2 (2026-08-14): Folder Explorer default view — 'list' (lines) or 'grid' (objects).
   explorerViewMode: 'list' | 'grid';
+  // Round-6 audit (2026-08-24): permission mode — 'default' or 'ask' (read-only AI tool
+  // paths; mutating tools are blocked with an explanation instead of prompting/approving).
+  permissionMode: 'default' | 'ask';
 }
 
 // Neutral defaults, not a hardcoded person's name/title — matches server/routes/profileRoutes.js's
@@ -49,6 +52,7 @@ const DEFAULT_PROFILE: UserProfile = {
   accentColor: 'auto',
   scanAllFolders: false,
   explorerViewMode: 'list',
+  permissionMode: 'default',
 };
 
 /** Client state for the user profile persisted to the server (GET/POST /api/profile).

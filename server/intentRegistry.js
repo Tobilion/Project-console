@@ -121,7 +121,7 @@ export const BUILTIN_INTENTS = new Set([
   'system.tools.open_calculator', 'system.tools.open_pdf_tools', 'system.tools.open_reminders',
   'system.tools.open_file_tools', 'system.tools.open_notes', 'system.tools.open_csv_tools',
   'system.tools.open_clipboard', 'system.tools.open_backup', 'system.tools.open_notifications',
-  'system.tools.open_documents', 'system.tools.open_marketplace',
+  'system.tools.open_documents', 'system.tools.open_marketplace', 'system.tools.open_repo_map',
   // Phase 3 (UPGRADE-ROADMAP.md, 2026-08-11): the PDF toolkit trigger intents
   // (builtinPdfTools.js). Each carries the same `opensPanel: 'pdf-tools'` tag; handlers open
   // the panel only when the input lacks parameters, and full commands execute in chat (writes
@@ -147,6 +147,9 @@ export const BUILTIN_INTENTS = new Set([
   // Phase 9 (UPGRADE-ROADMAP.md, 2026-08-12): backup/zip (builtinBackup.js + backupStore.js).
   // Zips are read-only w.r.t. the source but journaled (revert deletes the zip).
   'backup.create', 'backup.list',
+  // Phase 8 follow-up (2026-08-24): file rename + move — Folder Explorer in-place rename and
+  // drag-and-drop move. General-mode mutations, journaled as file_move like tidy (not dev-only).
+  'general.files.rename', 'general.files.move',
 ]);
 
 // Phase 1 workspaceType filtering (UPGRADE-ROADMAP.md, 2026-08-11): builtin intents that make

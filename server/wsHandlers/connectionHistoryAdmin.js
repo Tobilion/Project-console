@@ -44,41 +44,70 @@ export async function handleHistoryCommand(ws, project, lowerInput, input) {
     return true;
   }
 
-  const revertMatch = lowerInput.match(/^revert\s+action\s+(\S+)$/);
+  // Phase 4 (2026-08-10): `revert action <id>`. 2026-08-24: comma-separated ids are a BATCH
+  // revert — the undo toast for multi-file ops (tidy / duplicate deletes journal one action
+  // per file) sends `revert action <id1>,<id2>` with no other interface change. File actions
+  // batch into ONE confirm card (each restore still runs through the same revertAction); a
+  // mixed batch containing git/command/revert entries is refused — those are answer-only by
+  // design and must stay one-at-a-time, so a batch can never silently bypass that contract.
+  const revertMatch = lowerInput.match(/^revert\s+action\s+([\w,]+)$/);
   if (revertMatch) {
-    const id = revertMatch[1];
-    const action = getAction(project.path, id);
-    if (!action) {
-      answer(ws, `No action with id \`${id}\` in **[${project.name}]** — try \`show history\`.`);
+    const ids = [...new Set(revertMatch[1].split(',').filter(Boolean))];
+    if (ids.length > 50) {
+      answer(ws, `That's ${ids.length} actions — batch reverts are capped at 50. Run smaller batches.`);
       end(ws);
       return true;
     }
-    if (action.type.startsWith('file_')) {
+    const actions = ids.map((id) => ({ id, action: getAction(project.path, id) }));
+    const missing = actions.find((a) => !a.action);
+    if (missing) {
+      answer(ws, `No action with id \`${missing.id}\` in **[${project.name}]** — try \`show history\`.`);
+      end(ws);
+      return true;
+    }
+    const nonFile = actions.find((a) => !a.action.type.startsWith('file_'));
+    if (nonFile) {
+      answer(ws, `\`${nonFile.id}\` is a ${TYPE_LABELS[nonFile.action.type] || 'git/command'} entry — batch revert is for file restores only. Revert git/command actions one at a time.`);
+      end(ws);
+      return true;
+    }
+    if (ids.length === 1) {
+      const singleId = actions[0].id;
+      const action = actions[0].action;
       const token = crypto.randomUUID();
       pendingConfirmations.set(token, {
         owner: ws,
         projectId: project.id,
-        command: `revert action ${id} (${action.existed ? 'restores' : 'deletes'} ${action.path})`,
-        trigger: `revert_action_${id}`,
+        command: `revert action ${singleId} (${action.existed ? 'restores' : 'deletes'} ${action.path})`,
+        trigger: `revert_action_${singleId}`,
         createdAt: Date.now(),
-        revert: { actionId: id },
+        revert: { actionId: singleId },
       });
       ws.send(JSON.stringify({
         type: 'confirm_prompt',
         token,
-        command: `revert action ${id} — this ${action.existed ? 'overwrites the current' : 'deletes the'} file \`${action.path}\` with its state before that action`,
+        command: `revert action ${singleId} — this ${action.existed ? 'overwrites the current' : 'deletes the'} file \`${action.path}\` with its state before that action`,
         trigger: 'revert_action',
       }));
       return true;
     }
-    // git / command / revert entries: answer-only advice, never auto-run.
-    const result = await revertAction(project.path, id);
-    if (result.ok) {
-      answer(ws, result.data);
-    } else {
-      ws.send(JSON.stringify({ type: 'error_output', data: `${result.error}\n` }));
-    }
-    end(ws);
+    // Batch: one confirm card for all restores; the confirm branch loops revertAction per id.
+    const token = crypto.randomUUID();
+    pendingConfirmations.set(token, {
+      owner: ws,
+      projectId: project.id,
+      command: `revert actions ${ids.join(', ')}`,
+      trigger: `revert_action_${ids.join('_')}`,
+      createdAt: Date.now(),
+      revert: { actionIds: ids },
+    });
+    const fileList = actions.map((a) => `\`${a.action.path}\``).join(', ');
+    ws.send(JSON.stringify({
+      type: 'confirm_prompt',
+      token,
+      command: `revert ${ids.length} actions — restores/deletes ${fileList} to their state before those actions`,
+      trigger: 'revert_action',
+    }));
     return true;
   }
 

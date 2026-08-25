@@ -6,28 +6,39 @@
   "private": true,
   "scripts": {
     "start": "electron .",
-    "dist": "electron-builder --win nsis"
+    "stage": "node scripts/stage-server.mjs",
+    "dist": "npm run stage && electron-builder --win nsis",
+    "dist:mac": "npm run stage && electron-builder --mac dmg",
+    "dist:linux": "npm run stage && electron-builder --linux AppImage"
   },
   "build": {
     "appId": "com.localprojectconsole.app",
     "productName": "Project Console",
-    "files": ["main.cjs", "preload.js", "server/**/*", "bin/**/*", "data/**/*"],
-    "extraMetadata": {
-      "main": "main.cjs"
-    },
+    "files": ["main.cjs", "preload.js"],
+    "extraResources": [
+      {
+        "from": "stage",
+        "to": ".",
+        "filter": ["**/*"]
+      }
+    ],
     "win": {
       "target": ["nsis"],
-      "icon": "icon.png"
+      "icon": "build/icon.ico"
     },
     "nsis": {
       "oneClick": true,
       "perMachine": false
     },
+    "afterPack": "scripts/after-pack.cjs",
     "mac": {
-      "target": ["dmg"]
+      "target": ["dmg"],
+      "icon": "build/icon.icns"
     },
     "linux": {
-      "target": ["AppImage"]
+      "target": ["AppImage"],
+      "category": "Utility",
+      "icon": "build/icon.png"
     }
   },
   "devDependencies": {

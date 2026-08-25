@@ -65,6 +65,29 @@ export function sendDesktopNotification(title, body) {
  * untestable by design, and that is the point of the guard.
  */
 export async function sendWebhook(url, payload) {
+  const outcome = await guardedWebhookPost(url, payload);
+  return { ok: outcome.ok, status: outcome.status, reason: outcome.reason };
+}
+
+/**
+ * Round-6 audit (2026-08-24): webhook tester for the Notifications panel's Postman-style
+ * request builder. Same guarded fetch as sendWebhook (SSRF re-check + redirect manual +
+ * timeout), plus the timing/size details a response panel shows: status code, round-trip
+ * milliseconds, response body bytes. Never throws; every failure becomes an outcome record.
+ */
+export async function testWebhookUrl(url) {
+  const t0 = Date.now();
+  const outcome = await guardedWebhookPost(url, { event: 'test', message: 'Test notification from Project Console', sentAt: new Date().toISOString() });
+  return {
+    ok: outcome.ok,
+    status: outcome.status ?? null,
+    timeMs: Date.now() - t0,
+    sizeBytes: outcome.sizeBytes ?? 0,
+    reason: outcome.reason ?? null,
+  };
+}
+
+async function guardedWebhookPost(url, payload) {
   let parsed;
   try {
     parsed = new URL(url);
@@ -79,9 +102,15 @@ export async function sendWebhook(url, payload) {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(payload),
+      // redirect: 'manual' — only the URL that passed isSafeExternalUrl may be reached. A
+      // configured endpoint that 302s now fails (res.ok false) instead of the fetch silently
+      // following the Location to a host that was never validated (audit 2026-08-24; same
+      // discipline as the fixed GET fetches in webSearch/packRegistry/toolProcess).
+      redirect: 'manual',
       signal: AbortSignal.timeout(WEBHOOK_TIMEOUT_MS),
     });
-    return { ok: res.ok, status: res.status };
+    const body = await res.arrayBuffer().catch(() => null);
+    return { ok: res.ok, status: res.status, sizeBytes: body ? body.byteLength : 0 };
   } catch (err) {
     return {
       ok: false,

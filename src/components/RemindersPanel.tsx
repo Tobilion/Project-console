@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ListChecks, RefreshCw, Plus, Check, Send, Clock } from 'lucide-react';
 import { apiFetchJson } from '../utils/apiFetch';
 import { cn } from '../lib/utils';
+import { EmptyState } from './ui/EmptyState';
+import { addToast } from './ui/toastStore';
 import type { Project } from '../types';
 import './RemindersPanel.css';
 
@@ -120,15 +122,12 @@ export function RemindersPanel({ project, onSendMessage }: RemindersPanelProps) 
   const [lastSent, setLastSent] = useState<string | null>(null);
   const [completing, setCompleting] = useState<Set<string>>(new Set());
   const lastSentTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // Phase 5: Undo-after-complete snackbar — cancel is destructive, so completing a reminder
-  // offers a one-tap re-create via a reconstructed trigger phrase.
-  const [undo, setUndo] = useState<{ id: string; text: string; spec: string } | null>(null);
-  const undoTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Phase 5: completing a reminder is destructive — the shared toast store's 8s Undo re-creates
+  // it (see handleComplete). The old bespoke snackbar was consolidated into the Toaster 2026-08-24.
   // Clear the pending "last sent" timer on unmount so its delayed setState can't fire on a
   // dead panel (and hold the panel's closure alive after it unmounted).
   useEffect(() => () => {
     if (lastSentTimer.current) clearTimeout(lastSentTimer.current);
-    if (undoTimer.current) clearTimeout(undoTimer.current);
   }, []);
   const pollTimer = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -185,16 +184,18 @@ export function RemindersPanel({ project, onSendMessage }: RemindersPanelProps) 
     const r = reminders.find((x) => x.id === id);
     if (!r) return;
     setCompleting((prev) => new Set(prev).add(id));
-    setUndo({ id, text: r.text, spec: undoSpec(r) });
-    if (undoTimer.current) clearTimeout(undoTimer.current);
-    undoTimer.current = setTimeout(() => setUndo(null), 8000);
+    // Undo-after-complete via the shared toast store (2026-08-24): cancel is destructive, so
+    // completing offers an 8s Undo that re-creates the same reminder ("cancel reminder <id>"
+    // restores it via the same chat path the row used).
+    const spec = undoSpec(r);
+    addToast({
+      title: 'Reminder completed',
+      description: r.text,
+      actionLabel: 'Undo',
+      duration: 8000,
+      onAction: () => send(spec),
+    });
     send(`cancel reminder ${id}`);
-  };
-
-  const handleUndo = () => {
-    if (!undo) return;
-    send(undo.spec);
-    setUndo(null);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -362,18 +363,6 @@ export function RemindersPanel({ project, onSendMessage }: RemindersPanelProps) 
           </div>
         )}
 
-        {undo && (
-          <div className="sticky bottom-3 mt-2 mb-1 flex items-center gap-3 px-3 py-2 rounded-xl shadow-float border z-10"
-            style={{ backgroundColor: 'var(--rm-group-bg)', borderColor: 'var(--rm-sep)' }}>
-            <span className="flex-1 min-w-0 truncate text-[12px]" style={{ color: 'var(--rm-label)' }}>
-              Completed: <span className="font-semibold">{undo.text}</span>
-            </span>
-            <button onClick={handleUndo} className="shrink-0 text-[12px] font-bold hover:opacity-70 transition-opacity" style={{ color: 'var(--rm-blue)' }}>
-              Undo
-            </button>
-          </div>
-        )}
-
         {/* Summary cards — each is a real switchable view; no item repeats across views */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-4">
           {tabBtn('today', 'Today', today.length)}
@@ -383,9 +372,11 @@ export function RemindersPanel({ project, onSendMessage }: RemindersPanelProps) 
         </div>
 
         {reminders.length === 0 && !loading ? (
-          <div className="text-center py-10 text-[15px]" style={{ color: 'var(--rm-label2)' }}>
-            No reminders yet. Add one above or type <code className="text-[13px]" style={{ color: 'var(--rm-blue)' }}>remind me tomorrow at 9am to renew my license</code> in chat.
-          </div>
+          <EmptyState
+            icon={<Clock size={18} />}
+            title="No reminders yet"
+            hint="Add one above, or type remind me tomorrow at 9am to renew my license in chat."
+          />
         ) : shown.length === 0 ? (
           <div className="text-center py-8 text-[14px]" style={{ color: 'var(--rm-label2)' }}>
             Nothing in {view === 'nodate' ? 'No Date' : view[0].toUpperCase() + view.slice(1)}.

@@ -1,16 +1,17 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Table, RefreshCw, Send, CheckCircle2, ArrowUpDown } from 'lucide-react';
+﻿import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Table, RefreshCw, Send, CheckCircle2 } from 'lucide-react';
 import { apiFetchJson } from '../utils/apiFetch';
 import { projectApi } from '../utils/projectApi';
+import { ResultTable } from './spreadsheet/resultTable';
 import { cn } from '../lib/utils';
 import type { Project } from '../types';
 
-// Phase 7 (UPGRADE-ROADMAP.md, 2026-08-12): the Spreadsheet panel — Apple Numbers/Sheets
+// Phase 7 (UPGRADE-ROADMAP.md, 2026-08-12): the Spreadsheet panel â€” Apple Numbers/Sheets
 // reference (toolbar row above a real table: sticky header, zebra striping, hover rows,
 // sortable columns). Sum/Average/Count Run buttons compose the exact chat trigger command;
 // Filter renders the result in-panel from the same read-only csvTools.js path the chat
 // answer uses (GET /api/projects/:id/csv-filter), so the table and the terminal can never
-// diverge. Every evaluation still goes through the server-side CSV engine — no client-side
+// diverge. Every evaluation still goes through the server-side CSV engine â€” no client-side
 // reimplementation.
 
 interface CsvFile {
@@ -43,7 +44,7 @@ export function SpreadsheetPanel({ project, onSendMessage, tabId = null }: Sprea
   const [error, setError] = useState<string | null>(null);
   const [lastSent, setLastSent] = useState<string | null>(null);
   const [table, setTable] = useState<{ headers: string[]; rows: string[][] } | null>(null);
-  // Phase 5: file preview — first N rows + total row count, so the panel shows the data
+  // Phase 5: file preview â€” first N rows + total row count, so the panel shows the data
   // before any query runs (previously a dead zone until Sum/Average/Count/Filter).
   const [preview, setPreview] = useState<{ headers: string[]; rows: string[][]; total: number; truncated: boolean } | null>(null);
   const [sortCol, setSortCol] = useState<number | null>(null);
@@ -226,7 +227,7 @@ export function SpreadsheetPanel({ project, onSendMessage, tabId = null }: Sprea
               <Table size={16} />
             </div>
             <h2 className="text-sm font-semibold text-fg-strong tracking-wide uppercase">Spreadsheet</h2>
-            {project && <span className="text-xs text-fg-dim font-normal normal-case">— {project.name}</span>}
+            {project && <span className="text-xs text-fg-dim font-normal normal-case">â€” {project.name}</span>}
           </div>
           <button onClick={fetchFiles} className="p-1.5 text-fg-dim hover:text-fg-strong rounded-lg transition-colors" title="Refresh">
             <RefreshCw size={15} className={cn(loading && 'animate-spin')} />
@@ -241,7 +242,7 @@ export function SpreadsheetPanel({ project, onSendMessage, tabId = null }: Sprea
           </div>
         ) : (
           <>
-            {/* Drag-and-drop upload zone — dashed --border-strong, file-picker fallback */}
+            {/* Drag-and-drop upload zone â€” dashed --border-strong, file-picker fallback */}
             <div
               onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
               onDragLeave={() => setDragging(false)}
@@ -266,20 +267,20 @@ export function SpreadsheetPanel({ project, onSendMessage, tabId = null }: Sprea
                 }}
               />
               <p className="text-[13px] text-fg-muted">
-                {uploading ? 'Uploading…' : dragging ? 'Drop it to upload' : 'Drag & drop a CSV into this project'}
+                {uploading ? 'Uploadingâ€¦' : dragging ? 'Drop it to upload' : 'Drag & drop a CSV into this project'}
               </p>
               <button
                 onClick={(e) => { e.stopPropagation(); fileInputRef.current?.click(); }}
                 className="mt-1.5 text-[11px] text-accent-blue hover:underline"
               >
-                or pick a file…
+                or pick a fileâ€¦
               </button>
             </div>
 
             {/* Toolbar */}
             <div className="flex items-center gap-2 px-3 py-2 rounded-t-xl border border-border-soft border-b-0 bg-panel flex-wrap">
               <select value={selectedFile} onChange={(e) => { setSelectedFile(e.target.value); if (e.target.value) { fetchHeaders(e.target.value); fetchPreview(e.target.value); } setTable(null); setAggregate(null); }} className={selectCls}>
-                <option value="">Pick a CSV…</option>
+                <option value="">Pick a CSVâ€¦</option>
                 {files.map((f) => <option key={f.path} value={f.path}>{f.name}</option>)}
               </select>
               <select value={mode} onChange={(e) => { setMode(e.target.value as Mode); setTable(null); }} className={selectCls}>
@@ -289,7 +290,7 @@ export function SpreadsheetPanel({ project, onSendMessage, tabId = null }: Sprea
                 <option value="filter">Filter</option>
               </select>
               <select value={column} onChange={(e) => setColumn(e.target.value)} className={selectCls} disabled={headers.length === 0}>
-                <option value="">Column…</option>
+                <option value="">Columnâ€¦</option>
                 {headers.map((h) => <option key={h} value={h}>{h}</option>)}
               </select>
               {(mode === 'count' || mode === 'filter') && (
@@ -333,7 +334,7 @@ export function SpreadsheetPanel({ project, onSendMessage, tabId = null }: Sprea
               <div className="text-2xl font-semibold text-fg-strong font-mono">
                 {aggregate.op === 'average' ? aggregate.value.toFixed(2) : aggregate.value.toLocaleString()}
               </div>
-              <div className="text-[11px] text-fg-dim">{aggregate.file} — {aggregate.count} numeric row{aggregate.count === 1 ? '' : 's'}</div>
+              <div className="text-[11px] text-fg-dim">{aggregate.file} â€” {aggregate.count} numeric row{aggregate.count === 1 ? '' : 's'}</div>
             </div>
           </div>
         )}
@@ -346,11 +347,11 @@ export function SpreadsheetPanel({ project, onSendMessage, tabId = null }: Sprea
             sortCol={sortCol}
             sortAsc={sortAsc}
             onToggleSort={toggleSort}
-            footer={`${sortedRows.length} matching row${sortedRows.length === 1 ? '' : 's'} — click a header to sort.`}
+            footer={`${sortedRows.length} matching row${sortedRows.length === 1 ? '' : 's'} â€” click a header to sort.`}
           />
         )}
 
-        {/* Phase 5: file preview — first N rows render before any query runs, with a
+        {/* Phase 5: file preview â€” first N rows render before any query runs, with a
             truncation warning when the file is larger than the preview window. */}
         {preview && !table && !aggregate && (
           <ResultTable
@@ -362,10 +363,10 @@ export function SpreadsheetPanel({ project, onSendMessage, tabId = null }: Sprea
             footer={
               preview.truncated ? (
                 <span className="text-accent-orange">
-                  Large file — previewing the first {preview.rows.length} of {preview.total.toLocaleString()} rows. Run a filter for the full result set.
+                  Large file â€” previewing the first {preview.rows.length} of {preview.total.toLocaleString()} rows. Run a filter for the full result set.
                 </span>
               ) : (
-                <>{preview.total.toLocaleString()} row{preview.total === 1 ? '' : 's'} — click a header to sort.</>
+                <>{preview.total.toLocaleString()} row{preview.total === 1 ? '' : 's'} â€” click a header to sort.</>
               )
             }
           />
@@ -382,54 +383,3 @@ export function SpreadsheetPanel({ project, onSendMessage, tabId = null }: Sprea
   );
 }
 
-/** Shared sortable table for the filter result and the file preview (Phase 5 extraction —
- *  the preview reuses the exact filter-table rendering so both stay in lockstep). */
-function ResultTable({ headers, rows, sortCol, sortAsc, onToggleSort, footer }: {
-  headers: string[];
-  rows: string[][];
-  sortCol: number | null;
-  sortAsc: boolean;
-  onToggleSort: (i: number) => void;
-  footer: React.ReactNode;
-}) {
-  return (
-    <div className="mt-4 rounded-xl border border-border-soft overflow-hidden">
-      <div className="overflow-x-auto max-h-[60vh] overflow-y-auto">
-        <table className="w-full text-[13px] border-collapse">
-          <thead className="sticky top-0 z-10">
-            <tr className="bg-panel-strong">
-              {headers.map((h, i) => (
-                <th key={i} className="px-3 py-2 text-left text-[12px] font-semibold text-fg-strong whitespace-nowrap border-b border-border-soft">
-                  <button onClick={() => onToggleSort(i)} className="inline-flex items-center gap-1 cursor-pointer hover:text-accent select-none">
-                    {h}<ArrowUpDown size={11} className="text-fg-faint" />
-                  </button>
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((row, ri) => (
-              // Content-derived identity: the table re-sorts live, so positional keys
-              // would make React reuse the wrong DOM rows across sort changes.
-              <tr key={row.map((cell) => String(cell)).join('\u0001')} className={cn(ri % 2 === 1 ? 'bg-panel' : 'bg-background', 'hover:bg-accent/5 transition-colors')}>
-                {row.map((cell, ci) => (
-                  <td key={ci} className={cn(
-                    'px-3 py-1.5 whitespace-nowrap border-b border-border-faint',
-                    !Number.isNaN(Number(String(cell).replace(/[$,%\s]/g, ''))) && String(cell).trim() !== ''
-                      ? 'font-mono text-right text-fg-strong'
-                      : 'text-fg-muted',
-                  )}>
-                    {cell}
-                  </td>
-                ))}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-      <div className="px-3 py-1.5 text-[11px] text-fg-dim border-t border-border-soft bg-scrim-faint">
-        {footer}
-      </div>
-    </div>
-  );
-}

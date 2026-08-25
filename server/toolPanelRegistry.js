@@ -103,6 +103,17 @@ export const TOOL_PANELS = [
     available: true,
     chatHint: 'browse pack registry',
   },
+  {
+    // Round-6 audit (2026-08-24): Aider-style whole-project map visibility. The repo map
+    // (per-file top-level signatures + imports + reverse "used by") previously only reached
+    // the AI system prompt; this panel renders the same structure the prompt sees.
+    id: 'repo-map',
+    name: 'Repo Map',
+    description: 'The whole-project map: every file\'s top-level symbols, imports, and reverse dependencies',
+    icon: 'map',
+    available: true,
+    chatHint: 'show the repo map',
+  },
 ];
 
 export function getToolPanels() {

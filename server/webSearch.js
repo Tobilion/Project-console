@@ -87,6 +87,11 @@ export async function deepResearch(query) {
         if (!isSafeExternalUrl(urlObj)) continue;
         const pageRes = await fetch(r.url, {
           headers: { 'User-Agent': 'Mozilla/5.0' },
+          // redirect: 'manual' — only the URL that passed isSafeExternalUrl may be fetched.
+          // Following a Location header would let a public page redirect the fetch to an
+          // internal/metadata host that was never validated (the SSRF class livenessProbe's
+          // dashboard probe guards against the same way).
+          redirect: 'manual',
           signal: AbortSignal.timeout(5000),
         });
         if (pageRes.ok) {

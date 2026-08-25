@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { motion } from 'motion/react';
 import { Plus, X, FolderOpen } from 'lucide-react';
 import { cn } from '../lib/utils';
 import type { ConsoleTab } from '../hooks/useConsoleTabs';
@@ -56,15 +57,26 @@ export function ProjectTabs({ tabs, activeTabId, activeProjectName, onActivate, 
             onAuxClick={(e) => { if (e.button === 1) onClose(t.id); }}
             onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onActivate(t.id); } }}
             className={cn(
-              'group flex items-center gap-1.5 min-w-0 max-w-[220px] rounded-t-lg px-3 py-1.5 text-xs border border-b-0 transition-colors cursor-pointer select-none',
+              'group relative flex items-center gap-1.5 min-w-0 max-w-[220px] rounded-t-lg px-3 py-1.5 text-xs border border-b-0 transition-colors cursor-pointer select-none',
               active
-                ? 'bg-overlay text-fg-strong border-border-soft'
+                ? 'text-fg-strong border-transparent'
                 : 'bg-scrim-faint text-fg-dim hover:text-fg-muted border-transparent',
             )}
             title={t.scanPath || 'Default workspace'}
           >
-            <FolderOpen size={12} className="shrink-0 text-accent-blue" />
-            <span className="truncate">{label}</span>
+            {/* Sliding active-pill (2026-08-24): the layoutId makes the highlight glide between
+                tabs on switch instead of appearing/disappearing in place. */}
+            {active && (
+              <motion.div
+                layoutId="tab-active-pill"
+                className="absolute inset-0 bg-overlay border border-border-soft rounded-t-lg pointer-events-none"
+                transition={{ duration: 0.2, ease: 'easeOut' }}
+              />
+            )}
+            <span className="relative z-10 shrink-0 text-accent-blue">
+              <FolderOpen size={12} />
+            </span>
+            <span className="relative z-10 truncate">{label}</span>
             <button
               onClick={(e) => { e.stopPropagation(); onClose(t.id); }}
               className="shrink-0 p-0.5 rounded text-fg-faint hover:text-fg-strong hover:bg-panel transition-colors"

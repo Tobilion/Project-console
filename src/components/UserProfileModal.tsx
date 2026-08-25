@@ -1,8 +1,9 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { UserProfile } from '../hooks/useUserProfile';
-import { Settings, X, ChevronDown, ChevronRight, Plus, Trash2, Save, Code, LayoutGrid, List, Compass } from 'lucide-react';
+import { Settings, X, LayoutGrid, List, Compass } from 'lucide-react';
 import { ModalShell } from './ui/ModalShell';
-import { apiFetchJson } from '../utils/apiFetch';
+import { EditorsSection } from './profile/EditorsSection';
+import { TuningSection } from './profile/TuningSection';
 
 interface UserProfileModalProps {
   open: boolean;
@@ -11,56 +12,13 @@ interface UserProfileModalProps {
   onSave: (updates: Partial<UserProfile>) => void;
 }
 
-interface TuningState {
-  defaults: Record<string, number>;
-  overrides: Record<string, number>;
-}
-
-// Phase T2 (2026-08-14): the editor/IDE registry shape from GET /api/editors.
-interface EditorsState {
-  editors: { id: string; name: string; command: string }[];
-  defaults: Record<string, string>;
-}
-
-const EXT_DEFAULT_HINTS: [string, string][] = [
-  ['.py', 'Python'], ['.java', 'Java'], ['.js', 'JavaScript'], ['.ts', 'TypeScript'],
-  ['.c', 'C'], ['.cpp', 'C++'], ['.cs', 'C#'], ['.kt', 'Kotlin'], ['.html', 'HTML'],
-  ['.md', 'Markdown'], ['.json', 'JSON'], ['.css', 'CSS'],
-];
-
-// Plain-language descriptions for the tuning knobs — one line each, drawn from the source
-// comments (tuningStore.js defaults + executor/verifyHarness constants) so the meaning is
-// clear without reading code.
-const TUNING_GROUPS: { label: string; keys: { name: string; hint: string; describe: string }[] }[] = [
-  {
-    label: 'Matching',
-    keys: [
-      { name: 'FUSE_THRESHOLD', hint: 'fuzzy match floor (0–1)', describe: 'How close a fuzzy text match must be before the console trusts it as a command.' },
-      { name: 'FUSE_MIN_MATCH_CHAR_LENGTH', hint: 'min characters for a fuzzy hit', describe: 'The shortest input that fuzzy matching will even consider — shorter text is never matched.' },
-      { name: 'INIT_WAIT_POLL_MS', hint: 'matcher startup poll interval, ms', describe: 'How often the matcher checks whether the embedding model finished loading at startup.' },
-      { name: 'SUGGESTION_DEFAULT_LIMIT', hint: 'max "did you mean" suggestions', describe: 'How many fallback command suggestions are shown when nothing matches confidently.' },
-      { name: 'COLLISION_DEFAULT_THRESHOLD', hint: 'intent-collision cosine floor (0–1)', describe: 'How similar two intents must be in embedding space before the collision monitor flags them.' },
-    ],
-  },
-  {
-    label: 'Executor',
-    keys: [
-      { name: 'DEV_URL_DETACH_GRACE_MS', hint: 'grace after a detected URL, ms', describe: 'How long after a dev server prints its URL before the console stops tracking it as a child process.' },
-      { name: 'DEV_SERVER_FORCE_DETACH_MS', hint: 'detach recognized dev servers after, ms', describe: 'How long a recognized dev-server command runs before the console detaches and lets it live on its own.' },
-      { name: 'LONG_RUNNING_FORCE_DETACH_MS', hint: 'detach other long commands after, ms', describe: 'Same detach rule for long-running commands that are not recognized dev servers.' },
-      { name: 'STDOUT_SUMMARY_CAP', hint: 'stdout tail shown in results, chars', describe: 'How much standard output is kept in the result summary for long-running commands.' },
-      { name: 'STDERR_SUMMARY_CAP', hint: 'stderr tail shown in results, chars', describe: 'How much error output is kept in the result summary for long-running commands.' },
-    ],
-  },
-  {
-    label: 'Type check',
-    keys: [{ name: 'DEBOUNCE_MS', hint: 'verification debounce after file edits, ms', describe: 'How long the console waits after a file edit before running a background type check.' }],
-  },
-];
-
 /** Gear-triggered profile editor: name / title / custom role + tuning knobs, persisted via
  *  POST /api/profile and /api/tuning. Same overlay pattern as the welcome tour (fixed backdrop
- *  + centered panel); Esc and backdrop-click close without saving. */
+ *  + centered panel); Esc and backdrop-click close without saving.
+ *
+ *  2026-08-24 split: the Editors & IDEs registry and the runtime tuning editor are
+ *  self-contained sections (profile/EditorsSection.tsx + profile/TuningSection.tsx) that
+ *  fetch their own state on mount — keyed remounts re-fetch, same as the old open-effect. */
 export function UserProfileModal({ open, profile, onClose, onSave }: UserProfileModalProps) {
   const [name, setName] = useState(profile.name);
   const [title, setTitle] = useState(profile.title);
@@ -70,18 +28,11 @@ export function UserProfileModal({ open, profile, onClose, onSave }: UserProfile
   const [clipboardPersist, setClipboardPersist] = useState(profile.clipboardPersist);
   const [scanAllFolders, setScanAllFolders] = useState(profile.scanAllFolders);
   const [explorerViewMode, setExplorerViewMode] = useState<'list' | 'grid'>(profile.explorerViewMode);
-  const [editors, setEditors] = useState<EditorsState | null>(null);
-  const [editorsDirty, setEditorsDirty] = useState(false);
-  const [editorsSaved, setEditorsSaved] = useState(false);
-  const editorsSavedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [permissionMode, setPermissionMode] = useState<'default' | 'ask'>(profile.permissionMode === 'ask' ? 'ask' : 'default');
   // Phase T2: tours are defined in src/tours.ts; this section just records completion
   // badges (localStorage, same inline style as pinned projects) and launches a tour via a
   // custom event the App listens for.
   const [tourSection, setTourSection] = useState<string | null>(null);
-  const tuningSavedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // Clear the "tuning saved" timer on unmount so its delayed setState can't fire on a dead
-  // modal (and hold its closure alive after it unmounted).
-  useEffect(() => () => { if (tuningSavedTimer.current) clearTimeout(tuningSavedTimer.current); }, []);
 
   // Stage H: accent-color presets + custom-hex draft. The chosen value persists through the
   // existing profile-write path (onSave) and App.tsx applies it as an inline
@@ -100,15 +51,6 @@ export function UserProfileModal({ open, profile, onClose, onSave }: UserProfile
   const hexValid = /^[0-9a-fA-F]{6}$/.test(hexDraft);
   const applyAccent = (value: string) => onSave({ accentColor: value });
 
-  // Phase 8 (2026-08-11): runtime tuning-constant editor (server-side shadowing via
-  // data/tuning.json — see server/tuningStore.js). Loaded as overrides+defaults when the modal
-  // opens; the draft starts at defaults merged over overrides so every knob is visible, and
-  // Save posts only the values that differ from the factory default.
-  const [tuning, setTuning] = useState<TuningState | null>(null);
-  const [draft, setDraft] = useState<Record<string, string>>({});
-  const [advancedOpen, setAdvancedOpen] = useState(false);
-  const [tuningSaved, setTuningSaved] = useState(false);
-
   // Re-sync the draft whenever the modal opens or the profile changes externally.
   useEffect(() => {
     if (open) {
@@ -120,21 +62,7 @@ export function UserProfileModal({ open, profile, onClose, onSave }: UserProfile
       setClipboardPersist(profile.clipboardPersist);
       setScanAllFolders(profile.scanAllFolders);
       setExplorerViewMode(profile.explorerViewMode === 'grid' ? 'grid' : 'list');
-      setAdvancedOpen(false);
-      setTuningSaved(false);
-      apiFetchJson<TuningState>('/api/tuning').then((t) => {
-        if (!t) return;
-        setTuning(t);
-        const merged: Record<string, string> = {};
-        for (const [k, v] of Object.entries(t.defaults)) merged[k] = String(v);
-        for (const [k, v] of Object.entries(t.overrides)) merged[k] = String(v);
-        setDraft(merged);
-      });
-      apiFetchJson<EditorsState>('/api/editors').then((e) => {
-        if (e) setEditors(e);
-      });
-      setEditorsDirty(false);
-      setEditorsSaved(false);
+      setPermissionMode(profile.permissionMode === 'ask' ? 'ask' : 'default');
     }
   }, [open, profile]);
 
@@ -144,40 +72,17 @@ export function UserProfileModal({ open, profile, onClose, onSave }: UserProfile
   // shows inline per-field errors and stays open until all three are valid (still
   // all-or-nothing: nothing persists unless every field passes).
   const [showErrors, setShowErrors] = useState(false);
-  const [invalidTuningKeys, setInvalidTuningKeys] = useState<string[]>([]);
 
   const handleSave = () => {
     if (!canSave) {
       setShowErrors(true);
       return;
     }
-    onSave({ name: name.trim(), title: title.trim(), customRole: customRole.trim(), sandboxRiskyCommands, clipboardHistory, clipboardPersist, scanAllFolders, explorerViewMode });
+    onSave({ name: name.trim(), title: title.trim(), customRole: customRole.trim(), sandboxRiskyCommands, clipboardHistory, clipboardPersist, scanAllFolders, explorerViewMode, permissionMode });
     onClose();
   };
 
   const fieldError = (value: string) => showErrors && !value.trim();
-
-  const handleSaveEditors = async () => {
-    if (!editors) return;
-    const res = await apiFetchJson<EditorsState>('/api/editors', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ editors: editors.editors, defaults: editors.defaults }),
-    });
-    if (res) {
-      setEditors(res);
-      setEditorsDirty(false);
-      setEditorsSaved(true);
-      if (editorsSavedTimer.current) clearTimeout(editorsSavedTimer.current);
-      editorsSavedTimer.current = setTimeout(() => setEditorsSaved(false), 2000);
-    }
-  };
-
-  const mutateEditors = (fn: (e: EditorsState) => EditorsState) => {
-    if (!editors) return;
-    setEditors(fn(editors));
-    setEditorsDirty(true);
-  };
 
   const launchTour = (id: string) => {
     // The App listens for this and opens TourOverlay for the section (see App.tsx).
@@ -190,51 +95,6 @@ export function UserProfileModal({ open, profile, onClose, onSave }: UserProfile
     try { return JSON.parse(localStorage.getItem('console.toursTaken') || '{}'); } catch { return {}; }
   })();
 
-  const handleSaveTuning = async () => {
-    if (!tuning) return;
-    const overrides: Record<string, number> = {};
-    const bad: string[] = [];
-    for (const [k, def] of Object.entries(tuning.defaults)) {
-      const raw = (draft[k] ?? '').trim();
-      if (raw === '' || raw === String(def)) continue; // untouched → default, send nothing
-      const num = Number(raw);
-      if (Number.isFinite(num)) overrides[k] = num; // server re-validates bounds anyway
-      else bad.push(k); // audit 2026-08-17: non-numeric drafts were silently dropped — flag them
-    }
-    setInvalidTuningKeys(bad);
-    if (bad.length > 0) return;
-    const res = await apiFetchJson<{ applied: Record<string, number>; defaults: Record<string, number>; overrides: Record<string, number> }>(
-      '/api/tuning',
-      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ overrides }) },
-    );
-    if (res) {
-      setTuning({ defaults: res.defaults, overrides: res.overrides });
-      const merged: Record<string, string> = {};
-      for (const [k, v] of Object.entries(res.defaults)) merged[k] = String(v);
-      for (const [k, v] of Object.entries(res.overrides)) merged[k] = String(v);
-      setDraft(merged);
-      setTuningSaved(true);
-      if (tuningSavedTimer.current) clearTimeout(tuningSavedTimer.current);
-      tuningSavedTimer.current = setTimeout(() => setTuningSaved(false), 2000);
-    }
-  };
-
-  const handleResetTuning = async () => {
-    const res = await apiFetchJson<{ defaults: Record<string, number>; overrides: Record<string, number> }>(
-      '/api/tuning',
-      { method: 'DELETE' },
-    );
-    if (res) {
-      setTuning({ defaults: res.defaults, overrides: res.overrides });
-      const merged: Record<string, string> = {};
-      for (const [k, v] of Object.entries(res.defaults)) merged[k] = String(v);
-      setDraft(merged);
-      setTuningSaved(true);
-      if (tuningSavedTimer.current) clearTimeout(tuningSavedTimer.current);
-      tuningSavedTimer.current = setTimeout(() => setTuningSaved(false), 2000);
-    }
-  };
-
   return (
     <ModalShell open={open} onClose={onClose} maxWidth="max-w-md">
       <div className="flex items-center justify-between px-6 pt-6 pb-2">
@@ -244,7 +104,7 @@ export function UserProfileModal({ open, profile, onClose, onSave }: UserProfile
           </div>
           <h2 className="text-xl font-bold text-fg-strong">User Profile</h2>
         </div>
-        <button onClick={onClose} className="p-1 text-fg-dim hover:text-fg-muted transition-colors">
+        <button onClick={onClose} className="p-1 text-fg-dim hover:text-fg-muted transition-colors" aria-label="Close user profile">
           <X size={18} />
         </button>
       </div>
@@ -433,6 +293,35 @@ export function UserProfileModal({ open, profile, onClose, onSave }: UserProfile
           </div>
         </div>
 
+        {/* Round-6 audit (2026-08-24): permission mode — 'ask' makes the AI/direct tool paths
+            strictly read-only. Only ever strengthens; the confirm gate itself is untouched. */}
+        <div className="pt-1">
+          <label className="block text-xs text-fg-dim mb-1.5">Permission mode</label>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => setPermissionMode('default')}
+              className={`flex-1 px-3 py-2 rounded-lg border text-left transition-colors ${permissionMode === 'default' ? 'border-accent-blue bg-accent-blue/10' : 'border-border-soft bg-surface hover:border-border-strong'}`}
+            >
+              <span className="block text-sm text-fg">Default</span>
+              <span className="block text-[10px] text-fg-dim mt-0.5">Normal approvals — session grants and per-project policies apply</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setPermissionMode('ask')}
+              className={`flex-1 px-3 py-2 rounded-lg border text-left transition-colors ${permissionMode === 'ask' ? 'border-accent-blue bg-accent-blue/10' : 'border-border-soft bg-surface hover:border-border-strong'}`}
+            >
+              <span className="block text-sm text-fg">Ask (read-only)</span>
+              <span className="block text-[10px] text-fg-dim mt-0.5">AI can look, never touch — mutating tools answer "blocked" instead of prompting</span>
+            </button>
+          </div>
+          <p className="text-[10px] text-fg-dim mt-1.5">
+            In Ask mode, writeFile/editFile/executeCommand/runTests and every other mutating tool
+            are declined with an explanation — no confirm prompts, no checkpoints, no auto-runs.
+            Commands you type yourself still confirm as usual. Off by default.
+          </p>
+        </div>
+
         {/* Phase T2: Explorer — default view mode for the Folder Explorer panel */}
         <div className="pt-1">
           <label className="block text-xs text-fg-dim mb-1.5">Folder Explorer default view</label>
@@ -459,93 +348,8 @@ export function UserProfileModal({ open, profile, onClose, onSave }: UserProfile
           <p className="text-[11px] text-fg-dim mt-1">The in-panel toggle overrides this for the current session.</p>
         </div>
 
-        {/* Phase T2: Editors & IDEs — registry + per-extension defaults */}
-        <div className="pt-2 border-t border-border-faint">
-          <div className="flex items-center gap-1.5 mb-1.5">
-            <Code size={13} className="text-accent-blue" />
-            <p className="text-sm text-fg">Editors &amp; IDEs</p>
-          </div>
-          <p className="text-[11px] text-fg-dim mb-2">
-            Which editors open your files — "open main.py with PyCharm" in chat, or "open X in
-            the editor" uses the per-extension default below. The command is launched with the
-            file path as its argument.
-          </p>
-          {editors ? (
-            <>
-              <div className="space-y-1.5 max-h-44 overflow-y-auto pr-1">
-                {editors.editors.map((ed) => (
-                  <div key={ed.id} className="flex items-center gap-2">
-                    <span className="w-28 shrink-0 text-[11px] text-fg-strong truncate" title={ed.name}>{ed.name}</span>
-                    <input
-                      type="text"
-                      value={ed.command}
-                      onChange={(e) => mutateEditors((s) => ({
-                        ...s,
-                        editors: s.editors.map((x) => x.id === ed.id ? { ...x, command: e.target.value } : x),
-                      }))}
-                      className="flex-1 min-w-0 bg-surface border border-border-soft rounded-lg px-2 py-1 text-[11px] font-mono text-fg focus:outline-none focus:border-accent-blue transition-colors"
-                      placeholder="launch command (e.g. code)"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => mutateEditors((s) => ({
-                        ...s,
-                        editors: s.editors.filter((x) => x.id !== ed.id),
-                        defaults: Object.fromEntries(Object.entries(s.defaults).filter(([, v]) => v !== ed.id)),
-                      }))}
-                      className="p-1 text-fg-dim hover:text-accent-red transition-colors"
-                      title={`Remove ${ed.name}`}
-                    >
-                      <Trash2 size={12} />
-                    </button>
-                  </div>
-                ))}
-              </div>
-              <button
-                type="button"
-                onClick={() => mutateEditors((s) => ({
-                  ...s,
-                  editors: [...s.editors, { id: `custom-${Date.now().toString(36)}`, name: 'New editor', command: '' }],
-                }))}
-                className="mt-1.5 flex items-center gap-1 px-2 py-1 text-[11px] text-accent-blue hover:bg-accent-blue/10 rounded-lg transition-colors"
-              >
-                <Plus size={12} /> Add editor
-              </button>
-              <div className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1">
-                {EXT_DEFAULT_HINTS.map(([ext, label]) => (
-                  <div key={ext} className="flex items-center gap-1.5">
-                    <span className="w-12 shrink-0 text-[10px] text-fg-dim font-mono">{ext}</span>
-                    <select
-                      value={editors.defaults[ext] || 'vscode'}
-                      onChange={(e) => mutateEditors((s) => ({
-                        ...s,
-                        defaults: { ...s.defaults, [ext]: e.target.value },
-                      }))}
-                      className="flex-1 min-w-0 bg-surface border border-border-soft rounded-lg px-1.5 py-0.5 text-[11px] text-fg-muted focus:outline-none focus:border-accent-blue transition-colors"
-                    >
-                      {editors.editors.map((ed) => <option key={ed.id} value={ed.id}>{ed.name}</option>)}
-                      <option value="browser">Browser</option>
-                    </select>
-                    <span className="text-[9px] text-fg-faint">{label}</span>
-                  </div>
-                ))}
-              </div>
-              <div className="flex items-center gap-2 mt-2">
-                <button
-                  type="button"
-                  onClick={handleSaveEditors}
-                  disabled={!editorsDirty}
-                  className="flex items-center gap-1 px-3 py-1.5 text-[10px] font-bold tracking-wider uppercase rounded-lg bg-accent-blue/15 text-accent-blue hover:bg-accent-blue/25 transition-colors disabled:opacity-40"
-                >
-                  <Save size={11} /> Save editors
-                </button>
-                {editorsSaved && <span className="text-[10px] text-accent-green">Saved — affects the next "open with"</span>}
-              </div>
-            </>
-          ) : (
-            <p className="text-[11px] text-fg-dim italic">Loading editors…</p>
-          )}
-        </div>
+        {/* Phase T2: Editors & IDEs — registry + per-extension defaults (self-contained). */}
+        <EditorsSection />
 
         {/* Phase T2: Tours — replay any section */}
         <div className="pt-2 border-t border-border-faint">
@@ -578,73 +382,8 @@ export function UserProfileModal({ open, profile, onClose, onSave }: UserProfile
           </div>
         </div>
 
-        <div className="pt-1 border-t border-border-faint">
-          <button
-            type="button"
-            onClick={() => setAdvancedOpen(!advancedOpen)}
-            className="flex items-center gap-1.5 text-xs text-fg-dim hover:text-fg-strong transition-colors"
-          >
-            {advancedOpen ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
-            Developer / Advanced — you probably don't need this
-            {tuning && Object.keys(tuning.overrides).length > 0 && (
-              <span className="text-[10px] text-accent">({Object.keys(tuning.overrides).length} overridden)</span>
-            )}
-          </button>
-          {advancedOpen && (
-            <p className="text-[11px] text-fg-dim mt-1.5">
-              Raw matcher/executor constants for power users — the defaults are tuned for most
-              setups. Change these only if you know what they do.
-            </p>
-          )}
-          {advancedOpen && tuning && (
-            <div className="mt-2 space-y-3 max-h-64 overflow-y-auto pr-1">
-              {TUNING_GROUPS.map((group) => (
-                <div key={group.label}>
-                  <p className="text-[10px] tracking-[0.15em] uppercase text-fg-dim font-bold mb-1">{group.label}</p>
-                  <div className="space-y-2">
-                    {group.keys.map(({ name, hint, describe }) => (
-                      <div key={name} className="flex items-center justify-between gap-3">
-                        <label className="text-[11px] text-fg-subtle flex-1 min-w-0" title={hint}>
-                          <span className="font-mono">{name}</span>
-                          <span className="block text-[10px] text-fg-dim">{hint}</span>
-                          <span className="block text-[10px] text-fg-muted mt-0.5 leading-snug">{describe}</span>
-                        </label>
-                        <input
-                          type="number"
-                          value={draft[name] ?? ''}
-                          onChange={(e) => { setDraft((d) => ({ ...d, [name]: e.target.value })); setInvalidTuningKeys((ks) => ks.filter((k) => k !== name)); }}
-                          className={`w-24 bg-surface border border-border-soft rounded-lg px-2 py-1 text-[11px] font-mono text-fg focus:outline-none focus:border-accent-blue transition-colors text-right ${invalidTuningKeys.includes(name) ? 'border-accent-red' : ''}`}
-                        />
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ))}
-              <div className="flex items-center gap-2 pt-1">
-                <button
-                  type="button"
-                  onClick={handleSaveTuning}
-                  className="px-3 py-1.5 text-[10px] font-bold tracking-wider uppercase rounded-lg bg-accent-blue/15 text-accent-blue hover:bg-accent-blue/25 transition-colors"
-                >
-                  Apply tuning
-                </button>
-                <button
-                  type="button"
-                  onClick={handleResetTuning}
-                  className="px-3 py-1.5 text-[10px] font-bold tracking-wider uppercase rounded-lg bg-scrim-faint text-fg-dim hover:text-fg-strong border border-border-soft transition-colors"
-                >
-                  Reset all
-                </button>
-                {invalidTuningKeys.length > 0 && (
-                  <span className="text-[10px] text-accent-red">
-                    Not numbers: {invalidTuningKeys.join(', ')} — fix or clear them, then Apply again.
-                  </span>
-                )}
-                {tuningSaved && <span className="text-[10px] text-accent-green">Saved — affects the next match/run</span>}
-              </div>
-            </div>
-          )}
-        </div>
+        {/* Phase 8: runtime tuning-constant editor (self-contained). */}
+        <TuningSection />
       </div>
 
       <div className="flex items-center justify-end gap-2 px-6 pb-6 pt-2">

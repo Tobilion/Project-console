@@ -11,6 +11,7 @@
     "locale": "en",
     "accentColor": "auto",
     "scanAllFolders": false,
-    "explorerViewMode": "list"
+    "explorerViewMode": "list",
+    "permissionMode": "default"
   }
 }

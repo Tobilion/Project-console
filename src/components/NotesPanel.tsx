@@ -3,6 +3,7 @@ import { StickyNote, RefreshCw, Send, Search, FileText } from 'lucide-react';
 import { apiFetchJson } from '../utils/apiFetch';
 import { projectApi } from '../utils/projectApi';
 import { cn } from '../lib/utils';
+import { EmptyState } from './ui/EmptyState';
 import type { Project } from '../types';
 import './NotesPanel.css';
 
@@ -199,14 +200,17 @@ export function NotesPanel({ project, onSendMessage, tabId = null }: NotesPanelP
 
           <div className="flex-1 overflow-y-auto">
             {notes.length === 0 && !loading ? (
-              <div className="text-center py-8 px-3 text-[13px] text-fg-muted">
-                No notes yet. Add one above or type{' '}
-                <code className="text-[11px] text-accent-blue">note: buy milk</code> in chat.
-              </div>
+              <EmptyState
+                icon={<StickyNote size={18} />}
+                title="No notes yet"
+                hint="Add one above, or type note: buy milk in chat."
+              />
             ) : filtered.length === 0 ? (
-              <div className="text-center py-8 px-3 text-[13px] text-fg-muted">
-                No notes match "{filter.trim()}".
-              </div>
+              <EmptyState
+                title={`No notes match "${filter.trim()}"`}
+                hint="Try a shorter search term."
+                className="py-8"
+              />
             ) : (
               filtered.map((n, i) => (
                 <div key={n.text}>

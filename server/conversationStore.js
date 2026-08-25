@@ -180,6 +180,9 @@ export async function appendMessage(sessionId, message) {
       // exactly as it appeared live. Omitted (not false) when the caller doesn't say —
       // storedToTerminalMessages then falls back to role-based defaults for legacy records.
       ...(message.isMarkdown !== undefined ? { isMarkdown: message.isMarkdown } : {}),
+      // Additive matching metadata (2026-08-24): the trigger-mode pipeline patches the user
+      // record's `meta` afterwards with the stage that resolved it — see patchMessageMeta.
+      ...(message.meta ? { meta: message.meta } : {}),
     };
 
     // Append to NDJSON log (append-only — safe, fast)
@@ -235,5 +238,49 @@ export async function appendMessage(sessionId, message) {
     });
 
     return { id: sessionId, title: meta.title, messageCount: meta.messageCount, messages: [entry] };
+  });
+}
+
+/**
+ * Patches the `meta` field onto one already-persisted message (2026-08-24, matcher-stage
+ * transcript logging): the trigger-mode pipeline appends the user message first, matches it,
+ * then writes which stage/confidence resolved it. Only the first patch per message applies
+ * (`entry.meta` guard) and a corrupt/absent line is skipped — never throws, best-effort like
+ * appendMessage. Runs under the same serializePersistence lock as every other write, so it
+ * can't interleave with an append.
+ */
+export async function patchMessageMeta(sessionId, messageId, meta) {
+  if (!sessionId || !messageId || !meta) return;
+  return serializePersistence(async () => {
+    const idx = await readIndex();
+    const m = idx[sessionId];
+    if (!m) return;
+    const logPath = m.projectPath
+      ? projectSessionLogFile(m.projectPath, sessionId)
+      : legacySessionLogFile(sessionId);
+    try {
+      const raw = await fs.readFile(logPath, 'utf-8');
+      const lines = raw.split('\n');
+      let changed = false;
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i].trim();
+        if (!line) continue;
+        try {
+          const entry = JSON.parse(line);
+          if (entry.id === messageId && !entry.meta) {
+            lines[i] = JSON.stringify({ ...entry, meta });
+            changed = true;
+            break;
+          }
+        } catch {
+          // Corrupt line — never rewrite the file around it; skip.
+        }
+      }
+      if (changed) {
+        await fs.writeFile(logPath, lines.join('\n'));
+      }
+    } catch (err) {
+      console.error('[conversationStore] patchMessageMeta failed:', err.message);
+    }
   });
 }

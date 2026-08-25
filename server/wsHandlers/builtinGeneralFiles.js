@@ -168,29 +168,31 @@ export function planTidy(root, input) {
 export async function performTidy(root, moves) {
   const resolveSafe = createResolveSafe(root);
   let moved = 0;
+  const actionIds = []; // journal ids, one per move — the undo toast's batch revert consumes them
   for (const m of moves) {
     let fromAbs, toAbs;
     try {
       fromAbs = resolveSafe(m.from);
       toAbs = resolveSafe(m.to);
     } catch (err) {
-      return { ok: false, error: err.message, moved };
+      return { ok: false, error: err.message, moved, actionIds };
     }
     try {
       fs.mkdirSync(path.dirname(toAbs), { recursive: true });
       fs.renameSync(fromAbs, toAbs);
-      appendAction(root, {
+      const id = appendAction(root, {
         type: 'file_move',
         description: `Moved ${m.from} -> ${m.to}`,
         from: m.from,
         to: m.to,
       });
+      if (id) actionIds.push(id);
       moved++;
     } catch (err) {
-      return { ok: false, error: `Move of ${m.from} failed: ${err.message}`, moved };
+      return { ok: false, error: `Move of ${m.from} failed: ${err.message}`, moved, actionIds };
     }
   }
-  return { ok: true, moved };
+  return { ok: true, moved, actionIds };
 }
 
 async function handleTidy(ws, action, input, project, sessionContext) {
@@ -292,35 +294,37 @@ export async function performDuplicateDeletes(root, files) {
   const resolveSafe = createResolveSafe(root);
   let deleted = 0;
   let skippedJournal = 0;
+  const actionIds = []; // journal ids — the undo toast's batch revert restores the deleted copies
   for (const rel of files) {
     let abs;
     try {
       abs = resolveSafe(rel);
     } catch (err) {
-      return { ok: false, error: err.message, deleted, skippedJournal };
+      return { ok: false, error: err.message, deleted, skippedJournal, actionIds };
     }
     let preContent = null;
     try {
       const st = fs.statSync(abs);
       if (st.size <= MAX_PREIMAGE_BYTES) preContent = fs.readFileSync(abs, 'utf-8');
     } catch {
-      return { ok: false, error: `Could not read ${rel} before deleting.`, deleted, skippedJournal };
+      return { ok: false, error: `Could not read ${rel} before deleting.`, deleted, skippedJournal, actionIds };
     }
     try {
       fs.rmSync(abs, { force: true });
     } catch (err) {
-      return { ok: false, error: `Delete of ${rel} failed: ${err.message}`, deleted, skippedJournal };
+      return { ok: false, error: `Delete of ${rel} failed: ${err.message}`, deleted, skippedJournal, actionIds };
     }
     if (preContent === null) {
       // Same convention as tools.js wrapMutatingTool: files too large for an inline pre-image
       // are skipped in the history log rather than logged without a restore source.
       skippedJournal++;
     } else {
-      appendAction(root, { type: 'file_write', description: `Deleted duplicate ${rel}`, path: rel, existed: true, preContent });
+      const id = appendAction(root, { type: 'file_write', description: `Deleted duplicate ${rel}`, path: rel, existed: true, preContent });
+      if (id) actionIds.push(id);
     }
     deleted++;
   }
-  return { ok: true, deleted, skippedJournal };
+  return { ok: true, deleted, skippedJournal, actionIds };
 }
 
 async function handleDuplicatesDelete(ws, action, input, project, sessionContext) {
@@ -365,4 +369,124 @@ export const generalFileHandlers = {
   'general.files.tidy': handleTidy,
   'general.files.duplicates': handleDuplicates,
   'general.files.duplicates_delete': handleDuplicatesDelete,
+  'general.files.rename': handleRename,
+  'general.files.move': handleMove,
 };
+
+/**
+ * Phase 8 follow-up (2026-08-24): rename one file/folder within its directory. Same safety
+ * shape as tidy/duplicates_delete — resolveSafe containment, confirm-gated, journaled as
+ * `file_move` (from -> to) so `revert action <id>` moves it back. The new name must be a BARE
+ * name in the same directory (cross-folder moves are the `move` intent), and an existing
+ * target is refused (never overwrite — an overwritten file's pre-image can't be journaled).
+ */
+export async function performRename(root, from, to) {
+  const resolveSafe = createResolveSafe(root);
+  let absFrom, absTo;
+  try {
+    absFrom = resolveSafe(from);
+    absTo = resolveSafe(to);
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+  if (path.dirname(absFrom) !== path.dirname(absTo)) {
+    return { ok: false, error: 'Rename stays in the same folder — use "move X into Y" to move between folders.' };
+  }
+  if (!fs.existsSync(absFrom)) return { ok: false, error: `"${from}" doesn't exist.` };
+  if (fs.existsSync(absTo)) return { ok: false, error: `"${to}" already exists — the console never overwrites.` };
+  try {
+    fs.renameSync(absFrom, absTo);
+  } catch (err) {
+    return { ok: false, error: `Rename failed: ${err.message}` };
+  }
+  const relFrom = path.relative(root, absFrom).replace(/\\/g, '/');
+  const relTo = path.relative(root, absTo).replace(/\\/g, '/');
+  const id = appendAction(root, { type: 'file_move', description: `Renamed ${relFrom} -> ${relTo}`, from: relFrom, to: relTo });
+  return { ok: true, from: relFrom, to: relTo, actionIds: id ? [id] : [] };
+}
+
+/** Move one file/folder into an existing subfolder (drag-and-drop target). Journaled the same
+ *  way as rename (file_move), refused when the target name is already taken. */
+export async function performMove(root, file, targetDir) {
+  const resolveSafe = createResolveSafe(root);
+  let absFile, absDir;
+  try {
+    absFile = resolveSafe(file);
+    absDir = resolveSafe(targetDir);
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+  if (!fs.existsSync(absFile)) return { ok: false, error: `"${file}" doesn't exist.` };
+  let dirStat;
+  try { dirStat = fs.statSync(absDir); } catch { return { ok: false, error: `"${targetDir}" isn't a folder in this project.` }; }
+  if (!dirStat.isDirectory()) return { ok: false, error: `"${targetDir}" isn't a folder.` };
+  const absTo = path.join(absDir, path.basename(absFile));
+  if (fs.existsSync(absTo)) return { ok: false, error: `"${path.basename(absFile)}" already exists in ${targetDir} — the console never overwrites.` };
+  try {
+    fs.renameSync(absFile, absTo);
+  } catch (err) {
+    return { ok: false, error: `Move failed: ${err.message}` };
+  }
+  const relFrom = path.relative(root, absFile).replace(/\\/g, '/');
+  const relTo = path.relative(root, absTo).replace(/\\/g, '/');
+  const id = appendAction(root, { type: 'file_move', description: `Moved ${relFrom} -> ${relTo}`, from: relFrom, to: relTo });
+  return { ok: true, from: relFrom, to: relTo, actionIds: id ? [id] : [] };
+}
+
+function queueGeneralOp(ws, project, input, payload, commandText, trigger) {
+  const token = crypto.randomUUID();
+  pendingConfirmations.set(token, {
+    owner: ws,
+    projectId: project.id,
+    command: commandText,
+    trigger: input,
+    createdAt: Date.now(),
+    generalFileOp: payload,
+  });
+  ws.send(JSON.stringify({
+    type: 'confirm_prompt',
+    token,
+    command: `${commandText}?\n\nReversible via "revert action <id>" after it runs.`,
+    trigger,
+  }));
+  return true;
+}
+
+async function handleRename(ws, action, input, project, sessionContext) {
+  const m = input.match(/^rename\s+(.+?)\s+(?:to|as)\s+([^\r\n]+)$/i);
+  if (!m) {
+    answer(ws, `Say \`rename <file> to <newname>\` — e.g. \`rename main.py to app.py\`. Use \`move <file> into <folder>\` to move between folders.`);
+    return true;
+  }
+  const from = m[1].trim();
+  const to = m[2].trim();
+  // The new name must be a bare name — a path separator means "move", which has its own intent.
+  if (/[\\/]/.test(to)) {
+    answer(ws, `The new name must stay in the same folder — \`${to}\` looks like a path. Use \`move ${from} into <folder>\` instead.`);
+    return true;
+  }
+  const targetDir = path.dirname(from);
+  const toRel = targetDir === '.' ? to : `${targetDir}/${to}`;
+  return queueGeneralOp(
+    ws, project, input,
+    { kind: 'rename', from, to: toRel },
+    `Rename \`${from}\` to \`${to}\``,
+    'general_files_rename',
+  );
+}
+
+async function handleMove(ws, action, input, project, sessionContext) {
+  const m = input.match(/^move\s+(.+?)\s+into\s+(.+?)$/i);
+  if (!m) {
+    answer(ws, `Say \`move <file> into <folder>\` — e.g. \`move main.py into src\`.`);
+    return true;
+  }
+  const file = m[1].trim().replace(/^the\s+file\s+/i, '').trim();
+  const targetDir = m[2].trim().replace(/^the\s+folder\s+/i, '').trim();
+  return queueGeneralOp(
+    ws, project, input,
+    { kind: 'move', file, targetDir },
+    `Move \`${file}\` into \`${targetDir}\``,
+    'general_files_move',
+  );
+}

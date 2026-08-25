@@ -5,6 +5,7 @@ import { executeCommand, runningProcesses } from '../executor.js';
 import { createCheckpoint } from '../gitSafety.js';
 import { isCommandBlocked } from '../dangerousPatterns.js';
 import { isDestructiveCommand } from '../commandRisk.js';
+import { isAskModeBlocked } from '../toolGate.js';
 import { pendingToolConfirmations } from '../state.js';
 import { commandMatchesTemplate } from '../paramCommand.js';
 import { computeFileEditPreview } from '../diffPreview.js';
@@ -120,8 +121,16 @@ export async function runGatedExecuteCommand(ws, project, args, turnKey = null) 
  * allow-after-first-ask the grant is recorded once the user approves so later calls this session
  * run without asking.
  */
-export async function runToolCall(ws, project, tools, call, workspaceTools = {}, workspaceProjects = [], sessionGrants = null, turnKey = null) {
+export async function runToolCall(ws, project, tools, call, workspaceTools = {}, workspaceProjects = [], sessionGrants = null, turnKey = null, askMode = false) {
   const { tool, args } = call;
+
+  // Round-6 audit (2026-08-24): read-only "Ask" mode. Checked BEFORE the gate and before any
+  // checkpoint/sandbox work — Ask mode means "the model may look, never touch", so a blocked
+  // tool gets a plain tool error instead of a confirm prompt. The gate hierarchy is untouched;
+  // turning Ask mode off restores today's exact behavior.
+  if (askMode && isAskModeBlocked(tool)) {
+    return { success: false, error: `Ask mode is on — "${tool}" is a mutating or executing tool and is blocked. Only read-only tools (readFile, findFiles, searchCode, listFiles, getProjectInfo, ...) run in Ask mode.` };
+  }
 
   // If the AI specified a projectId, use that project's tools instead — gates resolve against
   // THAT project's root so permissions policy is always evaluated in the target project, never

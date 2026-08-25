@@ -6,6 +6,9 @@
   "private": false,
   "version": "1.0.8",
   "packageManager": "npm@11.16.0",
+  "engines": {
+    "node": ">=20"
+  },
   "bin": {
     "local-project-console": "bin/cli.js"
   },
@@ -19,6 +22,7 @@
   ],
   "scripts": {
     "dev": "tsx server/index.js",
+    "launcher": "node bin/cli.js launcher",
     "start": "node dist/server.js",
     "build": "vite build && esbuild server/index.js --bundle --platform=node --format=esm --packages=external --sourcemap --outfile=dist/server.js",
     "lint": "tsc --noEmit",
@@ -30,7 +34,11 @@
     "check-tools": "node server/scripts/checkToolsCoverage.js",
     "check-handlers": "node server/scripts/checkHandlerCoverage.js",
     "check-ws-cases": "node --import tsx --test scripts/checkWsMessageCases.ts",
-    "check-docs": "node server/scripts/checkDocsSync.js"
+    "check-docs": "node server/scripts/checkDocsSync.js",
+    "daemon": "node scripts/daemon.mjs",
+    "daemon:start": "node scripts/daemon.mjs start",
+    "daemon:stop": "node scripts/daemon.mjs stop",
+    "daemon:status": "node scripts/daemon.mjs status"
   },
   "dependencies": {
     "@clack/prompts": "^1.7.0",
@@ -46,7 +54,10 @@
     "figlet": "^1.11.4",
     "fuse.js": "^7.5.0",
     "mammoth": "^1.12.1",
-    "node-nlp": "^5.0.0-alpha.5",
+    "@nlpjs/builtin-microsoft": "^5.0.0-alpha.5",
+    "@nlpjs/core-loader": "^5.0.0-alpha.5",
+    "@nlpjs/lang-en": "^5.0.0-alpha.5",
+    "@nlpjs/nlp": "^5.0.0-alpha.5",
     "pdf-lib": "^1.17.1",
     "pdf-parse": "^2.4.5",
     "typescript": "~5.8.2",
@@ -77,9 +88,15 @@
     "re2": "^1.24.1"
   },
   "allowScripts": {
+    "re2@1.26.1": true,
     "re2@1.24.1": true,
     "sharp@0.32.6": true,
     "sharp@0.35.3": true,
-    "protobufjs@6.11.6": true
+    "protobufjs@6.11.6": true,
+    "protobufjs@7.6.5": true
+  },
+  "overrides": {
+    "protobufjs": "^7.6.5",
+    "sharp": "^0.35.3"
   }
 }

@@ -1,4 +1,6 @@
 import React, { useEffect, useRef } from 'react';
+import { AnimatePresence, motion } from 'motion/react';
+import { useFocusTrap } from '../../hooks/useFocusTrap';
 
 interface ModalShellProps {
   open: boolean;
@@ -7,61 +9,58 @@ interface ModalShellProps {
   children: React.ReactNode;
 }
 
-const FOCUSABLE_SELECTOR = 'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])';
-
-/** Shared modal overlay: fixed backdrop + centered panel + Esc-to-close. Extracted from
- *  UserProfileModal.tsx (Phase 1 modularization) so every modal owns this shell once; the
- *  welcome-tour overlay is structurally different (fixed z-50 card, local state machine) and
- *  stays on WelcomeScreen for now. */
+/** Shared modal overlay: fixed backdrop + centered panel + Esc-to-close + focus trap.
+ *  Extracted from UserProfileModal.tsx (Phase 1 modularization) so every modal owns this shell
+ *  once. 2026-08-24: the shell animates open/close (fade backdrop + scale/slide panel, the
+ *  same motion vocabulary as the rest of the app) and the focus trap moved to the shared
+ *  useFocusTrap hook. */
 export function ModalShell({ open, onClose, maxWidth = 'max-w-md', children }: ModalShellProps) {
   const panelRef = useRef<HTMLDivElement>(null);
+  useFocusTrap(panelRef, open);
 
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        onClose();
-        return;
-      }
-      // Focus trap: Tab/Shift+Tab cycle within the dialog so keyboard focus can never reach
-      // background content while a modal is open.
-      if (e.key !== 'Tab') return;
-      const panel = panelRef.current;
-      if (!panel) return;
-      const focusables = panel.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR);
-      if (focusables.length === 0) return;
-      const first = focusables[0];
-      const last = focusables[focusables.length - 1];
-      if (e.shiftKey && document.activeElement === first) {
-        e.preventDefault();
-        last.focus();
-      } else if (!e.shiftKey && document.activeElement === last) {
-        e.preventDefault();
-        first.focus();
-      }
+      if (e.key === 'Escape') onClose();
     };
     window.addEventListener('keydown', onKey);
-    // Move focus into the dialog on open so the first Tab can't start on background content.
-    const firstFocusable = panelRef.current?.querySelector<HTMLElement>(FOCUSABLE_SELECTOR);
-    firstFocusable?.focus();
     return () => window.removeEventListener('keydown', onKey);
   }, [open, onClose]);
 
-  if (!open) return null;
-
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
-      <div className="absolute inset-0 bg-scrim-strong backdrop-blur-sm" onClick={onClose} />
-      <div
-        ref={panelRef}
-        role="dialog"
-        aria-modal="true"
-        className={`relative z-10 w-full ${maxWidth} mx-4 bg-panel/90 backdrop-blur-xl border border-border-strong rounded-2xl shadow-modal overflow-hidden max-h-[85vh] flex flex-col`}
-      >
-        <div className="flex-1 min-h-0 overflow-y-auto">
-          {children}
-        </div>
-      </div>
-    </div>
+    <AnimatePresence>
+      {open && (
+        <motion.div
+          className="fixed inset-0 z-50 flex items-center justify-center"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.15, ease: 'easeOut' }}
+        >
+          <motion.div
+            className="absolute inset-0 bg-scrim-strong backdrop-blur-sm"
+            onClick={onClose}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.15, ease: 'easeOut' }}
+          />
+          <motion.div
+            ref={panelRef}
+            role="dialog"
+            aria-modal="true"
+            initial={{ opacity: 0, scale: 0.97, y: 8 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.98, y: 4 }}
+            transition={{ duration: 0.18, ease: 'easeOut' }}
+            className={`relative z-10 w-full ${maxWidth} mx-4 bg-panel/90 backdrop-blur-xl border border-border-strong rounded-2xl shadow-modal overflow-hidden max-h-[85vh] flex flex-col`}
+          >
+            <div className="flex-1 min-h-0 overflow-y-auto">
+              {children}
+            </div>
+          </motion.div>
+        </motion.div>
+      )}
+    </AnimatePresence>
   );
 }

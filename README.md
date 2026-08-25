@@ -1,6 +1,18 @@
 # Project Console
 
-**Local Project Engine** — a local, offline command dispatcher and AI assistant for managing multiple software projects from a single web interface. Everything runs on your machine: zero external API calls (beyond an opt-in Ollama Cloud model, which still proxies through your local Ollama daemon) and zero data leaves your computer.
+**Local Project Engine** — a command center for your projects that lives on your own machine. Point it at a folder and you can run the project, check git, search your files, and manage your workflows by typing plain English instead of memorizing commands. Everything runs locally: no external API calls by default (an opt-in Ollama Cloud model still proxies through your local Ollama daemon), and nothing leaves your computer.
+
+## Origin story
+
+I built this during my internship at VDT, working on a project called Netpulse. I kept getting stressed trying to remember the right commands to check if I'd pushed my code, run the project, or check the network — especially without reliable wifi at school. I'd used AI coding tools before and knew they could run commands directly from natural language, so I started building a way to do that myself: one place where I could just say what I wanted in plain English and have it run, fully offline if needed. What started as a tool to survive one internship project grew into something I wanted to use for my whole coursework — and eventually into something anyone could point at any project, in any language, and just use.
+
+## What makes this different
+
+Most AI coding tools are thin translators: your sentence in, a shell command out, and a model deciding what that command means. This console works the other way around. Every message goes through a deterministic matching pipeline by default — "run the tests" is recognized as run-the-tests, not guessed at — and the AI layer is an opt-in add-on on top. A bare install answers "run the tests", "git status", or "what is this project" with zero network and zero API keys.
+
+Because trigger mode drives everything, the safety model is not an AI-mode afterthought. It's layered and holds everywhere: a multi-stage matcher with per-intent confidence floors, an allowlist plus sandbox around command execution, confirm-before-every-mutation cards, an action-history journal with `revert action <id>`, and a hard blocklist. The same checks apply whether the command came from you, a suggestion chip, or the AI.
+
+The result is a console that behaves identically offline and online — same commands, same safety checks, same transcripts. Each message records which matching stage resolved it and at what confidence, so "why did it do that?" has a concrete answer instead of a shrug.
 
 ---
 
@@ -8,7 +20,7 @@
 
 ### Command dispatcher (works without AI)
 
-- **Intent matching**: every message is resolved through a multi-stage pipeline — embedding similarity (all-MiniLM-L6-v2), literal pre-checks for known trap phrases, fuzzy matching, keyword rules, a trained NLP classifier, and a bounded local-model classification call for novel phrasings. 141 intents with ~2,860 example phrases, split across `server/intents/*.js` and merged in `intentsData.js`.
+- **Intent matching**: every message is resolved through a multi-stage pipeline — embedding similarity (all-MiniLM-L6-v2), literal pre-checks for known trap phrases, fuzzy matching, keyword rules, a trained NLP classifier, and a bounded local-model classification call for novel phrasings. 147 intents with ~2,903 example phrases, split across `server/intents/*.js` and merged in `intentsData.js`.
 - **Self-learning**: confirmed phrases are promoted into the permanent example set automatically as the console is used (near-miss logging → `learningEngine.js`), persisted across restarts, and used to retrain both the embedding matcher and the NLP classifier.
 - **Chit-chat**: greeting, status, gratitude, farewell, acknowledgment, and joke replies with varied templates — no LLM call involved. Greetings/status are enriched with live state (console port, projects indexed, running dev server + URL, uncommitted-file count) and what the console remembers about the project. With AI mode on, greeting/status also ask the active model for a tailored reply (bounded timeout, falls back to the canned reply on any error).
 - **Calculator**: safe arithmetic (`+ - * / ( )`, no eval) plus offline unit conversion (length/weight/volume/temperature), percentage/tip/tax phrases (`convert 5 km to miles`, `what is 15% of 80`, `whats 18% tip on 64.50`, `add 8.25% tax to 120`). The Calculator panel (Tools) is a live iOS-style widget — button presses are instant, `=` evaluates through the same server-side evaluator chat uses.
@@ -131,7 +143,7 @@
 ### Project discovery & indexing
 
 - Scans the base directory for project folders containing `console.config.json`, a project doc (CLAUDE.md, README.md, an `ABOUT-*.md` file, UNIVERSAL_CONTEXT.md), or a `package.json`.
-- **Code-only fallback**: a folder with none of the above is still recognized if it has real source files in any of ~15 languages, a recognized config file (`Cargo.toml`, `go.mod`, `requirements.txt`, etc.), or a real `.git` directory — with an auto-generated summary of its detected stack.
+- **Code-only fallback**: a folder with none of the above is still recognized if it has real source files in any of ~19 code languages (24 file extensions — JS/TS, Python, Go, Rust, Java, C/C++, C#, Ruby, PHP, Swift, Kotlin, Dart, Vue, Svelte, Shell, PowerShell and more), a recognized config file (`Cargo.toml`, `go.mod`, `requirements.txt`, etc.), or a real `.git` directory — with an auto-generated summary of its detected stack.
 - **Script auto-derivation**: `package.json` scripts become runnable entries automatically, each gated on `node_modules` existing first. Hand-authored entries always win on collision.
 - **Codebase indexing**: on project select, builds a directory tree, detects languages/entry points, reads key config files, detects frameworks (React, Express, Flask, Django, Spring Boot, Laravel, Vite, etc.), and builds a repo map of exports/functions/classes (TypeScript compiler API for JS/TS/TSX, regex fallback for other languages) plus import relationships, API routes, and monorepo detection.
 - **Live reload**: `console.config.json` changes on disk hot-reload the matcher and classifier.
@@ -210,6 +222,12 @@ The server auto-falls back through ports 3000–3009 if 3000 is taken; the front
 
 Double-click `start.bat` in the root folder — it installs dependencies if needed, offers Web UI or CLI Chat mode, and launches the server.
 
+The same W/C/Q menu is available as a terminal command (no batch file), from the repo folder:
+
+```powershell
+npm run launcher   # same W/C/Q menu as start.bat — probes for a running server on 3000-3009 and hands off instead of starting a duplicate
+```
+
 ### Background daemon (no terminal window)
 
 ```powershell
@@ -224,7 +242,7 @@ Double-click `start.bat` in the root folder — it installs dependencies if need
 
 ### Web UI
 
-The UI is dark-first with an additive light theme (sliding sun/moon pill in the header; follows your OS preference on first load, remembered in `localStorage`). The welcome screen includes a 4-step guided tour (Take the Tour button) covering project selection, AI mode, and key commands. The header shows the live dev-server count, and the Dashboard button opens a per-project status grid (uncommitted files, recent commits, dev URLs, running commands). With a non-dev folder active, a Developer/General tab switcher and a **Tools** button (interactive tool panels) appear next to the header.
+The UI is dark-first with an additive light theme — a sliding sun/moon pill in the header, following your OS preference on first load and remembered in `localStorage`. First open lands on a welcome screen with a 4-step guided tour (Take the Tour) covering project selection, AI mode, and the key commands. The header keeps a live dev-server count; the Dashboard button opens a per-project status grid (uncommitted files, recent commits, dev URLs, running commands). When a non-dev folder is active, a Developer/General tab switcher and a **Tools** button (the interactive tool panels) appear next to the header.
 
 ### CLI chat (no browser)
 
@@ -406,7 +424,8 @@ App-global identity (name/title/custom role) edited from the ⚙ Settings modal;
 | `help` / `what can you do` / `how do I <anything>` | Full command guide; how-do-I answers come from the command catalog with the exact phrase, the real shell command, and a suggestion chip |
 | `list commands` / `help all` / `show all commands` | Prints the ENTIRE command catalog as plain text — the CLI's equivalent of the Command Reference tab (book icon in the header) |
 | `what is 12 times 7` / `convert 5 km to miles` / `whats 18% tip on 64.50` | Safe arithmetic + offline unit conversion + percentage/tip/tax (also via the Calculator panel) |
-| `open calculator` / `open pdf tools` / `open reminders` / `open file tools` / `open notes` / `open spreadsheet` / `open clipboard` / `open backup` / `open notifications` / `open documents` | Opens the interactive Tools panel (web UI); plain-text note + chat equivalents from the CLI |
+| `open calculator` / `open pdf tools` / `open reminders` / `open file tools` / `open notes` / `open spreadsheet` / `open clipboard` / `open backup` / `open notifications` / `open documents` / `open repo map` | Opens the interactive Tools panel (web UI); plain-text note + chat equivalents from the CLI |
+| `show the repo map` / `open repo map` | Opens the Repo Map panel — every indexed file's top-level exports, imports and reverse "used by" list, plus detected API routes (the same structure the AI prompt is built from) |
 | `switch to developer mode` / `switch to general mode` / `what mode am I in` | Change/check a project's workspace type (persisted in console.config.json) |
 | `switch projects` / `change projects` | The project list in the left sidebar |
 | `dashboard` / `live sites` | The Dashboard tab: project overview + live-site status |
@@ -449,7 +468,7 @@ server/
 ├── learningEngine.js     — Near-miss → suggestion generation, phrase injection
 ├── distillation.js       — AI exchange analysis → trigger-mode config suggestions
 ├── projectMemory.js      — Usage-pattern tracking + CLAUDE.md augmentation
-├── routes/               — 21 route modules: project/session/search/monitoring/profile/tuning/workspace/tool-panels/pdf/reminders/file-tools/notes/csv/clipboard/calculate/backup/command-docs/notifications/knowledge/marketplace/connected-users
+├── routes/               — 23 route modules: project/session/search/monitoring/profile/tuning/workspace/tool-panels/pdf/reminders/file-tools/notes/csv/clipboard/calculate/backup/command-docs/notifications/knowledge/marketplace/connected-users/browse/editors
 ├── wsHandlers/           — connection.js shim + per-domain leaves, builtin intent handlers, matchedEntry
 ├── intents/              — Per-domain intent phrase files
 └── scripts/              — Daemon launchers + check-* harnesses
@@ -472,7 +491,7 @@ scripts/                  — Daemon launchers (start/stop/add-to-startup)
 
 ```powershell
 npm run lint                # tsc --noEmit
-npm test                    # node:test suite: 461 tests (339 matcher cases + 122 WS case tables)
+npm test                    # node:test suite: 478 tests (345 matcher cases + 133 WS case tables)
 npm run test:coverage       # same suite with a coverage report (server-wide, line/function/branch)
 npm run check-intents       # static exact/near-duplicate phrase scanner
 npm run check-matcher       # matching-pipeline regression battery (339 inputs)

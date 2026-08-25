@@ -180,6 +180,36 @@ export function registerProjectRoutes(app, dirname) {
     res.json({ success: true, codebaseIndex: idx });
   }));
 
+  // Round-6 audit (2026-08-24): Aider-style repo-map visibility. The codebase index's
+  // whole-project symbol map has only ever fed the AI system prompt; this endpoint exposes the
+  // same structure (per-file top-level signatures + imports + reverse "used by" + API routes)
+  // to the web Repo Map panel. Reuses the project's cached codebaseIndex when present and
+  // builds it on demand otherwise — the same indexProject() every other consumer uses, so the
+  // panel and the AI prompt can never describe different structures.
+  app.get('/api/projects/:id/repo-map', asyncHandler(async (req, res) => {
+    const project = resolveProject(req.params.id, req.query.tab);
+    if (!project) return res.status(404).json({ error: 'Project not found' });
+    let idx = project.codebaseIndex;
+    if (!idx) {
+      idx = await indexProject(project.path);
+      if (idx) project.codebaseIndex = idx;
+    }
+    if (!idx) return res.status(500).json({ error: 'Could not index this project' });
+    res.json({
+      repoMap: idx.repoMap || [],
+      apiRoutes: idx.apiRoutes || [],
+      languages: idx.languages || [],
+      frameworks: idx.frameworks || [],
+      entryPoints: idx.entryPoints || [],
+      subPackages: idx.subPackages || [],
+      isMonorepo: !!idx.isMonorepo,
+      totalFiles: idx.totalFiles ?? 0,
+      totalDirs: idx.totalDirs ?? 0,
+      hasRealCode: !!idx.hasRealCode,
+      indexed: true,
+    });
+  }));
+
   // Phase 4: action history for the ProcessDock History tab (most-recent-first, capped).
   app.get('/api/projects/:id/action-history', asyncHandler(async (req, res) => {
     const project = resolveProject(req.params.id, req.query.tab);

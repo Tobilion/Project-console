@@ -1,11 +1,14 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { AnimatePresence, motion } from 'motion/react';
 import { Project, ChatSession, ToolPanelDef } from '../types';
 import { apiFetchJson } from '../utils/apiFetch';
+import { useFocusTrap } from '../hooks/useFocusTrap';
 import {
   Search, Home, LayoutDashboard, Plus, PanelLeft, FolderGit2, Terminal as TerminalIcon,
   Clock, Flame, BookOpen, LayoutGrid, Settings, Moon, Sun, Maximize2, Bot, FileDown,
   MessagesSquare, PanelBottom, ArrowLeftRight, History, Sparkles,
 } from 'lucide-react';
+import { EmptyState } from './ui/EmptyState';
 
 interface DeckItem {
   id: string;
@@ -15,6 +18,10 @@ interface DeckItem {
   keywords?: string[];
   icon: React.ReactNode;
   run: () => void;
+  /** Round-6 audit (2026-08-24): file-ish metadata for the preview pane's metadata panel —
+   *  name/location/type/size/dates. Only items with real file-ish facts carry it; a made-up
+   *  size would be worse than an empty line. */
+  meta?: { type: string; location?: string; size?: string; modified?: string };
 }
 
 interface CatalogCommand {
@@ -103,9 +110,31 @@ function writeUsage(usage: Record<string, UsageEntry>) {
   } catch {}
 }
 
+// Classic Levenshtein for the palette's typo tolerance — small (labels are short) and only
+// ever compared against whole words, so the O(n*m) cost is trivial at this scale.
+function editDistance(a: string, b: string): number {
+  if (a === b) return 0;
+  const m = a.length, n = b.length;
+  if (m === 0) return n;
+  if (n === 0) return m;
+  let prev = Array.from({ length: n + 1 }, (_, j) => j);
+  for (let i = 1; i <= m; i++) {
+    const cur = [i];
+    for (let j = 1; j <= n; j++) {
+      cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+    }
+    prev = cur;
+  }
+  return prev[n];
+}
+
 // Tokenized relevance scoring (2026-08-13): every whitespace-separated query token must be
 // found somewhere in the item (label/hint/keywords/group); the score rewards label hits over
 // hint over keywords, so "git push" ranks the actual push commands above unrelated hits.
+// 2026-08-24: typo tolerance — a token that matches NO field by substring still matches if it
+// is within edit distance 1 (short tokens) / 2 (long tokens) of a field WORD, at a reduced
+// score, so "explrer" finds "folder explorer" instead of returning zero results. Plus
+// multi-word concatenation ("gitstatus" == "git status", Raycast-style) for tokens >= 6 chars.
 function matchScore(it: DeckItem, q: string): number {
   const tokens = q.split(/\s+/).filter(Boolean);
   if (tokens.length === 0) return 0;
@@ -113,6 +142,13 @@ function matchScore(it: DeckItem, q: string): number {
   const hint = (it.hint ?? '').toLowerCase();
   const keys = (it.keywords ?? []).join(' ').toLowerCase();
   const group = it.group.toLowerCase();
+  const fuzzyFields: Array<[string, number]> = [
+    [label, 6], [hint, 4], [keys, 3], [group, 2],
+  ];
+  // Space-stripped concatenations for the "gitstatus" -> "git status" class.
+  const concatFields: Array<[string, number]> = [
+    [label.replace(/\s+/g, ''), 7], [hint.replace(/\s+/g, ''), 4], [keys.replace(/\s+/g, ''), 3],
+  ];
   let score = 0;
   for (const token of tokens) {
     let found = false;
@@ -120,6 +156,25 @@ function matchScore(it: DeckItem, q: string): number {
     if (hint.includes(token)) { score += 20; found = true; }
     if (keys.includes(token)) { score += 15; found = true; }
     if (group.includes(token)) { score += 10; found = true; }
+    if (!found && token.length >= 3) {
+      const maxDist = token.length >= 5 ? 2 : 1;
+      for (const [field, fuzzyScore] of fuzzyFields) {
+        if (field.split(/\s+/).some((word) => editDistance(word, token) <= maxDist)) {
+          score += fuzzyScore;
+          found = true;
+          break;
+        }
+      }
+    }
+    if (!found && token.length >= 6) {
+      for (const [field, concatScore] of concatFields) {
+        if (field.includes(token) || editDistance(field, token) <= 1) {
+          score += concatScore;
+          found = true;
+          break;
+        }
+      }
+    }
     if (!found) return -1;
   }
   return score;
@@ -145,6 +200,8 @@ export const CommandDeck = ({
   // payload is small and the palette is the main consumer, alongside the Command Reference tab.
   const [catalog, setCatalog] = useState<{ commands: CatalogCommand[]; intents: CatalogIntent[] } | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  useFocusTrap(panelRef, open);
 
   useEffect(() => {
     if (!open || catalog) return;
@@ -198,6 +255,8 @@ export const CommandDeck = ({
         list.push({
           id: `cmd-cat-${i}`, group: 'Commands', label: c.command, hint: c.shell || c.keywords?.[0],
           keywords: [...(c.keywords || []), ...(c.phrases || [])], icon: <TerminalIcon size={14} />,
+          // The shell command IS this entry's file-ish "location" in the metadata panel.
+          meta: { type: 'Command', location: c.shell || c.command },
           run: () => onSendMessage(c.command),
         });
       });
@@ -207,17 +266,18 @@ export const CommandDeck = ({
           keywords: [...c.phrases, c.group], icon: <TerminalIcon size={14} />,
           // Panel-tagged intents jump straight to their panel (what the chat handler would do
           // anyway); everything else runs through the normal chat flow with its confirms.
+          meta: { type: 'Intent', location: c.intentId },
           run: () => (c.opensPanel ? onOpenPanel(c.opensPanel) : onSendMessage(c.command)),
         });
       });
     }
 
     sessions.forEach((s) => {
-      list.push({ id: `sess-${s.id}`, group: 'Sessions', label: s.title || 'Untitled chat', hint: s.projectName || 'chat session', icon: <MessagesSquare size={14} />, run: () => onSwitchSession(s.id) });
+      list.push({ id: `sess-${s.id}`, group: 'Sessions', label: s.title || 'Untitled chat', hint: s.projectName || 'chat session', icon: <MessagesSquare size={14} />, meta: { type: 'Chat session', location: s.projectName || s.workspacePath || 'General chat', modified: new Date(s.updatedAt).toLocaleString() }, run: () => onSwitchSession(s.id) });
     });
 
     projects.forEach((p) => {
-      list.push({ id: `proj-${p.id}`, group: 'Projects', label: p.name, hint: p.path, icon: <FolderGit2 size={14} />, run: () => onSelectProject(p) });
+      list.push({ id: `proj-${p.id}`, group: 'Projects', label: p.name, hint: p.path, icon: <FolderGit2 size={14} />, meta: { type: 'Project', location: p.path }, run: () => onSelectProject(p) });
     });
 
     return list;
@@ -252,8 +312,17 @@ export const CommandDeck = ({
     const recent = filtered.filter(it => usage[it.id] && usage[it.id].lastUsedAt >= weekAgo)
       .sort((a, b) => (usage[b.id]?.lastUsedAt || 0) - (usage[a.id]?.lastUsedAt || 0));
     const recentIds = new Set(recent.map(r => r.id));
+    // Frequency WITH time decay (2026-08-24): raw count alone kept a heavily-used old command
+    // at the top of Frequent forever. The sort key is now count / (1 + days since last use) —
+    // a command used 20x a month ago ranks below one used 5x yesterday.
+    const decayFreq = (id: string) => {
+      const u = usage[id];
+      if (!u) return 0;
+      const days = (Date.now() - u.lastUsedAt) / (24 * 60 * 60 * 1000);
+      return u.count / (1 + days);
+    };
     const frequent = filtered.filter(it => usage[it.id] && !recentIds.has(it.id) && usage[it.id].count >= 2)
-      .sort((a, b) => (usage[b.id]?.count || 0) - (usage[a.id]?.count || 0));
+      .sort((a, b) => decayFreq(b.id) - decayFreq(a.id));
     const freqIds = new Set([...recentIds, ...frequent.map(f => f.id)]);
     const rest = filtered.filter(it => !freqIds.has(it.id));
     return { recent, frequent, rest };
@@ -286,7 +355,9 @@ export const CommandDeck = ({
   if (!q && ranked.recent.length > 0) sections.push({ key: 'recent', label: 'Recent', icon: <Clock size={10} />, items: ranked.recent });
   if (!q && ranked.frequent.length > 0) sections.push({ key: 'frequent', label: 'Frequent', icon: <Flame size={10} />, items: ranked.frequent });
   const cap = q ? RESULT_CAP : BROWSE_CAP;
-  sections.push({ key: 'all', label: q ? 'Results' : 'All', items: ranked.rest.slice(0, cap) });
+  // Round-6 audit (2026-08-24): with a query the grouped header names it ("Results for 'x'",
+  // Raycast-style) so it's obvious the section is scoped, not everything.
+  sections.push({ key: 'all', label: q ? `Results for "${query.trim()}"` : 'All', items: ranked.rest.slice(0, cap) });
   const truncated = ranked.rest.length > cap;
   // The exact items rendered on screen, in render order (Recent -> Frequent -> Results, each
   // capped). runSelected must index THIS list — `filtered`/`ranked` order differs whenever
@@ -294,8 +365,6 @@ export const CommandDeck = ({
   // indexing them ran a different action than the highlighted row (audit 2026-08-17).
   const flatItems: DeckItem[] = sections.flatMap((s) => s.items);
   const visibleItems = flatItems.length;
-
-  if (!open) return null;
 
   let rendered: React.ReactNode[] = [];
   let flatIndex = -1;
@@ -318,7 +387,9 @@ export const CommandDeck = ({
         >
           <span className={sel === i ? 'text-white flex-shrink-0' : 'text-accent flex-shrink-0'}>{it.icon}</span>
           <span className="flex-1 truncate min-w-0">{it.label}</span>
-          {it.hint && <span className={`text-[10px] font-mono truncate max-w-[45%] flex-shrink-0 ${sel === i ? 'text-white/80' : 'text-fg-dim'}`}>{it.hint}</span>}
+          {/* Round-6 audit (2026-08-24): the row's right edge shows its CATEGORY (Raycast
+              style), not the hint — the hint moved into the preview pane's metadata panel. */}
+          <span className={`text-[10px] uppercase tracking-wider truncate max-w-[40%] flex-shrink-0 ${sel === i ? 'text-white/70' : 'text-fg-dim'}`}>{it.group}</span>
         </button>
       );
     }
@@ -332,9 +403,28 @@ export const CommandDeck = ({
   }
 
   return (
-    <div className="fixed inset-0 z-40" onMouseDown={onClose}>
-      <div className="absolute inset-0 bg-scrim-strong backdrop-blur-sm" />
-      <div className="relative z-10 w-full max-w-[640px] mx-auto mt-24 bg-panel/90 backdrop-blur-xl border border-border-strong rounded-2xl shadow-modal overflow-hidden" onMouseDown={e => e.stopPropagation()}>
+    <AnimatePresence>
+      {open && (
+        <motion.div
+          className="fixed inset-0 z-40"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.15, ease: 'easeOut' }}
+          onMouseDown={onClose}
+        >
+          <div className="absolute inset-0 bg-scrim-strong backdrop-blur-sm" />
+          <motion.div
+            ref={panelRef}
+            role="dialog"
+            aria-modal="true"
+            initial={{ opacity: 0, scale: 0.97, y: -6 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.98, y: -4 }}
+            transition={{ duration: 0.18, ease: 'easeOut' }}
+            className="relative z-10 w-full max-w-[760px] mx-auto mt-24 bg-panel/90 backdrop-blur-xl border border-border-strong rounded-2xl shadow-modal overflow-hidden"
+            onMouseDown={e => e.stopPropagation()}
+          >
         <div className="flex items-center gap-3 px-4 h-12 border-b border-border-faint">
           <Search size={18} className="text-fg-dim flex-shrink-0" />
           <input
@@ -352,12 +442,75 @@ export const CommandDeck = ({
           />
           <kbd className="text-[10px] text-fg-dim border border-border-soft rounded px-1.5 py-0.5 font-mono flex-shrink-0">Esc</kbd>
         </div>
-        <div ref={listRef} className="max-h-80 overflow-y-auto p-2">
-          {filtered.length === 0 ? (
-            <div className="px-3 py-4 text-xs text-fg-dim italic text-center">No matches for "{query}"</div>
-          ) : rendered}
+        <div className="flex max-h-80">
+          <div ref={listRef} className="flex-1 overflow-y-auto p-2 border-r border-border-faint">
+            {filtered.length === 0 ? (
+              <EmptyState
+                title={`No matches for "${query}"`}
+                hint="Try a broader phrase, or press Esc and re-open with Ctrl+K."
+                className="py-6"
+              />
+            ) : rendered}
+          </div>
+          {/* Instant preview pane (2026-08-24, Raycast-style): the highlighted item's full
+              details render live as you arrow through — no Enter needed to inspect. The
+              round-6 audit turned it into a proper metadata panel for file-ish results:
+              name/location/type/size/dates when the item carries real facts. */}
+          <div className="w-64 shrink-0 overflow-y-auto p-3 border-l border-border-faint hidden md:block">
+            {flatItems[sel] ? (
+              <>
+                <div className="flex items-center gap-2 mb-1.5">
+                  <span className="text-accent flex-shrink-0">{flatItems[sel].icon}</span>
+                  <p className="text-[13px] font-semibold text-fg-strong leading-snug">{flatItems[sel].label}</p>
+                </div>
+                <p className="text-[10px] uppercase tracking-wider text-fg-dim font-bold mb-2">{flatItems[sel].group}</p>
+                {flatItems[sel].meta && (
+                  <dl className="space-y-1 mb-2">
+                    {flatItems[sel].meta.type && (
+                      <div className="flex items-start gap-2">
+                        <dt className="text-[10px] uppercase tracking-wider text-fg-faint w-16 shrink-0 pt-px">Type</dt>
+                        <dd className="text-[11px] text-fg-subtle min-w-0 break-words">{flatItems[sel].meta.type}</dd>
+                      </div>
+                    )}
+                    {flatItems[sel].meta.location && (
+                      <div className="flex items-start gap-2">
+                        <dt className="text-[10px] uppercase tracking-wider text-fg-faint w-16 shrink-0 pt-px">Location</dt>
+                        <dd className="text-[11px] font-mono text-fg-muted min-w-0 break-words">{flatItems[sel].meta.location}</dd>
+                      </div>
+                    )}
+                    {flatItems[sel].meta.size && (
+                      <div className="flex items-start gap-2">
+                        <dt className="text-[10px] uppercase tracking-wider text-fg-faint w-16 shrink-0 pt-px">Size</dt>
+                        <dd className="text-[11px] text-fg-muted min-w-0 break-words">{flatItems[sel].meta.size}</dd>
+                      </div>
+                    )}
+                    {flatItems[sel].meta.modified && (
+                      <div className="flex items-start gap-2">
+                        <dt className="text-[10px] uppercase tracking-wider text-fg-faint w-16 shrink-0 pt-px">Modified</dt>
+                        <dd className="text-[11px] text-fg-muted min-w-0 break-words">{flatItems[sel].meta.modified}</dd>
+                      </div>
+                    )}
+                  </dl>
+                )}
+                {flatItems[sel].hint && (
+                  <p className="text-[11px] font-mono text-fg-subtle bg-scrim-faint border border-border-faint rounded-lg px-2 py-1.5 mb-2 break-words">{flatItems[sel].hint}</p>
+                )}
+                {flatItems[sel].keywords && flatItems[sel].keywords.length > 0 && (
+                  <p className="text-[10px] text-fg-dim leading-relaxed">
+                    <span className="font-semibold text-fg-subtle">Keywords:</span>{' '}
+                    {flatItems[sel].keywords.slice(0, 6).join(', ')}
+                  </p>
+                )}
+                <p className="mt-3 text-[10px] text-fg-faint">Enter runs this · Esc closes</p>
+              </>
+            ) : (
+              <p className="text-[11px] text-fg-dim italic">Select an item to preview it.</p>
+            )}
+          </div>
         </div>
-      </div>
-    </div>
+          </motion.div>
+        </motion.div>
+      )}
+    </AnimatePresence>
   );
 };

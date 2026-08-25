@@ -57,6 +57,12 @@ const DEFAULT_PROFILE = {
   // Phase T2 (2026-08-14): the Folder Explorer's default view mode — 'list' (lines) or
   // 'grid' (objects). The in-panel toggle overrides per session; this is the fallback.
   explorerViewMode: 'list',
+  // Round-6 audit (2026-08-24): permission mode — 'default' (normal gate behavior, session
+  // grants and allow-after-first-ask apply) or 'ask' (READ-ONLY: the AI/direct tool paths
+  // block every mutating/executing tool with an explanation instead of prompting, approving,
+  // or auto-running anything). Default 'default' — an opt-in that only ever strengthens, and
+  // the confirm gate itself is untouched (trigger-mode typed commands keep their cards).
+  permissionMode: 'default',
 };
 
 // Only plain, trimmed strings up to a sane length — mirrors the conservative
@@ -102,6 +108,7 @@ function readProfile() {
       accentColor: sanitizeAccentColor(p.accentColor),
       scanAllFolders: sanitizeBool(p.scanAllFolders, DEFAULT_PROFILE.scanAllFolders),
       explorerViewMode: p.explorerViewMode === 'grid' ? 'grid' : 'list',
+      permissionMode: p.permissionMode === 'ask' ? 'ask' : 'default',
     };
   } catch {
     // Missing or corrupt file — serve defaults without touching disk.
@@ -143,6 +150,7 @@ export function sanitizeProfile(body, current) {
     accentColor: sanitizeAccentColor(body.accentColor ?? current.accentColor),
     scanAllFolders: sanitizeBool(body.scanAllFolders, current.scanAllFolders),
     explorerViewMode: body.explorerViewMode === 'grid' ? 'grid' : 'list',
+    permissionMode: body.permissionMode === 'ask' ? 'ask' : 'default',
   };
 }
 

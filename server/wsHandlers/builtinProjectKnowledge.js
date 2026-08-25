@@ -164,7 +164,8 @@ export const projectKnowledgeHandlers = {
       enqueueTask(project.id, 'code index build', async () => {
         await buildProjectIndex(project);
         const results = await performSearch(project, input);
-        if (ws.readyState === 1) ws.send(JSON.stringify({ type: 'answer', data: formatResults(results, input) }));
+        // toast: true — out-of-band background result (the user asked, then kept working).
+        if (ws.readyState === 1) ws.send(JSON.stringify({ type: 'answer', data: formatResults(results, input), toast: true }));
       });
       return true;
     }
@@ -205,7 +206,8 @@ export const projectKnowledgeHandlers = {
       enqueueTask(project.id, 'document index build', async () => {
         await buildProjectIndex(project);
         const results = await performSearch(project, input);
-        if (ws.readyState === 1) ws.send(JSON.stringify({ type: 'answer', data: formatResults(results, input) }));
+        // toast: true — out-of-band background result, same contract as code.search.
+        if (ws.readyState === 1) ws.send(JSON.stringify({ type: 'answer', data: formatResults(results, input), toast: true }));
       });
       return true;
     }

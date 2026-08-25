@@ -64,7 +64,7 @@ export async function fetchRegistryIndex() {
   if (parsed.protocol !== 'https:') return { error: 'The registry must be an HTTPS URL — a registry index fetched over plain http would be trivially spoofable.' };
   if (!isSafeExternalUrl(parsed)) return { error: 'Rejected: internal/private addresses are blocked by the SSRF guard. Use a public HTTPS registry URL.' };
   try {
-    const res = await fetch(url, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
+    const res = await fetch(url, { redirect: 'manual', signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
     if (!res.ok) return { error: `Registry responded ${res.status}.` };
     return parseRegistryIndex(await res.text());
   } catch (err) {
@@ -86,7 +86,7 @@ export async function fetchPackManifest(pack) {
   }
   let text;
   try {
-    const res = await fetch(pack.manifestUrl, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
+    const res = await fetch(pack.manifestUrl, { redirect: 'manual', signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
     if (!res.ok) return { ok: false, error: `${pack.name}: manifest responded ${res.status}.` };
     text = await res.text();
   } catch (err) {

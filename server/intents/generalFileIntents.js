@@ -50,4 +50,26 @@ export const GENERAL_FILE_INTENTS = {
       'delete every duplicate file',
     ],
   },
+  // Phase 8 follow-up (2026-08-24): file rename + move — the Folder Explorer's in-place
+  // rename and drag-and-drop move ride these chat commands (the terminal stays the source of
+  // truth; both are confirm-gated + journaled as file_move like tidy). Phrases are narrow and
+  // start with the verb so they can't drift into file_find/tidy shapes.
+  'general.files.rename': {
+    examples: [
+      'rename notes.txt as diary.txt', 'rename report.pdf to final-report.pdf',
+      'rename index.html to home.html', 'rename app.ts to main.ts',
+      'rename the file to newname.txt',
+      // "rename main.py to app.py" is deliberately NOT in the examples: its main.py token
+      // pulled the intent within closeSecond of every other main.py-bearing input (probed
+      // live: "good job on fixing main.py" gained a stray rename chip). The pre-semantic
+      // override pins the shape anyway, and the matcher battery keeps it covered.
+    ],
+  },
+  'general.files.move': {
+    examples: [
+      'move main.py into src', 'move report.pdf into documents',
+      'move the file into archive', 'move app.ts into src/components',
+      'move notes.txt into backups', 'move main.py into the folder src',
+    ],
+  },
 };

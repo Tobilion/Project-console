@@ -4,6 +4,8 @@ import { Terminal as TerminalIcon, ChevronDown, ChevronUp, Square, LayoutGrid, F
 import { shortCommand, portFromUrl } from '../utils/process';
 import { CopyButton } from './ui/CopyButton';
 import { HistoryPanel } from './HistoryPanel';
+import { EmptyState } from './ui/EmptyState';
+import { Skeleton } from './ui/Skeleton';
 
 export interface ProcessInfo {
   projectId: string;
@@ -16,6 +18,8 @@ export interface ProcessInfo {
 interface ProcessDockProps {
   processes: ProcessInfo[];
   processLogs: Record<string, string[]>;
+  /** True while the first-selection ring-buffer replay is in flight (skeleton lines). */
+  logLoading?: boolean;
   selectedProcessId: string | null;
   onSelectProcess: (projectId: string) => void;
   onStopProcess: (projectId: string) => void;
@@ -47,6 +51,7 @@ interface ProcessDockProps {
 export function ProcessDock({
   processes,
   processLogs,
+  logLoading = false,
   selectedProcessId,
   onSelectProcess,
   onStopProcess,
@@ -137,8 +142,13 @@ export function ProcessDock({
               >
                 {dockTab === 'projects' ? (
                   <div className="max-h-64 overflow-y-auto p-3">
-                    {projects.length === 0 ? (
-                      <div className="text-xs text-fg-dim px-1">No projects discovered yet — scan a folder first.</div>
+{projects.length === 0 ? (
+                      <EmptyState
+                        icon={<FolderOpen size={18} />}
+                        title="No projects discovered yet"
+                        hint="Scan a folder from the sidebar to populate the dock."
+                        className="py-6"
+                      />
                     ) : (
                       <div className="space-y-1">
                         {projects.map((proj) => {
@@ -224,7 +234,13 @@ export function ProcessDock({
                       />
                     </div>
                     <div ref={logContainerRef} onScroll={handleLogScroll} className="max-h-64 overflow-y-auto p-3 font-mono text-xs text-fg-muted leading-relaxed whitespace-pre-wrap">
-                      {logText || 'No output yet.'}
+                      {logLoading ? (
+                        <div className="space-y-1.5 py-1">
+                          {[0, 1, 2, 3].map((i) => (
+                            <Skeleton key={i} className="h-3 w-full" />
+                          ))}
+                        </div>
+                      ) : (logText || 'No output yet.')}
                     </div>
                   </>
                 )}

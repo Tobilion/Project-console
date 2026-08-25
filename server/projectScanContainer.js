@@ -5,6 +5,7 @@ import { deriveScriptEntriesForProject, mergeAutoEntries } from './scriptEntries
 import { sanitizeChatReplies, isContextFilename, readProjectContextDocs, commandEntriesFromDocs, isRecognizableByCodeAlone, buildFallbackConfig, detectWorkspaceType } from './projectScanHelpers.js';
 import { getCommandDir } from './commandDir.js';
 import { scanSingleProject } from './projectScanSingle.js';
+import { MONOREPO_MANIFESTS } from './codebaseData.js';
 
 /**
  * Scans baseDir for subdirectories containing console.config.json or CLAUDE.md/README.md.
@@ -45,10 +46,21 @@ export async function discoverProjects(baseDir, opts = {}) {
     // to zero projects via the empty container path. Same accepted edge case as root package.json.
     const rootNames = new Set(entries.map((e) => e.name.toLowerCase()));
     const hasRootPdf = entries.some((e) => e.isFile() && e.name.toLowerCase().endsWith('.pdf'));
+    // A root-level manifest/config file (go.mod, Cargo.toml, pyproject.toml, pubspec.yaml,
+    // requirements.txt, ...) is the same class of single-project signal as package.json — a
+    // container of many projects essentially never carries its own. Without these, a Go/Rust/
+    // Python/Flutter project pasted directly as the scan target resolved to zero projects (its
+    // code-only fallback only ran for container *children*), or worse, to one of its own
+    // internal folders (a Cargo project resolved to `src`). Confirmed live 2026-08-24 via
+    // temp-fixture scans of go.mod+main.go / Cargo.toml+src / pyproject.toml+app.py roots.
+    // `.git` stays deliberately excluded — a whole Projects container can live under one git
+    // repo, and collapsing it to one "project" would be wrong (the pre-existing rationale).
+    const hasRootManifest = [...MONOREPO_MANIFESTS].some((m) => rootNames.has(m.toLowerCase()));
     const looksLikeSingleProjectRoot =
       rootNames.has('console.config.json') ||
       [...rootNames].some(isContextFilename) ||
       rootNames.has('package.json') ||
+      hasRootManifest ||
       hasRootPdf ||
       // Phase T: with "include every folder" on, a signal-free root holding no subfolders is
       // itself the project (a junk folder pasted as the scan target must resolve to one

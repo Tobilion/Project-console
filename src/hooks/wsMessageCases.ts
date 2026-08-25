@@ -1,6 +1,7 @@
 import type { WsCtx, WsCaseHandler } from './wsCtx';
 import { makeId } from './wsCtx';
 import { WS_STREAMING_CASES } from './wsStreamingCases';
+import { addToast } from '../components/ui/toastStore';
 
 /**
  * The non-streaming WS-message case handlers, extracted verbatim from useConsole.ts's
@@ -24,6 +25,31 @@ const answerCase: WsCaseHandler = (ctx, payload) => {
   if (payload.openPanel) {
     ctx.toolPanel.setActiveToolPanel(payload.openPanel);
     ctx.toolPanel.setToolsOpen(true);
+  }
+  // Phase 8 (2026-08-24): an additive `toast: true` marks an OUT-OF-BAND background result
+  // (scheduled fires, auto-start boot runs, background type-checks/index builds) — the bubble
+  // still renders and persists, but the user may not be looking at the chat, so it also gets
+  // a toast. Same additive-field contract as openPanel; the CLI ignores it permanently.
+  if (payload.toast) {
+    addToast({
+      title: 'Background task finished',
+      description: String(payload.data).replace(/[*#`]/g, '').replace(/\s+/g, ' ').slice(0, 140),
+    });
+  }
+  // Phase 9 (2026-08-24): an additive `actionIds` array marks a JOURNALED destructive action
+  // (confirmed tidy/rename/move/duplicate-deletes, PDF outputs, trigger-mode file writes,
+  // backups) — the bubble renders as before, plus an 8s Undo toast whose button sends
+  // `revert action <ids>` through the normal chat flow (batch ids are comma-separated), so
+  // the confirm card, checkpoint and journaling stay in the terminal — the same contract as
+  // RemindersPanel's undo. The CLI ignores the field permanently.
+  if (Array.isArray(payload.actionIds) && payload.actionIds.length > 0 && ctx.sendMessage) {
+    addToast({
+      title: 'Done',
+      description: String(payload.data).replace(/[*#`]/g, '').replace(/\s+/g, ' ').slice(0, 90),
+      actionLabel: 'Undo',
+      duration: 8000,
+      onAction: () => ctx.sendMessage(`revert action ${payload.actionIds.join(',')}`),
+    });
   }
 };
 

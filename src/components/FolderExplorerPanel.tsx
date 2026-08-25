@@ -1,7 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { FolderOpen, RefreshCw, ChevronRight, ChevronLeft, ChevronUp, ChevronDown, CornerUpLeft, Home, List, LayoutGrid, MoreHorizontal, ExternalLink, Folder, File, FileCode, FileText, FileImage, FileArchive, Table, Music, Video, Code, ScanSearch, Search as SearchIcon, Lock } from 'lucide-react';
+import { Folder, List, LayoutGrid, Lock, Code } from 'lucide-react';
 import { apiFetchJson } from '../utils/apiFetch';
 import { cn } from '../lib/utils';
+import type { Project } from '../types';
+import { formatSize, formatDate, fileIcon, extOf } from './folderExplorer/utils';
+import type { BrowseEntry, EditorDef, ViewMode, GridSize } from './folderExplorer/utils';
+import { EntryRow, EntryTile } from './folderExplorer/views';
+import { EntryMenu, MenuItem, SortHeader } from './folderExplorer/menus';
+import { ExplorerHeader } from './folderExplorer/header';
 
 // Phase T2 (2026-08-14): the Folder Explorer — a standalone panel that browses ANY absolute
 // path on disk (not project-scoped; works in General mode with no project at all). Windows/
@@ -10,26 +16,19 @@ import { cn } from '../lib/utils';
 // chat commands (open X in the editor / open X with <editor> / open X in the browser) so the
 // terminal stays the single source of truth; Reveal uses the browse reveal endpoint.
 // Browsing is read-only (GET /api/browse) — nothing here mutates the filesystem.
-
-interface BrowseEntry {
-  name: string;
-  path: string;
-  isDir: boolean;
-  size: number;
-  modifiedAt: number;
-}
-
-interface EditorDef {
-  id: string;
-  name: string;
-  command: string;
-}
+//
+// 2026-08-24 split: helpers/menus/row-tile/header live in folderExplorer/*; this file owns
+// the panel state, the navigation/history logic and the layout.
 
 interface FolderExplorerPanelProps {
   onSendMessage: (text: string) => void;
   /** Phase T fix: the tab whose workspace this panel belongs to — the remembered folder path
    *  is scoped per tab so switching tabs restores each tab's own location. */
   tabId?: string | null;
+  /** Active project (2026-08-24): rename/move are chat-command mutations scoped to the active
+   *  project's sandbox, so the panel needs the project to compute project-relative paths and
+   *  to disable the mutation affordances when browsing outside it. */
+  project?: Project | null;
 }
 
 const VIEW_KEY = 'console.explorerView';
@@ -38,37 +37,8 @@ const SIZE_KEY = 'console.explorerSize';
 // keys above stay global — they're personal preferences, not per-workspace state).
 const PATH_KEY = (tabId: string | null | undefined) =>
   'console.explorerPath' + (tabId ? '.' + tabId : '');
-type ViewMode = 'list' | 'grid';
-type GridSize = 'sm' | 'md' | 'lg';
 
-function formatSize(n: number): string {
-  if (n >= 1024 * 1024 * 1024) return (n / (1024 * 1024 * 1024)).toFixed(1) + ' GB';
-  if (n >= 1024 * 1024) return (n / (1024 * 1024)).toFixed(1) + ' MB';
-  if (n >= 1024) return Math.round(n / 1024) + ' KB';
-  return n + ' B';
-}
-
-function formatDate(ms: number): string {
-  const d = new Date(ms);
-  return d.toLocaleDateString([], { month: 'short', day: 'numeric' }) +
-    ' ' + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-}
-
-function fileIcon(name: string, size = 14) {
-  const ext = name.toLowerCase().split('.').pop() || '';
-  const cls = 'shrink-0 text-fg-dim';
-  if (['py', 'js', 'jsx', 'ts', 'tsx', 'c', 'cpp', 'h', 'hpp', 'java', 'cs', 'kt', 'go', 'rs', 'rb', 'php', 'swift', 'sh', 'ps1'].includes(ext)) return <FileCode size={size} className={cn(cls, 'text-accent-blue/80')} />;
-  if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp', 'ico'].includes(ext)) return <FileImage size={size} className={cls} />;
-  if (['mp3', 'wav', 'flac', 'ogg', 'm4a', 'aac'].includes(ext)) return <Music size={size} className={cls} />;
-  if (['mp4', 'mkv', 'avi', 'mov', 'webm'].includes(ext)) return <Video size={size} className={cls} />;
-  if (['zip', 'rar', '7z', 'tar', 'gz', 'tgz'].includes(ext)) return <FileArchive size={size} className={cls} />;
-  if (['xls', 'xlsx', 'csv', 'ods'].includes(ext)) return <Table size={size} className={cls} />;
-  if (['html', 'htm'].includes(ext)) return <Code size={size} className={cn(cls, 'text-accent-orange/80')} />;
-  if (['txt', 'md', 'json', 'yml', 'yaml', 'xml', 'log'].includes(ext)) return <FileText size={size} className={cls} />;
-  return <File size={size} className={cls} />;
-}
-
-export function FolderExplorerPanel({ onSendMessage, tabId = null }: FolderExplorerPanelProps) {
+export function FolderExplorerPanel({ onSendMessage, tabId = null, project = null }: FolderExplorerPanelProps) {
   const [path, setPath] = useState<string>(() => {
     try { return localStorage.getItem(PATH_KEY(tabId)) || ''; } catch { return ''; }
   });
@@ -83,12 +53,90 @@ export function FolderExplorerPanel({ onSendMessage, tabId = null }: FolderExplo
   });
   const [editors, setEditors] = useState<EditorDef[]>([]);
   const [openWithFor, setOpenWithFor] = useState<string | null>(null);
+  // Multi-select (2026-08-24): Ctrl/Cmd+click toggles, Shift+click range-selects from the last
+  // clicked entry, Esc clears. The selection is read-only convenience (copy paths) — no
+  // mutation of the filesystem here, ever.
+  const [selectedPaths, setSelectedPaths] = useState<Set<string>>(new Set());
+  const selectPivotRef = useRef<string | null>(null);
+  // Right-click context menu: { x, y, path } positioned at the pointer, closed on outside
+  // click / Esc. Same action set as the per-entry ⋯ menu (chat commands, source of truth).
+  const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; path: string } | null>(null);
+  // Rename-in-place (2026-08-24): F2 or the menus start an inline rename; Enter commits via
+  // the chat command (`rename <rel> to <newname>`) so confirm + journal + revert stay in the
+  // terminal. Only offered when the browsed folder is inside the active project (the sandbox
+  // boundary the chat commands enforce).
+  const [renamingPath, setRenamingPath] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState('');
+  const renameInputRef = useRef<HTMLInputElement>(null);
+  // Guards the Enter-then-blur double-commit: Enter sends the command and unmounts the input,
+  // whose onBlur would otherwise fire with the stale closure and send it again.
+  const renameCommittedRef = useRef(false);
+  // Drag-and-drop move (2026-08-24): file rows/tiles are draggable, folder rows/tiles are
+  // drop targets; the drop sends the `move <rel> into <relDir>` chat command (confirm-gated
+  // and journaled server-side like tidy).
+  const [dragPath, setDragPath] = useState<string | null>(null);
+  const [dropTarget, setDropTarget] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+
+  // Project-relative path for an absolute browse path, or null when it sits outside the
+  // active project — rename/move are sandbox-scoped to the project by the chat commands.
+  const relOf = useCallback((absPath: string): string | null => {
+    if (!project) return null;
+    const root = project.path.replace(/[\\/]+$/, '').toLowerCase();
+    const abs = absPath.replace(/[\\/]+$/, '');
+    const lower = abs.toLowerCase();
+    if (!(lower.startsWith(root + '\\') || lower.startsWith(root + '/'))) return null;
+    return abs.slice(root.length).replace(/^[\\/]+/, '').replace(/\\/g, '/') || null;
+  }, [project]);
+
+  const startRename = (entry: BrowseEntry) => {
+    if (!relOf(entry.path)) return;
+    renameCommittedRef.current = false;
+    setRenamingPath(entry.path);
+    setRenameValue(entry.name);
+    setTimeout(() => renameInputRef.current?.select(), 0);
+  };
+
+  const commitRename = (entry: BrowseEntry) => {
+    const rel = relOf(entry.path);
+    setRenamingPath(null);
+    if (!rel) return;
+    const name = renameValue.trim();
+    if (!name || name === entry.name) return;
+    const slash = rel.lastIndexOf('/');
+    const toRel = slash === -1 ? name : `${rel.slice(0, slash)}/${name}`;
+    renameCommittedRef.current = true;
+    onSendMessage(`rename ${rel} to ${toRel}`);
+  };
+
+  const commitRenameFromBlur = (entry: BrowseEntry) => {
+    // Enter already sent the command and unmounted the input — this blur is the echo.
+    if (renameCommittedRef.current) { renameCommittedRef.current = false; return; }
+    commitRename(entry);
+  };
+
+  const onDragStart = (e: React.DragEvent, entry: BrowseEntry) => {
+    if (entry.isDir) return;
+    setDragPath(entry.path);
+    e.dataTransfer.effectAllowed = 'copy';
+    e.dataTransfer.setData('text/plain', entry.name);
+  };
+
+  const onDrop = (e: React.DragEvent, target: BrowseEntry) => {
+    e.preventDefault();
+    setDropTarget(null);
+    const filePath = dragPath;
+    setDragPath(null);
+    if (!filePath || filePath === target.path) return;
+    const relFile = relOf(filePath);
+    const relDir = relOf(target.path);
+    if (!relFile || !relDir) return;
+    onSendMessage(`move ${relFile} into ${relDir}`);
+  };
   // Browser-style back/forward history over visited folders (Windows Explorer-like).
   const historyRef = useRef<string[]>([]);
   const historyIndexRef = useRef(-1);
   const [historyTick, setHistoryTick] = useState(0);
-  const pathInputRef = useRef<HTMLInputElement>(null);
 
   const canGoBack = historyIndexRef.current > 0;
   const canGoForward = historyIndexRef.current < historyRef.current.length - 1;
@@ -137,6 +185,9 @@ export function FolderExplorerPanel({ onSendMessage, tabId = null }: FolderExplo
     setPath(resolved);
     setEntries(data.entries || []);
     setSearchQuery('');
+    // Selection is per-folder — navigating away drops it (Windows Explorer behavior).
+    setSelectedPaths(new Set());
+    selectPivotRef.current = null;
     if (pushHistory) {
       const prev = historyRef.current;
       const idx = historyIndexRef.current;
@@ -231,6 +282,11 @@ export function FolderExplorerPanel({ onSendMessage, tabId = null }: FolderExplo
     const onKey = (ev: KeyboardEvent) => {
       const t = ev.target as HTMLElement | null;
       if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
+      if (ev.key === 'Escape') {
+        setCtxMenu(null);
+        setSelectedPaths(new Set());
+        return;
+      }
       if (ev.key === 'ArrowDown' || ev.key === 'ArrowUp') {
         ev.preventDefault();
         if (t && t.tagName === 'BUTTON') t.blur();
@@ -245,11 +301,25 @@ export function FolderExplorerPanel({ onSendMessage, tabId = null }: FolderExplo
         ev.preventDefault();
         if (e.isDir) browse(e.path);
         else openDefaultApp(e.path);
+      } else if (ev.key === 'F2' && sortedEntries.length > 0) {
+        const e = sortedEntries[Math.min(cursor, sortedEntries.length - 1)];
+        if (e) { ev.preventDefault(); startRename(e); }
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [sortedEntries, cursor, browse, openDefaultApp]);
+  }, [sortedEntries, cursor, browse, openDefaultApp, startRename]);
+
+  // Right-click menu closes on any outside click.
+  useEffect(() => {
+    if (!ctxMenu) return;
+    const onDoc = (e: MouseEvent) => {
+      const el = document.getElementById('explorer-ctx-menu');
+      if (el && !el.contains(e.target as Node)) setCtxMenu(null);
+    };
+    document.addEventListener('mousedown', onDoc);
+    return () => document.removeEventListener('mousedown', onDoc);
+  }, [ctxMenu]);
 
   // Keep the highlighted row visible while navigating.
   useEffect(() => {
@@ -257,7 +327,35 @@ export function FolderExplorerPanel({ onSendMessage, tabId = null }: FolderExplo
     el?.scrollIntoView({ block: 'nearest' });
   }, [cursor, sortedEntries]);
 
-  const breadcrumbs = path.split(/[\\/]/).filter(Boolean);
+  // --- Multi-select helpers (2026-08-24) ---
+  const toggleSelect = (entry: BrowseEntry, ev: React.MouseEvent) => {
+    if (ev.shiftKey && selectPivotRef.current) {
+      const idxA = sortedEntries.findIndex((x) => x.path === selectPivotRef.current);
+      const idxB = sortedEntries.findIndex((x) => x.path === entry.path);
+      if (idxA !== -1 && idxB !== -1) {
+        const [lo, hi] = idxA < idxB ? [idxA, idxB] : [idxB, idxA];
+        setSelectedPaths(new Set(sortedEntries.slice(lo, hi + 1).map((x) => x.path)));
+        selectPivotRef.current = entry.path;
+        return;
+      }
+    }
+    setSelectedPaths((prev) => {
+      const next = new Set(prev);
+      if (next.has(entry.path)) next.delete(entry.path);
+      else next.add(entry.path);
+      return next;
+    });
+    selectPivotRef.current = entry.path;
+  };
+
+  const copySelectedPaths = async () => {
+    // Multi-copy is a client-side browser clipboard write (the single-item menu keeps its
+    // chat-command server copy) — a convenience for the selection, no terminal spam.
+    try {
+      await navigator.clipboard.writeText([...selectedPaths].join('\n'));
+    } catch {}
+    setSelectedPaths(new Set());
+  };
 
   const sendOpenWith = (editorName: string) => {
     if (!openWithFor) return;
@@ -265,103 +363,60 @@ export function FolderExplorerPanel({ onSendMessage, tabId = null }: FolderExplo
     setOpenWithFor(null);
   };
 
-  const extOf = (name: string) => (name.toLowerCase().split('.').pop() || '');
-
   const tileSize = gridSize === 'lg' ? 72 : gridSize === 'md' ? 56 : 44;
   const tileIcon = gridSize === 'lg' ? 28 : gridSize === 'md' ? 22 : 16;
 
+  // Shared props for the row/tile renderers (2026-08-24 split).
+  const entryViewProps = {
+    cursor,
+    selectedPaths,
+    dropTarget,
+    renamingPath,
+    renameValue,
+    renameInputRef,
+    editors,
+    onBrowse: browse,
+    onOpenDefault: openDefaultApp,
+    onToggleSelect: toggleSelect,
+    onDragStart,
+    onDrop,
+    onSetDropTarget: setDropTarget,
+    onContextMenu: (ev: React.MouseEvent, entry: BrowseEntry) => {
+      ev.preventDefault();
+      setCtxMenu({ x: ev.clientX, y: ev.clientY, path: entry.path });
+    },
+    onStartRename: startRename,
+    onCommitRename: commitRename,
+    onCancelRename: () => setRenamingPath(null),
+    onBlurRename: commitRenameFromBlur,
+    onRenameValue: setRenameValue,
+    onSendMessage,
+    onOpenWith: setOpenWithFor,
+  };
+
   return (
     <div className="h-full flex flex-col">
-      {/* Header: path input + quick actions */}
-      <div className="flex items-center gap-2 px-4 py-2 border-b border-border-faint shrink-0 flex-wrap">
-        <div className="p-1.5 rounded-lg bg-accent-teal/15 text-accent-teal shrink-0">
-          <FolderOpen size={16} />
-        </div>
-        <h2 className="text-sm font-semibold text-fg-strong tracking-wide uppercase shrink-0">Folder Explorer</h2>
-        <form
-          className="flex-1 flex items-center gap-1.5 min-w-[220px]"
-          onSubmit={(e) => { e.preventDefault(); browse(path); }}
-        >
-          <input
-            ref={pathInputRef}
-            type="text"
-            value={path}
-            onChange={(e) => setPath(e.target.value)}
-            placeholder="C:\Users\you\Documents — paste any folder path"
-            className="flex-1 text-xs bg-panel-strong border border-border-soft rounded-lg px-2.5 py-1.5 text-fg-strong font-mono focus:outline-none focus:border-accent-blue/50"
-          />
-          <button
-            type="submit"
-            disabled={!path.trim() || loading}
-            className="flex items-center gap-1 px-3 py-1.5 text-xs font-bold rounded-lg bg-accent-blue text-white hover:opacity-90 transition-opacity disabled:opacity-40"
-          >
-            {loading ? <RefreshCw size={12} className="animate-spin" /> : <ScanSearch size={12} />}
-            Browse
-          </button>
-        </form>
-        <div className="flex items-center gap-1">
-          <button onClick={goBack} disabled={!canGoBack} title="Back" className="p-1.5 text-fg-dim hover:text-fg-strong rounded-lg transition-colors disabled:opacity-30 disabled:hover:text-fg-dim" aria-label="Back">
-            <ChevronLeft size={15} />
-          </button>
-          <button onClick={goForward} disabled={!canGoForward} title="Forward" className="p-1.5 text-fg-dim hover:text-fg-strong rounded-lg transition-colors disabled:opacity-30 disabled:hover:text-fg-dim" aria-label="Forward">
-            <ChevronRight size={15} />
-          </button>
-          <button onClick={up} disabled={!path} title="Up one level" className="p-1.5 text-fg-dim hover:text-fg-strong rounded-lg transition-colors disabled:opacity-40">
-            <CornerUpLeft size={15} />
-          </button>
-          <button onClick={home} title="Go to the drive root" className="p-1.5 text-fg-dim hover:text-fg-strong rounded-lg transition-colors">
-            <Home size={15} />
-          </button>
-          <button onClick={() => browse(path)} title="Refresh" className="p-1.5 text-fg-dim hover:text-fg-strong rounded-lg transition-colors">
-            <RefreshCw size={15} className={cn(loading && 'animate-spin')} />
-          </button>
-        </div>
-      </div>
-
-      {/* Search bar — filters the current listing by name (Windows Explorer style); the
-          back/forward/up/breadcrumb navigation stays fully functional while searching. */}
-      <div className="flex items-center gap-2 px-4 py-1.5 border-b border-border-faint shrink-0">
-        <SearchIcon size={13} className="text-fg-dim shrink-0" />
-        <input
-          type="text"
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Escape') setSearchQuery('');
-          }}
-          placeholder={`Search in ${path.split(/[\\/]/).filter(Boolean).pop() || 'this folder'}…`}
-          className="flex-1 min-w-0 text-xs bg-panel-strong border border-border-soft rounded-lg px-2.5 py-1 text-fg-strong focus:outline-none focus:border-accent-blue/50"
-        />
-        {searchQuery && (
-          <span className="text-[10px] text-fg-dim">
-            {filteredEntries.length} of {entries.length}
-          </span>
-        )}
-      </div>
+      <ExplorerHeader
+        path={path}
+        setPath={setPath}
+        loading={loading}
+        canGoBack={canGoBack}
+        canGoForward={canGoForward}
+        onBrowse={browse}
+        onBack={goBack}
+        onForward={goForward}
+        onUp={up}
+        onHome={home}
+        searchQuery={searchQuery}
+        setSearchQuery={setSearchQuery}
+        filteredCount={filteredEntries.length}
+        entriesCount={entries.length}
+        selectedCount={selectedPaths.size}
+        onCopySelected={() => void copySelectedPaths()}
+        onClearSelection={() => setSelectedPaths(new Set())}
+      />
 
       {error && <p className="text-xs text-accent-red px-4 py-1.5">{error}</p>}
-
-      {/* Breadcrumb trail */}
-      {breadcrumbs.length > 0 && (
-        <div className="flex items-center gap-0.5 px-4 py-1 border-b border-border-faint shrink-0 overflow-x-auto text-[11px]">
-          {breadcrumbs.map((part, i) => {
-            const crumbPath = breadcrumbs.slice(0, i + 1).join(path.includes('\\') ? '\\' : '/') + (path.includes('\\') ? '\\' : '/');
-            return (
-              <button
-                key={i}
-                onClick={() => browse(crumbPath)}
-                className={cn(
-                  'flex items-center gap-0.5 px-1 py-0.5 rounded transition-colors whitespace-nowrap',
-                  i === breadcrumbs.length - 1 ? 'text-fg-strong font-semibold' : 'text-fg-dim hover:text-fg-strong',
-                )}
-              >
-                {i > 0 && <ChevronRight size={11} className="text-fg-faint" />}
-                {part || (path.includes('\\') ? 'C:' : '/')}
-              </button>
-            );
-          })}
-        </div>
-      )}
 
       {/* Main area: list or grid */}
       <div className="flex-1 min-h-0 overflow-y-auto bg-panel">
@@ -391,82 +446,34 @@ export function FolderExplorerPanel({ onSendMessage, tabId = null }: FolderExplo
             </thead>
             <tbody>
               {sortedEntries.map((e, i) => (
-                <tr
+                <EntryRow
                   key={e.path}
-                  data-explorer-cursor={i === cursor ? '' : undefined}
-                  className={cn(
-                    'border-b border-border-faint last:border-b-0 hover:bg-scrim-faint transition-colors',
-                    i === cursor && 'bg-accent-blue/10 hover:bg-accent-blue/15',
-                  )}
-                >
-                  <td className="px-4 py-1.5">
-                    <button
-                      onClick={() => { if (e.isDir) browse(e.path); }}
-                      onDoubleClick={() => { if (!e.isDir) openDefaultApp(e.path); }}
-                      onKeyDown={(ev) => {
-                        // Enter on a row opens it: folders navigate, files open in the default app.
-                        if (ev.key === 'Enter') {
-                          ev.preventDefault();
-                          if (e.isDir) browse(e.path);
-                          else openDefaultApp(e.path);
-                        }
-                      }}
-                      title={e.isDir ? 'Enter to open folder' : 'Double-click or Enter to open in its default app'}
-                      className="flex items-center gap-2 text-left w-full cursor-pointer"
-                    >
-                      {e.isDir ? <Folder size={14} className="shrink-0 text-accent" /> : fileIcon(e.name)}
-                      <span className="text-fg-strong font-mono truncate">{e.name}</span>
-                    </button>
-                  </td>
-                  <td className="px-2 py-1.5 text-right text-fg-dim font-mono hidden sm:table-cell">{e.isDir ? '—' : formatSize(e.size)}</td>
-                  <td className="px-4 py-1.5 text-right text-fg-dim hidden md:table-cell">{formatDate(e.modifiedAt)}</td>
-                  <td className="px-2 py-1.5">
-                    <EntryMenu
-                      entry={e}
-                      editors={editors}
-                      onSendMessage={onSendMessage}
-                      onOpenWith={() => setOpenWithFor(e.path)}
-                      onOpenDefault={() => { if (!e.isDir) openDefaultApp(e.path); }}
-                    />
-                  </td>
-                </tr>
+                  entry={e}
+                  index={i}
+                  cursor={cursor}
+                  selected={selectedPaths.has(e.path)}
+                  dropTargetPath={dropTarget}
+                  renaming={renamingPath === e.path}
+                  canRename={!!relOf(e.path)}
+                  {...entryViewProps}
+                />
               ))}
             </tbody>
           </table>
         ) : (
           <div className="p-4 grid gap-3" style={{ gridTemplateColumns: `repeat(auto-fill, minmax(${tileSize + 24}px, 1fr))` }}>
             {sortedEntries.map((e, i) => (
-              <button
+              <EntryTile
                 key={e.path}
-                data-explorer-cursor={i === cursor ? '' : undefined}
-                onClick={() => { if (e.isDir) browse(e.path); }}
-                onDoubleClick={() => { if (!e.isDir) openDefaultApp(e.path); }}
-                onKeyDown={(ev) => {
-                  if (ev.key === 'Enter') {
-                    ev.preventDefault();
-                    if (e.isDir) browse(e.path);
-                    else openDefaultApp(e.path);
-                  }
-                }}
-                title={e.isDir ? 'Enter to open folder' : 'Double-click or Enter to open in its default app'}
-                className={cn(
-                  'group flex flex-col items-center gap-1.5 rounded-xl border p-2 transition-colors cursor-pointer',
-                  i === cursor
-                    ? 'border-accent-blue/50 bg-accent-blue/10'
-                    : 'border-transparent',
-                  e.isDir ? 'hover:bg-scrim-faint hover:border-border-soft' : 'hover:bg-scrim-faint',
-                )}
-              >
-                <div className="flex flex-col items-center gap-1">
-                  {e.isDir ? <Folder size={tileIcon} className="text-accent" /> : fileIcon(e.name, tileIcon)}
-                  {!e.isDir && (
-                    <span className="text-[9px] text-fg-faint font-mono uppercase">{extOf(e.name) || 'file'}</span>
-                  )}
-                </div>
-                <span className="text-[10px] text-fg-strong text-center break-all leading-tight max-h-8 overflow-hidden">
-                  {e.name}
-                </span>
-              </button>
+                entry={e}
+                index={i}
+                cursor={cursor}
+                selected={selectedPaths.has(e.path)}
+                dropTargetPath={dropTarget}
+                renaming={renamingPath === e.path}
+                tileIconSize={tileIcon}
+                {...entryViewProps}
+              />
             ))}
           </div>
         )}
@@ -509,9 +516,59 @@ export function FolderExplorerPanel({ onSendMessage, tabId = null }: FolderExplo
         </span>
         <span className="text-[10px] text-fg-dim">
           {entries.length} item{entries.length === 1 ? '' : 's'}
+          {/* Round-6 audit (2026-08-24): VS Code status-bar pattern — a multi-select shows
+              its own count instead of only the folder total, so the selection state is
+              visible while you work. */}
+          {selectedPaths.size > 0 && <span className="text-accent-blue"> · {selectedPaths.size} selected</span>}
           {loading && ' — loading…'}
         </span>
       </div>
+
+      {/* Right-click context menu (2026-08-24) — same chat-command actions as the ⋯ menu;
+          with a multi-selection active it offers copying the whole selection. */}
+      {ctxMenu && (() => {
+        const ctxEntry = sortedEntries.find((x) => x.path === ctxMenu.path);
+        if (!ctxEntry) return null;
+        const multi = selectedPaths.size > 1 && selectedPaths.has(ctxEntry.path);
+        const name = ctxEntry.name;
+        const isHtml = !ctxEntry.isDir && /\.html?$/i.test(name);
+        const canMutate = !!relOf(ctxEntry.path);
+        const close = () => setCtxMenu(null);
+        return (
+          <div
+            id="explorer-ctx-menu"
+            className="fixed z-50 w-52 bg-panel border border-border-strong rounded-xl shadow-float py-1 text-xs"
+            style={{ left: Math.min(ctxMenu.x, window.innerWidth - 230), top: Math.min(ctxMenu.y, window.innerHeight - 260) }}
+          >
+            {!ctxEntry.isDir && (
+              <MenuItem label="Open (default app)" onClick={() => { openDefaultApp(ctxEntry.path); close(); }} />
+            )}
+            {!ctxEntry.isDir && (
+              <MenuItem label="Open in editor" onClick={() => { onSendMessage(`open ${name} in the editor`); close(); }} />
+            )}
+            {!ctxEntry.isDir && (
+              <MenuItem label="Open with…" onClick={() => { setOpenWithFor(ctxEntry.path); close(); }} />
+            )}
+            {isHtml && (
+              <MenuItem label="Open in browser" onClick={() => { onSendMessage(`open ${name} in the browser`); close(); }} />
+            )}
+            {!ctxEntry.isDir && <div className="border-t border-border-faint my-1" />}
+            <MenuItem label="Reveal in folder" onClick={() => { onSendMessage(`open ${name} in the folder`); close(); }} />
+            {canMutate && (
+              <MenuItem label="Rename…" onClick={() => { close(); startRename(ctxEntry); }} />
+            )}
+            <MenuItem label={multi ? `Copy ${selectedPaths.size} paths` : 'Copy path'} onClick={() => {
+              if (multi) { void copySelectedPaths(); } else { onSendMessage(`copy path of ${ctxEntry.path}`); }
+              close();
+            }} />
+            {!canMutate && (
+              <div className="px-3 py-1.5 text-[10px] text-fg-faint">
+                Rename/move only work inside the active project.
+              </div>
+            )}
+          </div>
+        );
+      })()}
 
       {/* Open-with chooser overlay */}
       {openWithFor && (
@@ -545,113 +602,5 @@ export function FolderExplorerPanel({ onSendMessage, tabId = null }: FolderExplo
         </div>
       )}
     </div>
-  );
-}
-
-/** Per-entry action menu — opens via chat commands (terminal stays the source of truth);
- *  "Open (default app)" is the one direct endpoint (browse/open) — the double-click
- *  equivalent, same trust level as reveal. */
-function EntryMenu({ entry, editors, onSendMessage, onOpenWith, onOpenDefault }: {
-  entry: BrowseEntry;
-  editors: EditorDef[];
-  onSendMessage: (text: string) => void;
-  onOpenWith: () => void;
-  onOpenDefault: () => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    const onDoc = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    };
-    document.addEventListener('mousedown', onDoc);
-    return () => document.removeEventListener('mousedown', onDoc);
-  }, [open]);
-
-  if (entry.isDir) {
-    return (
-      <button
-        onClick={() => onSendMessage(`open ${entry.path} in the folder`)}
-        className="p-1 text-fg-dim hover:text-accent-blue rounded transition-colors"
-        title="Reveal in OS file explorer"
-      >
-        <ExternalLink size={13} />
-      </button>
-    );
-  }
-
-  const name = entry.name;
-  const isHtml = /\.html?$/i.test(name);
-  const ext = name.toLowerCase().split('.').pop() || '';
-
-  return (
-    <div ref={ref} className="relative">
-      <button onClick={() => setOpen(v => !v)} className="p-1 text-fg-dim hover:text-fg-strong rounded transition-colors" title="Actions">
-        <MoreHorizontal size={13} />
-      </button>
-      {open && (
-        <div className="absolute right-0 top-full z-30 mt-1 w-52 bg-panel border border-border-strong rounded-xl shadow-float py-1 text-xs">
-          <MenuItem label="Open (default app)" onClick={() => { onOpenDefault(); setOpen(false); }} />
-          <div className="border-t border-border-faint my-1" />
-          <MenuItem label="Open in editor" onClick={() => { onSendMessage(`open ${name} in the editor`); setOpen(false); }} />
-          <MenuItem label="Open with…" onClick={() => { setOpen(false); onOpenWith(); }} />
-          {editors.length > 0 && (
-            <div className="border-t border-border-faint my-1" />
-          )}
-          {editors.slice(0, 4).map((ed) => (
-            <MenuItem key={ed.id} label={`Open with ${ed.name}`} onClick={() => { onSendMessage(`open ${name} with ${ed.name}`); setOpen(false); }} />
-          ))}
-          {isHtml && (
-            <>
-              <div className="border-t border-border-faint my-1" />
-              <MenuItem label="Open in browser" onClick={() => { onSendMessage(`open ${name} in the browser`); setOpen(false); }} />
-            </>
-          )}
-          <div className="border-t border-border-faint my-1" />
-          <MenuItem label="Reveal in folder" onClick={() => { onSendMessage(`open ${name} in the folder`); setOpen(false); }} />
-          <MenuItem label="Copy path" onClick={() => {
-            // Phase 8 pattern: copy_to_clipboard WS event is display-only; the panel uses
-            // the chat command so the server-side OS clipboard write happens for real.
-            onSendMessage(`copy path of ${entry.path}`);
-            setOpen(false);
-          }} />
-        </div>
-      )}
-    </div>
-  );
-}
-
-function MenuItem({ label, onClick }: { label: string; onClick: () => void }) {
-  return (
-    <button
-      onClick={onClick}
-      className="w-full text-left px-3 py-1.5 text-fg-subtle hover:bg-scrim-faint hover:text-fg-strong transition-colors"
-    >
-      {label}
-    </button>
-  );
-}
-
-/** Phase 5: clickable sortable column header with direction indicator. */
-function SortHeader({ label, active, dir, onClick }: {
-  label: string;
-  active: boolean;
-  dir: 'asc' | 'desc';
-  onClick: () => void;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      className={cn(
-        'inline-flex items-center gap-1 font-semibold uppercase tracking-wider transition-colors',
-        active ? 'text-accent-blue' : 'text-fg-dim hover:text-fg-strong',
-      )}
-      title={`Sort by ${label.toLowerCase()}`}
-    >
-      {label}
-      {active && (dir === 'asc' ? <ChevronUp size={10} /> : <ChevronDown size={10} />)}
-    </button>
   );
 }

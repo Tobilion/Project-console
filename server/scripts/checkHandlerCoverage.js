@@ -50,7 +50,7 @@ const { projectContextHandlers } = await import(pathToFileURL(base + 'wsHandlers
 const { projectActionHandlers } = await import(pathToFileURL(base + 'wsHandlers/builtinProjectActions.js').href);
 const { normalizeGithubPageUrl } = await import(pathToFileURL(base + 'wsHandlers/builtinProjectActions.js').href);
 const { diagnosticsHandlers } = await import(pathToFileURL(base + 'wsHandlers/builtinDiagnostics.js').href);
-const { generalFileHandlers, performTidy, planDuplicateDeletes, performDuplicateDeletes, extractFindQuery } = await import(pathToFileURL(base + 'wsHandlers/builtinGeneralFiles.js').href);
+const { generalFileHandlers, performTidy, planDuplicateDeletes, performDuplicateDeletes, extractFindQuery, performRename, performMove } = await import(pathToFileURL(base + 'wsHandlers/builtinGeneralFiles.js').href);
 const { toolsHandlers } = await import(pathToFileURL(base + 'wsHandlers/builtinTools.js').href);
 const { pdfHandlers } = await import(pathToFileURL(base + 'wsHandlers/builtinPdfTools.js').href);
 const { reminderHandlers } = await import(pathToFileURL(base + 'wsHandlers/builtinReminders.js').href);
@@ -62,6 +62,8 @@ const { handleNotifyCommand } = await import(pathToFileURL(base + 'wsHandlers/co
 const { getWatchRules } = await import(pathToFileURL(base + 'watchRules.js').href);
 const { handleScheduleCommand } = await import(pathToFileURL(base + 'wsHandlers/connectionScheduleAdmin.js').href);
 const { handleHistoryCommand } = await import(pathToFileURL(base + 'wsHandlers/connectionHistoryAdmin.js').href);
+const { handleConfirmResponse } = await import(pathToFileURL(base + 'wsHandlers/connectionConfirm.js').href);
+const { explainInput, buildMatchInfo } = await import(pathToFileURL(base + 'wsHandlers/connectionMatching.js').href);
 const { handleAutoStartCommand } = await import(pathToFileURL(base + 'wsHandlers/connectionAutoStartAdmin.js').href);
 const { handleUpdateCommand } = await import(pathToFileURL(base + 'wsHandlers/connectionUpdateAdmin.js').href);
 const { parseReminderInput } = await import(pathToFileURL(base + 'schedules/reminderParser.js').href);
@@ -284,6 +286,9 @@ eq('tools leaf: open_documents answers with openPanel + CLI-usable text', ws.sen
 sent.length = 0;
 await handleBuiltinIntent(ws, 'system.tools.open_marketplace', 'open marketplace', proj, {});
 eq('tools leaf: open_marketplace answers with openPanel + CLI-usable text', ws.sent.length === 1 && ws.sent[0].type === 'answer' && ws.sent[0].openPanel === 'marketplace' && /browse pack registry/.test(ws.sent[0].data), true);
+sent.length = 0;
+await handleBuiltinIntent(ws, 'system.tools.open_repo_map', 'open repo map', proj, {});
+eq('tools leaf: open_repo_map answers with openPanel + CLI-usable text', ws.sent.length === 1 && ws.sent[0].type === 'answer' && ws.sent[0].openPanel === 'repo-map' && /whole-project symbol map/.test(ws.sent[0].data), true);
 
 sent.length = 0;
 await handleBuiltinIntent(ws, 'system.chit_chat.list_commands', 'list commands', proj, {});
@@ -374,6 +379,33 @@ const bareOn = await discoverProjects(bareRoot, { includeAll: true });
 eq('scan-all: bare root with includeAll on -> resolves to itself', bareOn.length === 1 && bareOn[0].path === bareRoot && bareOn[0].workspaceType === 'general', true);
 try { fs.rmSync(bareRoot, { recursive: true, force: true }); } catch {}
 try { fs.rmSync(scanAllRoot, { recursive: true, force: true }); } catch {}
+
+// --- SINGLE-ROOT ESCAPE for config-file-only projects (2026-08-24) ------------
+// A Go/Rust/Python/Flutter project pasted directly as the scan target used to resolve to
+// zero projects (its code-only fallback only ran for container *children*), or worse to one
+// of its own internal folders (a Cargo project resolved to `src`). The single-root escape
+// now also recognizes root-level manifests (go.mod/Cargo.toml/pyproject.toml/pubspec.yaml/...).
+// Real temp dirs, same pattern as the scan-all rows above.
+const escRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'console-escape-'));
+const goRoot = path.join(escRoot, 'goapp');
+fs.mkdirSync(goRoot);
+fs.writeFileSync(path.join(goRoot, 'go.mod'), 'module goapp\ngo 1.21\n');
+fs.writeFileSync(path.join(goRoot, 'main.go'), 'package main\nfunc main() {}\n');
+const rustRoot = path.join(escRoot, 'rustapp');
+fs.mkdirSync(path.join(rustRoot, 'src'), { recursive: true });
+fs.writeFileSync(path.join(rustRoot, 'Cargo.toml'), '[package]\nname="rustapp"\nversion="0.1.0"\n');
+fs.writeFileSync(path.join(rustRoot, 'src', 'main.rs'), 'fn main() {}\n');
+const flutRoot = path.join(escRoot, 'flutapp');
+fs.mkdirSync(path.join(flutRoot, 'lib'), { recursive: true });
+fs.writeFileSync(path.join(flutRoot, 'pubspec.yaml'), 'name: flutapp\n');
+fs.writeFileSync(path.join(flutRoot, 'lib', 'main.dart'), 'void main() {}\n');
+const goEsc = await discoverProjects(goRoot, { includeAll: false });
+eq('escape: go.mod-only root resolves to itself, not zero', goEsc.length === 1 && goEsc[0].folderName === 'goapp' && goEsc[0].path === goRoot, true);
+const rustEsc = await discoverProjects(rustRoot, { includeAll: false });
+eq('escape: Cargo.toml root resolves to itself, not its src/ child', rustEsc.length === 1 && rustEsc[0].folderName === 'rustapp', true);
+const flutEsc = await discoverProjects(flutRoot, { includeAll: false });
+eq('escape: pubspec.yaml root resolves to itself', flutEsc.length === 1 && flutEsc[0].folderName === 'flutapp', true);
+try { fs.rmSync(escRoot, { recursive: true, force: true }); } catch {}
 
 // The admin tier WRITES console.config.json, so it is exercised against a real temp dir (the
 // C:/tmp/nowhere fixture above must never receive files). broadcast() is a no-op here — the
@@ -472,6 +504,37 @@ if (delPending) {
   const restored = await revertAction(gRoot, delAction.id);
   eq('duplicates revert: deleted copy restored', restored.ok === true && fs.existsSync(path.join(gRoot, 'dup-b.txt')) && fs.readFileSync(path.join(gRoot, 'dup-b.txt'), 'utf-8') === 'same-content', true);
 }
+
+// Phase 8 follow-up (2026-08-24): rename + move — the Folder Explorer's in-place rename and
+// drag-and-drop move ride the same confirm-gated, file_move-journaled path as tidy.
+// Uses a dedicated file: at this point the tidy-revert above restored only pic.jpg, so
+// notes.txt still lives in Documents/ — a fresh root file keeps the rows self-contained.
+fs.writeFileSync(path.join(gRoot, 'rename-me.txt'), 'rename me');
+sent.length = 0;
+await handleBuiltinIntent(ws, 'general.files.rename', 'rename rename-me.txt to renamed.txt', gProj, {});
+const renamePending = [...pendingConfirmations.values()].filter((p) => p.generalFileOp?.kind === 'rename');
+eq('rename: emits confirm_prompt with the op', ws.sent.length === 1 && ws.sent[0].type === 'confirm_prompt' && !!renamePending[renamePending.length - 1] && renamePending[renamePending.length - 1].generalFileOp.from === 'rename-me.txt' && renamePending[renamePending.length - 1].generalFileOp.to === 'renamed.txt', true);
+const renameRes = await performRename(gRoot, 'rename-me.txt', 'renamed.txt');
+eq('rename perform: file renamed + journaled', renameRes.ok === true && fs.existsSync(path.join(gRoot, 'renamed.txt')) && !fs.existsSync(path.join(gRoot, 'rename-me.txt')), true);
+const renameAction = listActions(gRoot).find((a) => a.type === 'file_move' && a.from === 'rename-me.txt');
+eq('rename perform: file_move journal entry', !!renameAction && renameAction.to === 'renamed.txt', true);
+const renameUndone = await revertAction(gRoot, renameAction.id);
+eq('rename revert: file moved back', renameUndone.ok === true && fs.existsSync(path.join(gRoot, 'rename-me.txt')) && !fs.existsSync(path.join(gRoot, 'renamed.txt')), true);
+
+sent.length = 0;
+await handleBuiltinIntent(ws, 'general.files.move', 'move rename-me.txt into target', gProj, {});
+const movePending = [...pendingConfirmations.values()].filter((p) => p.generalFileOp?.kind === 'move');
+eq('move: emits confirm_prompt with the op', ws.sent.length === 1 && ws.sent[0].type === 'confirm_prompt' && !!movePending[movePending.length - 1] && movePending[movePending.length - 1].generalFileOp.file === 'rename-me.txt' && movePending[movePending.length - 1].generalFileOp.targetDir === 'target', true);
+fs.mkdirSync(path.join(gRoot, 'target'), { recursive: true });
+const moveRes = await performMove(gRoot, 'rename-me.txt', 'target');
+eq('move perform: file moved + journaled', moveRes.ok === true && fs.existsSync(path.join(gRoot, 'target', 'rename-me.txt')), true);
+const moveAction = listActions(gRoot).find((a) => a.type === 'file_move' && a.from === 'rename-me.txt' && a.to === 'target/rename-me.txt');
+eq('move perform: file_move journal entry', !!moveAction, true);
+const moveUndone = await revertAction(gRoot, moveAction.id);
+eq('move revert: file moved back', moveUndone.ok === true && fs.existsSync(path.join(gRoot, 'rename-me.txt')) && !fs.existsSync(path.join(gRoot, 'target', 'rename-me.txt')), true);
+fs.writeFileSync(path.join(gRoot, 'diary.txt'), 'occupied');
+const refuseOverwrite = await performRename(gRoot, 'unique.txt', 'diary.txt');
+eq('rename: existing target refused (never overwrite)', !refuseOverwrite.ok && fs.existsSync(path.join(gRoot, 'unique.txt')), true);
 fs.rmSync(gRoot, { recursive: true, force: true });
 
 // Phase 2 audit: the panel's move-preview table sends an explicit file list after a colon —
@@ -491,6 +554,59 @@ const tidyCandidates3 = [...pendingConfirmations.values()].filter((p) => p.gener
 const tidyPending3 = tidyCandidates3[tidyCandidates3.length - 1];
 eq('tidy audit: multi-file list keeps both', !!tidyPending3 && tidyPending3.generalFileOp.moves.length === 2, true);
 fs.rmSync(gRoot2, { recursive: true, force: true });
+
+// Phase 9 (2026-08-24): undo-toast plumbing — journaled destructive answers carry an additive
+// `actionIds` array (web answer case -> Undo toast -> `revert action <id1>,<id2>`), so batch
+// revert must exist: comma-separated ids confirm into ONE card and the confirm branch loops
+// revertAction per id. Full loop rows below (temp dir + real confirm flow, like the tidy smoke).
+const nodeCrypto = await import('crypto');
+const undoRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'console-undo-'));
+const undoProj = { id: 'undo-p', name: 'UndoProj', path: undoRoot, workspaceType: 'general', config: { projectName: 'UndoProj', entries: [] }, contextFiles: [], parsedKnowledge: {}, codebaseIndex: { languages: [], keyFiles: {} } };
+fs.writeFileSync(path.join(undoRoot, 'a.txt'), 'alpha');
+fs.writeFileSync(path.join(undoRoot, 'b.txt'), 'beta');
+
+// perform-level contract: every perform* returns the journal ids it wrote.
+const tidyRes = await performTidy(undoRoot, [{ from: 'a.txt', to: 'Images/a.txt' }, { from: 'b.txt', to: 'Images/b.txt' }]);
+eq('undo plumbing: performTidy returns actionIds (one per move)', tidyRes.ok === true && tidyRes.moved === 2 && tidyRes.actionIds.length === 2, true);
+fs.writeFileSync(path.join(undoRoot, 'c.txt'), 'gamma');
+const renameRes2 = await performRename(undoRoot, 'c.txt', 'd.txt');
+eq('undo plumbing: performRename returns a single actionId', renameRes2.ok === true && renameRes2.actionIds.length === 1, true);
+
+// Batch revert through the real admin dispatch + confirm branch: both files move back.
+const batchIds = tidyRes.actionIds;
+sent.length = 0;
+const batchDispatch = await handleHistoryCommand(ws, undoProj, `revert action ${batchIds.join(',')}`, `revert action ${batchIds.join(',')}`);
+const batchPending = [...pendingConfirmations.values()].find((p) => Array.isArray(p.revert?.actionIds));
+eq('undo plumbing: batch revert emits one confirm_prompt with actionIds', batchDispatch === true && ws.sent.length === 1 && ws.sent[0].type === 'confirm_prompt' && !!batchPending && batchPending.revert.actionIds.length === 2, true);
+const savedCache = state.activeProjectsCache;
+state.activeProjectsCache = [undoProj];
+if (batchPending) {
+  sent.length = 0;
+  await handleConfirmResponse(ws, { payload: { token: [...pendingConfirmations.entries()].find(([, p]) => p === batchPending)?.[0], confirmed: true } });
+  eq('undo plumbing: batch confirm reverts both moves', ws.sent.some((m) => m.type === 'answer' && /Reverted 2 action\(s\)/.test(m.data)) && fs.existsSync(path.join(undoRoot, 'a.txt')) && fs.existsSync(path.join(undoRoot, 'b.txt')), true);
+  eq('undo plumbing: batch answer carries no actionIds (revert is its own undo)', !ws.sent.some((m) => m.type === 'answer' && Array.isArray(m.actionIds)), true);
+}
+state.activeProjectsCache = savedCache;
+
+// Mixed batch (file + git/command entry) is refused — those are answer-only by design.
+const cmdActionId = appendAction(undoRoot, { type: 'command', description: 'Ran: git push', command: 'git push' });
+sent.length = 0;
+const mixedDispatch = await handleHistoryCommand(ws, undoProj, `revert action ${renameRes2.actionIds[0]},${cmdActionId}`, `revert action ${renameRes2.actionIds[0]},${cmdActionId}`);
+eq('undo plumbing: mixed batch refused with guidance', mixedDispatch === true && ws.sent.length === 2 && ws.sent[0].type === 'answer' && /one at a time/.test(ws.sent[0].data) && ws.sent[1].type === 'end', true);
+
+// Trigger-mode fileOp confirm branch: the tools.js wrapper attaches actionId to the result,
+// and the branch's answer carries it as actionIds (the frontend undo toast contract).
+const fileOpToken = nodeCrypto.randomUUID();
+pendingConfirmations.set(fileOpToken, {
+  owner: ws, projectId: undoProj.id, command: 'create the file', trigger: 'create a file',
+  createdAt: Date.now(), fileOp: { tool: 'writeFile', args: { path: 'created-by-confirm.txt', content: 'hi' } },
+});
+sent.length = 0;
+state.activeProjectsCache = [undoProj];
+await handleConfirmResponse(ws, { payload: { token: fileOpToken, confirmed: true } });
+eq('undo plumbing: fileOp confirm answer carries actionIds', ws.sent.some((m) => m.type === 'answer' && Array.isArray(m.actionIds) && m.actionIds.length === 1) && fs.existsSync(path.join(undoRoot, 'created-by-confirm.txt')), true);
+state.activeProjectsCache = savedCache;
+fs.rmSync(undoRoot, { recursive: true, force: true });
 
 // --- PDF TOOLKIT (Phase 3, 2026-08-11) ---------------------------------------
 // Dispatch shapes against the C:/tmp/nowhere fixture (no PDFs exist there, so every answer is
@@ -833,6 +949,44 @@ sent.length = 0;
 const upd1 = await handleUpdateCommand(ws, proj, 'check for updates');
 eq('update admin: check-for-updates answers + trailing end', upd1 === true && ws.sent.length === 2 && ws.sent[0].type === 'answer' && ws.sent[1].type === 'end' && /Update available/.test(ws.sent[0].data), true);
 globalThis.fetch = realFetch;
+
+// --- DRY-RUN / EXPLAIN (2026-08-24, differentiation item) ----------------------------
+// explainInput resolves what WOULD happen without executing anything — the answer names the
+// stage/intent and nothing beyond the answer+end is ever emitted (no confirm card, no start).
+sent.length = 0;
+const explainCtx = { aiModel: undefined, currentSessionId: null, lastUserMessageId: null };
+await explainInput(ws, proj, 'p1', 'run the tests', explainCtx);
+eq('explain: answers the resolution with the stage, never executes', ws.sent.length === 2 && ws.sent[0].type === 'answer' && /Stage[^A-Za-z]*(semantic|fuzzy|keyword|config-entry|nlp|router|guess|fallback)/.test(ws.sent[0].data) && ws.sent[1].type === 'end' && !ws.sent.some((m) => m.type === 'confirm_prompt' || m.type === 'start'), true);
+sent.length = 0;
+await explainInput(ws, proj, 'p1', 'git status', explainCtx);
+eq('explain: git-shaped input reports the intent', ws.sent.length === 2 && ws.sent[0].type === 'answer' && /Intent/.test(ws.sent[0].data), true);
+
+// --- ASK MODE (round-6 audit, 2026-08-24) -------------------------------------
+// Read-only permission mode: runToolCall with askMode=true must block every mutating/executing
+// tool with a plain tool error (no confirm prompt sent), while read-only tools still run. The
+// gate itself is untouched — the block happens before it, so no grant can soften it.
+const { runToolCall } = await import(pathToFileURL(base + 'wsHandlers/aiQueryToolRun.js').href);
+const readOnlyTools = { readFile: async () => ({ success: true, data: 'file contents' }) };
+const askBlocked = async (tool, args = {}) => {
+  sent.length = 0;
+  const res = await runToolCall(ws, proj, readOnlyTools, { tool, args }, {}, [], null, null, true);
+  return { res, sent };
+};
+const blkWrite = await askBlocked('writeFile', { path: 'a.txt', content: 'x' });
+eq('ask mode: writeFile blocked with an explanation, no prompt', blkWrite.res.success === false && /Ask mode/.test(blkWrite.res.error) && !blkWrite.sent.some((m) => m.type === 'tool_confirm_prompt'), true);
+const blkExec = await askBlocked('executeCommand', { command: 'git status' });
+eq('ask mode: executeCommand blocked even non-risky', blkExec.res.success === false && /Ask mode/.test(blkExec.res.error) && !blkExec.sent.some((m) => m.type === 'tool_confirm_prompt'), true);
+const blkSave = await askBlocked('saveMemory', { content: 'fact', importance: 'low' });
+eq('ask mode: saveMemory blocked (memory.md is a write)', blkSave.res.success === false && /Ask mode/.test(blkSave.res.error), true);
+const blkCustom = await askBlocked('my_custom_tool', {});
+eq('ask mode: custom manifest tools blocked (they wrap commands)', blkCustom.res.success === false && /Ask mode/.test(blkCustom.res.error), true);
+const okRead = await askBlocked('readFile', { path: 'a.txt' });
+eq('ask mode: readFile still runs', okRead.res.success === true && okRead.res.data === 'file contents', true);
+// askMode=false must not change anything — readFile still runs; a gated tool would reach the
+// normal confirm prompt (not exercised here: requestToolConfirmation awaits a confirm_response,
+// which would hang the harness — the gate matrix itself is covered by check-tools).
+const offRead = await runToolCall(ws, proj, readOnlyTools, { tool: 'readFile', args: { path: 'a.txt' } }, {}, [], null, null, false);
+eq('ask mode off: readFile runs exactly as before', offRead.success === true && offRead.data === 'file contents', true);
 
 // --- PACK REGISTRY (Phase 17, 2026-08-12) -------------------------------------
 // The network fetch itself can't be exercised in the harness (SSRF guard blocks localhost by

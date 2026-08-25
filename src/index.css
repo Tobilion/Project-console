@@ -44,10 +44,11 @@
   --color-fg: #E4E4E7;
   --color-fg-muted: #8E8E93;
   --color-fg-subtle: #A1A1AA;
-  /* fg-dim was #636366 (3.24:1 on the dark background — below the 4.5:1 AA floor it is used
-     at). Bumped to the closest rung that passes AA for normal text (4.55:1); faint stays the
-     dimmer decorative rung below it. */
-  --color-fg-dim: #7A7A7F;
+/* fg-dim was #636366 (3.24:1 on the dark background — below the 4.5:1 AA floor it is used
+     at). #7A7A7F (4.55:1 on the background) still failed on panel surfaces (3.98:1 on
+     #1C1C1E — the measured 2026-08-24 value); #86868B passes on both (5.36:1 bg / 4.70:1
+     panel, per the audit's AA proposal). Faint stays the dimmer decorative rung below it. */
+  --color-fg-dim: #86868B;
   /* fg-faint is a distinct, dimmer rung than fg-dim in dark mode (iOS systemGray3) —
      dark previously shared #636366 for both while light mode already diverged
      (#71717A vs #A1A1AA); this restores the same gap in dark. */
@@ -89,7 +90,12 @@
   --color-panel-strong: #EFEFF4;
   --color-fg-strong: #000000;
   --color-fg: #27272A;
-  --color-fg-muted: #8E8E93;
+/* fg-muted light was #8E8E93 (2.92:1 on the background / 3.26:1 on panel — the measured
+     2026-08-24 value, below AA). The audit's ~#76767C proposal only reaches 4.04:1 on the
+     base background, so the closest passing rung is #6E6E74 (4.54:1 on #F2F2F7, 4.99:1 on
+     white panels). Note: this brings light fg-muted within 1 unit of light fg-dim — the two
+     rungs visually merge in light mode; the alternative was leaving captions sub-AA. */
+  --color-fg-muted: #6E6E74;
   --color-fg-subtle: #52525B;
   /* fg-dim light was #71717A (4.33:1 — just under the AA floor); #6D6D75 hits 4.60:1. */
   --color-fg-dim: #6D6D75;
@@ -243,4 +249,17 @@ html, body {
 :focus-visible {
   outline: 2px solid var(--color-ring);
   outline-offset: 2px;
+}
+
+
+/* Toast auto-dismiss countdown bar (2026-08-24, Matchday Exchange pattern): the 3px progress
+   line drains over the toast's lifetime; the animation-duration is set inline per toast. */
+@keyframes toast-progress {
+  from { width: 100%; }
+  to { width: 0%; }
+}
+.animate-toast-progress {
+  animation-name: toast-progress;
+  animation-timing-function: linear;
+  animation-fill-mode: forwards;
 }

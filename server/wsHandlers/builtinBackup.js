@@ -26,21 +26,29 @@ export const backupHandlers = {
       return;
     }
     const rel = result.relPath === '.' ? project.name : result.relPath;
+    const sizeMb = (result.size / 1024 / 1024).toFixed(1);
     // Journal the created zip (file_write, existed:false) — revert action <id> deletes it.
     // NOTE: the zip lives in data/backups (outside the project), so the journaled path is
     // `backups/<name>.zip` — the revert path below special-cases that prefix to the backups
     // dir; the generic file_write revert (which resolves inside the project) would miss it.
+    let actionId = null;
     try {
       const relFile = `backups/${path.basename(result.file)}`;
-      await appendAction(project.path, {
+      actionId = await appendAction(project.path, {
         type: 'file_write',
         path: relFile,
         existed: false,
         preContent: null,
       });
     } catch {}
-    const sizeMb = (result.size / 1024 / 1024).toFixed(1);
-    answer(ws, `Backup created — **${rel}** zipped (${sizeMb} MB).\n\n**Path:** \`${result.file}\`\n\n[download the zip](${downloadLink(project.id, path.basename(result.file))})\n\nDelete it anytime with \`revert action <id>\` (it shows in "recent actions").`);
+    const text = `Backup created — **${rel}** zipped (${sizeMb} MB).\n\n**Path:** \`${result.file}\`\n\n[download the zip](${downloadLink(project.id, path.basename(result.file))})\n\nDelete it anytime with \`revert action <id>\` (it shows in "recent actions").`;
+    // Additive actionIds (2026-08-24): the web answer case fires an undo toast whose Undo
+    // sends `revert action <id>` — deleting the just-created zip. CLI ignores the field.
+    ws.send(JSON.stringify({
+      type: 'answer',
+      data: text,
+      ...(actionId ? { actionIds: [actionId] } : {}),
+    }));
   },
 
   'backup.list': async (ws, action, input, project) => {

@@ -1,23 +1,22 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { FileText, RefreshCw, Download, FolderOpen, Send, CheckCircle2 } from 'lucide-react';
+﻿import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { FileText, RefreshCw, Download, FolderOpen, Send, CheckCircle2, ChevronUp, ChevronDown } from 'lucide-react';
 import { apiFetchJson } from '../utils/apiFetch';
 import { projectApi } from '../utils/projectApi';
 import { cn } from '../lib/utils';
+import { EmptyState } from './ui/EmptyState';
 import type { Project } from '../types';
+import { MergeCard, PdfFileList } from './pdfTools/mergeCard';
+import { formatSize, sanitizeOutputName } from './pdfTools/utils';
+import type { PdfFileInfo } from './pdfTools/utils';
 
-// Phase 3 (UPGRADE-ROADMAP.md, 2026-08-11): the PDF Tools panel — the interactive half of the
+// Phase 3 (UPGRADE-ROADMAP.md, 2026-08-11): the PDF Tools panel â€” the interactive half of the
 // PDF toolkit. The panel never executes anything itself: every operation composes the exact
 // trigger-command line the chat already understands ("merge a.pdf and b.pdf into c.pdf"), so
-// the message goes through the normal pipeline — matcher -> pdf.* intent -> standard confirm
+// the message goes through the normal pipeline â€” matcher -> pdf.* intent -> standard confirm
 // flow -> pdfKit.js execution -> actionHistory journaling. The terminal stays the single
 // source of truth for confirm cards, answers and errors (same contract as Dashboard's Run/Stop
 // buttons); this panel is the file-picking convenience layer around it.
-
-interface PdfFileInfo {
-  path: string;
-  name: string;
-  size: number;
-}
+// 2026-08-24 split: the merge card + file list + helpers live in pdfTools/*.
 
 interface PdfToolsPanelProps {
   project: Project | null;
@@ -27,20 +26,6 @@ interface PdfToolsPanelProps {
 }
 
 const POLL_MS = 6000;
-
-function formatSize(n: number): string {
-  if (n >= 1024 * 1024) return (n / (1024 * 1024)).toFixed(1) + ' MB';
-  if (n >= 1024) return Math.round(n / 1024) + ' KB';
-  return n + ' B';
-}
-
-/** Output filenames are composed here and the server re-validates them anyway — strip path
- *  separators and shell-hostile characters so a stray keystroke can't corrupt the command. */
-function sanitizeOutputName(raw: string): string {
-  const cleaned = raw.replace(/[\\/:*?"<>|]/g, '').trim();
-  if (!cleaned) return '';
-  return /\.pdf$/i.test(cleaned) ? cleaned : `${cleaned}.pdf`;
-}
 
 export function PdfToolsPanel({ project, onSendMessage, tabId = null }: PdfToolsPanelProps) {
   const [files, setFiles] = useState<PdfFileInfo[]>([]);
@@ -54,8 +39,10 @@ export function PdfToolsPanel({ project, onSendMessage, tabId = null }: PdfTools
 
   // Single-file picker used by split / extract-text / extract-pages / watermark.
   const [selected, setSelected] = useState<string>('');
-  // Merge picks its own multi-selection.
-  const [mergeSelection, setMergeSelection] = useState<Set<string>>(new Set());
+  // Merge picks its own multi-selection, ORDERED (2026-08-24): PDF merge output depends on
+  // input order (a+b+c != a+c+b), so the selection is an ordered array â€” chips append on
+  // click, and the order row below reorders before sending.
+  const [mergeOrder, setMergeOrder] = useState<string[]>([]);
   const [mergeOutput, setMergeOutput] = useState('combined.pdf');
   const [splitMode, setSplitMode] = useState<'perPage' | 'at'>('perPage');
   const [splitAt, setSplitAt] = useState('5');
@@ -99,7 +86,7 @@ export function PdfToolsPanel({ project, onSendMessage, tabId = null }: PdfTools
     const data = await apiFetchJson<{ files: PdfFileInfo[] }>(projectApi(`/api/projects/${encodeURIComponent(project.id)}/pdf-files`, tabId));
     setLoading(false);
     if (!data) {
-      setError('Could not load the PDF list — check that the server is up.');
+      setError('Could not load the PDF list â€” check that the server is up.');
       return;
     }
     setError(null);
@@ -109,7 +96,7 @@ export function PdfToolsPanel({ project, onSendMessage, tabId = null }: PdfTools
   useEffect(() => {
     setFiles([]);
     setSelected('');
-    setMergeSelection(new Set());
+    setMergeOrder([]);
     if (project?.id) {
       fetchFiles();
       const t = setInterval(fetchFiles, POLL_MS);
@@ -118,11 +105,11 @@ export function PdfToolsPanel({ project, onSendMessage, tabId = null }: PdfTools
   }, [project?.id, fetchFiles]);
 
   // Selection must never point at a file that vanished from the list (a deleted/renamed PDF
-  // would compose a command against a name the server can't resolve — harmless, but stale UI).
+  // would compose a command against a name the server can't resolve â€” harmless, but stale UI).
   useEffect(() => {
     const names = new Set(files.map((f) => f.name));
     if (selected && !names.has(selected)) setSelected('');
-    setMergeSelection((prev) => new Set([...prev].filter((n) => names.has(n))));
+    setMergeOrder((prev) => prev.filter((n) => names.has(n)));
   }, [files, selected]);
 
   const send = (text: string) => {
@@ -143,12 +130,26 @@ export function PdfToolsPanel({ project, onSendMessage, tabId = null }: PdfTools
         body: JSON.stringify({ path }),
       });
     } catch {
-      // Best-effort convenience — a failed reveal never blocks the panel.
+      // Best-effort convenience â€” a failed reveal never blocks the panel.
     }
   };
 
-  const mergeList = useMemo(() => [...mergeSelection], [mergeSelection]);
+  const mergeList = mergeOrder;
   const mergeDisabled = mergeList.length < 2 || !sanitizeOutputName(mergeOutput);
+
+  const toggleMerge = (name: string) => {
+    setMergeOrder((prev) => (prev.includes(name) ? prev.filter((n) => n !== name) : [...prev, name]));
+  };
+
+  const moveMerge = (idx: number, dir: -1 | 1) => {
+    setMergeOrder((prev) => {
+      const next = [...prev];
+      const j = idx + dir;
+      if (j < 0 || j >= next.length) return prev;
+      [next[idx], next[j]] = [next[j], next[idx]];
+      return next;
+    });
+  };
 
   const sendMerge = () => {
     if (mergeDisabled) return;
@@ -176,7 +177,7 @@ export function PdfToolsPanel({ project, onSendMessage, tabId = null }: PdfTools
 
   const sendWatermark = () => {
     if (!selected || !watermarkText.trim()) return;
-    // No output name is sent — the handler composes "<stem>-watermarked.pdf" itself.
+    // No output name is sent â€” the handler composes "<stem>-watermarked.pdf" itself.
     send(`watermark ${selected} with ${watermarkText.trim()}`);
   };
 
@@ -186,7 +187,7 @@ export function PdfToolsPanel({ project, onSendMessage, tabId = null }: PdfTools
       onChange={(e) => setSelected(e.target.value)}
       className="w-full text-xs bg-panel-strong border border-border-soft rounded-lg px-2.5 py-2 text-fg-strong focus:outline-none focus:border-accent/50"
     >
-      <option value="">Pick a PDF…</option>
+      <option value="">Pick a PDFâ€¦</option>
       {files.map((f) => (
         <option key={f.path} value={f.name}>{f.name} ({formatSize(f.size)})</option>
       ))}
@@ -209,7 +210,7 @@ export function PdfToolsPanel({ project, onSendMessage, tabId = null }: PdfTools
             </div>
             <h2 className="text-sm font-semibold text-fg-strong tracking-wide uppercase">PDF Tools</h2>
             {project && (
-              <span className="text-xs text-fg-dim font-normal normal-case">— {project.name}</span>
+              <span className="text-xs text-fg-dim font-normal normal-case">â€” {project.name}</span>
             )}
           </div>
           <button onClick={fetchFiles} className={cn(smallBtn, loading && 'opacity-50')} title="Refresh the file list">
@@ -223,7 +224,7 @@ export function PdfToolsPanel({ project, onSendMessage, tabId = null }: PdfTools
           </div>
         ) : (
           <>
-            {/* Drag-and-drop upload zone — dashed --border-strong, file-picker fallback */}
+            {/* Drag-and-drop upload zone â€” dashed --border-strong, file-picker fallback */}
             <div
               onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
               onDragLeave={() => setDragging(false)}
@@ -248,102 +249,43 @@ export function PdfToolsPanel({ project, onSendMessage, tabId = null }: PdfTools
                 }}
               />
               <p className="text-[13px] text-fg-muted">
-                {uploading ? 'Uploading…' : dragging ? 'Drop it to upload' : 'Drag & drop a PDF into this project'}
+                {uploading ? 'Uploadingâ€¦' : dragging ? 'Drop it to upload' : 'Drag & drop a PDF into this project'}
               </p>
               <button
                 onClick={(e) => { e.stopPropagation(); fileInputRef.current?.click(); }}
                 className="mt-1.5 text-[11px] text-accent-blue hover:underline"
               >
-                or pick a file…
+                or pick a fileâ€¦
               </button>
             </div>
 
             <div className="grid gap-4 lg:grid-cols-5">
-              {/* File list */}
-              <div className={cn(card, 'lg:col-span-2')}>
-              <h3 className="text-xs font-semibold text-fg-strong mb-2">Project PDFs</h3>
-              {error && <p className="text-xs text-accent-red mb-2">{error}</p>}
-              {files.length === 0 ? (
-                <p className="text-xs text-fg-dim italic">
-                  No .pdf files found in this project{loading ? ' — scanning…' : ''}. Drop some in
-                  the folder, or type <code className="font-mono text-accent">merge pdfs</code> in
-                  chat to open this panel from the terminal.
-                </p>
-              ) : (
-                <ul className="space-y-1.5 max-h-[420px] overflow-y-auto pr-1">
-                  {files.map((f) => (
-                    <li key={f.path} className="flex items-center gap-1.5 text-xs bg-scrim-faint rounded-lg px-2 py-1.5">
-                      <FileText size={13} className="text-fg-dim shrink-0" />
-                      <span className="text-fg-strong truncate flex-1" title={f.path}>{f.name}</span>
-                      <span className="text-fg-dim text-[10px] shrink-0">{formatSize(f.size)}</span>
-                      <a href={fileUrl(f.path)} download={f.name} className={smallBtn} title="Download">
-                        <Download size={13} />
-                      </a>
-                      <button onClick={() => reveal(f.path)} className={smallBtn} title="Show in folder">
-                        <FolderOpen size={13} />
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              )}
-              {lastSent && (
-                <div className="mt-3 flex items-start gap-2 text-[11px] text-fg-muted bg-scrim-faint border border-border-soft rounded-lg p-2.5">
-                  <CheckCircle2 size={13} className="text-accent mt-0.5 shrink-0" />
-                  <span>
-                    Sent <code className="font-mono text-accent">{lastSent}</code> — confirm or
-                    follow the result in the chat below.
-                  </span>
-                </div>
-              )}
-            </div>
+              <PdfFileList
+                files={files}
+                loading={loading}
+                error={error}
+                lastSent={lastSent}
+                card={card}
+                smallBtn={smallBtn}
+                fileUrl={fileUrl}
+                onReveal={reveal}
+              />
 
             {/* Operations — 2x2 card grid */}
             <div className="lg:col-span-3 grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {/* Merge */}
-              <div className={card}>
-                <h3 className="text-xs font-semibold text-fg-strong mb-3">Merge PDFs</h3>
-                <div className="flex flex-wrap gap-2 mb-3 max-h-28 overflow-y-auto">
-                  {files.length === 0 && <span className="text-xs text-fg-dim italic">No PDFs to pick.</span>}
-                  {files.map((f) => {
-                    const on = mergeSelection.has(f.name);
-                    return (
-                      <button
-                        key={f.path}
-                        onClick={() => {
-                          setMergeSelection((prev) => {
-                            const next = new Set(prev);
-                            if (next.has(f.name)) next.delete(f.name);
-                            else next.add(f.name);
-                            return next;
-                          });
-                        }}
-                        className={cn(
-                          'text-[11px] px-2 py-1 rounded-lg border transition-colors',
-                          on
-                            ? 'bg-accent-blue/15 border-accent-blue/50 text-accent-blue'
-                            : 'bg-scrim-faint border-border-soft text-fg-muted hover:border-accent-blue/30'
-                        )}
-                      >
-                        {f.name}
-                      </button>
-                    );
-                  })}
-                </div>
-                <div className="flex gap-2">
-                  <input
-                    value={mergeOutput}
-                    onChange={(e) => setMergeOutput(e.target.value)}
-                    placeholder="combined.pdf"
-                    className={cn(inputCls, 'flex-1')}
-                  />
-                  <button onClick={sendMerge} disabled={mergeDisabled} className={cn(runBtn, '!mt-0 w-auto px-4')}>
-                    <Send size={12} /> Merge
-                  </button>
-                </div>
-                {mergeList.length === 1 && (
-                  <p className="text-[11px] text-fg-dim mt-1.5">Pick at least one more PDF to merge.</p>
-                )}
-              </div>
+              <MergeCard
+                files={files}
+                mergeOrder={mergeOrder}
+                mergeOutput={mergeOutput}
+                card={card}
+                inputCls={inputCls}
+                runBtn={runBtn}
+                onToggle={toggleMerge}
+                onMove={moveMerge}
+                onOutputChange={setMergeOutput}
+                onMerge={sendMerge}
+                mergeDisabled={mergeDisabled}
+              />
 
               {/* Split */}
               <div className={card}>
@@ -382,7 +324,7 @@ export function PdfToolsPanel({ project, onSendMessage, tabId = null }: PdfTools
                 </button>
               </div>
 
-              {/* Extract — text | pages sub-mode in one card */}
+              {/* Extract â€” text | pages sub-mode in one card */}
               <div className={card}>
                 <h3 className="text-xs font-semibold text-fg-strong mb-3">Extract from a PDF</h3>
                 {FilePicker}

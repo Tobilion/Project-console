@@ -1,3 +1,4 @@
+import path from 'path';
 import { createCheckpoint } from '../gitSafety.js';
 import { createProjectTools, isCommandAllowed } from '../tools.js';
 import { isCommandBlocked } from '../dangerousPatterns.js';
@@ -7,7 +8,7 @@ import { updateTelemetryEntry } from '../intentTelemetry.js';
 import { retrainConfidenceModel } from '../confidenceModel.js';
 import { trackCommand, trackFileEdit } from '../projectMemory.js';
 import { appendAction, revertAction } from '../actionHistory.js';
-import { performTidy, performDuplicateDeletes } from './builtinGeneralFiles.js';
+import { performTidy, performDuplicateDeletes, performRename, performMove } from './builtinGeneralFiles.js';
 import { mergePdfs, splitPdf, extractPages, watermarkPdf } from '../pdfKit.js';
 import { state, pendingConfirmations, pendingToolConfirmations, connectionRegistry } from '../state.js';
 import { pendingMemorySuggestions } from './connectionState.js';
@@ -151,7 +152,14 @@ export async function handleConfirmResponse(ws, parsed) {
     } else {
       const result = await fn(pending.fileOp.args);
       if (result.success) {
-        ws.send(JSON.stringify({ type: 'answer', data: `✓ ${result.data || 'Done.'}` }));
+        // Additive actionIds (2026-08-24): the web client's answer case fires an undo toast
+        // whose Undo sends `revert action <id>` — same additive-field contract as openPanel;
+        // the CLI ignores it permanently.
+        ws.send(JSON.stringify({
+          type: 'answer',
+          data: `✓ ${result.data || 'Done.'}`,
+          ...(result.actionId ? { actionIds: [result.actionId] } : {}),
+        }));
         const suggestion = trackFileEdit(project.path, pending.fileOp.args?.path || 'unknown');
         if (suggestion) {
           pendingMemorySuggestions.set(project.id, suggestion);
@@ -168,14 +176,31 @@ export async function handleConfirmResponse(ws, parsed) {
   // Phase 4 (2026-08-10): confirmed `revert action <id>` (see connectionHistoryAdmin.js).
   // Same safety shape as the fileOp branch — a checkpoint first, then the restore, which is
   // performed by revertAction (never here) and meta-logged there as a 'revert' action.
+  // Batch form (2026-08-24): `pending.revert.actionIds` — the undo toast's batch revert
+  // (multi-file tidy/dedupe ops journal one action per file). Reverts in the given order,
+  // newest-first by construction (the toast sends the ids in journal order), and reports
+  // every per-id result — a failure stops the loop and names the failing id.
   if (pending.revert) {
     const cp = await createCheckpoint(project.path, pending.trigger);
     ws.send(JSON.stringify({ type: 'start', data: `[GIT SAFETY] ${cp.message}\n` }));
-    const result = await revertAction(project.path, pending.revert.actionId);
-    if (result.ok) {
-      ws.send(JSON.stringify({ type: 'answer', data: result.data }));
+    const ids = pending.revert.actionIds || [pending.revert.actionId];
+    const results = [];
+    for (const id of ids) {
+      const result = await revertAction(project.path, id);
+      results.push({ ok: result.ok, id, text: result.ok ? result.data : result.error });
+      if (!result.ok) break;
+    }
+    if (ids.length === 1) {
+      // Single revert keeps the historical channel contract: success is an answer,
+      // failure is an error_output.
+      ws.send(JSON.stringify(results[0].ok
+        ? { type: 'answer', data: results[0].text }
+        : { type: 'error_output', data: `${results[0].text}\n` }));
     } else {
-      ws.send(JSON.stringify({ type: 'error_output', data: `${result.error}\n` }));
+      ws.send(JSON.stringify({
+        type: 'answer',
+        data: `Reverted ${results.length} action(s):\n\n${results.map((r) => `- ${r.ok ? r.text : `\`${r.id}\`: ${r.text}`}`).join('\n')}`,
+      }));
     }
     ws.send(JSON.stringify({ type: 'end' }));
     return;
@@ -194,6 +219,10 @@ export async function handleConfirmResponse(ws, parsed) {
       result = await performTidy(project.path, op.moves);
     } else if (op.kind === 'duplicates_delete') {
       result = await performDuplicateDeletes(project.path, op.files);
+    } else if (op.kind === 'rename') {
+      result = await performRename(project.path, op.from, op.to);
+    } else if (op.kind === 'move') {
+      result = await performMove(project.path, op.file, op.targetDir);
     } else {
       ws.send(JSON.stringify({ type: 'error_output', data: `Unknown file operation: ${op.kind}\n` }));
       ws.send(JSON.stringify({ type: 'end' }));
@@ -203,7 +232,16 @@ export async function handleConfirmResponse(ws, parsed) {
       const note = result.skippedJournal
         ? ` (${result.skippedJournal} over the history pre-image size cap weren't logged for revert)`
         : '';
-      ws.send(JSON.stringify({ type: 'answer', data: `Done — ${result.deleted ?? result.moved} file(s) ${op.kind === 'tidy' ? 'moved' : 'deleted'}${note}. Undo with \`revert action <id>\` or "show history".` }));
+      const detail = op.kind === 'rename'
+        ? `Renamed \`${result.from}\` → \`${result.to}\``
+        : op.kind === 'move'
+          ? `Moved \`${result.from}\` into \`${path.dirname(result.to).replace(/\\/g, '/')}\``
+          : `Done — ${result.deleted ?? result.moved} file(s) ${op.kind === 'tidy' ? 'moved' : 'deleted'}${note}. Undo with \`revert action <id>\` or "show history".`;
+      ws.send(JSON.stringify({
+        type: 'answer',
+        data: `${detail}. Undo with \`revert action <id>\` or "show history".`,
+        ...(result.actionIds?.length ? { actionIds: result.actionIds } : {}),
+      }));
     } else {
       ws.send(JSON.stringify({ type: 'error_output', data: `${result.error}\n` }));
     }
@@ -248,6 +286,7 @@ export async function handleConfirmResponse(ws, parsed) {
       ws.send(JSON.stringify({
         type: 'answer',
         data: `Done — ${detail}. Undo with \`revert action <id>\` or "show history".${link}`,
+        ...(result.actionIds?.length ? { actionIds: result.actionIds } : {}),
       }));
     } else {
       // Same answer channel as the pdf handler's own refusals ("Could not find these PDFs",

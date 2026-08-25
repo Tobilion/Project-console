@@ -4,6 +4,7 @@ import path from 'path';
 import { spawn } from 'child_process';
 import { fileURLToPath, pathToFileURL } from 'url';
 import fs from 'fs';
+import readline from 'readline';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -39,6 +40,113 @@ async function startServer() {
   return port;
 }
 
+// start.bat-equivalent helpers: probe for an already-running server, the W/C/Q menu, and a
+// cross-platform browser open. All three mirror the batch launcher's behavior exactly so
+// `npm run launcher` is a terminal-native replacement for the .bat file.
+
+async function probeRunningPort() {
+  // A running console server answers /api/projects on one of 3000-3009. When one is found
+  // the launcher hands off to it instead of starting a duplicate instance (which would only
+  // bind a fallback port and leave a second server behind).
+  for (let i = 3000; i <= 3009; i++) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 5000);
+    try {
+      const res = await fetch(`http://127.0.0.1:${i}/api/projects`, { signal: controller.signal });
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data.projects) && data.projects.length > 0) return i;
+      }
+    } catch {
+      // Port not answering (or probe aborted) - keep scanning.
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+  return null;
+}
+
+function askChoice() {
+  // crlfDelay: Infinity - Windows ConPTY can otherwise emit two 'line' events per Enter.
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout,
+    crlfDelay: Infinity,
+  });
+  return new Promise((resolve) => {
+    rl.question('  Enter choice (W/C/Q): ', (answer) => {
+      rl.close();
+      resolve(answer.trim().toLowerCase());
+    });
+  });
+}
+
+function openBrowser(url) {
+  // Cross-platform browser open (Windows: use cmd /c start since 'start' is a cmd.exe builtin)
+  const isWin = process.platform === 'win32';
+  const openCmd = isWin ? 'cmd' : process.platform === 'darwin' ? 'open' : 'xdg-open';
+  const openArgs = isWin ? ['/c', 'start', '', url] : [url];
+  const child = spawn(openCmd, openArgs, { stdio: 'ignore', detached: true, windowsHide: true });
+  child.unref();
+}
+
+async function runLauncher() {
+  const header =
+    '\n\x1b[36m  ================================================================\n' +
+    '  \x1b[0m\x1b[1m\x1b[37m              LOCAL PROJECT CONSOLE ENGINE V4\x1b[36m\n' +
+    '  ================================================================\x1b[0m\n';
+  const menu =
+    '\n\x1b[90m  Select execution interface:\x1b[0m\n\n' +
+    '  \x1b[32m[W]\x1b[1m Web UI \x1b[0m\x1b[90m   (Opens browser canvas @ localhost:3000)\x1b[0m\n' +
+    '  \x1b[33m[C]\x1b[1m CLI Chat \x1b[0m\x1b[90m   (Interactive terminal agent mode)\x1b[0m\n' +
+    '  \x1b[31m[Q]\x1b[1m Quit \x1b[0m\x1b[90m   (Exit launcher)\x1b[0m\n\n' +
+    '  \x1b[36m----------------------------------------------------------------\x1b[0m\n';
+
+  let choice;
+  do {
+    process.stdout.write('\x1b[2J\x1b[H' + header + menu + '\n');
+    choice = await askChoice();
+  } while (!['w', 'c', 'q'].includes(choice));
+
+  if (choice === 'q') {
+    console.log('\x1b[90m  Exiting launcher...\x1b[0m');
+    process.exit(0);
+  }
+
+  console.log('\n  [+] Checking for a running server on ports 3000-3009...');
+  const runningPort = await probeRunningPort();
+
+  if (choice === 'w') {
+    if (runningPort) {
+      console.log(`\x1b[32m  [+] Server already running on port ${runningPort} - opening browser.\x1b[0m`);
+      openBrowser(`http://localhost:${runningPort}`);
+      process.exit(0);
+    }
+    console.log('\x1b[32m  [+] Starting server and opening the browser...\x1b[0m');
+    const port = await startServer();
+    openBrowser(`http://localhost:${port}`);
+    console.log(`\n  Local Project Console ready at http://127.0.0.1:${port}\n`);
+    return;
+  }
+
+  // CLI chat mode - same as bin/cli.js's `cli` mode, but respects an already-running server.
+  if (runningPort) {
+    console.log(`\x1b[32m  [+] Server already running on port ${runningPort} - skipping start.\x1b[0m`);
+  } else {
+    console.log('\x1b[33m  [+] Starting server...\x1b[0m');
+    await startServer();
+  }
+  const cliClientPath = path.join(rootDir, 'server', 'cli-client.js');
+  const child = spawn(process.execPath, [cliClientPath, ...process.argv.slice(3)], {
+    stdio: 'inherit',
+  });
+  child.on('exit', (code) => process.exit(code ?? 0));
+  child.on('error', (err) => {
+    console.error('Could not start the CLI chat:', err.message);
+    process.exit(1);
+  });
+}
+
 async function main() {
   // Phase 3 hook: `npx local-project-console init [targetDir]`
   if (process.argv[2] === 'init') {
@@ -47,6 +155,13 @@ async function main() {
     const { initConfig } = await import(pathToFileURL(initPath).href);
     await initConfig(targetDir);
     process.exit(0);
+  }
+
+  // start.bat-equivalent launcher: `node bin/cli.js launcher` (or `npm run launcher`).
+  // Prompts W/C/Q exactly like the batch file, then hands off to the matching mode.
+  if (process.argv[2] === 'launcher' || process.argv[2] === '--launcher') {
+    await runLauncher();
+    return;
   }
 
   // CLI chat mode: `npx local-project-console cli [--dir <path>] [--project <name>]`.
@@ -76,12 +191,7 @@ async function main() {
   const url = `http://127.0.0.1:${port}`;
   console.log(`\n  Local Project Console ready at ${url}\n`);
 
-  // Cross-platform browser open (Windows: use cmd /c start since 'start' is a cmd.exe builtin)
-  const isWin = process.platform === 'win32';
-  const openCmd = isWin ? 'cmd' : process.platform === 'darwin' ? 'open' : 'xdg-open';
-  const openArgs = isWin ? ['/c', 'start', '', url] : [url];
-  const child = spawn(openCmd, openArgs, { stdio: 'ignore', detached: true, windowsHide: true });
-  child.unref();
+  openBrowser(url);
 }
 
 main().catch((err) => {

@@ -114,4 +114,13 @@ export const toolsHandlers = {
       openPanel: panel.id,
     }));
   },
+  'system.tools.open_repo_map': async (ws, action) => {
+    const panel = getToolPanel(TOOL_PANEL_INTENTS[action].opensPanel);
+    if (!panel) return false;
+    ws.send(JSON.stringify({
+      type: 'answer',
+      data: `The ${panel.name} panel is an interactive web-UI view of the whole-project symbol map (every file's top-level exports/functions/classes, imports, and reverse dependencies — the same structure the AI system prompt receives). From chat — including the CLI — the same information is available as plain commands: \`show the project structure\` / \`show me the stack\` / \`what routes does this app expose\`.`,
+      openPanel: panel.id,
+    }));
+  },
 };

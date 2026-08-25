@@ -127,6 +127,14 @@ export const PRE_SEMANTIC_OVERRIDES = [
   // won those). The editor-name capture is deliberately loose (a-z0-9 spaces +._-).
   { intent: 'project.action.open_with', pattern: /^(?:open|open\s+up|open\s+me|launch)\b(?!(?:.*\b(?:explorer|folder|directory|site|website|url|link|github|vs\s*c?ode|vscode|cursor|browser|preview)\b))(?=[\s\S]*\b[\w./-]+\.[a-zA-Z0-9]{1,10}\b)(?=[\s\S]*\b(?:with|in)\s+(?:the\s+)?(?:default\s+)?[a-z][a-z0-9 .+_-]*\s*$)/i },
   { intent: 'project.action.reveal_file', pattern: /^(?:open|open\s+up|open\s+me|show|reveal|locate)\b(?!(?:.*\b(?:github|vs\s*c?ode|vscode|cursor|browser|editor)\b))(?=[\s\S]*\b[\w./-]+\.[a-zA-Z0-9]{1,10}\b)(?=[\s\S]*\b(?:in\s+the\s+folder|in\s+file\s+explorer|in\s+explorer)\b)/i },
+  // Phase 8 follow-up (2026-08-24): "rename X to Y" / "move X into Y" where X is a FILE-shaped
+  // token (a bare "file" noun or an extension-bearing name). Probed live: the embedding stage
+  // routes those correctly, but abstract nouns drift ("rename the site to production" → deploy,
+  // "rename the project to netpulse" → a config ENTRY whose action would actually RUN). The
+  // extension/\"file\"-noun shapes are unambiguous file operations; abstract-noun senses stay
+  // embedding-driven by design. Narrow, file-bearing only.
+  { intent: 'general.files.rename', pattern: /^rename\s+(?:the\s+)?(?:file\b|[\w./-]+\.[a-zA-Z0-9]{1,10}\b)\s+(?:to|as)\s+/i },
+  { intent: 'general.files.move', pattern: /^move\s+(?:the\s+)?(?:file\b|[\w./-]+\.[a-zA-Z0-9]{1,10}\b)\s+into\s+/i },
   // Phase 16 (2026-08-05, harness-verified with real embeddings): file-open requests collided
   // with pre-existing owners — file_read owns the "open file"/"open this file" seeds, and
   // file_find owns every name-bearing "find/where is the X file" shape (the filename dominates

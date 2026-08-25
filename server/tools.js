@@ -80,9 +80,9 @@ export async function createProjectTools(project) {
   };
   const logFileAction = (toolName, relPath, existed, preContent) => {
     const meta = MUTATING_FILE_TOOLS[toolName];
-    if (!meta || !relPath || typeof relPath !== 'string') return;
+    if (!meta || !relPath || typeof relPath !== 'string') return null;
     try {
-      appendAction(project.path, {
+      return appendAction(project.path, {
         type: meta.type,
         description: meta.describe(relPath, existed),
         path: relPath,
@@ -91,6 +91,7 @@ export async function createProjectTools(project) {
       });
     } catch {
       // History logging never breaks the action that produced it.
+      return null;
     }
   };
   const wrapMutatingTool = (toolName, toolFn) => {
@@ -112,7 +113,10 @@ export async function createProjectTools(project) {
       }
       const result = await toolFn(args);
       if (result?.success) {
-        logFileAction(toolName, relPath, existed, preContent);
+        // Additive journal id on the result (2026-08-24): the trigger-mode fileOp confirm
+        // branch reads it to offer an undo toast; the AI loop and tool history ignore it.
+        const actionId = logFileAction(toolName, relPath, existed, preContent);
+        if (actionId) return { ...result, actionId };
       }
       return result;
     };

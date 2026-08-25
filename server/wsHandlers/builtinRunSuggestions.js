@@ -2,6 +2,7 @@ import { state } from '../state.js';
 import { semanticMatcher } from '../semanticMatcher.js';
 import { findDocumentedRunCommands } from '../readmeRunParser.js';
 import { getCommandDir } from '../commandDir.js';
+import { hasInstalledCli } from '../capabilityProbe.js';
 
 /**
  * Confirmed live 2026-07-30 (Matchday Exchange transcript): "run its server" and "run .bat" both
@@ -149,6 +150,14 @@ export async function projectTypeSuggestions(ws, project, input, scripts) {
   if (scriptNames.length > 0) {
     ws.send(JSON.stringify({ type: 'answer', data: `### Available Scripts\n\nClick one to run it:` }));
     ws.send(JSON.stringify({ type: 'suggestions', data: scriptNames.map((s) => `npm run ${s}`) }));
+    // Capability hint (2026-08-24): when another package manager is installed on this
+    // machine, say so — `yarn run dev` works even though the chips say npm. The boot-cached
+    // probe is async, so the hint rides on the script list only when it resolves in time.
+    hasInstalledCli('yarn').then((hasYarn) => {
+      if (hasYarn && ws.readyState === 1) {
+        ws.send(JSON.stringify({ type: 'answer', data: `*Also installed on this machine: **yarn** — \`yarn run <script>\` works too.*` }));
+      }
+    }).catch(() => {});
     return;
   }
   const documented = pickDocumentedRunCommand(findDocumentedRunCommands(project), input);

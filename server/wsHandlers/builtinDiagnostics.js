@@ -142,7 +142,8 @@ export const diagnosticsHandlers = {
         : `### Type check — [${project.name}]\n\n**${result.errors} error(s)** found. Last output:\n\n\`\`\`\n${result.lines.join('\n')}\n\`\`\``;
       // readyState 1 === WebSocket.OPEN — the connection may have closed while this ran in the
       // background; sending on a closed socket would throw and take the queue pump down with it.
-      if (ws.readyState === 1) ws.send(JSON.stringify({ type: 'answer', data: msg }));
+      // toast: true — out-of-band background result; the web client toasts it too.
+      if (ws.readyState === 1) ws.send(JSON.stringify({ type: 'answer', data: msg, toast: true }));
     });
     return true;
   },

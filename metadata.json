@@ -1,6 +1,0 @@
-{
-  "name": "Local Project Console",
-  "description": "A local, offline web application that acts as a command dispatcher across multiple software projects.",
-  "requestFramePermissions": [],
-  "majorCapabilities": []
-}

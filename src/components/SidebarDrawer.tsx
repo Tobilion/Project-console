@@ -4,7 +4,7 @@ import { GENERAL_PROJECT_ID } from '../types';
 import { FolderSearch, Plus, MessageSquare, Trash2, Pencil, ChevronLeft, ChevronRight, Brain, FolderGit2, Star, Maximize2 } from 'lucide-react';
 import { WorkspaceToggleButton } from './ui/WorkspaceToggleButton';
 
-interface SidebarDrawerProps {
+export interface SidebarDrawerProps {
   projects: Project[];
   activeProject: Project | null;
   sessions: ChatSession[];

@@ -67,7 +67,11 @@ export function createProcessTools({ project, root }) {
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), 3000);
       try {
-        const res = await fetch(urlObj.toString(), { method: 'GET', redirect: 'follow', signal: controller.signal });
+        // redirect: 'manual' — the probe may only reach the localhost/private host it was
+        // validated against. Following a Location header would let a local dev server hand the
+        // probe off to a host isProbeableUrl never checked (a link-local/metadata endpoint),
+        // the same class of SSRF the dashboard probe in livenessProbe.js guards against.
+        const res = await fetch(urlObj.toString(), { method: 'GET', redirect: 'manual', signal: controller.signal });
         return { success: true, data: { ok: res.ok, status: res.status, url: urlObj.toString() } };
       } finally {
         clearTimeout(timer);

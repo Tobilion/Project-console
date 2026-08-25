@@ -71,4 +71,12 @@ export const TOOL_PANEL_INTENTS = {
       'open marketplace', 'open the marketplace', 'open pack marketplace', 'open the pack store',
     ],
   },
+  // Round-6 audit (2026-08-24): repo-map opener — the panel is the visual counterpart of the
+  // whole-project map the AI prompt receives.
+  'system.tools.open_repo_map': {
+    opensPanel: 'repo-map',
+    examples: [
+      'open repo map', 'open the repo map', 'show the repo map', 'show me the repo map',
+    ],
+  },
 };

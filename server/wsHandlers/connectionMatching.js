@@ -6,7 +6,60 @@ import { handleBuiltinIntent } from './builtinIntents.js';
 import { handleMatchedEntry } from './matchedEntry.js';
 import { guessCommand } from '../commandGuesser.js';
 import { logNearMiss } from '../nearMissLogger.js';
+import { patchMessageMeta } from '../conversationStore.js';
+import { extractCommandLine } from '../typedCommand.js';
 import { state, pendingConfirmations } from '../state.js';
+
+/**
+ * Compact matching transcript for one input (2026-08-24): which stage resolved it, at what
+ * confidence, and what it would dispatch. Persisted onto the user message's `meta` (see
+ * patchMessageMeta) so exported sessions show the routing that produced each answer —
+ * pre-semantic overrides show as stage 'presemantic', embedding wins as 'semantic' (or
+ * 'fuzzy'/'keyword' when the embedding tier's own fallbacks won), NLP as 'nlp', the local
+ * model as 'router', config entries as 'config-entry', and so on.
+ */
+export function buildMatchInfo(matchResult, input, { guessed = null, viaContext = false } = {}) {
+  if (matchResult.multi) {
+    return {
+      stage: 'multi',
+      intents: matchResult.multi.map((m) => m.builtin || (m.match ? `${m.match.type || 'entry'}:${m.matchedTrigger || ''}` : null)).filter(Boolean),
+      confidence: null,
+    };
+  }
+  if (matchResult.disambiguate) {
+    return { stage: 'disambiguate', intents: matchResult.disambiguate, confidence: null };
+  }
+  if (matchResult.builtin) {
+    if (matchResult.routedByModel) {
+      return { stage: 'router', intent: matchResult.builtin, confidence: matchResult.routerConfidence ?? null };
+    }
+    return {
+      stage: matchResult.semanticSource || 'nlp',
+      intent: matchResult.builtin,
+      confidence: matchResult.semanticConfidence ?? null,
+      closeSecond: matchResult.closeSecond?.intent || null,
+    };
+  }
+  if (matchResult.match) {
+    return {
+      stage: matchResult.semanticSource || 'config-entry',
+      intent: matchResult.match.type || 'entry',
+      trigger: matchResult.matchedTrigger || null,
+      confidence: matchResult.semanticConfidence ?? null,
+    };
+  }
+  if (viaContext) return { stage: 'context', intent: null, confidence: null };
+  if (guessed) return { stage: 'guess', command: guessed.command, confidence: null };
+  return { stage: 'fallback', intent: null, confidence: null, didYouMean: matchResult.didYouMean?.intent || null };
+}
+
+/** Persists the matching transcript onto the just-appended user message, fire-and-forget. */
+export function recordMatchInfo(sessionContext, input, matchResult, extra = {}) {
+  if (!sessionContext?.lastUserMessageId || !sessionContext.currentSessionId) return;
+  const info = buildMatchInfo(matchResult, input, extra);
+  patchMessageMeta(sessionContext.currentSessionId, sessionContext.lastUserMessageId, { match: info })
+    .catch(() => {});
+}
 
 // The main trigger-mode matching pipeline (handleExecute block O): matchInput → collision
 // disambiguation → multi-intent → builtin (+did-you-mean) → config entry → conversation
@@ -17,6 +70,7 @@ export async function handleMatchingPipeline(ws, project, projectId, input, sess
   // mode, if any — it works independently of the aiEnabled toggle (that flag only gates the
   // multi-turn tool-call loop in aiQuery.js) and falls back to its own default model if unset.
   const matchResult = await matchInput(input, project, projectIndex, { model: sessionContext.aiModel });
+  recordMatchInfo(sessionContext, input, matchResult);
 
   // A genuine collision (matcher.js/semanticMatcher.js — two different intents scoring nearly
   // identically) — ask which one was meant instead of guessing. See the pendingDisambiguation
@@ -98,6 +152,7 @@ export async function handleMatchingPipeline(ws, project, projectId, input, sess
   // 3. No match — try conversation context carryover before giving up
   const ctxResult = resolveContext(input, sessionContext.conversationHistory);
   if (ctxResult) {
+    recordMatchInfo(sessionContext, input, matchResult, { viaContext: true });
     sessionContext.conversationHistory.push({
       input,
       matched: true,
@@ -117,6 +172,7 @@ export async function handleMatchingPipeline(ws, project, projectId, input, sess
   // infer a shell command from the phrasing (e.g. "remove node_modules from git").
   const guessed = guessCommand(input);
   if (guessed) {
+    recordMatchInfo(sessionContext, input, matchResult, { guessed });
     const nearMissId = logNearMiss(project.id, {
       input,
       resolvedCommand: guessed.command,
@@ -176,5 +232,46 @@ export async function handleMatchingPipeline(ws, project, projectId, input, sess
   if (matchResult.suggestions && matchResult.suggestions.length > 0) {
     ws.send(JSON.stringify({ type: 'suggestions', data: matchResult.suggestions }));
   }
+  ws.send(JSON.stringify({ type: 'end' }));
+}
+
+/**
+ * Dry-run / explain mode (2026-08-24, differentiation item): resolves what WOULD happen to
+ * an input WITHOUT executing anything — no intent handler, no confirm card, no command.
+ * Mirrors the real dispatch precedence (typed-command bypass → matchInput → guess) so the
+ * explanation matches what a real send would do. Read-only by construction; answers with the
+ * resolution and ends the turn. Driven by the execute payload's additive `dryRun: true` flag
+ * (no new WS message type).
+ */
+export async function explainInput(ws, project, projectId, input, sessionContext) {
+  // Typed-command bypass first — the same gate handleExecute applies before the pipeline.
+  try {
+    const direct = extractCommandLine(input, project);
+    if (direct && direct.command) {
+      ws.send(JSON.stringify({ type: 'answer', data: `Would run directly (typed-command bypass, no intent matching):\n\n\`${direct.command}\`` }));
+      ws.send(JSON.stringify({ type: 'end' }));
+      return;
+    }
+  } catch {
+    // extraction is best-effort; fall through to matching
+  }
+  const projectIndex = state.activeProjectsCache.findIndex((p) => p.id === projectId);
+  const matchResult = await matchInput(input, project, projectIndex, { model: sessionContext.aiModel });
+  const info = buildMatchInfo(matchResult, input);
+  const confidence = info.confidence !== null && info.confidence !== undefined ? ` (${Math.round(info.confidence * 100)}%)` : '';
+  let lines = [`**Input:** \`${input}\``, `**Stage:** ${info.stage}${confidence}`];
+  if (info.intent) lines.push(`**Intent:** \`${info.intent}\``);
+  if (info.trigger) lines.push(`**Trigger:** \`${info.trigger}\``);
+  if (info.command) lines.push(`**Would run:** \`${info.command}\``);
+  if (info.closeSecond) lines.push(`*Near-tie second: \`${info.closeSecond}\` (did-you-mean chip would show)*`);
+  if (info.didYouMean) lines.push(`*Did-you-mean candidate: \`${info.didYouMean}\`*`);
+  if (matchResult.disambiguate) {
+    lines.push(`Would ask which you meant:\n1. ${describeIntent(matchResult.disambiguate[0])}\n2. ${describeIntent(matchResult.disambiguate[1])}`);
+  }
+  if (matchResult.multi) {
+    lines.push(`Would split into ${matchResult.multi.length} parts: ${matchResult.multi.map((m) => m.builtin || 'config entry').join(', ')}`);
+  }
+  lines.push(`\n_Dry run only — nothing was executed or confirmed._`);
+  ws.send(JSON.stringify({ type: 'answer', data: lines.join('\n') }));
   ws.send(JSON.stringify({ type: 'end' }));
 }

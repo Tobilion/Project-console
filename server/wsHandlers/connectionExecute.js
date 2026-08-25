@@ -23,7 +23,7 @@ import { handleHistoryCommand } from './connectionHistoryAdmin.js';
 import { handleStopServer, handleDevUrl } from './connectionDevServer.js';
 import { handleModeCommand } from './connectionModeAdmin.js';
 import { handleOnboardingCommand } from './connectionOnboardingAdmin.js';
-import { handleMatchingPipeline } from './connectionMatching.js';
+import { handleMatchingPipeline, explainInput } from './connectionMatching.js';
 
 // Pure positive acknowledgments that never carry a request — short-circuited out of the AI
 // path so a bare "ok" doesn't burn a local/cloud model call (see the aiEnabled branch below).
@@ -124,7 +124,22 @@ async function handleExecuteBody(ws, parsed, sessionContext) {
   }
 
   if (sessionContext.currentSessionId) {
-    appendMessage(sessionContext.currentSessionId, { role: 'user', content: input }).catch(() => {});
+    // 2026-08-24: the append's message id rides the session context so the matching pipeline
+    // can patch the matching transcript onto this exact record (see recordMatchInfo).
+    // AWAITED, not fire-and-forget: with a warm embedding model matchInput can resolve in
+    // under 50ms while the serialized append (index read + NDJSON append + atomic meta +
+    // chat-log entry) takes longer — a fire-and-forget .then lost the race and the transcript
+    // never patched (observed live).
+    const appended = await appendMessage(sessionContext.currentSessionId, { role: 'user', content: input });
+    sessionContext.lastUserMessageId = appended?.messages?.[0]?.id || null;
+  }
+
+  // Dry-run / explain (2026-08-24, differentiation item): additive `dryRun: true` on the
+  // execute payload resolves what WOULD happen without executing anything — used by the CLI's
+  // --dry-run / --explain flags. Never confirms, never runs, never persists the turn.
+  if (parsed.payload?.dryRun) {
+    await explainInput(ws, project, projectId, input, sessionContext);
+    return;
   }
 
   if (await handlePendingParamReply(ws, project, projectId, input, sessionContext)) return;

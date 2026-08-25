@@ -20,6 +20,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { WS_CORE_CASES, WS_MESSAGE_CASES } from '../src/hooks/wsMessageCases';
 import type { WsCtx } from '../src/hooks/wsCtx';
+import { addToast, dismissToast, getToasts } from '../src/components/ui/toastStore';
 
 const BASE = path.join(path.dirname(fileURLToPath(import.meta.url)), '..') + path.sep;
 
@@ -55,6 +56,7 @@ function makeFakeCtx() {
     toolPanelOpen: false,
     activeToolPanel: null,
     ws: { _streamId: null },
+    sentMessages: [],
   };
   const tokenBuffer: { current: string } = { current: '' };
   const flushTimer: { current: ReturnType<typeof setTimeout> | null } = { current: null };
@@ -105,6 +107,7 @@ function makeFakeCtx() {
       setActiveToolPanel: (v: any) => { state.activeToolPanel = typeof v === 'function' ? v(state.activeToolPanel) : v; },
       setToolsOpen: (v: any) => { state.toolPanelOpen = typeof v === 'function' ? v(state.toolPanelOpen) : v; },
     },
+    sendMessage: (text: string) => { state.sentMessages.push(text); },
   };
   return { ctx, state, tokenBuffer, flushTimer, streamHadTokenRef };
 }
@@ -131,15 +134,30 @@ async function main() {
 
   // --- CLI parity (Phase 0) ---
   // cli-client.js can't be imported (it executes main() and pulls in cowsay/boxen/figlet), so
-  // parse its switch labels from source. A WS_CORE_CASES key with no `case 'x':` in the CLI —
-  // rendered or explicit no-op — is a message the CLI silently drops. cli-client.js uses single
-  // quotes exclusively; fallthrough groupings like `case 'a': case 'b': break;` match too.
-  const cliSource = readFileSync(BASE + 'server/cli-client.js', 'utf8');
+  // parse its switch labels from source. Since the 2026-08-24 modularization split, the
+  // interactive WS switch lives in server/cliRenderer.js — scan BOTH files so a WS_CORE_CASES
+  // key with no `case 'x':` in either (rendered or explicit no-op) is a message the CLI
+  // silently drops. Both use single quotes exclusively; fallthrough groupings like
+  // `case 'a': case 'b': break;` match too.
+  const cliSource = readFileSync(BASE + 'server/cli-client.js', 'utf8') + '\n' + readFileSync(BASE + 'server/cliRenderer.js', 'utf8');
   const cliCases = new Set<string>();
   for (const m of cliSource.matchAll(/\bcase\s+'([^']+)'\s*:/g)) cliCases.add(m[1]);
   for (const key of Object.keys(WS_CORE_CASES)) {
     check(`CLI has a case for WS type: ${key}`, cliCases.has(key));
   }
+
+  // --- CLI already-open race guard (2026-08-24) ---
+  // The ws 'open' event can fire DURING the LAN-display-name await (a fast localhost handshake
+  // completes before a listener attached after that fetch would ever run). Every open-attach
+  // must guard `readyState === 1` and invoke immediately when already open — the interactive
+  // prompt, the scripted modes, and the LAN name send. Source-level assertions, same style as
+  // the CLI-parity scan above (cli-client.js executes main() on import, so it can't be
+  // required; the fix is a text-pattern contract).
+  const openAttachGuards = (cliSource.match(/readyState === 1/g) || []).length;
+  check('CLI guards every open-attach with readyState (already-open race)', openAttachGuards >= 3);
+  check('CLI setupReadline attach is readyState-guarded', /if \(ws\.readyState === 1\) setupReadline\(\)/.test(cliSource));
+  check('CLI scripted attach is readyState-guarded', /if \(ws\.readyState === 1\) startScripted\(\)/.test(cliSource));
+  check('CLI LAN-name attach is readyState-guarded', /if \(ws\.readyState === 1\) sendName\(\)/.test(cliSource));
 
   // --- answer ---
   let c = makeFakeCtx();
@@ -156,6 +174,35 @@ async function main() {
   check('answer with openPanel still appends the plain-text bubble', last(c.state).type === 'bot' && last(c.state).content === 'open calculator note');
   dispatch(c.ctx, 'answer', { data: 'plain' });
   check('answer without openPanel leaves Tools view untouched', c.state.toolPanelOpen === true && c.state.activeToolPanel === 'calculator');
+
+  // --- answer + toast (2026-08-24 out-of-band background results) ---
+  const beforeToasts = getToasts().length;
+  c = makeFakeCtx();
+  dispatch(c.ctx, 'answer', { data: '### Type check\n\nPassed.', toast: true });
+  check('answer with toast fires a toast', getToasts().length === beforeToasts + 1);
+  for (const t of getToasts()) dismissToast(t.id);
+
+  // --- answer + actionIds (2026-08-24 journaled destructive action -> undo toast) ---
+  const beforeUndoToasts = getToasts().length;
+  c = makeFakeCtx();
+  dispatch(c.ctx, 'answer', { data: 'Renamed `main.py` -> `app.py`. Undo with `revert action <id>`.', actionIds: ['abc12345'] });
+  check('answer with actionIds fires an undo toast', getToasts().length === beforeUndoToasts + 1);
+  const undoToast = getToasts().at(-1);
+  check('undo toast carries the Undo action', undoToast.actionLabel === 'Undo' && typeof undoToast.onAction === 'function');
+  undoToast.onAction?.();
+  check('undo toast sends revert action through the chat flow', c.state.sentMessages.length === 1 && c.state.sentMessages[0] === 'revert action abc12345');
+  for (const t of getToasts()) dismissToast(t.id);
+  // Batch ids join with commas; the bubble still renders (answerCase never drops it).
+  c = makeFakeCtx();
+  dispatch(c.ctx, 'answer', { data: 'Done — 3 file(s) deleted.', actionIds: ['id1', 'id2', 'id3'] });
+  check('answer with actionIds still appends the bubble', last(c.state).type === 'bot' && last(c.state).content === 'Done — 3 file(s) deleted.');
+  const batchToast = getToasts().at(-1);
+  batchToast.onAction?.();
+  check('undo toast joins batch ids with commas', c.state.sentMessages[0] === 'revert action id1,id2,id3');
+  for (const t of getToasts()) dismissToast(t.id);
+  c = makeFakeCtx();
+  dispatch(c.ctx, 'answer', { data: 'plain', actionIds: [] });
+  check('answer with empty actionIds fires no toast', getToasts().length === 0);
 
   // --- output/start/end stream ---
   c = makeFakeCtx();

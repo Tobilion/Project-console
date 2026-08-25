@@ -4,7 +4,7 @@ import { BentoGrid } from './BentoGrid';
 import { Project, AIStatus } from '../types';
 import { Brain, Cpu, HardDrive, FolderSearch, Code, Zap, MessageSquare, BookOpen, Sparkles, LayoutGrid } from 'lucide-react';
 
-interface WelcomeScreenProps {
+export interface WelcomeScreenProps {
   projects: Project[];
   activeProject: Project | null;
   ollamaStatus: AIStatus | null;

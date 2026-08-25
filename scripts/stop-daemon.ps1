@@ -37,12 +37,29 @@ if (-not $listeners) {
     exit 0
 }
 
-# Parse all PIDs from netstat output and kill each one
+# Parse all PIDs from netstat output, then VERIFY each one's command line before killing —
+# a stale daemon.port with a recycled port used to kill an unrelated service (audit
+# 2026-08-24). Only processes whose command line references the console server (source or
+# esbuild bundle entry) or this project's root directory are candidates.
 $pidsToKill = @()
 foreach ($line in $listeners) {
     $parts = $line.ToString().Trim() -split '\s+'
     $p = $parts[-1]
-    if ($p -and ($pidsToKill -notcontains $p)) { $pidsToKill += $p }
+    if (-not $p -or ($pidsToKill -contains $p)) { continue }
+    $cmdline = (Get-CimInstance -ClassName Win32_Process -Filter "ProcessId=$p").CommandLine
+    if (-not $cmdline) { continue }
+    $norm = $cmdline.Replace('\', '/').ToLower()
+    $rootNorm = $ProjectRoot.Replace('\', '/').ToLower()
+    if ($norm -match 'server/index\.js' -or $norm -match 'dist/server\.js' -or $norm.Contains($rootNorm)) {
+        $pidsToKill += $p
+    } else {
+        Write-Host ("Skipping PID " + $p + " on port " + $port + " — command line does not match the console server (recycled-port guard).") -ForegroundColor Yellow
+    }
+}
+
+if ($pidsToKill.Count -eq 0) {
+    Write-Host ('Port ' + $port + ' is held by an unrelated process — not killing it.') -ForegroundColor Yellow
+    exit 1
 }
 
 $pidList = $pidsToKill -join ', '
@@ -60,7 +77,8 @@ foreach ($daemonPid in $pidsToKill) {
     }
 }
 
-# Final check -- use taskkill fallback if anything remains
+# Final check -- use taskkill fallback if anything remains (verified, never blind: a recycled
+# port must not kill an unrelated service the first pass already skipped)
 Start-Sleep -Milliseconds 500
 $remaining = netstat -ano | Select-String (':' + $port + ' ') | Select-String 'LISTENING'
 if ($remaining) {
@@ -68,7 +86,14 @@ if ($remaining) {
     foreach ($line in $remaining) {
         $parts = $line.ToString().Trim() -split '\s+'
         $p = $parts[-1]
-        & 'taskkill.exe' /f /pid $p 2>$null
+        $cmdline = (Get-CimInstance -ClassName Win32_Process -Filter "ProcessId=$p").CommandLine
+        $norm = ($cmdline -replace '\\', '/').ToLower()
+        $rootNorm = $ProjectRoot.Replace('\', '/').ToLower()
+        if ($norm -match 'server/index\.js' -or $norm -match 'dist/server\.js' -or $norm.Contains($rootNorm)) {
+            & 'taskkill.exe' /f /t /pid $p 2>$null
+        } else {
+            Write-Host ("Skipping PID " + $p + " — unrelated process on the recorded port (recycled-port guard).") -ForegroundColor Yellow
+        }
     }
     Start-Sleep -Seconds 1
 }

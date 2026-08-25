@@ -1,14 +1,24 @@
-import { NlpManager } from 'node-nlp';
+import { Nlp } from '@nlpjs/nlp';
+import { containerBootstrap } from '@nlpjs/core-loader';
+import { LangEn } from '@nlpjs/lang-en';
+import { BuiltinMicrosoft } from '@nlpjs/builtin-microsoft';
 import { Mutex } from 'async-mutex';
 import { NLP_SEED_INTENTS } from './nlpSeedIntents.js';
 
 class IntentClassifier {
   constructor() {
-    this.manager = new NlpManager({
-      languages: ['en'],
-      forceNER: true,
-      nlu: { log: false }
-    });
+    // node-nlp 5.0.0-alpha.5's NlpManager is a thin wrapper around @nlpjs/nlp's Nlp plus a
+    // language pack and the default NER builtin — but the node-nlp aggregator also drags in
+    // @nlpjs/xtables -> xlsx (a critical-CVE spreadsheet parser this console never calls).
+    // Wire the equivalent Nlp directly so classification is unchanged (verified identical
+    // scores against node-nlp on the 86-entry seed corpus) without shipping the xlsx subtree.
+    this.container = containerBootstrap();
+    this.container.use(LangEn);
+    this.container.register('extract-builtin-??', new BuiltinMicrosoft(), true);
+    this.manager = new Nlp(
+      { languages: ['en'], forceNER: true, nlu: { log: false } },
+      this.container
+    );
     this.isTrained = false;
     // Serializes train()/retrainFromLearned(): overlapping fire-and-forget calls from the
     // file watcher, scan-path rescan, and learning-engine promotions used to run two

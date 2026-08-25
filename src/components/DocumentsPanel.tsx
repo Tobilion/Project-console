@@ -3,6 +3,7 @@ import { BookOpen, Search, FileText, File as FileIcon, StickyNote, RefreshCw, Sp
 import { apiFetchJson } from '../utils/apiFetch';
 import { projectApi } from '../utils/projectApi';
 import { cn } from '../lib/utils';
+import { EmptyState } from './ui/EmptyState';
 import type { Project } from '../types';
 
 // Phase 16 (UPGRADE-ROADMAP.md, 2026-08-12): the Documents panel — Spotlight/Notion-style
@@ -169,7 +170,11 @@ export function DocumentsPanel({ project, onSendMessage, aiEnabled, tabId = null
               </div>
             )}
             {searched && status === 'ready' && results.length === 0 && (
-              <div className="text-xs text-fg-dim italic text-center py-8">No documents match "{query}".</div>
+              <EmptyState
+                title={`No documents match "${query}"`}
+                hint="Results come from the offline index — try broader wording."
+                className="py-8"
+              />
             )}
             {results.length > 0 && (
               <div className="space-y-2">

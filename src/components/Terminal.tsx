@@ -30,7 +30,7 @@ const KNOWN_COMMANDS = [
   'review memory', 'project memory', 'telemetry clear',
 ];
 
-interface TerminalProps {
+export interface TerminalProps {
   messages: TerminalMessage[];
   onSendMessage: (msg: string) => void;
   onSearch?: (query: string) => void;
@@ -80,6 +80,7 @@ interface TerminalProps {
   onOpenChatHistory?: () => void;
   processes?: ProcessInfo[];
   processLogs?: Record<string, string[]>;
+  logLoading?: boolean;
   selectedProcessId?: string | null;
   onSelectProcess?: (projectId: string) => void;
   onStopProcess?: (projectId: string) => void;
@@ -110,8 +111,7 @@ const VOLATILE_MEMO_PROPS = new Set([
 const terminalAreEqual = (prev: TerminalProps, next: TerminalProps) =>
   (Object.keys(next) as (keyof TerminalProps)[]).every((k) => VOLATILE_MEMO_PROPS.has(k as string) || prev[k] === next[k]);
 
-export const Terminal = memo(function Terminal({ messages, onSendMessage, onSearch, onDeepResearch, activeProject, userName, pendingConfirm, onConfirm, pendingToolConfirm, onToolConfirm, onApproveTask, pendingMemorySuggestion, onMemorySuggestionRespond, aiEnabled, aiThinking, aiThinkingText, commandPending, onCancel, ollamaStatus, aiModel, aiMode, onAIToggle, onSetModel, onSetMode, toolHistory, showToolHistory, onToggleToolHistory, onRerunToolCall, onExportMarkdown, onExportJson, onExportPdf, onExportProjectChatLog, onDirectCommand, onDidYouMeanPick, workspaceProjects, addToWorkspace, removeFromWorkspace, clearWorkspace, onSwitchToProject, isFullscreen, onToggleFullscreen, onOpenChatHistory, processes, processLogs, 
- selectedProcessId, onSelectProcess, onStopProcess, dockExpanded, onToggleDock, dockTab, onSetDockTab, projects, tabId, knownDevUrls, connected, focusSignal, historyHasMore, onLoadEarlier }: TerminalProps) {
+export const Terminal = memo(function Terminal({ messages, onSendMessage, onSearch, onDeepResearch, activeProject, userName, pendingConfirm, onConfirm, pendingToolConfirm, onToolConfirm, onApproveTask, pendingMemorySuggestion, onMemorySuggestionRespond, aiEnabled, aiThinking, aiThinkingText, commandPending, onCancel, ollamaStatus, aiModel, aiMode, onAIToggle, onSetModel, onSetMode, toolHistory, showToolHistory, onToggleToolHistory, onRerunToolCall, onExportMarkdown, onExportJson, onExportPdf, onExportProjectChatLog, onDirectCommand, onDidYouMeanPick, workspaceProjects, addToWorkspace, removeFromWorkspace, clearWorkspace, onSwitchToProject, isFullscreen, onToggleFullscreen, onOpenChatHistory, processes, processLogs, logLoading, selectedProcessId, onSelectProcess, onStopProcess, dockExpanded, onToggleDock, dockTab, onSetDockTab, projects, tabId, knownDevUrls, connected, focusSignal, historyHasMore, onLoadEarlier }: TerminalProps) {
   const [input, setInput] = useState('');
   const [showSearchOverlay, setShowSearchOverlay] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -366,6 +366,7 @@ export const Terminal = memo(function Terminal({ messages, onSendMessage, onSear
         <ProcessDock
           processes={processes || []}
           processLogs={processLogs || {}}
+          logLoading={logLoading}
           selectedProcessId={selectedProcessId || null}
           onSelectProcess={(pid) => onSelectProcess?.(pid)}
           onStopProcess={(pid) => onStopProcess?.(pid)}

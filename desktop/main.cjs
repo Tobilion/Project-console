@@ -55,14 +55,22 @@ async function findRunningConsole() {
 }
 
 function startServer() {
-  const rootDir = path.resolve(__dirname, '..');
+  // Packaged: the staged runtime (server source, built frontend, prod node_modules) lives in
+  // resources/ via extraResources — `node <entry>` cannot execute a script from inside the
+  // asar, so the server root is process.resourcesPath, never the app bundle. Dev: the repo
+  // root, exactly like bin/cli.js.
+  const rootDir = app.isPackaged ? process.resourcesPath : path.resolve(__dirname, '..');
   const bundlePath = path.join(rootDir, 'dist', 'server.js');
   const serverPath = path.join(rootDir, 'server', 'index.js');
   const entry = fs.existsSync(bundlePath) ? bundlePath : serverPath;
-  // PORT is inherited from the environment; the server's own fallback loop handles collisions.
+  // ELECTRON_RUN_AS_NODE=1 is MANDATORY: process.execPath is the Electron binary itself, and
+  // without the flag Electron relaunches the child as ANOTHER app instance (crash-looping
+  // helper processes — verified live 2026-08-24) instead of running server/index.js as plain
+  // Node. PORT is inherited from the environment; the server's own fallback loop handles
+  // collisions.
   serverChild = spawn(process.execPath, [entry], {
     cwd: rootDir,
-    env: { ...process.env, NODE_ENV: 'production' },
+    env: { ...process.env, NODE_ENV: 'production', ELECTRON_RUN_AS_NODE: '1' },
     stdio: 'inherit',
     windowsHide: true,
   });
