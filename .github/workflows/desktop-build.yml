@@ -67,6 +67,9 @@ jobs:
         working-directory: desktop
 
       - name: Verify installer artifact exists
+        # electron-builder writes into desktop/dist — the repo root has its own (server-bundle)
+        # dist/ directory, so without an explicit working-directory the ls/test hit the wrong dir.
+        working-directory: desktop
         run: |
           ls -la "dist/${{ matrix.artifact }}"
           test -s "dist/${{ matrix.artifact }}"
@@ -74,6 +77,7 @@ jobs:
 
       - name: Smoke-check AppImage contents (linux)
         if: matrix.target == 'linux'
+        working-directory: desktop
         run: |
           chmod +x "dist/${{ matrix.artifact }}"
           ./"dist/${{ matrix.artifact }}" --appimage-extract >/dev/null
