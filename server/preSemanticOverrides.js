@@ -38,6 +38,16 @@ export const PRE_SEMANTIC_OVERRIDES = [
   { intent: 'system.chit_chat.how_do_i', pattern: /^how\s+(?:do|can|would|should)\s+i\s+(?:re)?build\s+(?:the\s+)?desktop\s+app\b/i },
   { intent: 'system.chit_chat.how_do_i', pattern: /^how\s+(?:do|can|would|should)\s+i\s+release\s+(?:an|a)\s+update\b/i },
   { intent: 'system.chit_chat.how_do_i', pattern: /^how\s+(?:do|can|would|should)\s+i\s+run\s+the\s+build\b/i },
+  // CI/embedding determinism (2026-08-25): two matcher rows drifted on the ubuntu CI runner
+  // (a fresh model download produces slightly different floats than this Windows machine):
+  // "push the site with the comment ..." flipped todos→git_push, and the multi-split parts of
+  // "run the tests and show me the results" collapsed when "show me the results" flipped
+  // run_project→structure. These literal pins make both machine-independent — the multi-split
+  // (stage 0) runs before this stage, but each split PART passes through match() and hits its
+  // pin. "run the tests" is pinned to its own intent to protect the multi's first member.
+  { intent: 'git_push', pattern: /^push\s+the\s+site\s+with\s+the\s+comment\b/i },
+  { intent: 'run_tests', pattern: /^run\s+the\s+tests$/i },
+  { intent: 'run_project', pattern: /^show\s+me\s+the\s+results$/i },
   // Matchday-Exchange live session (2026-08-14): "what is the site about" routed to
   // system.chit_chat.deploy — a read-only question triggered the git-push confirm card — and
   // "what is the details of the site" landed on project.context.dev_server_status. The

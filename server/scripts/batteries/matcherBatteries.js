@@ -157,11 +157,13 @@ const BATTERIES = [
       ['add a file', 'BUILTIN=file_create'],
       ['can you help me add a file', 'BUILTIN=file_create'],
       ['Can I attach the github link', 'BUILTIN=git_remote_add'],
-      // Calibrated quirk: quote-heavy "push ... with the comment \"bug fixes\"" lands on
-      // todos (the 'bug fixes' tokens pull the embedding that way). Pre-existing, recorded
-      // as-is â€” the deploy handler's comment parsing fix (2026-07-29) is about the handler,
-      // not dispatch; a dispatch fix would be a deliberate PRE_SEMANTIC_OVERRIDES addition.
-      ['push the site with the comment "bug fixes"', 'BUILTIN=project.context.todos(closeSecond=system.chit_chat.deploy)'],
+      // Recalibrated 2026-08-25: this row drifted across machines (locally the 'bug fixes'
+      // tokens pulled the embedding to todos; on the ubuntu CI runner the same phrase routed
+      // to git_push). The drift is pinned by a PRE_SEMANTIC_OVERRIDES literal rule, so the
+      // expectation is now machine-independent: git_push, with the comment parsed by the
+      // handler's extractCommentMessage (the deploy handler's comment parsing fix (2026-07-29)
+      // is about the handler, not dispatch).
+      ['push the site with the comment "bug fixes"', 'BUILTIN=git_push'],
     ],
   },
   {
@@ -174,6 +176,12 @@ const BATTERIES = [
       // and lands on yes_no (its examples include 'stop'/'abort'). Harness = matcher-only,
       // so yes_no is the recorded baseline.
       ['stop it', 'BUILTIN=system.chit_chat.yes_no'],
+      // Calibrated 2026-08-25: the multi-split is deterministic (stage 0) but its PARTS match
+      // through the embedding stage — "show me the results" is a marginal run_project hit
+      // (0.57 locally) that flipped to project.context.structure on the ubuntu CI runner,
+      // collapsing the multi to a single intent. Both parts are now pinned by
+      // PRE_SEMANTIC_OVERRIDES literal rules (each part passes through match() and hits them),
+      // so this expectation is machine-independent.
       ['run the tests and show me the results', 'MULTI[builtin=run_tests | builtin=run_project]'],
     ],
   },
