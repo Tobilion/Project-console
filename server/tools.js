@@ -3,7 +3,7 @@ import fs from 'fs/promises';
 import { createPluginToolFn } from './pluginTools.js';
 import { webSearch, deepResearch } from './webSearch.js';
 import { appendAction } from './actionHistory.js';
-import { isCommandAllowed, ALLOWED_COMMANDS } from './toolAllow.js';
+import { isCommandAllowed, ALLOWED_COMMANDS } from './toolAllow';
 import {
   getPluginManifest,
   GATED_TOOLS,
@@ -14,7 +14,7 @@ import {
   getToolPermission,
   toolGrantKey,
   resolveToolGate,
-} from './toolGate.js';
+} from './toolGate';
 import { createProcessTools, findTestCommand } from './toolProcess.js';
 import { createResolveSafe } from './toolSandbox.js';
 import { createFileTools } from './toolFileTools.js';

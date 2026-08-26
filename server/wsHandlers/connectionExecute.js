@@ -2,7 +2,7 @@ import crypto from 'crypto';
 import { state, pendingConfirmations, resolveProject, getTabWorkspace } from '../state.js';
 import { appendMessage, getSession } from '../conversationStore.js';
 import { executeCommand } from '../executor.js';
-import { isCommandBlocked } from '../dangerousPatterns.js';
+import { isCommandBlocked } from '../dangerousPatterns';
 import path from 'path';
 import { extractCommandLine } from '../typedCommand.js';
 import { getCommandDir } from '../commandDir.js';

@@ -2,9 +2,9 @@ import crypto from 'crypto';
 import fs from 'fs/promises';
 import path from 'path';
 import { executeCommand } from '../executor.js';
-import { isCommandBlocked } from '../dangerousPatterns.js';
+import { isCommandBlocked } from '../dangerousPatterns';
 import { pendingConfirmations } from '../state.js';
-import { extractParamValue, isSafeParamValue, substituteParams } from '../paramCommand.js';
+import { extractParamValue, isSafeParamValue, substituteParams } from '../paramCommand';
 
 /**
  * Runs (or queues confirmation for) a fully-resolved command entry — i.e. one with no remaining

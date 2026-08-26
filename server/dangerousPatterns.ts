@@ -3,7 +3,7 @@
 // or any AI-initiated write/risky command, must still go through explicit user confirmation
 // (see server/wsHandlers/matchedEntry.js and server/wsHandlers/aiQuery.js) rather than relying
 // on this list alone.
-const DANGEROUS_PATTERNS = [
+const DANGEROUS_PATTERNS: RegExp[] = [
   // Destructive recursive deletes (Unix, incl. relative/home-relative forms)
   /\brm\s+(-[a-z]*r[a-z]*f[a-z]*|-[a-z]*f[a-z]*r[a-z]*)\s+(\/|~|\*|\.$|\.\s|\$HOME)/i,
   /\brm\s+-rf\s+\//i,
@@ -37,7 +37,7 @@ const DANGEROUS_PATTERNS = [
   /:\(\)\s*\{\s*:\|\s*:\s*&\s*\}\s*;/,
 ];
 
-export function isCommandBlocked(command) {
-  if (!command) return false;
-  return DANGEROUS_PATTERNS.some(pattern => pattern.test(command));
+export function isCommandBlocked(command: unknown): boolean {
+  if (typeof command !== 'string' || !command) return false;
+  return DANGEROUS_PATTERNS.some((pattern) => pattern.test(command));
 }

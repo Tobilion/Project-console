@@ -11,7 +11,7 @@
 import { resolveEventName, eventListText } from '../notify/notifyEvents.js';
 import { getRules, setEventEnabled, getWebhooks, addWebhook, removeWebhook } from '../notify/notifyStore.js';
 import { notify } from '../notify.js';
-import { isSafeExternalUrl } from '../urlSafety.js';
+import { isSafeExternalUrl } from '../urlSafety';
 import { addWatchRule, removeWatchRule, getWatchRules, setWatchRuleEnabled } from '../watchRules.js';
 import { syncWatchRules } from '../watchEngine.js';
 

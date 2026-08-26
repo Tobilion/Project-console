@@ -256,12 +256,18 @@ function startServer() {
   const bundlePath = path.join(rootDir, 'dist', 'server.js');
   const serverPath = path.join(rootDir, 'server', 'index.js');
   const entry = fs.existsSync(bundlePath) ? bundlePath : serverPath;
+  // Source mode (dev, no staged bundle): server leaves may be TypeScript (the 7 safety
+  // modules, 2026-08-26), which plain Node cannot resolve — register the tsx loader via the
+  // --import flag. tsx lives in the repo's node_modules, and dev runs from the repo (the
+  // packaged path always carries the esbuild bundle, which needs no loader). The flag is
+  // harmless when the entry is already the bundle, so it is applied unconditionally.
+  const loaderArgs = entry === serverPath ? ['--import', 'tsx'] : [];
   // ELECTRON_RUN_AS_NODE=1 is MANDATORY: process.execPath is the Electron binary itself, and
   // without the flag Electron relaunches the child as ANOTHER app instance (crash-looping
   // helper processes — verified live 2026-08-24) instead of running server/index.js as plain
   // Node. PORT is inherited from the environment; the server's own fallback loop handles
   // collisions.
-  serverChild = spawn(process.execPath, [entry], {
+  serverChild = spawn(process.execPath, [...loaderArgs, entry], {
     cwd: rootDir,
     env: {
       ...process.env,

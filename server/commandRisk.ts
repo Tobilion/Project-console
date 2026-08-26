@@ -12,7 +12,7 @@
 // only); a false positive is a confirm prompt the user can dismiss, a false negative is an
 // ungated destructive command.
 
-const DESTRUCTIVE_PATTERNS = [
+const DESTRUCTIVE_PATTERNS: RegExp[] = [
   // Git — any push can publish unreviewed state, and history rewrites / local-work discards
   // are irreversible without intervention. `git pull` is deliberately NOT here: it never
   // loses work on its own, and gating it would put a confirm in front of an everyday flow.
@@ -56,7 +56,7 @@ const DESTRUCTIVE_PATTERNS = [
 /** Effective-risk computation for a shell command string. Returns true when the command
  *  matches a destructive pattern and must go through the confirm gate regardless of what the
  *  caller's `risky` flag says. */
-export function isDestructiveCommand(command) {
+export function isDestructiveCommand(command: unknown): boolean {
   if (typeof command !== 'string' || !command.trim()) return false;
   return DESTRUCTIVE_PATTERNS.some((re) => re.test(command));
 }

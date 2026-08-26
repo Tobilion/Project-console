@@ -1,4 +1,4 @@
-import { isSafeExternalUrl } from './urlSafety.js';
+import { isSafeExternalUrl } from './urlSafety';
 
 const SEARCH_CACHE = new Map();
 
@@ -70,7 +70,7 @@ export async function webSearch(query) {
 
 // SSRF guards shared with tools.js/livenessProbe.js live in urlSafety.js; re-export
 // isProbeableUrl here so this module's original export surface is preserved for any importer.
-export { isProbeableUrl } from './urlSafety.js';
+export { isProbeableUrl } from './urlSafety';
 
 export async function deepResearch(query) {
   try {

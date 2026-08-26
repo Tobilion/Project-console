@@ -27,7 +27,7 @@ const MAX_VALUE_LENGTH = 300;
  *   the entire reply: "15" and "15 minutes" against `\d+` both return "15", never "15 minutes"
  *   (returning the whole reply would substitute "15 minutes" into `--interval 15 minutes`).
  */
-export function extractParamValue(text, pattern, { anchored = false } = {}) {
+export function extractParamValue(text: unknown, pattern: string | null | undefined, { anchored = false }: { anchored?: boolean } = {}): string | null {
   if (typeof text !== 'string' || !text.trim()) return null;
   if (!pattern) return anchored ? text.trim() : null;
   try {
@@ -40,12 +40,12 @@ export function extractParamValue(text, pattern, { anchored = false } = {}) {
   }
 }
 
-export function isSafeParamValue(value) {
+export function isSafeParamValue(value: unknown): value is string {
   return typeof value === 'string' && value.length > 0 && value.length <= MAX_VALUE_LENGTH && !UNSAFE_VALUE_RE.test(value);
 }
 
-export function substituteParams(template, values) {
-  return template.replace(/\{(\w+)\}/g, (full, name) => (values[name] !== undefined ? values[name] : full));
+export function substituteParams(template: string, values: Record<string, string | undefined>): string {
+  return template.replace(/\{(\w+)\}/g, (full, name: string) => (values[name] !== undefined ? values[name]! : full));
 }
 
 /**
@@ -55,8 +55,8 @@ export function substituteParams(template, values) {
  * to nudge AI mode into offering to save a NEW command it just ran successfully, without
  * repeatedly suggesting one that's already there.
  */
-export function commandMatchesTemplate(command, template) {
-  if (!command || !template) return false;
+export function commandMatchesTemplate(command: unknown, template: unknown): boolean {
+  if (typeof command !== 'string' || typeof template !== 'string') return false;
   const a = command.trim();
   const b = template.trim();
   if (a === b) return true;

@@ -1,7 +1,7 @@
 import path from 'path';
 import { createCheckpoint } from '../gitSafety.js';
 import { createProjectTools, isCommandAllowed } from '../tools.js';
-import { isCommandBlocked } from '../dangerousPatterns.js';
+import { isCommandBlocked } from '../dangerousPatterns';
 import { executeCommand, runningProcesses, PORT_PROMPT_ANSWER_TIMEOUT_MS } from '../executor.js';
 import { updateNearMiss } from '../nearMissLogger.js';
 import { updateTelemetryEntry } from '../intentTelemetry.js';

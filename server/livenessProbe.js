@@ -1,4 +1,4 @@
-import { isProbeableUrl } from './urlSafety.js';
+import { isProbeableUrl } from './urlSafety';
 import { state } from './state.js';
 import { recordDevUrl } from './devUrlStore.js';
 

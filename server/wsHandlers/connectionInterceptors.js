@@ -1,4 +1,4 @@
-import { extractParamValue, isSafeParamValue, substituteParams } from '../paramCommand.js';
+import { extractParamValue, isSafeParamValue, substituteParams } from '../paramCommand';
 import { getFallbackSuggestions } from '../matcher.js';
 import { handleBuiltinIntent } from './builtinIntents.js';
 import { runCommandEntry } from './matchedEntry.js';

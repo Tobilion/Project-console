@@ -2,7 +2,7 @@ import crypto from 'crypto';
 import { isGitRepo } from '../gitSafety.js';
 import { executeCommand } from '../executor.js';
 import { pendingConfirmations } from '../state.js';
-import { isSafeParamValue } from '../paramCommand.js';
+import { isSafeParamValue } from '../paramCommand';
 
 /**
  * Stash/branch/tag handlers (Phase 14 split of builtinGit.js, 2026-08-05 — bodies moved

@@ -3,7 +3,7 @@
 // isSafeParamValue() (paramCommand.js) before use. All handlers are read-only — no writes,
 // no confirmation needed, nothing journaled.
 import path from 'path';
-import { isSafeParamValue } from '../paramCommand.js';
+import { isSafeParamValue } from '../paramCommand';
 import { loadCsv, findColumn, matchOp, aggregateColumn } from '../csvTools.js';
 
 const answer = (ws, data) => ws.send(JSON.stringify({ type: 'answer', data }));

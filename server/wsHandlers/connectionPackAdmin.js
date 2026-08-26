@@ -1,7 +1,7 @@
 import fs from 'fs/promises';
 import path from 'path';
 import { validateToolEntry, sanitizePermissions, MANIFEST_FILENAME } from '../pluginTools.js';
-import { invalidatePluginManifest } from '../toolGate.js';
+import { invalidatePluginManifest } from '../toolGate';
 import { getRegistryUrl, setRegistryUrl, fetchRegistryIndex, fetchPackManifest } from '../packRegistry.js';
 
 // Plugin/pack install mechanism — infrastructure expansion (2026-08-10, "new infrastructure,

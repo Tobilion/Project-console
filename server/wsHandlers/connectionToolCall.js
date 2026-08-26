@@ -4,15 +4,15 @@ import { metrics } from '../metrics.js';
 import { state, pendingToolConfirmations } from '../state.js';
 import { createCheckpoint } from '../gitSafety.js';
 import { createProjectTools, isCommandAllowed, resolveToolGate } from '../tools.js';
-import { isCommandBlocked } from '../dangerousPatterns.js';
-import { isDestructiveCommand } from '../commandRisk.js';
+import { isCommandBlocked } from '../dangerousPatterns';
+import { isDestructiveCommand } from '../commandRisk';
 import { executeCommand } from '../executor.js';
 import { computeFileEditPreview } from '../diffPreview.js';
 import { validateToolCall, withFileLock, FILE_MUTATING_TOOLS } from '../aiGuardrails.js';
 import { scheduleVerification } from '../verifyHarness.js';
 import { appendAction } from '../actionHistory.js';
 import { getCommandDir } from '../commandDir.js';
-import { isAskModeBlocked } from '../toolGate.js';
+import { isAskModeBlocked } from '../toolGate';
 import { readProfile } from '../routes/profileRoutes.js';
 
 /** Direct tool invocation from the frontend (not via AI chat). Scoped to the client's active project. */

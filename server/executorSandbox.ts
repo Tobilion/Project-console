@@ -12,7 +12,7 @@
 //     OS-level file-access boundary (would need AppContainer/ACLs): a sandboxed `git
 //     push` still reaches the network. This layer is secret-leakage containment plus a
 //     detectable boundary, not a security wall — see CLAUDE.md.
-const SANDBOX_ENV_ALLOWLIST = [
+export const SANDBOX_ENV_ALLOWLIST: string[] = [
   'PATH', 'PATHEXT', 'COMSPEC', 'SystemRoot', 'windir', 'SYSTEMDRIVE',
   'TEMP', 'TMP', 'TMPDIR',
   'USERPROFILE', 'HOMEDRIVE', 'HOMEPATH', 'HOME', 'USER', 'LOGNAME',
@@ -21,14 +21,13 @@ const SANDBOX_ENV_ALLOWLIST = [
   'LANG', 'LC_ALL', 'LC_MESSAGES',
 ];
 
-export { SANDBOX_ENV_ALLOWLIST };
-
 /** Builds the restricted environment for a sandboxed spawn: allowlist + markers.
  *  `baseEnv` is typically process.env; `projectPath` becomes CONSOLE_SANDBOX_ROOT. */
-export function buildSandboxEnv(baseEnv, projectPath) {
-  const out = {};
+export function buildSandboxEnv(baseEnv: Record<string, string | undefined>, projectPath: string): Record<string, string> {
+  const out: Record<string, string> = {};
   for (const key of SANDBOX_ENV_ALLOWLIST) {
-    if (baseEnv[key] !== undefined) out[key] = baseEnv[key];
+    const value = baseEnv[key];
+    if (value !== undefined) out[key] = value;
   }
   out.CONSOLE_SANDBOXED = '1';
   out.CONSOLE_SANDBOX_ROOT = projectPath;

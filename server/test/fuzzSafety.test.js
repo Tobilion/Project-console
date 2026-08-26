@@ -13,11 +13,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fc from 'fast-check';
-import { isSafeParamValue, extractParamValue, substituteParams } from '../paramCommand.js';
-import { isSafeExternalUrl, isProbeableUrl } from '../urlSafety.js';
-import { isDestructiveCommand } from '../commandRisk.js';
-import { isCommandBlocked } from '../dangerousPatterns.js';
-import { isCommandAllowed, ALLOWED_COMMANDS } from '../toolAllow.js';
+import { isSafeParamValue, extractParamValue, substituteParams } from '../paramCommand';
+import { isSafeExternalUrl, isProbeableUrl } from '../urlSafety';
+import { isDestructiveCommand } from '../commandRisk';
+import { isCommandBlocked } from '../dangerousPatterns';
+import { isCommandAllowed, ALLOWED_COMMANDS } from '../toolAllow';
 
 // ---- isSafeParamValue -------------------------------------------------------
 

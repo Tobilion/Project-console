@@ -5,7 +5,7 @@
 // Neither channel ever throws — notify.js reports { ok, ... } per channel instead.
 
 import { spawn } from 'child_process';
-import { isSafeExternalUrl } from '../urlSafety.js';
+import { isSafeExternalUrl } from '../urlSafety';
 
 const WEBHOOK_TIMEOUT_MS = 8000;
 

@@ -6,7 +6,7 @@ import path from 'path';
 // Allowlist for executeCommand — only these executables may be run through the console.
 // Prevents arbitrary command execution even if a path-escaped or unapproved command
 // somehow reaches the execution path.
-export const ALLOWED_COMMANDS = [
+export const ALLOWED_COMMANDS: string[] = [
   'npm', 'node', 'git', 'python', 'pip', 'python3', 'pip3',
   'npx', 'vite', 'tsc', 'tsx', 'eslint', 'prettier', 'jest', 'vitest',
   // Broadened framework coverage (2026-08-11, reported directly — an Angular project's `ng
@@ -20,7 +20,7 @@ export const ALLOWED_COMMANDS = [
   'cargo', 'go', 'mvn', 'gradle', 'dotnet', 'ruby', 'bundle', 'php', 'composer',
 ];
 
-export function isCommandAllowed(cmd) {
+export function isCommandAllowed(cmd: unknown): boolean {
   if (!cmd || typeof cmd !== 'string') return false;
   let rest = cmd.trim();
   // Tolerate one leading env-var-assignment prefix (`PORT=3001 npm run dev` on POSIX, or

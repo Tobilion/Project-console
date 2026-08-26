@@ -19,6 +19,15 @@ async function startServer() {
   const serverPath = path.join(rootDir, 'server', 'index.js');
   const entry = fs.existsSync(bundlePath) ? bundlePath : serverPath;
 
+  // Source mode: server modules can be TypeScript (the 7 safety leaves converted 2026-08-26),
+  // so plain Node needs the tsx loader registered before the import. The bundle path never
+  // needs it. tsx is a devDependency — source mode only runs from a dev checkout, where it
+  // is always installed; the published package always ships the bundle (files: dist/).
+  if (entry === serverPath) {
+    const { register } = await import('tsx/esm/api');
+    register();
+  }
+
   // Importing the server module triggers init() as a side effect (line 221 of index.js).
   // The server will set globalThis.__consoleServerPort once the port fallback loop binds.
   await import(pathToFileURL(entry).href);

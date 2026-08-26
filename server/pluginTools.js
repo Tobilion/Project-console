@@ -1,7 +1,7 @@
 import fs from 'fs/promises';
 import path from 'path';
-import { isSafeParamValue } from './paramCommand.js';
-import { isCommandBlocked } from './dangerousPatterns.js';
+import { isSafeParamValue } from './paramCommand';
+import { isCommandBlocked } from './dangerousPatterns';
 import { log } from './logger.js';
 
 export const MANIFEST_FILENAME = 'console.tools.json';

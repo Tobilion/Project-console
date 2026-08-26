@@ -1,6 +1,6 @@
 import fs from 'fs';
 import path from 'path';
-import { isCommandAllowed } from './toolAllow.js';
+import { isCommandAllowed } from './toolAllow';
 
 /**
  * Typed-command extraction for the chat-input path (2026-08-11, requested directly — a

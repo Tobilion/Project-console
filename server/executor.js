@@ -15,7 +15,7 @@ import { broadcast } from './wsServer.js';
 import { recordDevUrl, forgetDevUrl } from './devUrlStore.js';
 import { state } from './state.js';
 import { readProfile } from './routes/profileRoutes.js';
-import { buildSandboxEnv } from './executorSandbox.js';
+import { buildSandboxEnv } from './executorSandbox';
 import {
   runningProcesses,
   processLogs,

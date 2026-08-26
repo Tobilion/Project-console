@@ -13,7 +13,7 @@ import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
 import { writeFileAtomicSync } from './atomicWrite.js';
-import { isSafeExternalUrl } from './urlSafety.js';
+import { isSafeExternalUrl } from './urlSafety';
 import { validateToolEntry, sanitizePermissions } from './pluginTools.js';
 
 const REGISTRY_CONFIG_FILE = path.join(process.cwd(), 'data', 'registry-config.json');

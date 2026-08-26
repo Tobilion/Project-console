@@ -15,6 +15,11 @@ pipeline changes — the intent answers from here, not from code comments.
   (production mode serves static files from `__dirname`), an EMPTY `data/` directory (a
   fresh install must start like a new user — no developer data, onboarding wizard on
   first run), and a production-only `node_modules` (`npm ci --omit=dev`).
+- The stage also bundles the server entry to `stage/dist/server.js` (esbuild,
+  `--packages=external` — see `npm run build` for the identical repo-root command).
+  Server leaves are partially TypeScript since 2026-08-26, and the packaged runtime must
+  run under plain Node (electron-as-node, no tsx shipped); `main.cjs` prefers
+  `dist/server.js` when present, which is exactly this file.
 - `electron-builder` packages the stage via `extraResources` into `resources/`; a
   post-pack hook adds the staged `node_modules` (electron-builder excludes them from
   `extraResources` by default). `main.cjs` spawns the server child with

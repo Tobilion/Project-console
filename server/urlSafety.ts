@@ -20,7 +20,7 @@ const PRIVATE_172_RE = /^172\.(1[6-9]|2\d|3[01])\./;
 // an IP-address rule.
 const BLOCKED_NUMERIC_0_RE = /^0\.\d{1,3}\.\d{1,3}\.\d{1,3}$/;
 
-export function isSafeExternalUrl(urlObj) {
+export function isSafeExternalUrl(urlObj: URL): boolean {
   if (urlObj.protocol !== 'http:' && urlObj.protocol !== 'https:') return false;
   const host = urlObj.hostname;
   if (BLOCKED_HOSTNAME_RE.test(host) || PRIVATE_172_RE.test(host) || BLOCKED_NUMERIC_0_RE.test(host)) return false;
@@ -40,7 +40,7 @@ const PROBEABLE_HOSTNAME_RE = /^(localhost|127\.|10\.|192\.168\.|::1|\[::1\])/i;
 // probeable allowlist — they are SSRF-class targets and never a dev server. ::1 stays:
 // IPv6 loopback is a localhost-family dev-server target, the point of this allowlist.
 
-export function isProbeableUrl(urlObj) {
+export function isProbeableUrl(urlObj: URL): boolean {
   if (urlObj.protocol !== 'http:' && urlObj.protocol !== 'https:') return false;
   const host = urlObj.hostname;
   if (!PROBEABLE_HOSTNAME_RE.test(host) && !PRIVATE_172_RE.test(host)) return false;

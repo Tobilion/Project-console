@@ -214,8 +214,11 @@ async function cmdStart() {
   }
   log('Starting console server daemon...');
   const logStream = fs.openSync(LOG_FILE, 'a');
+  // --import tsx: server leaves may be TypeScript (7 safety modules, 2026-08-26) — plain Node
+  // cannot resolve them. tsx is a devDependency; the daemon is a repo-root script, where it
+  // is always installed (the published npm package ships the dist/server.js bundle instead).
   // detached: own process group on POSIX so `stop` can kill the whole tree; stdio to the log.
-  const child = spawn(process.execPath, [SERVER_ENTRY], {
+  const child = spawn(process.execPath, ['--import', 'tsx', SERVER_ENTRY], {
     cwd: rootDir,
     detached: true,
     windowsHide: true,

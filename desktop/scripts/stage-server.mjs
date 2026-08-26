@@ -93,4 +93,20 @@ fs.rmSync(path.join(stageDir, 'www'), { recursive: true, force: true });
 console.log('[stage] Installing production dependencies into stage/node_modules/ ...');
 run('npm', ['ci', '--omit=dev'], stageDir);
 
+// Bundle the server entry into stage/dist/server.js (2026-08-26): server leaves are now
+// partially TypeScript, and the staged runtime must run under plain Node (electron-as-node,
+// no tsx shipped). main.cjs already prefers `dist/server.js` when present, so this slot is
+// what it finds. --packages=external keeps every dependency external (resolved from the
+// staged node_modules at runtime) AND keeps the guarded dynamic imports dynamic — the
+// pdf-parse/pdfjs-dist DOMMatrix crash and the vite dev-only import (round-6 P0s) must not
+// be inlined into a bundle that runs in production. esbuild resolves from the REPO root's
+// node_modules (it is a root devDependency); only the output lands in the stage.
+console.log('[stage] Bundling the server entry into stage/dist/server.js ...');
+execFileSync(process.execPath, [
+  path.join(rootDir, 'node_modules', 'esbuild', 'bin', 'esbuild'),
+  'server/index.js',
+  '--bundle', '--platform=node', '--format=esm', '--packages=external',
+  '--sourcemap', `--outfile=${path.join(stageDir, 'dist', 'server.js')}`,
+], { cwd: rootDir, stdio: 'inherit' });
+
 console.log(`[stage] Server runtime staged at ${stageDir}`);
