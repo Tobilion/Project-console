@@ -66,6 +66,7 @@ const { handleConfirmResponse } = await import(pathToFileURL(base + 'wsHandlers/
 const { explainInput, buildMatchInfo } = await import(pathToFileURL(base + 'wsHandlers/connectionMatching.js').href);
 const { handleAutoStartCommand } = await import(pathToFileURL(base + 'wsHandlers/connectionAutoStartAdmin.js').href);
 const { handleUpdateCommand } = await import(pathToFileURL(base + 'wsHandlers/connectionUpdateAdmin.js').href);
+const { handleDoctorCommand } = await import(pathToFileURL(base + 'wsHandlers/connectionDoctor.js').href);
 const { parseReminderInput } = await import(pathToFileURL(base + 'schedules/reminderParser.js').href);
 const {
   parsePdfNames, parsePdfOutput, parsePageSpec, extractWatermarkText,
@@ -949,6 +950,24 @@ sent.length = 0;
 const upd1 = await handleUpdateCommand(ws, proj, 'check for updates');
 eq('update admin: check-for-updates answers + trailing end', upd1 === true && ws.sent.length === 2 && ws.sent[0].type === 'answer' && ws.sent[1].type === 'end' && /Update available/.test(ws.sent[0].data), true);
 globalThis.fetch = realFetch;
+
+// --- CONSOLE DOCTOR (2026-08-26) -----------------------------------------------
+// The doctor runs machine-side probes (ports, daemon, embedding cache, writability, Ollama,
+// update, tooling, disk). Stub fetch so the registry probe is deterministic, then assert the
+// answer + trailing-end contract and the report header. The per-check results vary by machine,
+// so the stable assertions are the consumed flag, the header, and the end message.
+const realDoctorFetch = globalThis.fetch;
+globalThis.fetch = async () => ({ ok: true, json: async () => ({ version: '9.9.9' }) });
+sent.length = 0;
+const doc1 = await handleDoctorCommand(ws, 'console doctor');
+eq('doctor: consumed + answers + trailing end', doc1 === true && ws.sent.length === 2 && ws.sent[0].type === 'answer' && ws.sent[1].type === 'end' && /Console doctor/.test(ws.sent[0].data), true);
+sent.length = 0;
+const doc2 = await handleDoctorCommand(ws, 'diagnose the console');
+eq('doctor: alternate phrase consumed', doc2 === true && ws.sent.length === 2 && ws.sent[0].type === 'answer' && ws.sent[1].type === 'end', true);
+sent.length = 0;
+const doc3 = await handleDoctorCommand(ws, 'open the calculator');
+eq('doctor: non-doctor input passes through', doc3 === false && ws.sent.length === 0, true);
+globalThis.fetch = realDoctorFetch;
 
 // --- DRY-RUN / EXPLAIN (2026-08-24, differentiation item) ----------------------------
 // explainInput resolves what WOULD happen without executing anything — the answer names the

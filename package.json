@@ -38,7 +38,8 @@
     "daemon": "node scripts/daemon.mjs",
     "daemon:start": "node scripts/daemon.mjs start",
     "daemon:stop": "node scripts/daemon.mjs stop",
-    "daemon:status": "node scripts/daemon.mjs status"
+    "daemon:status": "node scripts/daemon.mjs status",
+    "doctor": "node --import tsx server/doctor.js"
   },
   "dependencies": {
     "@clack/prompts": "^1.7.0",
