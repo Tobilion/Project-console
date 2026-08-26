@@ -167,6 +167,11 @@ A well-formed command line typed in chat runs directly, bypassing the matcher:
 - Question shapes ("how to push", "command to see the dashboard") are pinned to a built-in command
   catalog before the matcher — a question can never execute the thing it asks about. Answers show
   the chat phrasing, the real shell command, and a clickable suggestion chip.
+- **Push-target disambiguation (2026-08-26)**: bare "how do i push" has no single answer — the
+  console asks *where* (npm / git / the app build), then answers the chosen target from the same
+  catalog entries, keeps the conversation open ("Any other questions?"), and closes politely on
+  "no thank you". "how do i push to production" answers the git entry directly. An unrelated
+  message while the question is open backtracks to normal matching — it is never swallowed.
 
 ---
 

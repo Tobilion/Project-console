@@ -5,6 +5,7 @@ import { runCommandEntry } from './matchedEntry.js';
 import { addToClaudeMd } from '../projectMemory.js';
 import { pendingMemorySuggestions } from './connectionState.js';
 import { parseFileNameOnly } from './builtinHelpers.js';
+import { answerDocMatches, pushTargetQuestion } from './builtinChitChat.js';
 
 // The four "this message is a reply to a pending question" interceptors from handleExecute —
 // each returns true when it consumed the message. They must be called in this order (param,
@@ -96,6 +97,51 @@ export async function handlePendingFollowUpReply(ws, project, projectId, input, 
   const resolvedWatch = { ...pending.target, action: substituteParams(pending.target.action, { [pending.followUp.param]: extracted }) };
   await runCommandEntry(ws, pending.entry, input, pending.followUp.entry, project, sessionContext);
   await runCommandEntry(ws, resolvedWatch, input, pending.followUp.entry, project, sessionContext);
+  ws.send(JSON.stringify({ type: 'end' }));
+  return true;
+}
+
+// Push-target reply (2026-08-26): the how_do_i "how do i push" disambiguation (see
+// builtinChitChat.js) staged sessionContext.pendingPushTarget; this interceptor consumes the
+// reply. The answer stays armed across follow-ups — the flow is question -> target answer ->
+// "Any other questions?" -> terminal reply. Backtracking rule (same as pendingDisambiguation):
+// a message that isn't a target answer, an affirmative, or the terminal reply clears the
+// state and falls through to normal matching, so an unrelated question is never swallowed.
+const PUSH_TERMINAL_RE = /^(no|nope|nah|not now|that'?s all|nothing else|no thanks?|no thank you|done|finished)\b/;
+const PUSH_AFFIRMATIVE_RE = /^(yes|yep|yeah|sure|more|what else|any other|another)\b/;
+
+function resolvePushTarget(lower) {
+  if (/^(npm|publish(?: to)? npm|npm package|npm registry|the npm)\b/.test(lower)) return 'publish to npm';
+  if (/^(git|github|git push|push to github|to github)\b/.test(lower)) return 'push to github';
+  if (/^(app build|build the app|build the desktop app|the app|desktop app|desktop|app)\b/.test(lower)) return 'build the desktop app';
+  return null;
+}
+
+export async function handlePendingPushTargetReply(ws, project, projectId, input, sessionContext) {
+  const pending = sessionContext.pendingPushTarget;
+  if (!pending || pending.projectId !== projectId) return false;
+  const lower = input.trim().toLowerCase();
+  if (PUSH_TERMINAL_RE.test(lower)) {
+    sessionContext.pendingPushTarget = null;
+    ws.send(JSON.stringify({ type: 'answer', data: "You're welcome — happy to help. Ask anything else anytime.\n" }));
+    ws.send(JSON.stringify({ type: 'end' }));
+    return true;
+  }
+  if (PUSH_AFFIRMATIVE_RE.test(lower)) {
+    const q = pushTargetQuestion();
+    ws.send(JSON.stringify({ type: 'answer', data: q.text }));
+    ws.send(JSON.stringify({ type: 'suggestions', data: q.chips }));
+    ws.send(JSON.stringify({ type: 'end' }));
+    return true;
+  }
+  const target = resolvePushTarget(lower);
+  if (!target) {
+    sessionContext.pendingPushTarget = null;
+    return false;
+  }
+  // The state stays armed so the conversation can continue ("Any other questions?"); only a
+  // non-target message or the terminal reply clears it.
+  await answerDocMatches(ws, target, project, '\n\nAny other questions?');
   ws.send(JSON.stringify({ type: 'end' }));
   return true;
 }

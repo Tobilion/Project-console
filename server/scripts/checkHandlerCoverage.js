@@ -63,6 +63,7 @@ const { getWatchRules } = await import(pathToFileURL(base + 'watchRules.js').hre
 const { handleScheduleCommand } = await import(pathToFileURL(base + 'wsHandlers/connectionScheduleAdmin.js').href);
 const { handleHistoryCommand } = await import(pathToFileURL(base + 'wsHandlers/connectionHistoryAdmin.js').href);
 const { handleConfirmResponse } = await import(pathToFileURL(base + 'wsHandlers/connectionConfirm.js').href);
+const { handlePendingPushTargetReply } = await import(pathToFileURL(base + 'wsHandlers/connectionInterceptors.js').href);
 const { explainInput, buildMatchInfo } = await import(pathToFileURL(base + 'wsHandlers/connectionMatching.js').href);
 const { handleAutoStartCommand } = await import(pathToFileURL(base + 'wsHandlers/connectionAutoStartAdmin.js').href);
 const { handleUpdateCommand } = await import(pathToFileURL(base + 'wsHandlers/connectionUpdateAdmin.js').href);
@@ -236,6 +237,32 @@ eq('chitchat leaf: how_do_i publish suggests the npm publish command as a chip',
 sent.length = 0;
 await handleBuiltinIntent(ws, 'system.chit_chat.how_do_i', 'how do i use a command', proj, {});
 eq('chitchat leaf: how_do_i use-a-command answers from the help entry', ws.sent.length === 2 && ws.sent[0].type === 'answer' && /prints the full command reference/.test(ws.sent[0].data), true);
+
+// Push-target disambiguation (2026-08-26): bare "how do i push" asks WHERE (npm/git/app build)
+// and arms sessionContext.pendingPushTarget; the interceptor consumes the reply and answers
+// from the same catalog entries, keeps the state armed for follow-ups, and the terminal reply
+// ("No, thank you") gets the polite close. Anything unrelated backtracks (state cleared, the
+// message falls through to normal matching — it must never be swallowed).
+sent.length = 0;
+const pushCtx = {};
+await handleBuiltinIntent(ws, 'system.chit_chat.how_do_i', 'How do i push?', proj, pushCtx);
+eq('push flow: bare how-do-i-push asks the three-way question', ws.sent.length === 2 && ws.sent[0].type === 'answer' && /Where do you want to push/.test(ws.sent[0].data) && ws.sent[1].type === 'suggestions' && ws.sent[1].data.includes('app build') && pushCtx.pendingPushTarget?.projectId === proj.id, true);
+sent.length = 0;
+const pushApp = await handlePendingPushTargetReply(ws, proj, proj.id, 'app build', pushCtx);
+eq('push flow: app build answers the desktop pipeline + asks for more', pushApp === true && ws.sent.length === 3 && ws.sent[0].type === 'answer' && /desktop/.test(ws.sent[0].data) && /Any other questions\?/.test(ws.sent[0].data) && ws.sent[1].type === 'suggestions' && ws.sent[2].type === 'end', true);
+sent.length = 0;
+const pushNpm = await handlePendingPushTargetReply(ws, proj, proj.id, 'npm', pushCtx);
+eq('push flow: npm answers the publish entry + keeps the flow armed', pushNpm === true && ws.sent.length === 3 && ws.sent[0].type === 'answer' && /npm publish/.test(ws.sent[0].data) && ws.sent[2].type === 'end' && pushCtx.pendingPushTarget !== null, true);
+sent.length = 0;
+const pushDone = await handlePendingPushTargetReply(ws, proj, proj.id, 'No, thank you', pushCtx);
+eq('push flow: terminal reply closes politely and clears the state', pushDone === true && ws.sent.length === 2 && ws.sent[0].type === 'answer' && /welcome/.test(ws.sent[0].data) && ws.sent[1].type === 'end' && pushCtx.pendingPushTarget === null, true);
+sent.length = 0;
+const pushCtx2 = { pendingPushTarget: { projectId: proj.id } };
+const pushBail = await handlePendingPushTargetReply(ws, proj, proj.id, 'what is the time', pushCtx2);
+eq('push flow: unrelated message backtracks (clears state, falls through)', pushBail === false && pushCtx2.pendingPushTarget === null && ws.sent.length === 0, true);
+sent.length = 0;
+await handleBuiltinIntent(ws, 'system.chit_chat.how_do_i', 'how do i push to production', proj, {});
+eq('push flow: production-shaped question answers the git entry directly', ws.sent.length === 2 && ws.sent[0].type === 'answer' && /push to github/.test(ws.sent[0].data) && ws.sent[1].type === 'suggestions', true);
 
 sent.length = 0;
 await handleBuiltinIntent(ws, 'system.chit_chat.needs_ai_mode', 'make me a landing page', proj, {});

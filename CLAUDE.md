@@ -1072,7 +1072,14 @@ routing when an intent intentionally changes). Batteries live in
   how_do_i (Phase 1, 2026-08-10: "how do i <feature>" guidance answered from the
   consoleCommandDocs.js catalog — side-effect-free, no model call; examples deliberately
   exclude run/open/push/stop-shaped phrasings so how_to_run/deploy/stop-server keep their
-  routes). Project-customizable via
+  routes). 2026-08-26: bare "how do i push" (no target) asks a three-way disambiguation
+  (npm / git / app build) and arms `sessionContext.pendingPushTarget`, consumed by
+  `handlePendingPushTargetReply` (connectionInterceptors.js, after pendingFileQuestion in
+  handleExecute): target answers render the SAME catalog entries via the shared
+  `answerDocMatches` renderer (builtinChitChat.js), stay armed across "Any other
+  questions?", and the terminal "no thank you" closes politely. Unrelated replies
+  backtrack (clear + normal matching). "how do i push to production" answers the git
+  entry directly. Project-customizable via
   `chatReplies` in console.config.json.
 - **actions** (miscIntents.js / projectActionIntents): metrics, open_in_vscode (code CLI →
   `vscode://file/` protocol fallback), open_in_cursor, open_in_explorer, open_in_terminal,

@@ -209,48 +209,24 @@ export const chitChatHandlers = {
     // Phase 9 (2026-08-11): entries now carry the real `shell` command and example `phrases`;
     // the answer renders both, and clickable suggestion chips let the user run it — chips are
     // clicks, nothing auto-runs, so this stays side-effect-free.
-    const matches = lookupCommandDocs(input);
-    if (matches.length === 0) {
-      ws.send(JSON.stringify({
-        type: 'answer',
-        data: `I don't have a documented answer for that yet. Type "help" for the full command reference, or try one of these — "how do i schedule a backup", "how do i export this chat", "how do i change the theme".`,
-      }));
+    // 2026-08-26: bare "how do i push" (no target) dead-ended with "no documented answer" —
+    // the catalog has no bare-'push' keyword, and the three push paths (git / npm / desktop
+    // build) are genuinely different flows, so the question now asks which target and arms
+    // sessionContext.pendingPushTarget for the reply (consumed in connectionInterceptors.js).
+    const PUSH_PRODUCTION_RE = /^how\s+(?:do\s+i|to)\s+push\s+to\s+(?:production|prod|live)$/i;
+    const PUSH_TARGET_RE = /^how\s+(?:do\s+i|to)\s+push(?:\s+(?:this|it|my\s+changes?))?$/i;
+    const pushStripped = input.trim().replace(/[?!.]+$/g, '');
+    if (PUSH_PRODUCTION_RE.test(pushStripped)) {
+      await answerDocMatches(ws, 'push to github', project);
       return;
     }
-    const lines = matches.map((m, i) => {
-      let out = `  ${i + 1}. **\`${m.command}\`** — ${m.explain}`;
-      const shell = resolveShell(m);
-      if (shell) out += `\n     - Command: \`${shell}\``;
-      if (m.phrases?.length) out += `\n     - Try saying: "${m.phrases.join('", "')}"`;
-      // Entries with a `doc` field pull their full step-by-step body from a markdown file
-      // next to the server source (staged into the packaged app, so the answer is identical
-      // everywhere). The file — not this catalog entry — is the maintained source of truth;
-      // when it is missing for any reason the static explain above stays the fallback.
-      if (m.doc) {
-        try {
-          const docPath = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', m.doc);
-          out += `\n\n${fs.readFileSync(docPath, 'utf-8').trim()}`;
-        } catch {
-          // doc file unavailable — the catalog's explain already covers the summary
-        }
-      }
-      return out;
-    });
-    ws.send(JSON.stringify({
-      type: 'answer',
-      data: `Here's how, for **[${project.name}]**:\n\n${lines.join('\n')}\n\nType "help" for the full command reference, or ask "how do i <thing>" about anything else.`,
-    }));
-    // Suggestion chips: a runnable shell command for direct execution (npm/npx/python/node
-    // shapes — the frontend sends those through the direct-command path), otherwise the chat
-    // phrasing (routes through the normal matcher + confirm flows). Deduped, up to three.
-    const chips = [];
-    for (const m of matches) {
-      const shell = resolveShell(m);
-      const chip = shell && /^(npm|npx|python|node)\s/.test(shell) ? shell : m.command;
-      if (!chips.includes(chip)) chips.push(chip);
-      if (chips.length === 3) break;
+    if (PUSH_TARGET_RE.test(pushStripped)) {
+      sessionContext.pendingPushTarget = { projectId: project.id };
+      ws.send(JSON.stringify({ type: 'answer', data: pushTargetQuestion().text }));
+      ws.send(JSON.stringify({ type: 'suggestions', data: pushTargetQuestion().chips }));
+      return;
     }
-    ws.send(JSON.stringify({ type: 'suggestions', data: chips }));
+    await answerDocMatches(ws, input, project);
   },
 
   'system.chit_chat.list_commands': async (ws) => {
@@ -386,3 +362,62 @@ export const chitChatHandlers = {
     }
   }
 };
+
+// Shared how-do-i answer renderer (2026-08-26): the lookup + markdown answer + suggestion
+// chips, extracted so the push-target interceptor (connectionInterceptors.js) renders the
+// SAME catalog entries the chat would — one code path, identical answers everywhere.
+// Side-effect-free: never runs the referenced command. `suffix` is appended to the answer
+// (used by the interceptor to continue the conversation: "Any other questions?").
+export async function answerDocMatches(ws, input, project, suffix = '') {
+  const matches = lookupCommandDocs(input);
+  if (matches.length === 0) {
+    ws.send(JSON.stringify({
+      type: 'answer',
+      data: `I don't have a documented answer for that yet. Type "help" for the full command reference, or try one of these — "how do i schedule a backup", "how do i export this chat", "how do i change the theme".`,
+    }));
+    return;
+  }
+  const lines = matches.map((m, i) => {
+    let out = `  ${i + 1}. **\`${m.command}\`** — ${m.explain}`;
+    const shell = resolveShell(m);
+    if (shell) out += `\n     - Command: \`${shell}\``;
+    if (m.phrases?.length) out += `\n     - Try saying: "${m.phrases.join('", "')}"`;
+    // Entries with a `doc` field pull their full step-by-step body from a markdown file
+    // next to the server source (staged into the packaged app, so the answer is identical
+    // everywhere). The file — not this catalog entry — is the maintained source of truth;
+    // when it is missing for any reason the static explain above stays the fallback.
+    if (m.doc) {
+      try {
+        const docPath = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', m.doc);
+        out += `\n\n${fs.readFileSync(docPath, 'utf-8').trim()}`;
+      } catch {
+        // doc file unavailable — the catalog's explain already covers the summary
+      }
+    }
+    return out;
+  });
+  ws.send(JSON.stringify({
+    type: 'answer',
+    data: `Here's how, for **[${project.name}]**:\n\n${lines.join('\n')}\n\nType "help" for the full command reference, or ask "how do i <thing>" about anything else.${suffix}`,
+  }));
+  // Suggestion chips: a runnable shell command for direct execution (npm/npx/python/node
+  // shapes — the frontend sends those through the direct-command path), otherwise the chat
+  // phrasing (routes through the normal matcher + confirm flows). Deduped, up to three.
+  const chips = [];
+  for (const m of matches) {
+    const shell = resolveShell(m);
+    const chip = shell && /^(npm|npx|python|node)\s/.test(shell) ? shell : m.command;
+    if (!chips.includes(chip)) chips.push(chip);
+    if (chips.length === 3) break;
+  }
+  ws.send(JSON.stringify({ type: 'suggestions', data: chips }));
+}
+
+// The three-way push-target question (2026-08-26): the disambiguation asked by how_do_i for
+// bare "how do i push" and re-asked by the interceptor after each answer.
+export function pushTargetQuestion() {
+  return {
+    text: 'Where do you want to push — **npm** (publish a package), **git** (push a repo to GitHub), or **the app build** (build the desktop app)?',
+    chips: ['npm', 'git', 'app build'],
+  };
+}
