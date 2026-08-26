@@ -186,6 +186,20 @@ async function main() {
     return;
   }
 
+  // `console doctor` subcommand: `node bin/cli.js doctor` (or `npm run doctor`).
+  // Runs the standalone machine-side checks (ports, daemon, embedding cache, writability,
+  // Ollama, update, tooling, disk) WITHOUT booting the server — the doctor must work when
+  // the console itself cannot start. server/doctor.js imports no server-graph modules, so
+  // this stays import-light.
+  if (process.argv[2] === 'doctor' || process.argv[2] === '--doctor') {
+    const { runDoctorChecks, printDoctorReport, doctorExitCode } = await import(
+      pathToFileURL(path.join(rootDir, 'server', 'doctor.js')).href
+    );
+    const checks = await runDoctorChecks();
+    process.stdout.write(printDoctorReport(checks).replace(/\*\*/g, '') + '\n');
+    process.exit(doctorExitCode(checks));
+  }
+
   const port = await startServer();
 
   const url = `http://127.0.0.1:${port}`;
