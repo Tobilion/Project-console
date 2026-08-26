@@ -87,3 +87,6 @@ metadata.json
 
 # electron-builder staging dir (desktop builds)
 desktop/stage/
+
+# Unattended-run execution plan (2026-08-26) — durable session record, never committed
+/.plans/
