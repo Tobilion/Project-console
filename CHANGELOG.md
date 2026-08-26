@@ -13,10 +13,23 @@ independently; desktop releases are tagged against the desktop package.
 ## [Unreleased]
 
 ### Added
+- How-do-I push disambiguation: bare "how do i push" asks WHERE (npm / git /
+  the app build), answers the chosen target from the catalog, keeps the
+  conversation open ("Any other questions?"), and closes politely on
+  "no thank you". "how do i push to production" answers the git entry
+  directly.
+
+## [1.0.9] — 2026-08-26
+
+### Added
 - Desktop shell: console now runs in the app's own native window (splash during
   cold boot; `openExternal` only for external https links). Non-zero server
   startup exits surface immediately with a specific error page + Retry/Quit
   dialog instead of a silent 90-second probe-then-quit.
+- **How-do-I push disambiguation (1.0.9)**: bare "how do i push" asks WHERE
+  (npm / git / the app build), answers the chosen target from the catalog,
+  keeps the conversation open ("Any other questions?"), and closes politely on
+  "no thank you". "how do i push to production" answers the git entry directly.
 - CLI: `desktop/cli.cmd` + an NSIS "Project Console CLI" Start Menu shortcut
   launch the packaged client via the Electron binary
   (`ELECTRON_RUN_AS_NODE=1`) — zero separate Node.js install needed.
@@ -160,4 +173,4 @@ tuning overrides, and the Electron desktop shell.
 - The npm package ships `server/` source and the `dist/server.js` bundle; the
   bundle must be regenerated (`npm run build`) before publishing so the
   shipped runtime matches the source.
-- Desktop version bumps happen per desktop release (currently `1.0.0`).
+- Desktop version bumps happen per desktop release (currently `1.0.1`).
