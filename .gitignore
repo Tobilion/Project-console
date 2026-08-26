@@ -34,6 +34,8 @@ data/schedule-log.md
 data/notifications.json
 # Phase 8: OS clipboard history when clipboardPersist is on (privacy — never git-tracked)
 data/clipboard-history.json
+# Rolling match-quality telemetry (one line per trigger-mode message — see matchStats.js)
+data/match-stats.jsonl
 
 # Local Project Console chat memory (not for git)
 .console/

@@ -67,6 +67,7 @@ const { explainInput, buildMatchInfo } = await import(pathToFileURL(base + 'wsHa
 const { handleAutoStartCommand } = await import(pathToFileURL(base + 'wsHandlers/connectionAutoStartAdmin.js').href);
 const { handleUpdateCommand } = await import(pathToFileURL(base + 'wsHandlers/connectionUpdateAdmin.js').href);
 const { handleDoctorCommand } = await import(pathToFileURL(base + 'wsHandlers/connectionDoctor.js').href);
+const { handleMatchStatsCommand } = await import(pathToFileURL(base + 'wsHandlers/connectionMatchStats.js').href);
 const { parseReminderInput } = await import(pathToFileURL(base + 'schedules/reminderParser.js').href);
 const {
   parsePdfNames, parsePdfOutput, parsePageSpec, extractWatermarkText,
@@ -968,6 +969,32 @@ sent.length = 0;
 const doc3 = await handleDoctorCommand(ws, 'open the calculator');
 eq('doctor: non-doctor input passes through', doc3 === false && ws.sent.length === 0, true);
 globalThis.fetch = realDoctorFetch;
+
+// --- MATCH QUALITY (2026-08-26) -------------------------------------------------
+// Deterministic via MATCH_STATS_FILE: a temp log with known lines exercises the
+// aggregation + drift flag; an absent file exercises the clean empty answer. The real
+// data/match-stats.jsonl is never touched.
+const statsFile = path.join(os.tmpdir(), `console-match-stats-${Date.now()}.jsonl`);
+process.env.MATCH_STATS_FILE = statsFile;
+const mkStat = (stage, intent, confidence) => `${JSON.stringify({ stage, intent, confidence, margin: null, inputLen: 10 })}\n`;
+// 150 lines: the first 50 fill the previous window (git_push at 0.9), the last 100 fill
+// the recent window (git_push dipped to 0.6 + a stable fuzzy intent) — drift must flag.
+const statLines = [];
+for (let i = 0; i < 50; i++) statLines.push(mkStat('semantic', 'git_push', 0.9));
+for (let i = 0; i < 30; i++) statLines.push(mkStat('semantic', 'git_push', 0.6));
+for (let i = 0; i < 70; i++) statLines.push(mkStat('fuzzy', 'chit_chat.time', 0.55));
+fs.writeFileSync(statsFile, statLines.join(''));
+sent.length = 0;
+const mq1 = await handleMatchStatsCommand(ws, 'review match quality');
+eq('match quality: aggregates the log and flags the drifted intent', mq1 === true && ws.sent.length === 2 && ws.sent[0].type === 'answer' && ws.sent[1].type === 'end' && /git_push/.test(ws.sent[0].data) && /drift/.test(ws.sent[0].data) && /Stage distribution/.test(ws.sent[0].data), true);
+sent.length = 0;
+const mq2 = await handleMatchStatsCommand(ws, 'match stats');
+eq('match quality: alternate phrase consumed', mq2 === true && ws.sent.length === 2 && ws.sent[0].type === 'answer' && ws.sent[1].type === 'end', true);
+fs.rmSync(statsFile, { force: true });
+sent.length = 0;
+const mq3 = await handleMatchStatsCommand(ws, 'review match quality');
+eq('match quality: no log yet answers cleanly', mq3 === true && ws.sent.length === 2 && ws.sent[0].type === 'answer' && ws.sent[1].type === 'end' && /No match records/.test(ws.sent[0].data), true);
+delete process.env.MATCH_STATS_FILE;
 
 // --- DRY-RUN / EXPLAIN (2026-08-24, differentiation item) ----------------------------
 // explainInput resolves what WOULD happen without executing anything — the answer names the

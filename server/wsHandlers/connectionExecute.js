@@ -18,6 +18,7 @@ import { handleScheduleCommand } from './connectionScheduleAdmin.js';
 import { handleNotifyCommand } from './connectionNotifyAdmin.js';
 import { handleHealthCheck } from './connectionHealthCheck.js';
 import { handleDoctorCommand } from './connectionDoctor.js';
+import { handleMatchStatsCommand } from './connectionMatchStats.js';
 import { handleAutoStartCommand } from './connectionAutoStartAdmin.js';
 import { handleUpdateCommand } from './connectionUpdateAdmin.js';
 import { handleHistoryCommand } from './connectionHistoryAdmin.js';
@@ -188,6 +189,7 @@ async function handleExecuteBody(ws, parsed, sessionContext) {
   if (await handleNotifyCommand(ws, project, lowerInput, input)) return;
   if (await handleHealthCheck(ws, lowerInput)) return;
   if (await handleDoctorCommand(ws, lowerInput)) return;
+  if (await handleMatchStatsCommand(ws, lowerInput)) return;
   if (await handleAutoStartCommand(ws, project, lowerInput)) return;
   if (await handleUpdateCommand(ws, project, lowerInput)) return;
   if (await handleWorkspaceCommand(ws, project, lowerInput, input, sessionContext)) return;

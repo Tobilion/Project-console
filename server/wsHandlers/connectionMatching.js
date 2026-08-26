@@ -7,6 +7,7 @@ import { handleMatchedEntry } from './matchedEntry.js';
 import { guessCommand } from '../commandGuesser.js';
 import { logNearMiss } from '../nearMissLogger.js';
 import { patchMessageMeta } from '../conversationStore.js';
+import { recordMatchStat } from '../matchStats.js';
 import { extractCommandLine } from '../typedCommand.js';
 import { state, pendingConfirmations } from '../state.js';
 
@@ -37,6 +38,7 @@ export function buildMatchInfo(matchResult, input, { guessed = null, viaContext 
       stage: matchResult.semanticSource || 'nlp',
       intent: matchResult.builtin,
       confidence: matchResult.semanticConfidence ?? null,
+      margin: marginOf(matchResult),
       closeSecond: matchResult.closeSecond?.intent || null,
     };
   }
@@ -46,6 +48,7 @@ export function buildMatchInfo(matchResult, input, { guessed = null, viaContext 
       intent: matchResult.match.type || 'entry',
       trigger: matchResult.matchedTrigger || null,
       confidence: matchResult.semanticConfidence ?? null,
+      margin: marginOf(matchResult),
     };
   }
   if (viaContext) return { stage: 'context', intent: null, confidence: null };
@@ -53,10 +56,18 @@ export function buildMatchInfo(matchResult, input, { guessed = null, viaContext 
   return { stage: 'fallback', intent: null, confidence: null, didYouMean: matchResult.didYouMean?.intent || null };
 }
 
+/** Winner-minus-second margin when both confidences exist (semantic stage only). */
+function marginOf(matchResult) {
+  if (typeof matchResult.semanticConfidence !== 'number' || !matchResult.closeSecond) return null;
+  const second = matchResult.closeSecond.confidence;
+  return typeof second === 'number' ? matchResult.semanticConfidence - second : null;
+}
+
 /** Persists the matching transcript onto the just-appended user message, fire-and-forget. */
 export function recordMatchInfo(sessionContext, input, matchResult, extra = {}) {
   if (!sessionContext?.lastUserMessageId || !sessionContext.currentSessionId) return;
   const info = buildMatchInfo(matchResult, input, extra);
+  recordMatchStat(info, input);
   patchMessageMeta(sessionContext.currentSessionId, sessionContext.lastUserMessageId, { match: info })
     .catch(() => {});
 }
