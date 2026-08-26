@@ -8,22 +8,30 @@
     "start": "electron .",
     "stage": "node scripts/stage-server.mjs",
     "dist": "npm run stage && electron-builder --win nsis",
+    "dist:publish": "npm run stage && electron-builder --win nsis --publish always",
     "dist:mac": "npm run stage && electron-builder --mac dmg",
     "dist:linux": "npm run stage && electron-builder --linux AppImage"
   },
   "build": {
     "appId": "com.localprojectconsole.app",
     "productName": "Project Console",
-    "files": ["main.cjs", "preload.js"],
+    "files": [
+      "main.cjs",
+      "preload.js"
+    ],
     "extraResources": [
       {
         "from": "stage",
         "to": ".",
-        "filter": ["**/*"]
+        "filter": [
+          "**/*"
+        ]
       }
     ],
     "win": {
-      "target": ["nsis"],
+      "target": [
+        "nsis"
+      ],
       "icon": "build/icon.ico"
     },
     "nsis": {
@@ -31,12 +39,21 @@
       "perMachine": false
     },
     "afterPack": "scripts/after-pack.cjs",
+    "publish": {
+      "provider": "github",
+      "owner": "Tobilion",
+      "repo": "Project-console"
+    },
     "mac": {
-      "target": ["dmg"],
+      "target": [
+        "dmg"
+      ],
       "icon": "build/icon.icns"
     },
     "linux": {
-      "target": ["AppImage"],
+      "target": [
+        "AppImage"
+      ],
       "category": "Utility",
       "icon": "build/icon.png"
     }
@@ -44,5 +61,8 @@
   "devDependencies": {
     "electron": "^43.4.0",
     "electron-builder": "~26.15.3"
+  },
+  "dependencies": {
+    "electron-updater": "^6.8.9"
   }
 }

@@ -16,10 +16,37 @@
 import fs from 'fs';
 import path from 'path';
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
-import { PDFParse } from 'pdf-parse';
 import { walkDir } from './toolScan.js';
 import { createResolveSafe } from './toolSandbox.js';
 import { appendAction } from './actionHistory.js';
+
+// pdf-parse (v2) is NOT imported statically: it pulls pdfjs-dist's legacy build, which
+// evaluates `new DOMMatrix()` at module scope and only survives in plain Node when the
+// @napi-rs/canvas native binding (its polyfill source) is loadable. That binding is a
+// hard dependency of pdf-parse, but its platform-specific binary can fail to install on
+// machines without build tools / on exotic CPUs — the same optional-dep failure class as
+// re2/sharp. With the binding missing, the static import threw ReferenceError: DOMMatrix
+// is not defined and CRASHED THE WHOLE SERVER at boot (2026-08-25, reproduced via
+// `npm install --omit=optional`). Lazy + cached + guarded: PDF build/split/watermark keep
+// working and text extraction degrades to a clear error.
+let pdfParseModulePromise = null;
+
+/** Cached pdf-parse loader; null when the module can't load (native binding missing). */
+async function getPdfParse() {
+  if (pdfParseModulePromise === null) {
+    pdfParseModulePromise = import('pdf-parse').then((m) => m.PDFParse);
+  }
+  try {
+    return await pdfParseModulePromise;
+  } catch (err) {
+    pdfParseModulePromise = null; // reset so a later call retries (the machine may gain the dep)
+    console.error(`[pdfKit] pdf-parse unavailable — PDF text extraction disabled: ${err?.message}`);
+    return null;
+  }
+}
+
+const TEXT_EXTRACT_UNAVAILABLE =
+  'PDF text extraction is unavailable: pdf-parse needs the @napi-rs/canvas native binding, which failed to load on this machine. PDF building/splitting/watermarking still work — run `npm install` (or install the console with build tools available) to enable text extraction.';
 
 const MAX_PDF_FILES = 200;            // list cap — a folder of PDFs is bounded, never a scan storm
 export const MAX_MERGE_INPUTS = 10;    // one merge run is bounded; the user re-runs for the rest
@@ -265,6 +292,8 @@ export async function splitPdf(root, input, spec) {
 export async function extractText(root, input) {
   const read = await readPdfBytes(root, input);
   if (read.error) return { ok: false, error: read.error };
+  const PDFParse = await getPdfParse();
+  if (!PDFParse) return { ok: false, error: `${TEXT_EXTRACT_UNAVAILABLE} (${input})` };
   try {
     const parser = new PDFParse({ data: read.bytes });
     await parser.load();
@@ -281,6 +310,8 @@ export async function extractText(root, input) {
  *  chat-facing extractText takes a project-relative filename; the indexer has a path + bytes
  *  already). Same pdf-parse path — one extraction implementation. */
 export async function extractPdfTextBytes(bytes) {
+  const PDFParse = await getPdfParse();
+  if (!PDFParse) return { ok: false, error: TEXT_EXTRACT_UNAVAILABLE };
   try {
     const parser = new PDFParse({ data: bytes });
     await parser.load();

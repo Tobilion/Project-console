@@ -28,6 +28,16 @@ export const PRE_SEMANTIC_OVERRIDES = [
   // "publish" was missing from this list. Added alongside deploy; the catalog answers with the
   // push-to-github guidance first and the npm publish option as the suggestion.
   { intent: 'system.chit_chat.how_do_i', pattern: /^(?:how\s+(?:to|do\s+(?:you|i|we))\s+|(?:what\s+is\s+the\s+)?command\s+to\s+)(?:push|commit|deploy|publish|build|stop\s+the\s+server|open\s+in|show|make\s+a\s+checkpoint|see\s+(?:the\s+)?(?:dashboard|test\s+coverage|bundle)|switch\s+projects|change\s+the\s+theme|check\s+(?:git\s+status|the\s+console\s+health|collisions)|export|schedule|review|approve)/i },
+  // Desktop build/release self-documentation (2026-08-25): "how do i rebuild the desktop app"
+  // drifted to project.knowledge.how_to_run (answered with the scanned project's CLAUDE.md),
+  // "how do i release an update" matched git_fetch and fired a CONFIRM PROMPT (git fetch), and
+  // "how do i run the build" matched npm_run and EXECUTED `npm run build` — all three are
+  // questions about building/releasing the CONSOLE itself, never the active project, and none
+  // may execute or confirm anything. They pin to how_do_i, whose desktop catalog entry renders
+  // server/desktop-release.md (the maintained build/release pipeline doc).
+  { intent: 'system.chit_chat.how_do_i', pattern: /^how\s+(?:do|can|would|should)\s+i\s+(?:re)?build\s+(?:the\s+)?desktop\s+app\b/i },
+  { intent: 'system.chit_chat.how_do_i', pattern: /^how\s+(?:do|can|would|should)\s+i\s+release\s+(?:an|a)\s+update\b/i },
+  { intent: 'system.chit_chat.how_do_i', pattern: /^how\s+(?:do|can|would|should)\s+i\s+run\s+the\s+build\b/i },
   // Matchday-Exchange live session (2026-08-14): "what is the site about" routed to
   // system.chit_chat.deploy — a read-only question triggered the git-push confirm card — and
   // "what is the details of the site" landed on project.context.dev_server_status. The

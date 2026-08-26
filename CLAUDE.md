@@ -2162,26 +2162,26 @@ gap, both fixed + harness-pinned. Crosscheck notes per class:
   justifying it. This repo's one-off spec/prompt files were deleted 2026-08-05 â€” don't drop
   new ones in the root; keep history in CLAUDE.md instead.
 
-# Audit round 5 (2026-08-24) — desktop packaging, undo toasts, daemon, splits, differentiation
+# Audit round 5 (2026-08-24) ï¿½ desktop packaging, undo toasts, daemon, splits, differentiation
 
 ## Desktop app is now actually buildable + working (was broken by design)
 
 - **The old packaging could never work**: desktop/package.json's iles globbed
   server/**/in/**/data/** relative to desktop/ (they live at the repo root), and
   even if they had landed, main.cjs spawned 
-ode <entry> from inside the asar — plain
+ode <entry> from inside the asar ï¿½ plain
   Node cannot execute a script inside an asar. Verified live 2026-08-24: the first installer
   produced a crash-looping app (hundreds of Electron helper processes, no server).
 - **Fix**: desktop/scripts/stage-server.mjs stages a runnable server runtime into
-  desktop/stage/ (server source + in/ + data/ + the vite-built frontend INSIDE
-  server/ — production mode serves static from __dirname — plus 
+  desktop/stage/ (server source + bin/ + an EMPTY data/ dir (fresh installs start like a new user) + the vite-built frontend INSIDE
+  server/ ï¿½ production mode serves static from __dirname ï¿½ plus 
 pm ci --omit=dev
   node_modules); electron-builder extraResources copies it into esources/ and an
   fterPack hook (desktop/scripts/after-pack.cjs) adds node_modules (electron-builder
   excludes node_modules from extraResources by default). main.cjs resolves the server
   root as process.resourcesPath when packaged and spawns with **ELECTRON_RUN_AS_NODE=1**
   (without it, process.execPath is the Electron binary and the "server" relaunches as
-  another app instance). desktop/build/icon.png (512×512, placeholder upscaled from the
+  another app instance). desktop/build/icon.png (512ï¿½512, placeholder upscaled from the
   256px one) satisfies mac/linux icon size requirements. Scripts: 
 pm run dist /
   dist:mac / dist:linux (each stages first). desktop/stage/ is gitignored.
@@ -2189,19 +2189,19 @@ pm run dist /
   (ubuntu-latest) on push to main or via Actions ? "Desktop Builds" ? Run workflow; artifacts
   download from the run's Artifacts section (AppImage contents smoke-checked via
   --appimage-extract). Windows NSIS stays local: cd desktop && npm run dist ?
-  desktop/dist/Project Console Setup 1.0.0.exe (verified working end-to-end on this machine
-  — server boots from resources, frontend serves, clean quit).
+  desktop/dist/Project Console Setup 1.0.0.exe (clean-tested 2026-08-25 (see 02-findings.md P0 â€” the round-5 boot test ran against dev node_modules and never caught the vite static-import crash; the installed-app test now covers it)
+  ï¿½ server boots from resources, frontend serves, clean quit).
 
 ## Daemon scripts are cross-platform now
 
-- scripts/daemon.mjs — start/stop/status/kill-by-port in plain Node (works on
+- scripts/daemon.mjs ï¿½ start/stop/status/kill-by-port in plain Node (works on
   mac/Linux/Windows): detached spawn, probe 3000-3009 for a real console (/api/projects
   shape check), writes logs/daemon.port + daemon.pid, and every kill VERIFIES the
   listening PID's command line (server/index.js | dist/server.js | repo path) before killing
-  — a recycled port can never kill an unrelated service. npm scripts: daemon,
+  ï¿½ a recycled port can never kill an unrelated service. npm scripts: daemon,
   daemon:start, daemon:stop, daemon:status. Windows stop-daemon.ps1 gained the same
   command-line verification + the taskkill fallback. Verified live (start ? handoff ? stop ?
-  unrelated-process refusal). Uses natural exit with process.exitCode — process.exit()
+  unrelated-process refusal). Uses natural exit with process.exitCode ï¿½ process.exit()
   with undici keep-alive sockets pending trips a libuv assertion on Windows.
 
 ## Undo-toast plumbing (chat-driven destructive actions)
@@ -2209,21 +2209,21 @@ pm run dist /
 - Journaled destructive answers now carry an additive ctionIds array (web answer case ?
   8s Undo toast ? sends evert action <id1>,<id2> through the normal chat flow; CLI ignores
   the field). Sites: confirm-branch fileOps (via tools.js's wrapMutatingTool, which now
-  attaches the journal id to successful results), generalFileOp (tidy/dedupe/rename/move —
+  attaches the journal id to successful results), generalFileOp (tidy/dedupe/rename/move ï¿½
   the perform* functions return their journal ids), pdfOps (pdfKit writeOutput returns the
   id), backup.create. Batch revert: evert action <id1>,<id2> confirms into ONE card and
-  the confirm branch loops evertAction per id (mixed git/command batches refused — those
+  the confirm branch loops evertAction per id (mixed git/command batches refused ï¿½ those
   are answer-only by design). Frontend: WsCtx.sendMessage (ctxRef built after
   handleSendMessage), answerCase fires the toast.
 
 ## Differentiation items (trigger-mode-first thesis)
 
 1. **Matcher-stage transcript logging**: every trigger-mode user message now persists
-   meta.match = { stage, intent, confidence, ... } — ecordMatchInfo/uildMatchInfo
+   meta.match = { stage, intent, confidence, ... } ï¿½ ecordMatchInfo/uildMatchInfo
    in connectionMatching.js, patchMessageMeta in conversationStore.js (NDJSON line patch
    under serializePersistence). Stages: presemantic shows as its semantic source,
    semantic/fuzzy/keyword, nlp, router, config-entry, multi, disambiguate, context, guess,
-   fallback. **Gotcha found live**: the user-message append must be AWAITED — with a warm
+   fallback. **Gotcha found live**: the user-message append must be AWAITED ï¿½ with a warm
    model matchInput resolves faster than the serialized append, and a fire-and-forget .then
    lost the race.
 2. **Zero-network-floor (verified)**: every outbound fetch in server/ is AI-mode-only,
@@ -2235,17 +2235,17 @@ pm run dist /
 4. **CLI --dry-run / --explain**: both flags send the execute payload with additive
    dryRun: true; explainInput (connectionMatching.js) resolves what WOULD happen
    (typed-command bypass ? matchInput ? stage/intent/command) and never executes/confirms.
-5. **Planned (not built)**: scoped permission modes ("Code"/"Ask"/"Debug" — any variant that
+5. **Planned (not built)**: scoped permission modes ("Code"/"Ask"/"Debug" ï¿½ any variant that
    auto-approves mutations weakens the confirm-gate invariant; the read-only 'Ask' variant is
    additive but touches handleExecute + the tool gate + UI = a real phase); repo-map
-   visibility panel (codebaseIndexer's epoMap/symbolIndex feed only the AI prompt today —
+   visibility panel (codebaseIndexer's epoMap/symbolIndex feed only the AI prompt today ï¿½
    a viewable artifact needs a new panel + REST surface).
 
 ## File splits (>400-line convention, all verified by lint + vite build + full suite)
 
 - server/executor.js 532?359 (+ executorConstants/executorClose/executorUrlRecovery)
 - server/cli-client.js 900?364 (+ cliOptions/cliDiscovery/cliProjectPicker/cliMascot/
-  cliRenderer — checkWsMessageCases now scans cli-client + cliRenderer)
+  cliRenderer ï¿½ checkWsMessageCases now scans cli-client + cliRenderer)
 - server/semanticMatcher.js 447?255 (+ semanticMatcherInit/semanticMatcherProjects)
 - server/wsHandlers/builtinProjectActions.js 465?358 (+ projectFileOpen)
 - src/hooks/useConsole.ts 686?389 (+ useConsoleNavigation/useConsoleWsActions/
@@ -2259,18 +2259,30 @@ pm run dist /
 - src/components/TerminalMessages.tsx 440?296 (+ terminal/messageContent)
 - src/components/PdfToolsPanel.tsx 497?399 (+ pdfTools/{utils,mergeCard})
 - src/components/SpreadsheetPanel.tsx 435?385 (+ spreadsheet/resultTable)
-- App.tsx (513) is the documented exception — its remaining bulk is composition-root prop
+- App.tsx (513) is the documented exception ï¿½ its remaining bulk is composition-root prop
   wiring (three child prop bags + deck/overlays), deliberately not split further.
 
 ## Other round-5 changes
 
 - Contrast tokens: dark --color-fg-dim #7A7A7F?#86868B (4.70:1 on panel, was 3.98) and
-  light --color-fg-muted #8E8E93?#6E6E74 (4.54:1 on the base background — the proposed
+  light --color-fg-muted #8E8E93?#6E6E74 (4.54:1 on the base background ï¿½ the proposed
   #76767C only reached 4.04). Light fg-muted now visually merges with light fg-dim (logged
   trade-off).
-- start.bat WEB_MODE no longer hardcodes http://localhost:3000 — a background
+- start.bat WEB_MODE no longer hardcodes http://localhost:3000 ï¿½ a background
   PowerShell watcher (start /B, 95s deadline) probes 3000-3009 and opens the ACTUALLY-bound
   port (ASCII-only + paren-balanced, verified).
 - Harness counts moved: check-ws-cases 133 (undo-toast rows), check-handlers 253
   (undo-plumbing + explain rows), check-tools rows updated for the additive ctionId
   (assert success+data, not exact object shape).
+
+# Audit round 6 (2026-08-25) â€” desktop packaging P0s, fresh-install data, auto-update, self-docs
+
+Full detail: 02-findings.md. Highlights:
+
+- **P0: packaged app crashed at boot â€” vite static import**. server/index.js statically imported vite (devDependency); the staged prod node_modules never contains it (verified: `npm ci --omit=dev` skips packages listed in BOTH sections â€” the round-5 "clean test" ran against dev node_modules and never caught this). Fixed: dynamic `await import('vite')` inside the non-production branch only; vite removed from `dependencies` (kept in devDependencies). Same masking class found + fixed in `server/pdfKit.js`: pdf-parse â†’ pdfjs-dist legacy evaluates `new DOMMatrix()` at module scope and crashed the whole server whenever the `@napi-rs/canvas` native binding is missing (reproduced via `--omit=optional`) â€” now a lazy guarded import; text extraction degrades, PDF build/split/watermark keep working.
+- **Fresh-install data**: stage-server.mjs stages an EMPTY data/ (was copying the developer's live profile/conversations/telemetry/clipboard + pre-enabled settings). readProfile() defaults setupComplete:false â†’ first-run onboarding shows. Verified on installed builds.
+- **Optional deps (npm CLI package)**: @xenova/transformers + re2 already in `optionalDependencies`; verified install+boot+chat with them absent (matcher falls back to fuzzy/NLP). No classification change needed.
+- **Desktop update banner**: server child runs with `CONSOLE_DESKTOP=1`; updateChecker.checkForUpdates/takeUpdateNotice short-circuit (never fetch, never push `update_available`), and the admin commands answer desktop-aware text. electron-updater is the desktop update channel.
+- **Auto-update**: electron-updater ^6.8.9 (real dependency, packed in asar), `build.publish` GitHub (Tobilion/Project-console), `dist:publish` script, updater flow in main.cjs (delayed check â†’ prompt â†’ download â†’ prompt â†’ quitAndInstall; `CONSOLE_UPDATE_URL` test hook logs to userData/update-test.log), tray "Check for updates", and a `publish-windows` CI job (`--publish always`, GH_TOKEN). Fake local cycle verified: check â†’ download â†’ quitAndInstall â†’ installed app reached 1.0.1. Silent-install step is flaky headless (NSIS exit 2 with a zombie setup process; slow 4-5 min installs) â€” logged.
+- **Self-documentation**: server/desktop-release.md is the single source of truth for the build/release pipeline; the how_do_i catalog's desktop entry gains a `doc` field and builtinChitChat renders the file. Three new pre-semantic pins: "how do i (re)build the desktop app" / "how do i release an update" / "how do i run the build" â†’ how_do_i (all three previously mis-routed: overview, git_fetch CONFIRM, and an actual `npm run build` execution). Verified in trigger mode on dev + installed builds; harnesses: matcher 349, handlers 260, docs 70/136/0, tools 182, indexer 103, tests 482, lint clean.
+- Known follow-up: packaged first boot has no pre-cached embedding model (`.cache/` not staged) â€” first boot downloads ~23MB and can exceed main.cjs's 90s waitForServer deadline on slow networks; server still comes up (fuzzy/NLP fallback), the app may have already quit. Tuning knob for a later pass.

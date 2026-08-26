@@ -17,6 +17,14 @@ const PACKAGE_JSON = path.join(path.resolve(__dirname, '..'), 'package.json');
 
 const CHECK_TIMEOUT_MS = 4000;
 
+// The desktop shell (desktop/main.cjs) spawns the server with CONSOLE_DESKTOP=1. The desktop
+// app is a SEPARATE product (local-project-console-desktop) whose version/update channel is
+// independent of the npm CLI package this module compares against — showing the npm-based
+// "update available" banner to a desktop user would point them at `npm install -g`, which
+// installs the CLI, not the desktop app (2026-08-25). Desktop updates go through
+// electron-updater (see desktop/main.cjs); the npm registry check must stay fully silent here.
+const IS_DESKTOP_BUILD = () => process.env.CONSOLE_DESKTOP === '1';
+
 let cachedResult = null; // { current, latest, available } or null when the last check failed
 let noticeSent = false; // the boot notice goes to exactly one connection per boot
 
@@ -52,6 +60,11 @@ function isNewerVersion(latest, current) {
  * call with force=false returns the last result without touching the network.
  */
 export async function checkForUpdates(force = false) {
+  if (IS_DESKTOP_BUILD()) {
+    cachedResult = null;
+    noticeSent = true;
+    return null;
+  }
   if (cachedResult && !force) return cachedResult;
   try {
     const pkg = readPackageInfo();
@@ -92,7 +105,7 @@ export async function checkForUpdates(force = false) {
  * the WS connect path (connectionLifecycle.js) so the banner appears for one connection only.
  */
 export function takeUpdateNotice() {
-  if (noticeSent || !cachedResult?.available) return null;
+  if (IS_DESKTOP_BUILD() || noticeSent || !cachedResult?.available) return null;
   noticeSent = true;
   return { current: cachedResult.current, latest: cachedResult.latest };
 }

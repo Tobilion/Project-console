@@ -92,3 +92,43 @@ jobs:
           name: project-console-${{ matrix.target }}-installer
           path: desktop/dist/${{ matrix.artifact }}
           if-no-files-found: error
+
+  # Windows NSIS is built on a Windows runner AND published to GitHub Releases (--publish
+  # always, the electron-updater channel main.cjs checks). mac/linux stay artifact-only until
+  # code signing exists — an unsigned auto-update would fail on those platforms anyway.
+  publish-windows:
+    runs-on: windows-latest
+    env:
+      # electron-updater's GitHub provider reads GH_TOKEN; the Actions token can create
+      # releases on this repo.
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            desktop/package-lock.json
+
+      - name: Install repo-root dependencies (vite, build tooling)
+        run: npm ci
+        working-directory: ${{ github.workspace }}
+
+      - name: Install desktop build tools (electron, electron-builder)
+        run: npm ci
+        working-directory: desktop
+
+      - name: Stage + build + publish the Windows NSIS installer
+        run: npm run dist:publish
+        working-directory: desktop
+
+      - name: Verify installer artifact exists
+        working-directory: desktop
+        shell: powershell
+        run: |
+          $file = Get-Item "dist\Project Console Setup *.exe" | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+          if (-not $file -or $file.Length -lt 1MB) { throw "NSIS installer missing or too small" }
+          Write-Host "installer verified: $($file.Name) ($($file.Length) bytes)"

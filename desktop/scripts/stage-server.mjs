@@ -55,7 +55,15 @@ fs.mkdirSync(stageDir, { recursive: true });
 
 copyDir(path.join(rootDir, 'server'), path.join(stageDir, 'server'));
 copyDir(path.join(rootDir, 'bin'), path.join(stageDir, 'bin'));
-copyDir(path.join(rootDir, 'data'), path.join(stageDir, 'data'), { exclude: ['.console'] });
+// A packaged install must start as a genuinely fresh user: the repo's own data/ holds the
+// developer's LIVE state (profile, conversations, near-misses, telemetry, clipboard history,
+// schedules, and opt-in settings like clipboardPersist / sandboxRiskyCommands). Shipping it
+// would hand a new user another person's identity, their chat history, and settings they
+// never consented to (2026-08-25). Every store creates its files/dirs lazily (mkdirSync
+// recursive — boot was verified against an absent data/), so an EMPTY data/ dir is all a
+// first boot needs; readProfile() defaults setupComplete to false, which triggers the same
+// first-run onboarding wizard a real new user sees.
+fs.mkdirSync(path.join(stageDir, 'data'), { recursive: true });
 fs.copyFileSync(path.join(rootDir, 'package.json'), path.join(stageDir, 'package.json'));
 fs.copyFileSync(path.join(rootDir, 'package-lock.json'), path.join(stageDir, 'package-lock.json'));
 

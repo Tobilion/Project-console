@@ -20,7 +20,7 @@
 // This file is main.cjs (NOT main.js) on purpose: desktop/package.json has no "type" field,
 // so Electron loads it as CommonJS — an ESM import statement would throw a parse-time
 // SyntaxError and the shell could never start (audit 2026-08-17, Phase 7).
-const { app, Tray, Menu, nativeImage } = require('electron');
+const { app, Tray, Menu, nativeImage, dialog } = require('electron');
 const { spawn } = require('child_process');
 const path = require('path');
 const fs = require('fs');
@@ -32,6 +32,87 @@ const MAX_PORT_ATTEMPTS = 10; // 3000-3009, same rule as start.bat / bin/cli.js
 let tray = null;
 let serverChild = null;
 let openedOnce = false;
+let autoUpdater = null;
+
+// Auto-update lifecycle (2026-08-25): electron-updater against the GitHub Releases publish
+// config in desktop/package.json (build.publish). Design decisions:
+//  - Installer-only: autoUpdater is only initialized on packaged builds — the repo / unpacked
+//    build has no update metadata, and dev must never check.
+//  - User-confirmed downloads (autoDownload=false) and an explicit restart prompt — the app
+//    opens the browser + tray, there is no in-app window to "click through" an update, so the
+//    native dialogs carry the whole flow.
+//  - Failures are silent by design (offline first-run, no release published yet): an update
+//    check must never make the shell look broken.
+function initAutoUpdater() {
+  if (!app.isPackaged) return;
+  try {
+    const { autoUpdater: au } = require('electron-updater');
+    autoUpdater = au;
+    autoUpdater.autoDownload = false; // download only after the user confirms
+    autoUpdater.autoInstallOnAppQuit = false; // install only via the explicit restart prompt
+    // Local update-cycle test hook (documented, never used in production): point the feed at
+    // a local dir of `electron-builder --publish never` output and observe the flow through
+    // the log file instead of native dialogs (CONSOLE_UPDATE_URL=<http://host/dir>).
+    const testFeed = process.env.CONSOLE_UPDATE_URL;
+    const testLog = testFeed ? path.join(app.getPath('userData'), 'update-test.log') : null;
+    const log = testFeed
+      ? (msg) => { try { fs.appendFileSync(testLog, `${new Date().toISOString()} ${msg}\n`); } catch {} }
+      : null;
+    if (testFeed) {
+      autoUpdater.setFeedURL({ provider: 'generic', url: testFeed });
+    }
+    autoUpdater.on('update-available', (info) => {
+      console.log('[auto-update] update available:', info && info.version);
+      if (testFeed) {
+        log(`update-available ${info && info.version} — downloading`);
+        autoUpdater.downloadUpdate();
+        return;
+      }
+      dialog.showMessageBox({
+        type: 'info',
+        title: 'Update available',
+        message: `Project Console ${info.version} is available.`,
+        detail: 'Download and install it now? You will be asked to restart the app to finish.',
+        buttons: ['Download & install', 'Later'],
+        defaultId: 0,
+        cancelId: 1,
+      }).then(({ response }) => {
+        if (response === 0) autoUpdater.downloadUpdate();
+      });
+    });
+    autoUpdater.on('update-downloaded', (info) => {
+      console.log('[auto-update] update downloaded:', info && info.version);
+      if (testFeed) {
+        log(`update-downloaded ${info && info.version} — quitAndInstall`);
+        setTimeout(() => autoUpdater.quitAndInstall(), 500);
+        return;
+      }
+      dialog.showMessageBox({
+        type: 'info',
+        title: 'Update ready',
+        message: 'The update has been downloaded.',
+        detail: 'Restart now to install it (the console server stops with the app).',
+        buttons: ['Restart & install', 'Later'],
+        defaultId: 0,
+        cancelId: 1,
+      }).then(({ response }) => {
+        if (response === 0) autoUpdater.quitAndInstall();
+      });
+    });
+    autoUpdater.on('error', (err) => {
+      console.error('[auto-update]', err && err.message ? err.message : err);
+    });
+  } catch (err) {
+    console.error('[auto-update] unavailable:', err.message);
+  }
+}
+
+function checkForUpdates() {
+  if (!autoUpdater) return;
+  autoUpdater.checkForUpdates().catch((err) => {
+    console.error('[auto-update] check failed (silent):', err && err.message ? err.message : err);
+  });
+}
 
 function probePort(port) {
   return new Promise((resolve) => {
@@ -70,7 +151,15 @@ function startServer() {
   // collisions.
   serverChild = spawn(process.execPath, [entry], {
     cwd: rootDir,
-    env: { ...process.env, NODE_ENV: 'production', ELECTRON_RUN_AS_NODE: '1' },
+    env: {
+      ...process.env,
+      NODE_ENV: 'production',
+      ELECTRON_RUN_AS_NODE: '1',
+      // Marks the child as the desktop build: the server suppresses the npm-CLI update check
+      // (updateChecker.js) — the desktop app is a separate product with its own update channel
+      // (electron-updater), and the npm banner would point users at `npm install -g`.
+      CONSOLE_DESKTOP: '1',
+    },
     stdio: 'inherit',
     windowsHide: true,
   });
@@ -107,6 +196,8 @@ function openConsole(port) {
       tray.setContextMenu(Menu.buildFromTemplate([
         { label: `Open console (${url})`, click: () => require('electron').shell.openExternal(url) },
         { type: 'separator' },
+        { label: 'Check for updates', click: () => checkForUpdates() },
+        { type: 'separator' },
         { label: 'Quit (stops the server)', click: () => app.quit() },
       ]));
     } catch {
@@ -123,6 +214,10 @@ app.whenReady().then(async () => {
     return;
   }
   startServer();
+  // Auto-update init + a delayed first check: boot stays snappy, and by the time the check
+  // runs the server is usually up so a "Restart & install" loses as little work as possible.
+  initAutoUpdater();
+  setTimeout(() => checkForUpdates(), 30000);
   // The server binds 3000-3009 via its own fallback loop; find whichever port it landed on.
   const bound = await waitForServer(BASE_PORT);
   if (!bound) {

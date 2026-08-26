@@ -20,6 +20,16 @@ const end = (ws) => ws.send(JSON.stringify({ type: 'end' }));
 /** "check for updates" / "update console" — returns true when the input matched. */
 export async function handleUpdateCommand(ws, project, lowerInput) {
   if (lowerInput === 'check for updates' || lowerInput === 'is there an update' || lowerInput === 'any updates') {
+    if (process.env.CONSOLE_DESKTOP === '1') {
+      // The desktop build is a separate product — the npm CLI registry check is suppressed
+      // (updateChecker.js). Its updates come through the app's built-in electron-updater.
+      ws.send(JSON.stringify({
+        type: 'answer',
+        data: 'This is the desktop app — it has its own update channel (the in-app auto-update, coming with the desktop release pipeline), separate from the npm CLI package. The npm registry check is disabled here on purpose.',
+      }));
+      end(ws);
+      return true;
+    }
     const info = await checkForUpdates(true);
     if (!info) {
       ws.send(JSON.stringify({
@@ -36,6 +46,17 @@ export async function handleUpdateCommand(ws, project, lowerInput) {
   }
 
   if (lowerInput === 'update console' || lowerInput === 'update the console' || lowerInput === 'upgrade console') {
+    if (process.env.CONSOLE_DESKTOP === '1') {
+      // Never offer the npm-CLI update path on the desktop build — it would install the CLI
+      // package, not the desktop app (see the check branch above). Desktop updates come from
+      // electron-updater (tray menu → Check for updates, or the auto prompt ~30s after launch).
+      ws.send(JSON.stringify({
+        type: 'answer',
+        data: 'This is the desktop app — updates install through the app itself (tray icon → "Check for updates", or the automatic prompt shortly after launch), never through npm. The npm update command is disabled here on purpose.',
+      }));
+      end(ws);
+      return true;
+    }
     const info = await checkForUpdates(false);
     if (info?.available) {
       const token = crypto.randomUUID();

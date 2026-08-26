@@ -1,4 +1,7 @@
 import crypto from 'crypto';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import { performUndo, isGitRepo, pushCommandWithUpstream } from '../gitSafety.js';
 import { executeCommand } from '../executor.js';
 import { pendingConfirmations, state } from '../state.js';
@@ -219,6 +222,18 @@ export const chitChatHandlers = {
       const shell = resolveShell(m);
       if (shell) out += `\n     - Command: \`${shell}\``;
       if (m.phrases?.length) out += `\n     - Try saying: "${m.phrases.join('", "')}"`;
+      // Entries with a `doc` field pull their full step-by-step body from a markdown file
+      // next to the server source (staged into the packaged app, so the answer is identical
+      // everywhere). The file — not this catalog entry — is the maintained source of truth;
+      // when it is missing for any reason the static explain above stays the fallback.
+      if (m.doc) {
+        try {
+          const docPath = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', m.doc);
+          out += `\n\n${fs.readFileSync(docPath, 'utf-8').trim()}`;
+        } catch {
+          // doc file unavailable — the catalog's explain already covers the summary
+        }
+      }
       return out;
     });
     ws.send(JSON.stringify({

@@ -61,7 +61,6 @@
     "pdf-lib": "^1.17.1",
     "pdf-parse": "^2.4.5",
     "typescript": "~5.8.2",
-    "vite": "^6.2.3",
     "ws": "^8.21.1"
   },
   "devDependencies": {

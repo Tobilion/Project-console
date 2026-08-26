@@ -4,7 +4,6 @@ import path from 'path';
 import http from 'http';
 import { fileURLToPath } from 'url';
 import fs from 'fs';
-import { createServer as createViteServer } from 'vite';
 
 import { discoverProjects } from './projectScanner.js';
 import { nlpEngine } from './nlpEngine.js';
@@ -118,6 +117,12 @@ const httpServer = http.createServer(app);
 
 async function init() {
   if (process.env.NODE_ENV !== 'production') {
+    // vite is a dev-only dependency (never staged into the packaged app's production
+    // node_modules — npm ci --omit=dev skips it even when listed in both sections). It is
+    // imported dynamically HERE, inside the dev branch, because a static top-level import
+    // crashed the packaged server at module load: ERR_MODULE_NOT_FOUND "Cannot find package
+    // 'vite'" from resources/server/index.js on the installed app (2026-08-25, P0).
+    const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
       server: {
         middlewareMode: true,
