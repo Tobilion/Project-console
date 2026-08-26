@@ -13,11 +13,17 @@
 // is a documented SSRF class (reachable without routing) and never a legitimate external target.
 const BLOCKED_HOSTNAME_RE = /^(localhost|127\.|10\.|192\.168\.|169\.254\.|0\.0\.0\.0|::1|\[::1\]|fe80::|\[fe80::|\[?::ffff:)/i;
 const PRIVATE_172_RE = /^172\.(1[6-9]|2\d|3[01])\./;
+// 0.0.0.0/8 is "this network" (RFC 6890) — never globally routable, so no numeric host in the
+// range is a legitimate external target. Deliberately limited to numeric dotted-quad hosts:
+// the WHATWG parser canonicalizes every numeric IP encoding (decimal/hex/octal integers,
+// encoded components) to dotted decimal, and a DNS name like "0.com" must not be blocked by
+// an IP-address rule.
+const BLOCKED_NUMERIC_0_RE = /^0\.\d{1,3}\.\d{1,3}\.\d{1,3}$/;
 
 export function isSafeExternalUrl(urlObj) {
   if (urlObj.protocol !== 'http:' && urlObj.protocol !== 'https:') return false;
   const host = urlObj.hostname;
-  if (BLOCKED_HOSTNAME_RE.test(host) || PRIVATE_172_RE.test(host)) return false;
+  if (BLOCKED_HOSTNAME_RE.test(host) || PRIVATE_172_RE.test(host) || BLOCKED_NUMERIC_0_RE.test(host)) return false;
   return true;
 }
 

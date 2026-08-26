@@ -1,0 +1,47 @@
+# Dependabot keeps dependencies current with routine PRs so CVE-clearing is not
+# a reactive marathon. Weekly cadence; ignore directives pin the dependencies
+# the codebase deliberately freezes (see CLAUDE.md "Known gotchas" for why).
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    ignore:
+      # backupStore.js uses the classic archiver('zip') API — v8 is a breaking
+      # rewrite with no callable default export (CLAUDE.md: backupStore).
+      - dependency-name: "archiver"
+        update-types: ["version-update:semver-major"]
+      # node-nlp 5.0.0-alpha.5 is unmaintained-but-working; the NLP stage is
+      # rebuilt fresh on every boot, never persisted (CLAUDE.md: dependency
+      # assessments). Any bump is a risk for zero benefit.
+      - dependency-name: "@nlpjs/*"
+      # @xenova/transformers is an optional embedding dependency (archived); the
+      # successor is @huggingface/transformers and the migration is a
+      # low-priority future item — never a Dependabot bump.
+      - dependency-name: "@xenova/transformers"
+      # re2 optional dep; allowScripts has exact-version pins (1.24.1/1.26.1).
+      - dependency-name: "re2"
+      # pdf-parse v2 is load-guarded against a pdfjs-dist DOMMatrix crash when
+      # the native canvas binding is missing (round-6 P0, server/pdfKit.js).
+      - dependency-name: "pdf-parse"
+
+  - package-ecosystem: npm
+    directory: "/desktop"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    ignore:
+      # Electron 43 / electron-builder 26 pins — packaging verified against
+      # these; major bumps are deliberate upgrades, not routine PRs.
+      - dependency-name: "electron"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "electron-builder"
+        update-types: ["version-update:semver-major"]
+
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5

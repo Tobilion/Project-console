@@ -2,6 +2,7 @@ import { lazy, Suspense } from 'react';
 import { motion } from 'motion/react';
 import { Calculator, FileText, ListChecks, FolderSearch, FolderOpen, StickyNote, Table as TableIcon, ClipboardCopy, Archive, Bell, BookOpen, Store, Map as MapIcon, LayoutGrid, ArrowLeft } from 'lucide-react';
 import type { ToolPanelDef, Project } from '../types';
+import { PanelErrorBoundary } from './PanelErrorBoundary';
 
 // Phase 6 (2026-08-17): panels are one-at-a-time views — ideal code-split points. React.lazy
 // defers each panel's chunk (and its heavy deps: pdf-lib/pdf-parse, jspdf, mammoth, ...)
@@ -119,9 +120,11 @@ export function ToolsPanel({ panels, panelsError, onRetryPanels, activePanel, on
     if (view) {
       return (
         <PanelShell onClose={() => onOpenPanel('')}>
-          <Suspense fallback={<div className="text-sm text-fg-muted bg-panel rounded-xl border border-border-soft p-6">Loading panel…</div>}>
-            {view({ project, onSendMessage, aiEnabled, tabId })}
-          </Suspense>
+          <PanelErrorBoundary resetKey={active.id} label={`${active.name} hit an error`}>
+            <Suspense fallback={<div className="text-sm text-fg-muted bg-panel rounded-xl border border-border-soft p-6">Loading panel…</div>}>
+              {view({ project, onSendMessage, aiEnabled, tabId })}
+            </Suspense>
+          </PanelErrorBoundary>
         </PanelShell>
       );
     }
@@ -197,6 +200,7 @@ export function ToolsPanel({ panels, panelsError, onRetryPanels, activePanel, on
           </div>
         ) : (
         <div className="grid gap-3 sm:grid-cols-2">
+          <PanelErrorBoundary label="The tool grid hit an error">
           {panels.map(p => {
             const Icon = ICONS[p.icon] || LayoutGrid;
             return (
@@ -225,6 +229,7 @@ export function ToolsPanel({ panels, panelsError, onRetryPanels, activePanel, on
               </button>
             );
           })}
+          </PanelErrorBoundary>
         </div>
         )}
       </div>

@@ -28,16 +28,29 @@ const DESTRUCTIVE_PATTERNS = [
   // Package registry publication / global removal.
   /\b(?:npm|yarn|pnpm|bun|cargo)\s+(?:publish|unpublish)\b/i,
   /\b(?:npm|yarn|pnpm|bun)\s+(?:remove|rm|uninstall)\s+-g\b/i,
-  // Recursive deletes (rm -rf, del /s /q, rd /s /q, Remove-Item -Recurse/-Force).
-  /\brm\s+(?:-r\w*|--recursive)\b/i,
+  // Recursive deletes (rm -rf, del /s /q, rd /s /q, rmdir /s /q, Remove-Item -Recurse/-Force).
+  // The rm flag class accepts both -rf and -fr orders (the blocklist's
+  // `-[a-z]*r[a-z]*f[a-z]*|-[a-z]*f[a-z]*r[a-z]*` mirrors both) and keeps plain `-r`
+  // confirm-worthy — a recursive delete is gated regardless of the force flag.
+  /\brm\s+(?:--recursive|-[a-z]*[rR][a-z]*(?:[fF][a-z]*)?)\b/i,
   /\bdel\s+(?:\/s\b|\/q\b)/i,
   /\brd\s+(?:\/s\b|\/q\b)/i,
+  /\brmdir\s+(?:\/s\b|\/q\b)/i,
   /\bRemove-Item\b/i,
   // Disk-level utilities. `format` alone would false-positive on "git format-patch", so it
   // requires a drive letter ("format C:").
   /\b(?:mkfs|diskpart|fdisk|shred|wipefs)\b/i,
   /\bformat\s+[a-zA-Z]:/i,
   /\bdd\s+if=/i,
+  // Shell redirect onto a raw block device (`> /dev/sda` — mirror of dangerousPatterns.js,
+  // kept so the hard blocklist is always a strict subset of the confirm gate's view).
+  />\s*\/dev\/sd[a-z]/i,
+  // System power-state changes and the PowerShell shutdown wrappers (dangerousPatterns
+  // mirror — the blocklist covers these shapes, so the classifier must too).
+  /\bshutdown\s+(?:\/s|\/r|-h|-r)\b/i,
+  /\bReflect-(?:Computer|System)\b/i,
+  // Fork-bomb shape (`:(){ :|:& };:`) — impossible to recover from on a local machine.
+  /:\(\)\s*\{\s*:\|\s*:\s*&\s*\}\s*;/i,
 ];
 
 /** Effective-risk computation for a shell command string. Returns true when the command
