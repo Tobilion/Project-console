@@ -98,6 +98,11 @@ jobs:
   # code signing exists — an unsigned auto-update would fail on those platforms anyway.
   publish-windows:
     runs-on: windows-latest
+    permissions:
+      # electron-builder's GitHub provider creates a release + uploads assets; the default
+      # token is contents:read-only on this repo, which made the publish fail with
+      # "Resource not accessible by integration" (403) on the first run (2026-08-25).
+      contents: write
     env:
       # electron-updater's GitHub provider reads GH_TOKEN; the Actions token can create
       # releases on this repo.
