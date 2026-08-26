@@ -6,6 +6,7 @@
 
 import { Mutex } from 'async-mutex';
 import { computeProjectDiff } from './matcherProjectDiff.js';
+import { log } from './logger.js';
 
 export function createProjectIntentStore(owner) {
   // Serializes addProjectIntents / clearProjectIntents mutations (see those methods).
@@ -24,7 +25,7 @@ export function createProjectIntentStore(owner) {
     if (diff.full) {
       const totalEntries = projects.reduce((s, p) => s + (p.config?.entries?.length || 0), 0);
       if (totalEntries === 0) return;
-      console.log(`[SemanticMatcher] Adding ${totalEntries} project-specific intents (full recompute)...`);
+      log.info(`[SemanticMatcher] Adding ${totalEntries} project-specific intents (full recompute)...`);
       owner.projectIntentVectors = {};
       owner.projectFuseItems = [];
       // Phase 6: collect every trigger first, embed the whole set in one bounded-concurrency
@@ -61,7 +62,7 @@ export function createProjectIntentStore(owner) {
         count++;
       }
       owner._rebuildFuseIndex();
-      console.log(`[SemanticMatcher] ${count} project intents added`);
+      log.info(`[SemanticMatcher] ${count} project intents added`);
       return;
     }
 
@@ -80,14 +81,14 @@ export function createProjectIntentStore(owner) {
     if (!diff.changed || diff.changed.length === 0) {
       if (removedEntries.length > 0) {
         owner._rebuildFuseIndex();
-        console.log(`[SemanticMatcher] Removed ${removedEntries.length} deleted entries`);
+        log.info(`[SemanticMatcher] Removed ${removedEntries.length} deleted entries`);
       } else {
-        console.log('[SemanticMatcher] No project intent changes detected');
+        log.info('[SemanticMatcher] No project intent changes detected');
       }
       return;
     }
 
-    console.log(`[SemanticMatcher] Incremental update: ${diff.changed.length} entries changed`);
+    log.info(`[SemanticMatcher] Incremental update: ${diff.changed.length} entries changed`);
     // Phase 6: embed every changed entry's triggers in one bounded-concurrency batch, then
     // assign vectors back by index (identical results to the serial loop).
     const changedResults = await owner._embedBatch(diff.changed.flatMap(({ entry }) => entry.triggers || []));
@@ -114,7 +115,7 @@ export function createProjectIntentStore(owner) {
       owner.projectIntentVectors[intentName] = { vectors, projectIndex: pIdx, entryIndex: eIdx };
     }
     owner._rebuildFuseIndex();
-    console.log(`[SemanticMatcher] Incremental update complete — ${diff.changed.length} intents rebuilt`);
+    log.info(`[SemanticMatcher] Incremental update complete — ${diff.changed.length} intents rebuilt`);
   }
 
   async function add(projects) {

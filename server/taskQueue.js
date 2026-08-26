@@ -1,3 +1,4 @@
+import { log } from './logger.js';
 // Lightweight in-memory async task queue (infrastructure expansion, 2026-08-10 — first piece of
 // broadening the console beyond the matcher/handler pipeline itself). Lets slow, non-interactive
 // work run off the chat turn instead of blocking the WS connection for tens of seconds — the
@@ -60,7 +61,7 @@ function pump() {
       .then(task.run)
       .catch((err) => {
         failed = true;
-        console.error(`[taskQueue] "${task.label}" failed for project ${projectId}:`, err.message);
+        log.error(`[taskQueue] "${task.label}" failed for project ${projectId}:`, err.message);
       })
       .finally(() => {
         active.delete(projectId);
@@ -69,7 +70,7 @@ function pump() {
           try {
             completionListener({ projectId, label: task.label, failed });
           } catch (err) {
-            console.error('[taskQueue] completion listener failed:', err.message);
+            log.error('[taskQueue] completion listener failed:', err.message);
           }
         }
         pump();

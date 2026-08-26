@@ -7,6 +7,7 @@ import { broadcast } from './wsServer.js';
 import { INTENTS } from './intentsData.js';
 import { getTuning } from './tuningStore.js';
 import { INIT_WAIT_POLL_MS, INIT_DOWNLOAD_TIMEOUT_MS } from './semanticMatcher.js';
+import { log } from './logger.js';
 
 /** Boot sequence; see SemanticMatcher.initialize()'s old doc comment for the failure story. */
 export async function initializeMatcher(owner) {
@@ -30,7 +31,7 @@ export async function initializeMatcher(owner) {
     const { pipeline, env } = await import('@xenova/transformers');
     env.cacheDir = './.cache/xenova';
     broadcast({ type: 'semantic_matcher_progress', data: { stage: 'downloading', percent: 0 } });
-    console.log('[SemanticMatcher] Loading embedding model (first load downloads ~23MB)...');
+    log.info('[SemanticMatcher] Loading embedding model (first load downloads ~23MB)...');
     // A stalled HuggingFace download (an offline/proxied/rate-limited connection that
     // neither resolves nor rejects) previously hung initialize() forever: index.js awaits it
     // before the port-fallback listen loop, so the whole server never bound, and every
@@ -50,7 +51,7 @@ export async function initializeMatcher(owner) {
       }),
     ]).finally(() => clearTimeout(downloadTimer));
     broadcast({ type: 'semantic_matcher_progress', data: { stage: 'embedding', percent: 50 } });
-    console.log('[SemanticMatcher] Model loaded, computing intent embeddings...');
+    log.info('[SemanticMatcher] Model loaded, computing intent embeddings...');
 
     owner.intentVectors = {};
     // Phase 6: embed the whole phrase corpus in one bounded-concurrency batch instead of
@@ -72,7 +73,7 @@ export async function initializeMatcher(owner) {
 
     owner.ready = true;
     broadcast({ type: 'semantic_matcher_progress', data: { stage: 'ready', percent: 100 } });
-    console.log(`[SemanticMatcher] Ready — ${Object.keys(INTENTS).length} base intents, ${Object.values(INTENTS).reduce((s, c) => s + c.examples.length, 0)} phrases`);
+    log.info(`[SemanticMatcher] Ready — ${Object.keys(INTENTS).length} base intents, ${Object.values(INTENTS).reduce((s, c) => s + c.examples.length, 0)} phrases`);
     // First-message warm-up (Phase 6): the phrase batch above warms the model runtime, but
     // the first INPUT embed still pays one-off tokenizer/thread-pool setup inside the model.
     // Fire one throwaway embed (cached under 'warm-up check', harmless) so the first real
@@ -80,7 +81,7 @@ export async function initializeMatcher(owner) {
     owner.embedInput('warm-up check').catch(() => {});
   } catch (err) {
     owner.initError = err;
-    console.error('[SemanticMatcher] Failed:', err.message);
+    log.error('[SemanticMatcher] Failed:', err.message);
     throw err;
   } finally {
     owner.initializing = false;

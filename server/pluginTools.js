@@ -2,6 +2,7 @@ import fs from 'fs/promises';
 import path from 'path';
 import { isSafeParamValue } from './paramCommand.js';
 import { isCommandBlocked } from './dangerousPatterns.js';
+import { log } from './logger.js';
 
 export const MANIFEST_FILENAME = 'console.tools.json';
 
@@ -22,17 +23,17 @@ const PERMISSION_ASK_ONLY_TOOLS = new Set(['executeCommand']);
 export function sanitizePermissions(rawPermissions) {
   if (rawPermissions === undefined || rawPermissions === null) return null;
   if (typeof rawPermissions !== 'object' || Array.isArray(rawPermissions)) {
-    console.warn('[pluginTools] Ignoring invalid console.tools.json "permissions" — expected an object keyed by tool name.');
+    log.warn('[pluginTools] Ignoring invalid console.tools.json "permissions" — expected an object keyed by tool name.');
     return null;
   }
   const out = {};
   for (const [toolName, value] of Object.entries(rawPermissions)) {
     if (!PERMISSION_VALUES.has(value)) {
-      console.warn(`[pluginTools] Ignoring invalid permissions entry "${toolName}" — expected one of: ask, allow-after-first-ask, deny.`);
+      log.warn(`[pluginTools] Ignoring invalid permissions entry "${toolName}" — expected one of: ask, allow-after-first-ask, deny.`);
       continue;
     }
     if (PERMISSION_ASK_ONLY_TOOLS.has(toolName) && value !== 'ask') {
-      console.warn(`[pluginTools] Permission for "${toolName}" must stay "ask" (risky commands are always confirmed); forced back to "ask".`);
+      log.warn(`[pluginTools] Permission for "${toolName}" must stay "ask" (risky commands are always confirmed); forced back to "ask".`);
       out[toolName] = 'ask';
       continue;
     }
@@ -93,7 +94,7 @@ export async function loadPluginManifest(projectPath) {
     const raw = await fs.readFile(manifestPath, 'utf-8');
     const parsed = JSON.parse(raw);
     if (!parsed || typeof parsed !== 'object' || !Array.isArray(parsed.tools)) {
-      console.warn(`[pluginTools] ${MANIFEST_FILENAME} exists but has no valid "tools" array`);
+      log.warn(`[pluginTools] ${MANIFEST_FILENAME} exists but has no valid "tools" array`);
       return null;
     }
     const tools = [];
@@ -107,14 +108,14 @@ export async function loadPluginManifest(projectPath) {
       }
     });
     if (errors.length > 0) {
-      console.warn(`[pluginTools] ${manifestPath}: ${errors.join('; ')}`);
+      log.warn(`[pluginTools] ${manifestPath}: ${errors.join('; ')}`);
     }
     const permissions = sanitizePermissions(parsed.permissions);
     if (tools.length === 0 && !permissions) return null;
     return permissions ? { tools, permissions } : { tools };
   } catch (err) {
     if (err.code === 'ENOENT') return null;
-    console.warn(`[pluginTools] Failed to load ${MANIFEST_FILENAME}: ${err.message}`);
+    log.warn(`[pluginTools] Failed to load ${MANIFEST_FILENAME}: ${err.message}`);
     return null;
   }
 }

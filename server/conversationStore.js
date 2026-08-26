@@ -19,6 +19,7 @@ import { ensureLegacyDir, readIndex, writeIndex, setIndexEntry, reconcileIndexFr
 import { appendChatLogEntry } from './chatLog.js';
 import { migrateLegacySession, ensureProjectConsoleDir } from './sessionMigration.js';
 import { writeFileAtomic } from './atomicWrite.js';
+import { log as logger } from './logger.js';
 
 export { getSession, linkSessionToProject, ensureGitignored } from './sessionMigration.js';
 
@@ -157,7 +158,7 @@ export async function renameSession(id, title) {
       // A failed meta write must fail the rename (and skip the index update) — updating only
       // the index left the sidebar and the open chat disagreeing on the title until the next
       // message happened to rewrite the meta file (audit 2026-08-06, Phase 2).
-      console.error('[conversationStore] renameSession: meta write failed:', err.message);
+      logger.error('[conversationStore] renameSession: meta write failed:', err.message);
       return null;
     }
     await setIndexEntry(meta);
@@ -196,7 +197,7 @@ export async function appendMessage(sessionId, message) {
       // A failed append must not kill the response flow: the message still streams to the
       // client and the index meta still updates below; only the persisted record is lost,
       // and that is surfaced in the server log.
-      console.error(`[conversationStore] appendMessage: failed to append to ${logPath}:`, err.message);
+      logger.error(`[conversationStore] appendMessage: failed to append to ${logPath}:`, err.message);
     }
 
     // Update index metadata
@@ -213,7 +214,7 @@ export async function appendMessage(sessionId, message) {
     if (meta.projectPath) {
       const sessionMeta = { id: sessionId, title: meta.title, projectId: meta.projectId, projectName: meta.projectName, projectPath: meta.projectPath, workspacePath: meta.workspacePath, messageCount: meta.messageCount, createdAt: meta.createdAt, updatedAt: meta.updatedAt };
       await writeFileAtomic(projectSessionMetaFile(meta.projectPath, sessionId), JSON.stringify(sessionMeta, null, 2)).catch((err) => {
-        console.error('[conversationStore] appendMessage: meta write failed:', err.message);
+        logger.error('[conversationStore] appendMessage: meta write failed:', err.message);
       });
       // Append to human-readable chat log
       await appendChatLogEntry({
@@ -280,7 +281,7 @@ export async function patchMessageMeta(sessionId, messageId, meta) {
         await fs.writeFile(logPath, lines.join('\n'));
       }
     } catch (err) {
-      console.error('[conversationStore] patchMessageMeta failed:', err.message);
+      logger.error('[conversationStore] patchMessageMeta failed:', err.message);
     }
   });
 }

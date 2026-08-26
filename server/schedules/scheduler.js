@@ -10,6 +10,7 @@ import { fireSchedule } from './scheduleFire.js';
 import { checkStaleFolders } from '../watchEngine.js';
 import { watchProjectChanges } from '../fileWatcher.js';
 import { state } from '../state.js';
+import { log } from '../logger.js';
 
 const TICK_MS = 15 * 1000;
 // Throttle for event-driven fires: a chokidar burst (dev server writing dozens of files a
@@ -62,7 +63,7 @@ function tick() {
     try {
       if (isDue(schedule, now)) due.push(schedule);
     } catch (err) {
-      console.error(`[scheduler] fire failed for schedule ${schedule.id}:`, err.message);
+      log.error(`[scheduler] fire failed for schedule ${schedule.id}:`, err.message);
     }
   }
   // Mark the whole due batch in ONE immediate write before any fire work (audit
@@ -74,14 +75,14 @@ function tick() {
       fireSchedule(schedule, true);
       if (schedule.type === 'oneshot') removeScheduleById(schedule.id);
     } catch (err) {
-      console.error(`[scheduler] fire failed for schedule ${schedule.id}:`, err.message);
+      log.error(`[scheduler] fire failed for schedule ${schedule.id}:`, err.message);
     }
   }
   // Phase 15: the folder-stale sweep reuses this same tick (guarded to once per day per rule
   // inside checkStaleFolders — never a full folder walk on every 15s tick). Async since
   // 2026-08-17 so a large watched tree can't block the tick.
   checkStaleFolders().catch((err) => {
-    console.error('[scheduler] stale-folder check failed:', err.message);
+    log.error('[scheduler] stale-folder check failed:', err.message);
   });
 }
 
@@ -97,7 +98,7 @@ function handleProjectFsEvent(project, schedule, eventType) {
     markFired(schedule.id);
     fireSchedule(schedule, true);
   } catch (err) {
-    console.error(`[scheduler] event fire failed for schedule ${schedule.id}:`, err.message);
+    log.error(`[scheduler] event fire failed for schedule ${schedule.id}:`, err.message);
   }
 }
 

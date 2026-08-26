@@ -1,5 +1,6 @@
 import { getTuningState, setTuning, resetTuning } from '../tuningStore.js';
 import { semanticMatcher } from '../semanticMatcher.js';
+import { log } from '../logger.js';
 
 // Phase 8 (2026-08-11): REST surface for the tuning-constant overrides (see tuningStore.js).
 // GET returns defaults + active overrides so the settings UI can render both; POST applies a
@@ -15,7 +16,7 @@ export function registerTuningRoutes(app) {
   app.post('/api/tuning', (req, res) => {
     const applied = setTuning(req.body?.overrides);
     if (semanticMatcher.refreshFuseIndex()) {
-      console.log('[tuning] Fuse index rebuilt with new thresholds');
+      log.info('[tuning] Fuse index rebuilt with new thresholds');
     }
     res.json({ applied, ...getTuningState() });
   });
@@ -23,7 +24,7 @@ export function registerTuningRoutes(app) {
   app.delete('/api/tuning', (req, res) => {
     resetTuning();
     if (semanticMatcher.refreshFuseIndex()) {
-      console.log('[tuning] Fuse index rebuilt with defaults');
+      log.info('[tuning] Fuse index rebuilt with defaults');
     }
     res.json(getTuningState());
   });

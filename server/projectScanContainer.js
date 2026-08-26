@@ -6,6 +6,7 @@ import { sanitizeChatReplies, isContextFilename, readProjectContextDocs, command
 import { getCommandDir } from './commandDir.js';
 import { scanSingleProject } from './projectScanSingle.js';
 import { MONOREPO_MANIFESTS } from './codebaseData.js';
+import { log } from './logger.js';
 
 /**
  * Scans baseDir for subdirectories containing console.config.json or CLAUDE.md/README.md.
@@ -167,7 +168,7 @@ export async function discoverProjects(baseDir, opts = {}) {
         }
         return null;
       } catch (err) {
-        console.error(`Skipping project "${entry.name}" — failed to scan it:`, err.message);
+        log.error(`Skipping project "${entry.name}" — failed to scan it:`, err.message);
         return null;
       }
     }
@@ -197,7 +198,7 @@ export async function discoverProjects(baseDir, opts = {}) {
     }
     return projects;
   } catch (err) {
-    console.error(`Failed to scan directory at "${baseDir}":`, err.message);
+    log.error(`Failed to scan directory at "${baseDir}":`, err.message);
     return [];
   }
 }

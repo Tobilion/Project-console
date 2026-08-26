@@ -2,6 +2,7 @@ import chokidar from 'chokidar';
 import path from 'path';
 import { scanSingleProject } from './projectScanner.js';
 import { readProfile } from './routes/profileRoutes.js';
+import { log } from './logger.js';
 
 // Phase T (2026-08-14): a config-file change on a folder with no other recognition signals
 // would previously drop the folder when scanAllFolders is on — the config watcher must apply
@@ -33,7 +34,7 @@ export function watchProjectConfigs(projectsDir, onProjectChanged) {
           onProjectChanged(updated);
         }
       } catch (err) {
-        console.error(`[fileWatcher] scan failed for ${relativePath}:`, err.message);
+        log.error(`[fileWatcher] scan failed for ${relativePath}:`, err.message);
       }
     }, 500);
   });
@@ -49,7 +50,7 @@ export function watchProjectConfigs(projectsDir, onProjectChanged) {
           onProjectChanged(updated, true);
         }
       } catch (err) {
-        console.error(`[fileWatcher] scan failed for ${relativePath}:`, err.message);
+        log.error(`[fileWatcher] scan failed for ${relativePath}:`, err.message);
       }
     }, 500);
   });
@@ -66,7 +67,7 @@ export function watchProjectConfigs(projectsDir, onProjectChanged) {
   // chokidar emits 'error' (e.g. EPERM on a locked/unreadable tree) on the watcher emitter —
   // with no listener that surfaced as an uncaughtException (audit 2026-08-06, Phase 2).
   watcher.on('error', (err) => {
-    console.error('[fileWatcher] watcher error:', err.message);
+    log.error('[fileWatcher] watcher error:', err.message);
   });
 
   return watcher;
@@ -98,7 +99,7 @@ export function watchProjectChanges(project, onFsEvent) {
       try {
         onFsEvent(eventType);
       } catch (err) {
-        console.error(`[fileWatcher] scheduler event failed for ${project.id}:`, err.message);
+        log.error(`[fileWatcher] scheduler event failed for ${project.id}:`, err.message);
       }
     }, 1000);
   };
@@ -110,7 +111,7 @@ export function watchProjectChanges(project, onFsEvent) {
   });
   watcher.on('unlink', () => fire('file-save'));
   watcher.on('error', (err) => {
-    console.error(`[fileWatcher] project watcher error (${project.id}):`, err.message);
+    log.error(`[fileWatcher] project watcher error (${project.id}):`, err.message);
   });
   return watcher;
 }
@@ -139,14 +140,14 @@ export function watchProjectCodeFiles(project, onFileChange) {
       try {
         onFileChange(relPath, eventType);
       } catch (err) {
-        console.error(`[fileWatcher] code-index event failed for ${project.id}:`, err.message);
+        log.error(`[fileWatcher] code-index event failed for ${project.id}:`, err.message);
       }
     }, 1000);
   };
   watcher.on('change', (relPath) => fire(relPath, 'change'));
   watcher.on('unlink', (relPath) => fire(relPath, 'unlink'));
   watcher.on('error', (err) => {
-    console.error(`[fileWatcher] code-index watcher error (${project.id}):`, err.message);
+    log.error(`[fileWatcher] code-index watcher error (${project.id}):`, err.message);
   });
   return watcher;
 }

@@ -6,6 +6,7 @@ import { isGitRepo } from '../gitSafety.js';
 import { resolveEditor, defaultEditorFor, getEditorsState } from '../editorsStore.js';
 import { parseFileNameOnly } from './builtinHelpers.js';
 import { spawnDetached, openInBrowser, resolveFileForOpen, revealInExplorer } from './projectFileOpen.js';
+import { log as logger } from '../logger.js';
 
 /**
  * Extracts the editor name from "open X with <Editor>" / "open X in <Editor>" /
@@ -353,7 +354,7 @@ export const projectActionHandlers = {
     // Best-effort reveal: a missing explorer/open/xdg-open must log, never crash the server
     // (audit 2026-08-17 — the spawn used to be fire-and-forget with no error path at all).
     await revealInExplorer(resolved.abs, (err) => {
-      console.error(`[reveal_file] Failed to reveal ${resolved.abs}: ${err.message}`);
+      logger.error(`[reveal_file] Failed to reveal ${resolved.abs}: ${err.message}`);
     });
     send(`Revealed **\`${resolved.rel}\`** in your file explorer...`);
   },

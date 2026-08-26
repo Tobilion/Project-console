@@ -19,6 +19,7 @@ import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 import { walkDir } from './toolScan.js';
 import { createResolveSafe } from './toolSandbox.js';
 import { appendAction } from './actionHistory.js';
+import { log } from './logger.js';
 
 // pdf-parse (v2) is NOT imported statically: it pulls pdfjs-dist's legacy build, which
 // evaluates `new DOMMatrix()` at module scope and only survives in plain Node when the
@@ -40,7 +41,7 @@ async function getPdfParse() {
     return await pdfParseModulePromise;
   } catch (err) {
     pdfParseModulePromise = null; // reset so a later call retries (the machine may gain the dep)
-    console.error(`[pdfKit] pdf-parse unavailable — PDF text extraction disabled: ${err?.message}`);
+    log.error(`[pdfKit] pdf-parse unavailable — PDF text extraction disabled: ${err?.message}`);
     return null;
   }
 }

@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { INTENTS } from './intentsData.js';
 import { writeFileAtomicSync } from './atomicWrite.js';
+import { log } from './logger.js';
 
 // `INTENTS` (from intentsData.js) is a single module-level object shared by the whole running
 // Node process — it is NOT per-project. That means when `learningEngine.js`'s applySuggestions()
@@ -48,7 +49,7 @@ export function loadLearnedIntents() {
     }
   }
   if (merged > 0) {
-    console.log(`[LearnedIntents] Restored ${merged} previously-learned phrase(s) across all projects.`);
+    log.info(`[LearnedIntents] Restored ${merged} previously-learned phrase(s) across all projects.`);
   }
   return merged;
 }

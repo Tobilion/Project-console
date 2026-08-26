@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { syncClipboardPolling } from '../clipboardHistory.js';
+import { log } from '../logger.js';
 
 // App-global user profile (identity used in greetings), NOT per-project config.
 // Lives in data/ — the app's own runtime-state home — so writes never trigger the
@@ -86,7 +87,7 @@ function sanitizeAccentColor(value) {
   // accent field existed) — that is the default, not an invalid value, so no warn.
   if (value == null || value === 'auto') return 'auto';
   if (typeof value === 'string' && /^#[0-9A-Fa-f]{6}$/.test(value)) return value;
-  console.warn(`Ignoring invalid accentColor "${value}" — expected "auto" or a #RRGGBB hex.`);
+  log.warn(`Ignoring invalid accentColor "${value}" — expected "auto" or a #RRGGBB hex.`);
   return 'auto';
 }
 

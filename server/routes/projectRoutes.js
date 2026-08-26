@@ -13,6 +13,7 @@ import { listActions } from '../actionHistory.js';
 import { syncProjectWatchers } from '../codeIndex/codeIndexBuilder.js';
 import { readProfile } from './profileRoutes.js';
 import { getCachedScan, setCachedScan, invalidateScanCacheForPath } from '../scanCache.js';
+import { log as logger } from '../logger.js';
 
 // Phase T (2026-08-14): whether discovery includes every subfolder as a project — read fresh
 // from the profile at each scan so a setting change applies without a restart (the routes
@@ -160,11 +161,11 @@ export function registerProjectRoutes(app, dirname) {
 
       const known = allKnownProjects();
       nlpEngine.train(known).catch((err) => {
-        console.error('Background NLP retrain failed:', err.message);
+        logger.error('Background NLP retrain failed:', err.message);
       });
       semanticMatcher.clearProjectIntents().catch(() => {});
       semanticMatcher.addProjectIntents(known).catch((err) =>
-        console.warn('Project-intent refresh failed after rescan:', err?.message || err));
+        logger.warn('Project-intent refresh failed after rescan:', err?.message || err));
     } catch (err) {
       res.status(500).json({ success: false, error: err.message });
     }

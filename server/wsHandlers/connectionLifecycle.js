@@ -4,6 +4,7 @@ import { appendMessage } from '../conversationStore.js';
 import { metrics } from '../metrics.js';
 import { routeMessage, sendAiStatus } from './connectionRoutes.js';
 import { takeUpdateNotice } from '../updateChecker.js';
+import { log as logger } from '../logger.js';
 
 function heartbeat() {
   this.isAlive = true;
@@ -105,7 +106,7 @@ function onConnection(ws) {
     } catch (err) {
       // A parse/persist failure here means the server sent something the interceptor couldn't
       // read — previously swallowed silently. Log it; the original send still happens either way.
-      console.error('WS send interceptor error:', err.message);
+      logger.error('WS send interceptor error:', err.message);
     }
     origSend(data);
   };
@@ -149,7 +150,7 @@ function onConnection(ws) {
   connectionRegistry.set(ws, sessionContext);
 
   ws.on('error', (err) => {
-    console.error('WebSocket client error:', err.message);
+    logger.error('WebSocket client error:', err.message);
   });
 
   ws.on('close', () => {
@@ -184,7 +185,7 @@ function onConnection(ws) {
       await routeMessage(ws, parsed, sessionContext);
     } catch (err) {
       metrics.inc('ws.parse_error');
-      console.error('WS error:', err);
+      logger.error('WS error:', err);
       // The two sends below can themselves throw when the socket died mid-message — a throw
       // here inside the catch would surface as an unhandled rejection and the client would get
       // neither the error nor the end (audit 2026-08-06, Phase 2).

@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
 import { writeFileAtomicSync } from './atomicWrite.js';
+import { log as logger } from './logger.js';
 
 const DISTILL_DIR = path.join(process.cwd(), 'data', 'distillations');
 const KNOWN_SCRIPT_NAMES = ['dev', 'start', 'build', 'preview', 'lint', 'test', 'format', 'deploy', 'publish', 'release'];
@@ -137,7 +138,7 @@ export function analyzeAIExchange(project, { input, finalText, toolHistory }) {
   }
 
   if (ids.length > 0) {
-    console.log(`[Distillation] ${ids.length} suggestion(s) logged for ${project.id}`);
+    logger.info(`[Distillation] ${ids.length} suggestion(s) logged for ${project.id}`);
   }
 
   return ids;

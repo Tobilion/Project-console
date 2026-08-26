@@ -8,6 +8,7 @@ import { state } from './state.js';
 import { loadNotifyRules, getRules, getWebhooks, isEventEnabled } from './notify/notifyStore.js';
 import { sendDesktopNotification, sendWebhook } from './notify/notifyChannels.js';
 import { setTaskCompletionListener } from './taskQueue.js';
+import { log } from './logger.js';
 
 function projectNameOf(projectId) {
   return state.activeProjectsCache.find((p) => p.id === projectId)?.name || projectId;
@@ -38,7 +39,7 @@ export async function notify(projectId, event, { title, body }) {
     }
   } catch (err) {
     // never let a notification failure propagate into whatever triggered it
-    console.error('[notify] internal failure:', err.message);
+    log.error('[notify] internal failure:', err.message);
   }
   return results;
 }

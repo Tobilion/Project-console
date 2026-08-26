@@ -9,6 +9,7 @@ import fsSync from 'fs';
 import path from 'path';
 import { cosineSimilarity } from '../intentVectorScan.js';
 import { INDEX_FILENAME, MAX_FILES_PER_PROJECT, MAX_CHUNKS_PER_PROJECT, INDEX_VERSION } from './codeIndexData.js';
+import { log } from '../logger.js';
 
 const stores = new Map(); // projectId -> { file, dirty, timer, data }
 
@@ -77,7 +78,7 @@ function scheduleSave(projectId) {
         await fs.writeFile(tmp, json, 'utf-8');
         await fs.rename(tmp, entry.file);
       } catch (err) {
-        console.error(`[codeIndex] save failed for ${entry.file}:`, err.message);
+        log.error(`[codeIndex] save failed for ${entry.file}:`, err.message);
       }
     });
   }, DEBOUNCE_MS);

@@ -9,6 +9,7 @@ import { MAX_TOOL_ROUNDS, runToolCall } from './aiQueryToolRun.js';
 import { readProfile } from '../routes/profileRoutes.js';
 import { buildAIQueryContext } from './aiQueryContext.js';
 import { looksLikeUnexecutedToolIntent, looksLikeFabricatedActionClaim } from './aiQueryDetectors.js';
+import { log } from '../logger.js';
 
 /**
  * AI-mode query orchestrator (Phase 14 split, 2026-08-05 — bodies moved verbatim). The tool
@@ -247,7 +248,7 @@ export async function handleAIQuery(ws, project, input, sessionContext, workspac
     }
   } catch (err) {
     metrics.inc('ai_query.post_error');
-    console.error('AI post-query tracking error:', err);
+    log.error('AI post-query tracking error:', err);
   }
 
   if (ws.readyState === 1) ws.send(JSON.stringify({ type: 'end' }));

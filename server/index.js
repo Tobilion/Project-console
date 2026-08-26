@@ -53,6 +53,7 @@ import { syncProjectWatchers } from './codeIndex/codeIndexBuilder.js';
 import { loadTuning } from './tuningStore.js';
 import { loadEditors } from './editorsStore.js';
 import { setCachedScan, invalidateScanCacheForPath } from './scanCache.js';
+import { log } from './logger.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -96,7 +97,7 @@ registerEditorRoutes(app);
 // respond with JSON instead of Express's default HTML stack trace.
 app.use((err, req, res, next) => {
   if (res.headersSent) return next(err);
-  console.error(`Route error (${req.method} ${req.path}):`, err?.stack || err);
+  log.error(`Route error (${req.method} ${req.path}):`, err?.stack || err);
   res.status(500).json({ error: err?.message || 'Server error.' });
 });
 // Tuning overrides (data/tuning.json) must be in memory before any consumer reads a knob —
@@ -173,7 +174,7 @@ async function init() {
     projectsMutex.runExclusive(async () => {
       state.activeProjectsCache = dedupeProjectIds(await discoverProjects(dirToScan, { includeAll: readProfile().scanAllFolders }));
     }),
-    semanticMatcher.initialize().catch((err) => console.error('SemanticMatcher init failed:', err.message)),
+    semanticMatcher.initialize().catch((err) => log.error('SemanticMatcher init failed:', err.message)),
   ]);
   // Prime the whole-scan cache with the boot scan so the first GET /api/projects (web
   // load) hits instead of re-walking the container (scanCache.js, Phase 6).
@@ -185,9 +186,9 @@ async function init() {
   await Promise.all([
     nlpEngine.train(state.activeProjectsCache),
     semanticMatcher.addProjectIntents(state.activeProjectsCache).catch((err) =>
-      console.warn('Project-intent injection failed at boot (matching/AI context degraded):', err?.message || err)),
+      log.warn('Project-intent injection failed at boot (matching/AI context degraded):', err?.message || err)),
   ]);
-  console.log(`NLP training complete. ${state.activeProjectsCache.length} project(s) loaded.`);
+  log.info(`NLP training complete. ${state.activeProjectsCache.length} project(s) loaded.`);
 
   // Phase 1: restore persisted schedules and start the scheduler tick (loadSchedules runs
   // before any connection can create a schedule; activeProjectsCache is populated above).
@@ -249,13 +250,13 @@ async function init() {
         nlpEngine.train(state.activeProjectsCache).catch(() => {});
         semanticMatcher.clearProjectIntents().catch(() => {});
         semanticMatcher.addProjectIntents(state.activeProjectsCache).catch((err) =>
-          console.warn('Project-intent refresh failed after config change:', err?.message || err));
+          log.warn('Project-intent refresh failed after config change:', err?.message || err));
         broadcast({ type: 'projects_updated', data: state.activeProjectsCache });
       });
-      console.log('File watcher active for console.config.json changes.');
+      log.info('File watcher active for console.config.json changes.');
     }
   } catch (err) {
-    console.error('File watcher failed to start:', err.message);
+    log.error('File watcher failed to start:', err.message);
   }
 
   // Stage 1 ML work (2026-07-29, requested directly): retrain the learned confidence model from
@@ -269,10 +270,10 @@ async function init() {
   try {
     const modelResult = retrainConfidenceModel();
     if (modelResult.trained) {
-      console.log(`Confidence model retrained from ${modelResult.sampleCount} labeled outcomes.`);
+      log.info(`Confidence model retrained from ${modelResult.sampleCount} labeled outcomes.`);
     }
   } catch (err) {
-    console.error('Confidence model retrain failed (non-fatal):', err.message);
+    log.error('Confidence model retrain failed (non-fatal):', err.message);
   }
 
   // Auto-apply telemetry-based threshold adjustments on startup. Same non-fatal treatment as
@@ -281,13 +282,13 @@ async function init() {
   try {
     const autoResults = autoApplyThresholdsForAll();
     if (autoResults.length > 0) {
-      console.log(`Auto-applied threshold adjustments for ${autoResults.length} project(s):`);
+      log.info(`Auto-applied threshold adjustments for ${autoResults.length} project(s):`);
       for (const r of autoResults) {
-        console.log(`  ${r.projectId}: ${r.applied} adjustment(s)`);
+        log.info(`  ${r.projectId}: ${r.applied} adjustment(s)`);
       }
     }
   } catch (err) {
-    console.error('Auto-apply threshold adjustments failed (non-fatal):', err.message);
+    log.error('Auto-apply threshold adjustments failed (non-fatal):', err.message);
   }
 
   // Auto-promote high-confidence near-miss patterns (5+ occurrences, >=80% acceptance) into
@@ -296,13 +297,13 @@ async function init() {
   try {
     const learningResults = autoApplySuggestionsForAll();
     if (learningResults.length > 0) {
-      console.log(`Auto-applied near-miss learning for ${learningResults.length} project(s):`);
+      log.info(`Auto-applied near-miss learning for ${learningResults.length} project(s):`);
       for (const r of learningResults) {
-        console.log(`  ${r.projectId}: ${r.applied}/${r.total} suggestion(s) promoted`);
+        log.info(`  ${r.projectId}: ${r.applied}/${r.total} suggestion(s) promoted`);
       }
     }
   } catch (err) {
-    console.error('Auto-apply near-miss learning failed (non-fatal):', err.message);
+    log.error('Auto-apply near-miss learning failed (non-fatal):', err.message);
   }
 
   // Port fallback: try PORT through PORT+10 like start.bat does. Reuses the single `httpServer`
@@ -318,17 +319,17 @@ async function init() {
           httpServer.removeListener('error', onError);
           state.serverPort = tryPort;
           globalThis.__consoleServerPort = tryPort;
-          console.log(`Console Server running on http://${HOST}:${tryPort}`);
-          console.log(`Default scan path: ${state.currentScanDirectory}`);
+          log.info(`Console Server running on http://${HOST}:${tryPort}`);
+          log.info(`Default scan path: ${state.currentScanDirectory}`);
           if (HOST === '0.0.0.0') {
-            console.log('WARNING: bound to 0.0.0.0 — reachable from your LAN. This server can run shell commands with no authentication.');
+            log.info('WARNING: bound to 0.0.0.0 — reachable from your LAN. This server can run shell commands with no authentication.');
           }
           resolve();
         };
         const onError = (err) => {
           httpServer.removeListener('listening', onListening);
           if (err.code === 'EADDRINUSE') {
-            console.log(`Port ${tryPort} in use, trying ${tryPort + 1}...`);
+            log.info(`Port ${tryPort} in use, trying ${tryPort + 1}...`);
           }
           reject(err);
         };
@@ -347,7 +348,7 @@ async function init() {
           err.code === 'EADDRINUSE' && attempt >= MAX_PORT_ATTEMPTS - 1
             ? `No free port between ${PORT} and ${PORT + MAX_PORT_ATTEMPTS - 1} — every port in the range is in use. Close other apps using these ports and restart the console.`
             : err.message;
-        console.error(`Failed to start server: ${message}`);
+        log.error(`Failed to start server: ${message}`);
         process.exit(1);
       }
       // continue to next port — httpServer isn't listening yet, so it's safe to retry .listen()
@@ -361,7 +362,7 @@ async function init() {
     // was removed after binding, so without a permanent one this event crashes the whole server.
     // Observed live: killing a WS test client mid-connection took the console down.
     server.on('error', (err) => {
-      console.error('HTTP server error (non-fatal, connection dropped):', err.message);
+      log.error('HTTP server error (non-fatal, connection dropped):', err.message);
     });
     server.on('upgrade', (request, socket, head) => {
       // Sockets that arrive via 'upgrade' leave the http server's normal per-connection error
@@ -396,10 +397,10 @@ async function init() {
 // the same crash class as the HTTP/upgrade socket errors above. Log and keep serving; the
 // console is a single-user local tool whose in-flight state survives individual failures.
 process.on('unhandledRejection', (reason) => {
-  console.error('Unhandled promise rejection (non-fatal, state preserved):', reason instanceof Error ? reason.stack : reason);
+  log.error('Unhandled promise rejection (non-fatal, state preserved):', reason instanceof Error ? reason.stack : reason);
 });
 process.on('uncaughtException', (err) => {
-  console.error('Uncaught exception (non-fatal, state preserved):', err.stack);
+  log.error('Uncaught exception (non-fatal, state preserved):', err.stack);
 });
 
 // A rejection inside init() (discoverProjects, NLP training, watcher setup) used to be absorbed
@@ -408,6 +409,6 @@ process.on('uncaughtException', (err) => {
 // looks like a hung app instead of a crash (audit 2026-08-06, Phase 2). Fail loudly instead:
 // the listen loop only ever ran at the end of init(), so there's nothing worth preserving.
 init().catch((err) => {
-  console.error('Fatal init failure:', err instanceof Error ? err.stack : err);
+  log.error('Fatal init failure:', err instanceof Error ? err.stack : err);
   process.exit(1);
 });

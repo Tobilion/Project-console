@@ -13,6 +13,7 @@ import { learnedFloor, getModelInfo, familyOf } from './confidenceModel.js';
 import { getEffectiveThreshold, setThresholdOverride } from './telemetryThresholds.js';
 import { getIntentStats } from './telemetryStats.js';
 import { PURE_CHITCHAT_INTENTS } from './intentTrust.js';
+import { log } from './logger.js';
 
 // Safety clamp (2026-08-05, approved directly after a confirmed-live check-matcher failure):
 // canned zero-argument chit-chat replies must never have their semantic floor lowered below
@@ -44,7 +45,7 @@ function flushTelemetryQueue() {
       // and the next flush retries it.
       writeQueue.delete(projectId);
     } catch (err) {
-      console.error('Telemetry flush failed (retrying on next flush):', err.message);
+      log.error('Telemetry flush failed (retrying on next flush):', err.message);
     }
   }
 }

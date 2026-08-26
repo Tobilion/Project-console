@@ -14,6 +14,7 @@ import { extractPdfTextBytes } from '../pdfKit.js';
 import { createRequire } from 'module';
 import { watchProjectCodeFiles } from '../fileWatcher.js';
 import { enqueueTask } from '../taskQueue.js';
+import { log } from '../logger.js';
 
 const require = createRequire(import.meta.url);
 // mammoth is CommonJS — same createRequire pattern as archiver.
@@ -98,7 +99,7 @@ export async function updateFileInProjectIndex(project, relPath) {
     try {
       vectors.push(await embed(chunk.text));
     } catch (err) {
-      console.error(`[codeIndex] embed failed for ${relPath}:`, err.message);
+      log.error(`[codeIndex] embed failed for ${relPath}:`, err.message);
       return;
     }
   }
@@ -159,7 +160,7 @@ export async function buildProjectIndex(project) {
       try {
         vectors.push(await embed(chunk.text));
       } catch (err) {
-        console.error(`[codeIndex] embed failed for ${relPath}:`, err.message);
+        log.error(`[codeIndex] embed failed for ${relPath}:`, err.message);
         vectors.length = 0;
         break;
       }

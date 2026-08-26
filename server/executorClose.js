@@ -4,6 +4,7 @@
 // `child.on('close', ...)`. The context bundle is built by executor.js from its closures —
 // everything the handler needs is explicit, so behavior is a pure move, not a rewrite.
 
+import { log as logger } from './logger.js';
 import { broadcast } from './wsServer.js';
 import { forgetDevUrl } from './devUrlStore.js';
 import { state } from './state.js';
@@ -146,7 +147,7 @@ export function createCloseHandler(ctx) {
         if (!runningProcesses.has(projectId)) forgetDevUrl(projectId);
         broadcast({ type: 'dashboard_update' });
         broadcast({ type: 'processes_update' });
-        console.log(`[Executor] Detached process for ${projectId} exited and its server is down — tracked entry cleaned up.`);
+        logger.info(`[Executor] Detached process for ${projectId} exited and its server is down — tracked entry cleaned up.`);
         // Phase 2: an entry that was still tracked when the process died means it was never
         // deliberately stopped (stopTrackedProcess removes entries first) — that's a crash,
         // so surface it through the notify dispatcher. Fire-and-forget by design.

@@ -1,5 +1,6 @@
 import fs from 'fs/promises';
 import path from 'path';
+import { log } from './logger.js';
 
 /**
  * Shared project-recognition helpers (Phase 14 split of projectScanner.js, 2026-08-05 — bodies
@@ -49,7 +50,7 @@ const WORKSPACE_TYPES = new Set(['dev', 'general']);
 export function detectWorkspaceType(config, codebaseIndex) {
   if (config && config.workspaceType !== undefined) {
     if (WORKSPACE_TYPES.has(config.workspaceType)) return config.workspaceType;
-    console.warn(`[projectScanner] Ignoring invalid console.config.json "workspaceType" — expected "dev" or "general", got "${config.workspaceType}".`);
+    log.warn(`[projectScanner] Ignoring invalid console.config.json "workspaceType" — expected "dev" or "general", got "${config.workspaceType}".`);
     delete config.workspaceType;
   }
   // Same recognition rule the code-only discovery fallback uses: real code, a known key
@@ -76,19 +77,19 @@ export function sanitizeChatReplies(config) {
   const raw = config.chatReplies;
   if (raw === undefined || raw === null) return;
   if (typeof raw !== 'object' || Array.isArray(raw)) {
-    console.warn('[projectScanner] Ignoring invalid console.config.json "chatReplies" — expected an object keyed by intent.');
+    log.warn('[projectScanner] Ignoring invalid console.config.json "chatReplies" — expected an object keyed by intent.');
     delete config.chatReplies;
     return;
   }
   for (const key of Object.keys(raw)) {
     if (!CHAT_REPLIES_INTENTS.has(key)) {
-      console.warn(`[projectScanner] Ignoring unknown chatReplies key "${key}" (allowed: ${[...CHAT_REPLIES_INTENTS].join(', ')}).`);
+      log.warn(`[projectScanner] Ignoring unknown chatReplies key "${key}" (allowed: ${[...CHAT_REPLIES_INTENTS].join(', ')}).`);
       delete raw[key];
       continue;
     }
     const pool = raw[key];
     if (!Array.isArray(pool) || pool.length === 0 || pool.some((s) => typeof s !== 'string' || !s.trim())) {
-      console.warn(`[projectScanner] Ignoring invalid chatReplies.${key} — must be a non-empty array of non-empty strings.`);
+      log.warn(`[projectScanner] Ignoring invalid chatReplies.${key} — must be a non-empty array of non-empty strings.`);
       delete raw[key];
     }
   }
@@ -178,7 +179,7 @@ export async function readProjectContextDocs(projectPath) {
           content = await fs.readFile(path.join(projectPath, file), 'utf-8');
           if (content.length > 1024 * 1024) content = content.slice(0, 1024 * 1024);
         } catch (err) {
-          console.warn(`[scan] Could not read context doc ${file}: ${err.message}`);
+          log.warn(`[scan] Could not read context doc ${file}: ${err.message}`);
         }
         if (content === null) continue;
         contextFiles.push({ filename: file, content });

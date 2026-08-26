@@ -12,6 +12,7 @@ import { performTidy, performDuplicateDeletes, performRename, performMove } from
 import { mergePdfs, splitPdf, extractPages, watermarkPdf } from '../pdfKit.js';
 import { state, pendingConfirmations, pendingToolConfirmations, connectionRegistry } from '../state.js';
 import { pendingMemorySuggestions } from './connectionState.js';
+import { log as logger } from '../logger.js';
 
 /** User reply to a risky-command / AI-tool confirm card (routeMessage 'confirm_response'). */
 export async function handleConfirmResponse(ws, parsed) {
@@ -123,7 +124,7 @@ export async function handleConfirmResponse(ws, parsed) {
       Promise.resolve().then(() => retrainConfidenceModel()).catch(() => {});
     }
   } catch (err) {
-    console.error('Confirm bookkeeping failed (non-fatal):', err.message);
+    logger.error('Confirm bookkeeping failed (non-fatal):', err.message);
   }
 
   if (!confirmed) {

@@ -26,6 +26,7 @@ import { handleStopServer, handleDevUrl } from './connectionDevServer.js';
 import { handleModeCommand } from './connectionModeAdmin.js';
 import { handleOnboardingCommand } from './connectionOnboardingAdmin.js';
 import { handleMatchingPipeline, explainInput } from './connectionMatching.js';
+import { log as logger } from '../logger.js';
 
 // Pure positive acknowledgments that never carry a request — short-circuited out of the AI
 // path so a bare "ok" doesn't burn a local/cloud model call (see the aiEnabled branch below).
@@ -121,7 +122,7 @@ async function handleExecuteBody(ws, parsed, sessionContext) {
     } catch (err) {
       // The session is only an optimization here (lock/path guard) — a failed read must not
       // block the message, but it also must not vanish silently (audit 2026-08-17).
-      console.error(`getSession(${sessionId}) failed in handleExecute:`, err);
+      logger.error(`getSession(${sessionId}) failed in handleExecute:`, err);
     }
   }
 
