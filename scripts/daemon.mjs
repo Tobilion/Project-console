@@ -7,7 +7,7 @@
 // start/stop/kill-by-port behavior and is the single entry the npm scripts use everywhere.
 //
 // Commands:
-//   daemon.mjs start            Start the server detached; poll 3000-3009 for the bound port
+//   daemon.mjs start            Start the server detached; poll 3000-3019 for the bound port
 //                               and write logs/daemon.port + logs/daemon.pid.
 //   daemon.mjs stop             Read logs/daemon.port, VERIFY each listening PID's command
 //                               line is the console server, then kill the process tree.
@@ -32,7 +32,7 @@ const PID_FILE = path.join(logDir, 'daemon.pid');
 const LOG_FILE = path.join(logDir, 'daemon.log');
 const SERVER_ENTRY = path.join(rootDir, 'server', 'index.js');
 const BASE_PORT = 3000;
-const MAX_PORT = 3009;
+const MAX_PORT = 3019; // widened 2026-08-26
 const BOOT_TIMEOUT_MS = 90_000; // cold boot ~41s (embeddings + NLP + discovery); 90s ceiling
 const POLL_MS = 1500;
 const WIN = process.platform === 'win32';

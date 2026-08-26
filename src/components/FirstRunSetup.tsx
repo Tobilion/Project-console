@@ -8,7 +8,7 @@ interface FirstRunSetupProps {
   scanPath: string;
   setScanPath: (v: string) => void;
   handleScan: (e: React.FormEvent<HTMLFormElement>) => void;
-  onFinish: (updates: Partial<UserProfile>) => void;
+  onFinish: (updates: Partial<UserProfile>) => Promise<boolean> | boolean;
 }
 
 /**
@@ -28,20 +28,32 @@ export function FirstRunSetup({ open, scanPath, setScanPath, handleScan, onFinis
   const [name, setName] = useState('');
   const [workspaceType, setWorkspaceType] = useState<'dev' | 'general'>('dev');
   const [showDev, setShowDev] = useState(false);
+  // A failed profile save must be VISIBLE — an optimistic close with a console-only error left
+  // users thinking their settings saved (the wizard just reappeared on the next load instead;
+  // 2026-08-26). Inline error + retry keeps the wizard open until the save actually lands.
+  const [saveError, setSaveError] = useState<string | null>(null);
   // The pre-filled path as it was when the wizard mounted — a user who leaves it untouched
   // shouldn't pay for a pointless ~2s rescan (and an empty path previously dumped a "No path
   // given." error into a chat that may not even exist yet; audit 2026-08-17).
   const initialPathRef = useRef(scanPath);
 
-  const handleContinue = (e: React.FormEvent<HTMLFormElement>) => {
+  const handleContinue = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    setSaveError(null);
     const pathChanged = scanPath.trim() && scanPath.trim() !== (initialPathRef.current || '').trim();
     if (pathChanged) handleScan(e);
-    onFinish({ name: name.trim(), setupComplete: true, defaultWorkspaceType: workspaceType });
+    const ok = await onFinish({ name: name.trim(), setupComplete: true, defaultWorkspaceType: workspaceType });
+    if (ok === false) {
+      setSaveError("Couldn't save your settings — the server didn't accept them. Check that the console is running, then try again.");
+    }
   };
 
-  const handleSkip = () => {
-    onFinish({ setupComplete: true, defaultWorkspaceType: workspaceType });
+  const handleSkip = async () => {
+    setSaveError(null);
+    const ok = await onFinish({ setupComplete: true, defaultWorkspaceType: workspaceType });
+    if (ok === false) {
+      setSaveError("Couldn't save your settings — the server didn't accept them. Check that the console is running, then try again.");
+    }
   };
 
   return (
@@ -163,6 +175,13 @@ npm run dist</pre>
             Get Started <ArrowRight size={14} />
           </button>
         </div>
+        {saveError && (
+          <div className="px-6 pb-6">
+            <p className="rounded-lg bg-accent-red/10 border border-accent-red/30 px-3 py-2 text-xs text-accent-red">
+              {saveError}
+            </p>
+          </div>
+        )}
       </form>
     </ModalShell>
   );

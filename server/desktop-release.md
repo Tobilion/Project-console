@@ -52,6 +52,12 @@ stale stage can never be packaged twice.
 
 ## FAQ
 
+- **Does the installer include the CLI?** Yes — `resources\server\cli-client.js` + the staged
+  node_modules ship with every install, and a **"Project Console CLI"** Start Menu shortcut
+  (added by `desktop/scripts/nsis-cli-shortcut.nsh`) opens a terminal running
+  `resources\cli.cmd`, which launches the client with the bundled Electron runtime as plain
+  Node (`ELECTRON_RUN_AS_NODE=1`) — full CLI access with zero npm/Node on the user's machine.
+  Start the app first (the CLI connects to its server on ports 3000-3019).
 - **Why does the installer never show an update?** No release exists yet (or the app's
   version in `desktop/package.json` is not older than the release's). `electron-updater`
   fails silently when offline or when nothing is published.

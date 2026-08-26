@@ -308,7 +308,7 @@ async function init() {
   // Port fallback: try PORT through PORT+10 like start.bat does. Reuses the single `httpServer`
   // created above (rather than a fresh server per attempt) so Vite's HMR upgrade listener,
   // already attached to it, stays valid once we actually bind.
-  const MAX_PORT_ATTEMPTS = 10;
+  const MAX_PORT_ATTEMPTS = 20; // 3000-3019 (widened 2026-08-26: a fully-occupied 3000-3009 is rare but not impossible)
   let server = null;
   for (let attempt = 0; attempt < MAX_PORT_ATTEMPTS; attempt++) {
     const tryPort = PORT + attempt;
@@ -340,7 +340,14 @@ async function init() {
       break; // succeeded
     } catch (err) {
       if (err.code !== 'EADDRINUSE' || attempt >= MAX_PORT_ATTEMPTS - 1) {
-        console.error(`Failed to start server: ${err.message}`);
+        // The final EADDRINUSE gets a SPECIFIC message — a user with every port in the range
+        // taken must see exactly that, not a generic bind error (2026-08-26). The desktop
+        // shell captures this line via the child's stderr and surfaces it in its error page.
+        const message =
+          err.code === 'EADDRINUSE' && attempt >= MAX_PORT_ATTEMPTS - 1
+            ? `No free port between ${PORT} and ${PORT + MAX_PORT_ATTEMPTS - 1} — every port in the range is in use. Close other apps using these ports and restart the console.`
+            : err.message;
+        console.error(`Failed to start server: ${message}`);
         process.exit(1);
       }
       // continue to next port — httpServer isn't listening yet, so it's safe to retry .listen()

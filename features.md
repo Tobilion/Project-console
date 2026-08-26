@@ -50,14 +50,14 @@ still proxies through the local daemon), zero data leaves your machine unless yo
 
 ## 1. Running the console
 
-The server auto-falls back through ports 3000–3009 if 3000 is taken; the frontend and CLI client
+The server auto-falls back through ports 3000–3019 if 3000 is taken; the frontend and CLI client
 discover whichever port it actually bound to.
 
 | Command | What it does |
 |---|---|
 | `npm install` | Install dependencies (from the repo root) |
 | `npm run dev` | Start the server with **current source** (`tsx server/index.js`), web UI at `http://127.0.0.1:3000`. Prefer over the batch file while iterating. |
-| `npm run launcher` | **start.bat-equivalent W/C/Q menu** (terminal-native, no batch file). Probes ports 3000–3009 for a running server and hands off instead of starting a duplicate. |
+| `npm run launcher` | **start.bat-equivalent W/C/Q menu** (terminal-native, no batch file). Probes ports 3000–3019 for a running server and hands off instead of starting a duplicate. |
 | `npm start` | Start from the esbuild bundle (`node dist/server.js`) — only if `dist/` is up to date |
 | `node bin/cli.js` | Start server in-process + auto-open the browser |
 | `node bin/cli.js cli` | Start server in-process + hand the terminal to the CLI chat |
@@ -72,7 +72,7 @@ discover whichever port it actually bound to.
 A terminal-native replica of `start.bat` (added 2026-08-24). It:
 
 1. Renders the same ANSI-styled W/C/Q menu (Web UI / CLI Chat / Quit).
-2. Probes ports 3000–3009 via `GET /api/projects` (5s per port) for an already-running server.
+2. Probes ports 3000–3019 via `GET /api/projects` (5s per port) for an already-running server.
 3. **[W]** — opens the browser against the running port, or starts the server in-process (loading
    all models: embeddings + NLP classifier) and opens the browser.
 4. **[C]** — hands to `server/cli-client.js` (which waits out cold boot, up to 90s) against the
@@ -850,17 +850,21 @@ npm run build             # vite build + esbuild server bundle -> dist/
 ## 23. Desktop app, publishing & installing
 
 **Desktop shell** (`desktop/`): a self-contained Electron wrapper with its own package.json (the
-root install never pulls Electron). It reuses the launchers' port rule (3000–3009, attaches instead
-of starting a duplicate), spawns the server as a child process, waits for the bound port, opens the
-default browser, and adds a tray icon whose Quit stops the server child cleanly. `npm install &&
+root install never pulls Electron). It reuses the launchers' port rule (3000–3019, attaches instead
+of starting a duplicate), spawns the server as a child process, waits for the bound port, shows the
+console in its OWN native Electron window (a splash page covers the server's cold-boot, then the
+window loads the console — external https links opened from the UI go to the system browser, the
+console itself never does), and adds a tray icon whose Quit stops the server child cleanly. Closing
+the window quits the app (which stops the server). `npm install &&
 npm start` runs it; `npm run dist` builds an NSIS Windows installer; `.dmg` (macOS) and `.AppImage`
 (Linux) build in CI (`.github/workflows/desktop-build.yml`, macos-latest + ubuntu-latest matrix,
 `CSC_IDENTITY_AUTO_DISCOVERY=false`, artifacts uploaded per OS).
 
 **Packaging architecture (round-5 audit, 2026-08-24 — the original packaging could never work)**:
 - `desktop/scripts/stage-server.mjs` stages a runnable server runtime into `desktop/stage/`: the
-  server source, `bin/`, `data/`, the vite-built frontend INSIDE `server/` (production mode serves
-  static files from `__dirname`), and `npm ci --omit=dev` node_modules.
+  server source, `bin/`, an EMPTY `data/` (fresh installs start like a new user — no developer
+  data, onboarding wizard on first run), the vite-built frontend INSIDE `server/` (production
+  mode serves static files from `__dirname`), and `npm ci --omit=dev` node_modules.
 - `electron-builder` `extraResources` copies `stage/` into `resources/`; the
   `desktop/scripts/after-pack.cjs` hook re-adds node_modules (electron-builder excludes
   node_modules from extraResources by default).

@@ -41,15 +41,15 @@ goto MENU
 
 :CLI_MODE
 echo.
-echo %ESC%[33m  [+] Checking for a running server on ports 3000-3009...%ESC%[0m
+echo %ESC%[33m  [+] Checking for a running server on ports 3000-3019...%ESC%[0m
 REM Already-running probe - deliberately pipe-free (no `for /f`): the probe result is written
 REM to server.pid (gitignored via *.pid) and read back with `set /p`. If a console server
 REM already responds, skip starting a second instance (it would only land on a fallback port)
 REM and hand straight to the CLI client, which waits out cold boot itself (up to 90s, ports
-REM 3000-3009). Proxy detection is disabled and the per-port timeout is 5s because PowerShell
+REM 3000-3019). Proxy detection is disabled and the per-port timeout is 5s because PowerShell
 REM 5.1's first WebRequest can stall on proxy auto-detection - measured live: a 1s timeout
 REM missed a running server while 2s was borderline (this machine's /api/projects takes ~1.7s).
-powershell -NoProfile -Command "[Net.WebRequest]::DefaultWebProxy=$null; $f=$null; foreach($i in 3000..3009){ try { $r=Invoke-RestMethod -Uri ('http://127.0.0.1:'+$i+'/api/projects') -TimeoutSec 5; if($r.projects){$f=$i;break} } catch {} }; if($null -ne $f){ 'UP '+$f | Set-Content server.pid } else { 'DOWN' | Set-Content server.pid }"
+powershell -NoProfile -Command "[Net.WebRequest]::DefaultWebProxy=$null; $f=$null; foreach($i in 3000..3019){ try { $r=Invoke-RestMethod -Uri ('http://127.0.0.1:'+$i+'/api/projects') -TimeoutSec 5; if($r.projects){$f=$i;break} } catch {} }; if($null -ne $f){ 'UP '+$f | Set-Content server.pid } else { 'DOWN' | Set-Content server.pid }"
 set /p PROBE_RESULT=<server.pid
 if /i "!PROBE_RESULT:~0,2!"=="UP" (
     echo %ESC%[32m  [+] Server already running on port !PROBE_RESULT:~3! - skipping start.%ESC%[0m
@@ -82,7 +82,7 @@ REM CLI client - but that only confirms *something* is bound to that exact port,
 REM app's server is actually the one there or that it's finished starting (route registration /
 REM Vite middleware setup / semanticMatcher's embedding model load all take real time), and it
 REM had no way to notice the server falling back to a different port. cli-client.js now handles
-REM both concerns itself (retries for up to 90s, checks ports 3000-3009), so just hand off to it
+REM both concerns itself (retries for up to 90s, checks ports 3000-3019), so just hand off to it
 REM directly instead of duplicating a weaker version of that logic here.
 node server/cli-client.js
 if errorlevel 1 (
@@ -98,24 +98,24 @@ exit /b 0
 
 :WEB_MODE
 echo.
-echo %ESC%[32m  [+] Checking for a running server on ports 3000-3009...%ESC%[0m
+echo %ESC%[32m  [+] Checking for a running server on ports 3000-3019...%ESC%[0m
 REM Same already-running probe as CLI mode - opening the browser against an existing server is
 REM all that's needed; starting a second foreground instance would land on a fallback port and
 REM leave a duplicate process behind.
-powershell -NoProfile -Command "[Net.WebRequest]::DefaultWebProxy=$null; $f=$null; foreach($i in 3000..3009){ try { $r=Invoke-RestMethod -Uri ('http://127.0.0.1:'+$i+'/api/projects') -TimeoutSec 5; if($r.projects){$f=$i;break} } catch {} }; if($null -ne $f){ 'UP '+$f | Set-Content server.pid } else { 'DOWN' | Set-Content server.pid }"
+powershell -NoProfile -Command "[Net.WebRequest]::DefaultWebProxy=$null; $f=$null; foreach($i in 3000..3019){ try { $r=Invoke-RestMethod -Uri ('http://127.0.0.1:'+$i+'/api/projects') -TimeoutSec 5; if($r.projects){$f=$i;break} } catch {} }; if($null -ne $f){ 'UP '+$f | Set-Content server.pid } else { 'DOWN' | Set-Content server.pid }"
 set /p PROBE_RESULT=<server.pid
 if /i "!PROBE_RESULT:~0,2!"=="UP" (
     echo %ESC%[32m  [+] Server already running on port !PROBE_RESULT:~3! - opening browser.%ESC%[0m
     start http://localhost:!PROBE_RESULT:~3!
 ) ELSE (
     echo %ESC%[32m  [+] Starting server and opening the browser...%ESC%[0m
-    REM The server binds 3000-3009 via its own fallback loop, so the browser must open on the
+    REM The server binds 3000-3019 via its own fallback loop, so the browser must open on the
     REM ACTUALLY-bound port, not a hardcoded 3000 (audit 2026-08-24: with 3000 occupied the old
     REM line opened localhost:3000 - the wrong service - every time). A background watcher
     REM (start /B, same console, dies with this window) probes the port range the same way the
     REM already-running probe above does - proxy disabled, 5s per-port timeout, up to ~95s for
     REM a cold boot - then opens the browser on whatever port the server landed on.
-    start "" /B powershell -NoProfile -Command "[Net.WebRequest]::DefaultWebProxy=$null; $deadline=(Get-Date).AddSeconds(95); $f=$null; while((Get-Date) -lt $deadline -and $null -eq $f){ foreach($i in 3000..3009){ try { $r=Invoke-RestMethod -Uri ('http://127.0.0.1:'+$i+'/api/projects') -TimeoutSec 5; if($r.projects){$f=$i;break} } catch {} }; if($null -eq $f){ Start-Sleep -Seconds 3 } }; if($null -ne $f){ Start-Process ('http://localhost:'+$f) } else { Write-Host 'Console did not become ready - open the printed URL manually' }"
+    start "" /B powershell -NoProfile -Command "[Net.WebRequest]::DefaultWebProxy=$null; $deadline=(Get-Date).AddSeconds(95); $f=$null; while((Get-Date) -lt $deadline -and $null -eq $f){ foreach($i in 3000..3019){ try { $r=Invoke-RestMethod -Uri ('http://127.0.0.1:'+$i+'/api/projects') -TimeoutSec 5; if($r.projects){$f=$i;break} } catch {} }; if($null -eq $f){ Start-Sleep -Seconds 3 } }; if($null -ne $f){ Start-Process ('http://localhost:'+$f) } else { Write-Host 'Console did not become ready - open the printed URL manually' }"
     IF EXIST "dist\server.js" (
         call npm start
     ) ELSE (

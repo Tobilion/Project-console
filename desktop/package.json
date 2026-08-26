@@ -36,7 +36,8 @@
     },
     "nsis": {
       "oneClick": true,
-      "perMachine": false
+      "perMachine": false,
+      "include": "scripts/nsis-cli-shortcut.nsh"
     },
     "afterPack": "scripts/after-pack.cjs",
     "publish": {

@@ -64,6 +64,11 @@ copyDir(path.join(rootDir, 'bin'), path.join(stageDir, 'bin'));
 // first boot needs; readProfile() defaults setupComplete to false, which triggers the same
 // first-run onboarding wizard a real new user sees.
 fs.mkdirSync(path.join(stageDir, 'data'), { recursive: true });
+// The terminal CLI launcher: a .cmd that runs the bundled cli-client.js with the Electron
+// binary as plain Node (ELECTRON_RUN_AS_NODE) — a .exe-only install gets full CLI access
+// with zero npm/Node. Lands at resources/cli.cmd; the NSIS include creates its Start Menu
+// shortcut (scripts/nsis-cli-shortcut.nsh).
+fs.copyFileSync(path.join(desktopDir, 'cli.cmd'), path.join(stageDir, 'cli.cmd'));
 fs.copyFileSync(path.join(rootDir, 'package.json'), path.join(stageDir, 'package.json'));
 fs.copyFileSync(path.join(rootDir, 'package-lock.json'), path.join(stageDir, 'package-lock.json'));
 

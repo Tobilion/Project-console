@@ -45,10 +45,10 @@ async function startServer() {
 // `npm run launcher` is a terminal-native replacement for the .bat file.
 
 async function probeRunningPort() {
-  // A running console server answers /api/projects on one of 3000-3009. When one is found
+  // A running console server answers /api/projects on one of 3000-3019. When one is found
   // the launcher hands off to it instead of starting a duplicate instance (which would only
   // bind a fallback port and leave a second server behind).
-  for (let i = 3000; i <= 3009; i++) {
+  for (let i = 3000; i <= 3019; i++) {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 5000);
     try {
@@ -113,7 +113,7 @@ async function runLauncher() {
     process.exit(0);
   }
 
-  console.log('\n  [+] Checking for a running server on ports 3000-3009...');
+  console.log('\n  [+] Checking for a running server on ports 3000-3019...');
   const runningPort = await probeRunningPort();
 
   if (choice === 'w') {
@@ -167,7 +167,7 @@ async function main() {
   // CLI chat mode: `npx local-project-console cli [--dir <path>] [--project <name>]`.
   // Starts the server in-process (same boot as the web mode), then hands the terminal to
   // server/cli-client.js instead of opening the browser — the same chat mode start.bat's
-  // [C] option reaches. The client scans ports 3000-3009 and finds the in-process server;
+  // [C] option reaches. The client scans ports 3000-3019 and finds the in-process server;
   // when it exits, the server exits with it (no orphan).
   if (process.argv[2] === 'cli' || process.argv[2] === '--cli') {
     const port = await startServer();

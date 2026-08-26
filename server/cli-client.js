@@ -125,6 +125,13 @@ function runScriptedMode(ws, project, sessionId) {
       });
     } else {
       // --json with piped stdin: chat line-by-line; EOF ends the session.
+      // process.stdin.resume() FIRST (2026-08-26, live-probed): on Windows + Node 24, pipe
+      // data that arrives BEFORE this readline attaches (the discovery handshake takes ~1-2s)
+      // left the stream in a state where the interface's own data listener never flowed — the
+      // piped line was silently dropped and EOF closed the socket before any execute fired.
+      // Explicitly resuming before createInterface puts the stream in flowing mode so the
+      // interface reads the buffered pipe data.
+      process.stdin.resume();
       const rl = readline.createInterface({ input: process.stdin, crlfDelay: Infinity });
       rl.on('line', (line) => {
         const t = line.trim();
@@ -178,7 +185,7 @@ async function main() {
   if (!discovered || discovered.projects.length === 0) {
     if (spinner) spinner.stop(chalk.red(`✖ Could not connect to a server on ports ${BASE_PORT}-${BASE_PORT + MAX_PORT_ATTEMPTS - 1}`));
     else process.stderr.write(`${C.red}✖ Could not connect to a server on ports ${BASE_PORT}-${BASE_PORT + MAX_PORT_ATTEMPTS - 1}${C.reset}\n`);
-    process.stderr.write(`${C.yellow}  Make sure "npm run dev" is running (or still finishing startup), then try again.${C.reset}\n`);
+    process.stderr.write(`${C.yellow}  Make sure the console is running (start the Project Console app, or "npm run dev"), then try again.${C.reset}\n`);
     process.exit(1);
   }
 

@@ -7,7 +7,7 @@
 // landed anywhere in this range, and this client used to have no way to find it.
 export const BASE_PORT = parseInt(process.env.PORT, 10) || 3000;
 export const HOST = process.env.HOST || 'localhost';
-export const MAX_PORT_ATTEMPTS = 10;
+export const MAX_PORT_ATTEMPTS = 20; // 3000-3019, widened 2026-08-26
 // Bumped again 2026-07-30 (40s → 90s) based on a real measured cold boot of ~41s — right at the
 // old timeout's edge, meaning some boots were likely already failing silently before this. The
 // 2026-07-30 intent-expansion batch also grew intentsData.js by roughly a third (more phrases for

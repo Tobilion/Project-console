@@ -111,3 +111,99 @@ Rebuilt the final installer (all six items' code), uninstalled, installed fresh,
 - NSIS oneClick installers on this machine: slow (4-5 min), abort with exit code 2 when another installer for the same product is alive (a zombie setup process blocks everything until killed — kill by PID, never `/im`), and can leave partial installs if killed mid-copy.
 - A running app + installer interleave leaves the install dir empty mid-upgrade (the `old-uninstaller` removes everything before the new installer copies) — don't read the dir mid-upgrade.
 - All test artifacts (feed server, probe scripts, temp installs) live in `%TEMP%\opencode` — nothing left in the repo. Repo changes: 13 modified files + `server/desktop-release.md` (new); `desktop/dist`/`desktop/stage` are gitignored.
+---
+
+## Window regression report (2026-08-26) — desktop app opened in the system browser, not its own window
+
+**Finding (root cause, code-traced + git-history-verified)**: this was NOT a regression from the
+auto-updater work — the desktop shell NEVER had a BrowserWindow in this codebase. Round 5's
+main.cjs (commit 6b588b2) and the current main.cjs both called `shell.openExternal(url)` in
+`openConsole()`; the "open the default browser" behavior is documented verbatim in CLAUDE.md,
+README and features.md, and the auto-updater change (round 6) only added the updater init + a
+tray item + CONSOLE_DESKTOP env — it never touched the window/browser path. The user's report is
+correct as a PRODUCT defect regardless: a desktop app that opens a browser tab pointed at
+localhost is not a desktop app.
+
+**Fix (desktop/main.cjs, 2026-08-26)**:
+- `openConsole()` now creates (or re-points) the app's OWN `BrowserWindow` (1280x820,
+  min 960x600, contextIsolation + sandbox, no nodeIntegration) and loads the console URL into it.
+- The window opens IMMEDIATELY at launch with a dependency-free data:URL splash
+  (`SPLASH_HTML`) covering the server's 40-90s cold boot, then navigates to
+  `http://127.0.0.1:<port>` once the port answers (no second-window flash).
+- `shell.openExternal` is now used ONLY for external https links from the UI (target=_blank
+  links like GitHub/ollama.com, routed via `setWindowOpenHandler`); a `will-navigate` guard
+  keeps in-window navigation inside the console origin.
+- Closing the window quits the app (`window-all-closed` → quit) and before-quit still kills
+  the server child — verified: after window close, zero processes + port released.
+- First bug found during verification (own regression): `openConsole(bound)` passed the
+  BOOLEAN returned by `waitForServer()` into the URL template (`http://127.0.0.1:true`) —
+  the old code used `openConsole(BASE_PORT)`; restored.
+
+**Verification (installed exe, fresh install, 4 consecutive launches)**:
+1. Launch 1: window handle present at 15s (splash), title flipped to "Project Console V4" once
+   the server booted — the console renders inside the app window.
+2. Window close → clean app+server shutdown (0 processes, port 3000 released).
+3. Launches 2 and 3: identical window + console-load behavior.
+4. Final reinstall of 1.0.0 after the update test: window + console load confirmed again.
+
+**Auto-update still works after the fix** (the likely-regression concern, re-verified
+end-to-end): with CONSOLE_UPDATE_URL pointed at a local feed, the installed app logged
+update-available 1.0.1 → downloaded → quitAndInstall → NSIS silent upgrade ran and the
+installed version reached 1.0.1 (then re-installed 1.0.0). The silent-install step completed
+cleanly this time — no zombie. One test-run gotcha repeated: the feed file must be named
+EXACTLY as latest.yml's url (hyphenated `Project-Console-Setup-1.0.1.exe`), otherwise the
+download 404s and stalls.
+
+Docs updated to match: CLAUDE.md, README.md, features.md, desktop-release.md, main.cjs header.
+
+---
+
+## Round 2026-08-26 (part 2) — CLI work + no-silent-hang hardening + port range + daemon plan
+
+### CLI tested live against a real project (repo CLI, non-TTY)
+- `--dry-run "git status"` → resolved stage/intent ("Stage: fuzzy (100%), Intent: system.chit_chat.git_status"), nothing executed, exit 0.
+- `--query "check git status"` → ran the real git status in the Dream Kick project (output: " M console.config.json"), exit 0.
+- `--query "what time is it"` → answered from the server clock, exit 0.
+- `--query "git push"` → executed as typed (the documented typed-command bypass), exit 0.
+- `--query "deploy"` → scripted mode AUTO-DECLINED the confirm ("(declined confirm for git push ...)" + "Cancelled: git push"), exit 0 — matches the documented never-auto-approve invariant.
+- **BUG FOUND + FIXED (piped --json)**: the documented "--json reads chat input from piped stdin" was BROKEN on Windows/Node 24 — pipe data arriving before the readline attached (the ~1-2s discovery handshake) never flowed; the piped line was silently dropped, EOF closed the socket, and exit crashed with the libuv assert. Fix in server/cli-client.js: `process.stdin.resume()` BEFORE `readline.createInterface` in the piped branch (bisected: a no-op 'data' listener fixed it, resume() is the clean form). Re-verified single- and multi-line pipes (two turns, two answers, exit 0).
+- No hangs anywhere; all exits 0. The no-connection message was made desktop-aware ("start the Project Console app, or npm run dev").
+
+### CLI-to-desktop-app (real end-to-end WS parity proof)
+- Installed app running (server on 3000, window up): repo CLI `--query` connected and answered against it.
+- **Zero-Node proof**: the PACKAGED client (`resources\server\cli-client.js`) run via the Electron binary with `ELECTRON_RUN_AS_NODE=1` connected to the desktop server, answered a time/date query AND executed a real `git status` — the WS/CLI parity contract holds regardless of how the server was launched.
+
+### CLI bundled into the installer (item 5)
+- The client files were already staged (server/ + bin/ + prod node_modules incl. ws); what was missing was a LAUNCH PATH. Added:
+  - `desktop/cli.cmd` (staged to `resources\cli.cmd`): runs the bundled client with the Electron binary as plain Node — zero npm/Node on the user's machine.
+  - `desktop/scripts/nsis-cli-shortcut.nsh` + `build.nsis.include`: a **"Project Console CLI"** Start Menu shortcut (first attempt used a per-app folder that doesn't exist in oneClick installs — moved to the Programs root, verified present). customUnInstall removes it.
+  - Verified: installed fresh → shortcut exists → `resources\cli.cmd --project "Dream Kick" --query "what time is it"` answered against the running app, exit 0.
+
+### No-silent-hang hardening (both surfaces)
+- **Desktop shell (main.cjs)**: 
+  - Server child's stderr is now PIPED and captured (tail kept) instead of inherited-invisible; a non-zero child exit BEFORE the port answers shows an immediate error page + native Retry/Quit dialog (previously: 90s silent probe then silent quit).
+  - `waitForServer` failure (90s) now shows the same error UI with the ports + stderr tail instead of quitting with no message.
+  - `showFatalError` renders an error page in the window (specific message + detail + server stderr) and a dialog with Retry (app.relaunch) / Quit.
+  - `quitting`/`serverReady` flags keep shutdown kills from firing the error UI.
+- **Server (index.js)**: the final EADDRINUSE in the port-fallback loop now exits with an explicit "No free port between 3000 and 3019 — every port in the range is in use. Close other apps using these ports and restart the console." (the desktop surfaces it verbatim via stderr).
+- **Web UI**: the Reconnecting banner + send-failure error bubbles already existed; added a VISIBLE first-run-save error — `updateProfile` now returns success and reverts its optimistic profile update on failure, and FirstRunSetup shows an inline "Couldn't save your settings — the server didn't accept them..." error instead of closing optimistically with a console-only log.
+- **Verified live**: blocked ALL of 3000-3019 with 404-on-probe listeners → launched the installed exe → server child exited with the no-free-port message → CDP confirmed the window URL is the error page (contains "No free port", "stopped during startup", "Retry") and the dialog "Project Console failed to start" is up — app stays alive, no hang, no silent quit. Normal launch (ports free) re-verified: splash → console URL, window works.
+- Model-download timeout already had a specific server message + fuzzy/NLP fallback (no hang) — noted, no change.
+
+### Port range widened 3000-3009 → 3000-3019
+- All launchers updated: server/index.js (MAX_PORT_ATTEMPTS 20), cliOptions.js (20), desktop/main.cjs (20), bin/cli.js loop + messages, daemon.mjs (MAX_PORT 3019), start.bat loops, start-daemon.ps1, README/features.md/CLAUDE.md text.
+
+### Item C — daemon-based pre-start: SCOPED PLAN (not implemented — rationale below)
+**Goal**: if the daemon (scripts/daemon.mjs / start-daemon.ps1) is already running, the desktop app opens instantly by connecting to it instead of spawning its own server + splash wait.
+**Design (small, attach-path-shaped)**: in main.cjs whenReady, BEFORE findRunningConsole's full sweep, read `logs/daemon.port` (repo-relative when dev; for the packaged app the daemon scripts would need staging too) → probe it (existing probePort) → if answering, `openConsole(port)` and skip startServer() entirely. The attach path already exists and was just re-verified; this is ~15 lines.
+**Decided NOT to implement now**:
+1. The daemon serves the REPO's data (profile/conversations/telemetry) while the packaged app serves its own resources/data — a daemon-backed desktop app would silently show the developer's data on a fresh install (the exact class of bug fixed earlier this round). Resolving this needs a data-dir policy decision (daemon respects the caller's data? separate daemon flag?) — product decision, not a code fix.
+2. The daemon scripts aren't staged into the installer (repo-root scripts/), so a packaged-app user can't have a daemon today anyway — implementing the connect-first path before the daemon ships to desktop users adds dead code.
+3. The window/launch flow was just fixed and re-verified; layering a second launch path on top without a daemon to test against risks destabilizing it for zero current-user benefit.
+**When to implement**: together with (a) staging scripts/daemon.mjs + start/stop/add-to-startup into the installer, (b) a data-dir decision, and (c) a tray "start at login" affordance. The connect-first branch is then ~15 lines reusing openConsole/probePort.
+
+### Auto-update publish path verified FOR REAL (GitHub Release)
+- Push 4a653eb triggered publish-windows for the first time → FAILED: `HttpError: 403 Forbidden` / "Resource not accessible by integration" — the repo's default GITHUB_TOKEN is contents:read-only; electron-builder needs to create a release + upload assets. Fixed by adding `permissions: contents: write` to the publish-windows job (commit deeafde).
+- The deeafde run SUCCEEDED and created a genuine GitHub Release v1.0.0 with the correct artifacts: `latest.yml` + `Project-Console-Setup-1.0.0.exe` (200,428,350 bytes) — the electron-updater feed the installed app checks is now real.
+- Found + cleaned a first-release race: electron-builder publishes the exe and the blockmap in two concurrent passes, and with no release existing BOTH POSTed /releases → two v1.0.0 releases (one blockmap-only). A blockmap-only latest release would break electron-updater's latest.yml lookup, so the partial release was deleted (DELETE API, 204). First-release-specific: the next publish finds the existing release and updates it.
+- The flaky-silent-install question from last round: this round's fake-feed cycle completed the NSIS silent upgrade cleanly (installed version reached 1.0.1, then 1.0.0 was reinstalled). The earlier flakiness was traced to (a) the zombie setup process blocking later installs with exit 2 and (b) polling timeouts killing installs mid-copy — both environmental to this headless machine, not NSIS silent-install limitations per se; a real user's interactive session is the remaining unknown for the exact same timing.

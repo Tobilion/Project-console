@@ -51,7 +51,7 @@ The result is a console that behaves identically offline and online — same com
 
 ### Desktop shell, command palette & updates
 
-- **Desktop app (`desktop/`)**: a self-contained Electron wrapper around the same server — it reuses the launchers' port rule (3000–3009, attaches instead of starting a duplicate), spawns the server as a child process, opens the console in your default browser, and adds a tray icon whose Quit stops the server cleanly. `npm install && npm start` in `desktop/` runs it; `npm run dist` builds a Windows installer. First run uses the same onboarding wizard as the browser; Ollama is a separate optional install (ollama.com).
+- **Desktop app (`desktop/`)**: a self-contained Electron wrapper around the same server — it reuses the launchers' port rule (3000–3019, attaches instead of starting a duplicate), spawns the server as a child process, shows the console in its OWN native Electron window (a splash covers the server's cold-boot, then the window loads the console), and adds a tray icon whose Quit stops the server cleanly. `npm install && npm start` in `desktop/` runs it; `npm run dist` builds a Windows installer. First run uses the same onboarding wizard as the browser; Ollama is a separate optional install (ollama.com).
 - **Command palette (`Ctrl+K`)**: a Raycast-style palette that searches the whole app — navigation, actions (theme, profile, fullscreen, workspace switch, AI toggle, session exports, dock tabs, tool history), every registered tool panel, every chat command the matcher understands, sessions, and projects. Nothing in the palette bypasses the confirm flows; commands run through the same chat path.
 - **Update checker**: `check for updates` / `update console` compare the installed version against the npm registry (offline-safe — a failed check is silent) and a one-per-boot "Update available" banner appears above the chat. Updating still requires an explicit confirmed `npm install -g` command; the console never updates itself.
 
@@ -216,7 +216,7 @@ npm run dev     # tsx server/index.js, http://127.0.0.1:3000
 npm run lint    # tsc --noEmit
 ```
 
-The server auto-falls back through ports 3000–3009 if 3000 is taken; the frontend and CLI client discover whichever port it actually bound to.
+The server auto-falls back through ports 3000–3019 if 3000 is taken; the frontend and CLI client discover whichever port it actually bound to.
 
 ### Windows launcher
 
@@ -225,7 +225,7 @@ Double-click `start.bat` in the root folder — it installs dependencies if need
 The same W/C/Q menu is available as a terminal command (no batch file), from the repo folder:
 
 ```powershell
-npm run launcher   # same W/C/Q menu as start.bat — probes for a running server on 3000-3009 and hands off instead of starting a duplicate
+npm run launcher   # same W/C/Q menu as start.bat — probes for a running server on 3000-3019 and hands off instead of starting a duplicate
 ```
 
 ### Background daemon (no terminal window)

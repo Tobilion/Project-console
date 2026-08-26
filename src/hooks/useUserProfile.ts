@@ -72,7 +72,7 @@ export function useUserProfile() {
       .finally(() => setLoaded(true));
   }, []);
 
-  const updateProfile = useCallback(async (updates: Partial<UserProfile>) => {
+  const updateProfile = useCallback(async (updates: Partial<UserProfile>): Promise<boolean> => {
     const updated = { ...profile, ...updates };
     setProfile(updated);
     try {
@@ -81,11 +81,21 @@ export function useUserProfile() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userProfile: updated }),
       });
+      if (!res.ok) {
+        // A non-2xx save must be reported, not swallowed — the first-run wizard shows an
+        // inline error instead of closing optimistically (2026-08-26).
+        console.error('Profile save rejected:', res.status);
+        setProfile(profile); // revert the optimistic update so gated UI (first-run wizard) stays open
+        return false;
+      }
       const data = await res.json();
       // Reflect the server's sanitized/merged value back (it may fall back on invalid input).
       if (data?.userProfile) setProfile(data.userProfile);
+      return true;
     } catch (err) {
       console.error('Failed to persist profile to server:', err);
+      setProfile(profile); // revert the optimistic update
+      return false;
     }
   }, [profile]);
 

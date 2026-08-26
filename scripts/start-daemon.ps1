@@ -2,7 +2,7 @@
 .SYNOPSIS
 Starts the Project Console server as a background daemon (hidden window).
 Logs to logs/daemon.log, writes the bound port to logs/daemon.port.
-Scans ports 3000-3009 to discover which port the server actually bound to.
+Scans ports 3000-3019 to discover which port the server actually bound to.
 #>
 
 $ErrorActionPreference = 'Stop'
@@ -43,7 +43,7 @@ $PidFile = Join-Path $LogDir 'daemon.pid'
 $process.Id | Out-File -FilePath $PidFile -Encoding ASCII
 Write-Host "Daemon started (PID $($process.Id)). Waiting for server to become ready..." -ForegroundColor Cyan
 
-# Scan ports 3000-3009 to find the actual bound port.
+# Scan ports 3000-3019 to find the actual bound port.
 # Keep trying for up to ~90 seconds — first boot can be slow (NLP training + embedding
 # model download + project indexing all run before the server starts listening).
 # Measured cold boot ~41s (NLP + embedding model), so maxRounds=30 gives ~90s ceiling.

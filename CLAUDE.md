@@ -25,7 +25,7 @@ npm run lint    # tsc --noEmit
 
 - **Launcher without the batch file (2026-08-24)**: `npm run launcher` runs `node
   bin/cli.js launcher` — a terminal-native replica of `start.bat`'s W/C/Q menu (same ANSI
-  styling, `probeRunningPort()` scans 3000-3009 for an answering /api/projects and hands
+  styling, `probeRunningPort()` scans 3000-3019 for an answering /api/projects and hands
   off instead of starting a duplicate instance; [W] opens the browser to the running port
   or starts the server in-process and opens it; [C] hands to `server/cli-client.js` after
   starting the server in-process when none is running). Starting in-process via
@@ -33,7 +33,7 @@ npm run lint    # tsc --noEmit
   foreground `npm run dev`. Interactive readline uses `crlfDelay: Infinity` per the ConPTY
   gotcha; the browser-open + probe helpers are shared with the default/`cli` modes.
 
-- `start.bat` (styled W/C/Q launcher, ANSI colors, ASCII-only file) probes ports 3000-3009
+- `start.bat` (styled W/C/Q launcher, ANSI colors, ASCII-only file) probes ports 3000-3019
   first and skips starting a server if one already responds — no duplicate instance landing on
   a fallback port. Server-start PID capture is via `server.pid` file (`Set-Content` + `set /p`),
   NOT a `for /f` pipe: the pipe variant hung forever (confirmed 2026-08-10 — the detached
@@ -64,10 +64,10 @@ npm run lint    # tsc --noEmit
   (its OWN package.json so the root npm install never pulls electron). Decision per the
   roadmap's stated default: **Electron over Tauri** — this codebase is 100% JS/TS and
   Electron gives direct Node/npm parity; Tauri would add a Rust toolchain for no benefit.
-  `desktop/main.js` reuses bin/cli.js's port rule (3000-3009, skip if one already responds —
+  `desktop/main.js` reuses bin/cli.js's port rule (3000-3019, skip if one already responds —
   never a duplicate instance), otherwise spawns the server as a CHILD process (dist/server.js
   bundle when present, else server/index.js) rather than importing it in-process, waits for
-  the bound port, opens the default browser + a minimal tray icon (quit stops the server
+  the bound port, shows the console in its OWN native Electron window (splash during cold boot) + a minimal tray icon (quit stops the server
   child cleanly — no orphan). First run uses the SAME web onboarding wizard; Ollama is NOT
   bundled (the in-app note points at ollama.com — a separate optional install). Verification
   status: source is lint/syntax-clean; the `npm install` in desktop/ + `npm run dist`
@@ -75,7 +75,7 @@ npm run lint    # tsc --noEmit
   roadmap) + the clean-machine install test CANNOT be done headless — flagged for manual
   review (see the roadmap summary at the top of UPGRADE-ROADMAP.md).
 - CLI chat mode: `node server/cli-client.js [--dir "<full path>"] [--project "<name>"]`;
-  it scans ports 3000-3009, retries up to 90s (cold boot is ~41s), and reports which port it
+  it scans ports 3000-3019, retries up to 90s (cold boot is ~41s), and reports which port it
   connected on. Interactive arrow-key picker via @clack/prompts when a TTY is available,
   numbered-list fallback otherwise; invalid input re-asks instead of guessing. Phase 13
   (2026-08-12): first-run onboarding mirror — when the server profile's `setupComplete` is
@@ -1266,7 +1266,7 @@ no dispatch or matching logic). Notable functional additions made during the sty
   fresh open), and the General tab lands on the Tools card grid (tools-first; chat reachable
   via the grid's close/back or the header Tools toggle).
 - **Startup is slow** (~41s cold: embeddings + NLP training + discovery): CLI client retries
-  up to 90s across ports 3000-3009. Re-measure if the intent corpus grows a lot.
+  up to 90s across ports 3000-3019. Re-measure if the intent corpus grows a lot.
 - **check-handlers' `dev_server_status` row is environment-sensitive**: the common-ports
   fallback probes live ports, so on a machine with one of `COMMON_DEV_PORTS` listening it
   honestly answers "responding at ..." — both shapes are accepted; don't treat a failure on
@@ -2195,7 +2195,7 @@ pm run dist /
 ## Daemon scripts are cross-platform now
 
 - scripts/daemon.mjs � start/stop/status/kill-by-port in plain Node (works on
-  mac/Linux/Windows): detached spawn, probe 3000-3009 for a real console (/api/projects
+  mac/Linux/Windows): detached spawn, probe 3000-3019 for a real console (/api/projects
   shape check), writes logs/daemon.port + daemon.pid, and every kill VERIFIES the
   listening PID's command line (server/index.js | dist/server.js | repo path) before killing
   � a recycled port can never kill an unrelated service. npm scripts: daemon,
@@ -2269,7 +2269,7 @@ pm run dist /
   #76767C only reached 4.04). Light fg-muted now visually merges with light fg-dim (logged
   trade-off).
 - start.bat WEB_MODE no longer hardcodes http://localhost:3000 � a background
-  PowerShell watcher (start /B, 95s deadline) probes 3000-3009 and opens the ACTUALLY-bound
+  PowerShell watcher (start /B, 95s deadline) probes 3000-3019 and opens the ACTUALLY-bound
   port (ASCII-only + paren-balanced, verified).
 - Harness counts moved: check-ws-cases 133 (undo-toast rows), check-handlers 253
   (undo-plumbing + explain rows), check-tools rows updated for the additive ctionId
