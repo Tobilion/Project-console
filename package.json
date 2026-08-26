@@ -39,7 +39,8 @@
     "daemon:start": "node scripts/daemon.mjs start",
     "daemon:stop": "node scripts/daemon.mjs stop",
     "daemon:status": "node scripts/daemon.mjs status",
-    "doctor": "node --import tsx server/doctor.js"
+    "doctor": "node --import tsx server/doctor.js",
+    "prepare": "husky"
   },
   "dependencies": {
     "@clack/prompts": "^1.7.0",
@@ -74,7 +75,9 @@
     "clsx": "^2.1.1",
     "esbuild": "^0.25.0",
     "fast-check": "^4.9.0",
+    "husky": "^9.1.7",
     "jspdf": "^4.2.1",
+    "lint-staged": "^17.3.0",
     "lucide-react": "^0.546.0",
     "motion": "^12.23.24",
     "pino-pretty": "^13.1.3",

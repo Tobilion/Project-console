@@ -1,0 +1,5 @@
+# Type-check the whole project, then run the file-mapped batteries on staged server files
+# (scripts/guard-staged.mjs decides which check-* harnesses a staged file affects). This is
+# the local gate; CI still runs the full harness set on every push.
+npm run lint
+npx lint-staged
