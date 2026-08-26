@@ -11,7 +11,12 @@ Vite frontend. Full description: `README.md` (current, professional-facing). Thi
 the source of truth for "what's actually here now". `BUILD-SPEC-v4.md` is a historical
 design doc — describes intent at the time, not current state. `features.md` (added
 2026-08-24) is the exhaustive user-facing feature map — an extended README + CLAUDE.md
-combination covering every feature, command, endpoint, and subsystem.
+combination covering every feature, command, endpoint, and subsystem. Repository
+hygiene (2026-08-26): `docs/adr/` records the load-bearing architectural decisions and
+why they exist (read them before touching those systems), `CHANGELOG.md` tracks
+releases (Keep-a-Changelog + semver), `.github/dependabot.yml` opens routine dependency
+PRs (pinned deps ignored — see the Known gotchas), and `.husky/pre-commit` +
+`scripts/guard-staged.mjs` gate commits locally.
 
 ## Run it
 
@@ -21,6 +26,7 @@ npm install
 npm run dev     # tsx server/index.js, http://127.0.0.1:3000
 npm run launcher   # start.bat-equivalent W/C/Q menu, terminal-native (see below)
 npm run lint    # tsc --noEmit
+npm run doctor  # standalone machine-side diagnostics (ports/daemon/embedding/writable/Ollama/update/tooling/disk)
 ```
 
 - **Launcher without the batch file (2026-08-24)**: `npm run launcher` runs `node
@@ -1211,6 +1217,30 @@ no dispatch or matching logic). Notable functional additions made during the sty
 - **Modularization rule**: when splitting/moving module exports, check EVERY external
   importer of that module (lint/tsc doesn't check export names) — a projectMemory split once
   overwrote `memoryStore.js` and the server failed to start (`8e10090` fixed it).
+- **Mixed .js/.ts server runtime (2026-08-26)**: the 7 safety leaves (paramCommand,
+  urlSafety, commandRisk, dangerousPatterns, toolAllow, executorSandbox, toolGate) are
+  TypeScript. The runtime matrix: dev = tsx; published package = the `dist/server.js`
+  esbuild bundle (shipped in `files:`); desktop = the stage's `stage/dist/server.js`
+  bundle; `npm run start` = bundle. Raw `node server/index.js` is NOT a supported path.
+  Plain-node consumers of the SOURCE tree need the loader: `bin/cli.js` source mode
+  registers tsx via `import('tsx/esm/api')`; `scripts/daemon.mjs` and `desktop/main.cjs`
+  dev-source mode spawn with `--import tsx`. All check-* harnesses run under
+  `node --import tsx` (they import the .ts leaves). Import specifiers for converted
+  modules are EXTENSIONLESS everywhere (esbuild does not map .js → .ts; tsc's bundler
+  resolution accepts extensionless). Any .js→.ts conversion must also re-check every
+  importer for explicit `.js` specifiers.
+- **esbuild `--outfile` needs the `=` form** (`--outfile=<path>`): the space-separated
+  form errors with "Invalid build flag" — live-probed 2026-08-26 in stage-server.mjs.
+- **pino (2026-08-26)**: `server/logger.js` is the single logger — JSON lines in prod
+  (desktop/daemon/CI), pretty transport ONLY when not CONSOLE_DESKTOP + stdout is a TTY +
+  pino-pretty resolvable (devDependency — prod `npm ci --omit=dev` never references it).
+  `LOG_LEVEL` env overrides. CLI renderer files (cli-client/cliMascot/cliProjectPicker/
+  cliRenderer) and configInitializer keep console output BY DESIGN — that is terminal UI,
+  not server logging. New server code logs via `import { log } from './logger.js'`.
+- **Pre-commit hook (2026-08-26)**: `.husky/pre-commit` runs `npm run lint` + lint-staged;
+  `scripts/guard-staged.mjs` maps staged files to the relevant check-* harnesses (see its
+  header). The hook is root-only; the desktop package has its own tree. CI still runs the
+  full harness set on every push — the hook is the fast local gate.
 - **Executor**: spawn needs `windowsHide: true` (consoleless parents otherwise flash a cmd
   window per command). Force-detach timer is UNCONDITIONAL (10s dev-server-shaped, 20s
   otherwise) and cleared on close/error/detach; on `close`, only delete the process's OWN
@@ -1465,6 +1495,13 @@ no dispatch or matching logic). Notable functional additions made during the sty
    pushCommandWithUpstream offer matrix over a temp bare remote + the quoted-trigger
    checkpoint -F row; the git-retry trigger row from the earlier fix pass is folded in).
    Run the relevant battery after ANY edit to the corresponding module.
+   Hardening run (2026-08-26, ADRs/fuzz/doctor/TS/pino): check-handlers 266/266 (+3 doctor
+   rows, +3 match-quality rows with temp-file MATCH_STATS_FILE determinism), check-docs
+   72/72 (+1 doctor entry, +1 match-quality entry; README rows synced),
+   check-tools 182/182, check-matcher 349/349, check-indexer 103/103, check-ws-cases
+   133/133, check-intents 1/7/82, npm test 499/499 (482 + 17 fast-check fuzz properties in
+   server/test/fuzzSafety.test.js). All check-* scripts run under `node --import tsx`
+   since the safety leaves became TypeScript.
 - **editFile** tolerates whitespace differences (normalized line-range fallback) but not
   wrong wording; on total failure the error names both attempts and tells the caller to
   re-read the file. Truncation guard: `writeFile` re-reads and compares length after writes.
@@ -1588,6 +1625,29 @@ no dispatch or matching logic). Notable functional additions made during the sty
   PowerShell Get-PSDrive) and a zombie tracked-process scan (`process.kill(pid, 0)` —
   EPERM means alive; best-effort on Windows, PID reuse caveat in the reply, ≤10 listed).
   Read-only, dispatched from the same pre-matcher admin tier as notify/pack commands.
+- **Console doctor (2026-08-26)**: `server/doctor.js` — the proactive sibling of the health
+  check, usable when the console itself cannot boot. Hard constraint: imports NO server-graph
+  modules (node builtins + tiny inline helpers only), so `npm run doctor` / `node bin/cli.js
+  doctor` run it with zero server. Checks: ports 3000-3019 free (500ms TCP probe each, win32
+  owning-PID best-effort), daemon alive (logs/daemon.port + /api/projects shape probe +
+  owning-PID command-line verification), embedding model cached (.cache/ — "first boot will
+  download" when missing), data//.cache/ writable (temp write+delete; deliberately never
+  probes the repo root — a scratch file there stalls Vite), Ollama reachable (2s, same host
+  as the chat path), npm update status (registry probe, 4s, offline-tolerant), tooling on
+  PATH (where/which npm/node/git), disk free (Get-PSDrive, 3s). Exit 0/1/2 (ok/warn/fail)
+  for scriptability. Chat command `console doctor` / `run the doctor` / `diagnose` →
+  `connectionDoctor.js` (pre-matcher admin tier, answer + trailing `end`); CLI parity free
+  via the normal answer channel.
+- **Match-quality reporting (2026-08-26)**: `server/matchStats.js` appends one NDJSON line
+  per trigger-mode message at match time ({ts, stage, intent, confidence, margin, inputLen})
+  to gitignored `data/match-stats.jsonl` (env-overridable MATCH_STATS_FILE for the harness,
+  byte-size trim keeping the last 10k lines, never throws). Deliberately SEPARATE from
+  intentTelemetry (the confidence model's training data) — nothing here feeds a model or a
+  threshold. `buildMatchInfo` (connectionMatching.js) now also carries the
+  winner-minus-second margin. `review match quality` → `connectionMatchStats.js` (pre-matcher
+  admin tier, answer + trailing `end`): per-intent recent mean/min, drift vs the prior
+  window, stage distribution, and flags intents whose recent mean dropped >0.1 with ≥5
+  recent samples — the drift signature of the corpus growing over an intent's phrases.
 - **Pinned projects**: sidebar rows get a star (hover reveal, yellow when pinned);
   `localStorage['console.pinnedProjects']`; pinned rows float above the rest. No state
   change elsewhere — same project list, same click actions.

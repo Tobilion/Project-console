@@ -22,6 +22,34 @@ independently; desktop releases are tagged against the desktop package.
   (`ELECTRON_RUN_AS_NODE=1`) — zero separate Node.js install needed.
 - First-run web save failures now revert the optimistic update and show the
   error inline.
+- **Hardening round (2026-08-26)**: `docs/adr/` (4 architecture decision
+  records pinning the matching-pipeline stage order, safety-layer order,
+  memory-store split and WS/CLI parity, each with harness cross-references);
+  Dependabot (weekly npm/root + desktop + actions, documented pins ignored);
+  Keep-a-Changelog + semver discipline; per-panel React error boundaries (one
+  throwing panel can never take down the UI); fast-check fuzz properties for
+  the safety leaves (17 properties — found + fixed live: 0.0.0.0/8 numeric
+  hosts were externally fetchable, `rm -fr` dodged the risk classifier,
+  blocklisted rmdir/device-redirect/shutdown/Reflect/fork-bomb shapes were not
+  confirm-worthy).
+- **`console doctor`** (`npm run doctor` / `node bin/cli.js doctor` / chat
+  command): proactive machine-side checks that work even when the console
+  cannot boot — ports 3000–3019 free, daemon alive, embedding model cached,
+  runtime writability, Ollama, update status, tooling, disk. Exit 0/1/2 for
+  scriptability.
+- **`review match quality`**: rolling per-message match telemetry
+  (`data/match-stats.jsonl`, one line per trigger-mode message) + a report
+  command that flags intents whose recent mean confidence dropped >0.1 vs the
+  prior window — matcher drift becomes visible before it misfires.
+- Structured logging with **pino** (JSON in prod, pretty in interactive dev);
+  the ~81 `console.*` server call sites are level-mapped (`server/logger.js`).
+- The 7 safety leaves converted to **TypeScript** (paramCommand, urlSafety,
+  commandRisk, dangerousPatterns, toolAllow, executorSandbox, toolGate) with
+  compile-time guarantees in `tsc --noEmit`; the desktop stage now bundles the
+  server entry (esbuild) so the packaged runtime stays plain-Node.
+- Pre-commit gate: husky + lint-staged with a file→battery mapper
+  (`scripts/guard-staged.mjs`) — type-check + the harnesses a change touches,
+  before anything is committed.
 
 ### Fixed
 - CLI `--json` piped stdin never flowed on Windows (data arriving before the
@@ -30,10 +58,15 @@ independently; desktop releases are tagged against the desktop package.
 - Auto-update publish: `publish-windows` job granted `contents: write`, so the
   first real GitHub Release (v1.0.0, latest.yml + installer) publishes; a
   first-release race between electron-builder's two publish passes was cleaned.
+- SSRF guard: numeric `0.0.0.0/8` hosts (RFC 6890 "this network") were
+  externally fetchable — now blocked for numeric dotted-quad hosts without
+  touching DNS names.
 
 ### Changed
 - Port fallback widened from 3000–3009 to 3000–3019 across every launcher
   (server, CLI, desktop, daemon, `start.bat`, PowerShell scripts, docs).
+- All `check-*` harnesses run under `node --import tsx` (they import the
+  TypeScript safety leaves).
 
 ## [1.0.8] — 2026-08-24
 

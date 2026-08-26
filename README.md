@@ -493,7 +493,7 @@ scripts/                  — Daemon launchers (start/stop/add-to-startup)
 
 ```powershell
 npm run lint                # tsc --noEmit
-npm test                    # node:test suite: 482 tests (349 matcher cases + 133 WS case tables)
+npm test                    # node:test suite: 499 tests (349 matcher cases + 133 WS case tables + 17 fuzz properties)
 npm run test:coverage       # same suite with a coverage report (server-wide, line/function/branch)
 npm run check-intents       # static exact/near-duplicate phrase scanner
 npm run check-matcher       # matching-pipeline regression battery (349 inputs)
@@ -502,6 +502,7 @@ npm run check-tools         # sandbox/gate/tool regression battery
 npm run check-handlers      # intent-handler coverage + dispatch checks
 npm run check-ws-cases      # frontend WS message-case regression battery (node:test, 133 tests)
 npm run build               # vite build + esbuild server bundle -> dist/
+npm run doctor              # standalone machine-side diagnostics (works without a running server)
 ```
 
 The matcher batteries live in `server/scripts/batteries/matcherBatteries.js` — a single shared
@@ -511,6 +512,10 @@ the new routing, then update the `EXPECT` value in the battery file. The node:te
 every battery row as an individually-named test, so regressions show up as named failures in
 CI and in local `npm test` output. CI runs `npm test` on every push/PR alongside the legacy
 check-* gates.
+
+The pre-commit hook (husky + lint-staged) runs `tsc --noEmit` and the check-* batteries that
+cover the staged files (`scripts/guard-staged.mjs` maps file paths to harnesses); the full
+harness set still runs in CI on every push.
 
 Cross-platform note: `start.bat` is Windows-only; on macOS/Linux run `npm run dev` directly. The server, sandboxed file tools, and safety blocklist are all `process.platform`-aware.
 

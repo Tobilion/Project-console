@@ -764,6 +764,14 @@ stuck-spinner bug):
 - **Update**: `check for updates`, `update console` (confirm-gated `npm install -g`).
 - **Health**: `health check` / `is my console healthy` (Ollama reachability, embedding state, disk
   space, zombie tracked processes).
+- **Doctor**: `console doctor` / `run the doctor` / `diagnose` — proactive machine-side checks
+  (ports 3000-3019 free, daemon alive, embedding model cached, data/.cache writable, Ollama
+  reachable, npm update status, tooling on PATH, disk space). Works WITHOUT a running server
+  via `npm run doctor` / `node bin/cli.js doctor` (exit 0/1/2 for scripts) — the same checks
+  the chat command runs.
+- **Match quality**: `review match quality` — per-intent recent mean/min match confidence from
+  the rolling per-message log, stage distribution, and drift flags when an intent's mean
+  dropped >0.1 vs the prior window (the signature of the phrase corpus growing over it).
 - **Onboarding**: `reset onboarding` / `retake tour` (re-shows the first-run wizard).
 - **Stop/dev-URL pre-checks**: `stop the server` / `stop it` (only when a process is tracked);
   `where is the link` / `what is the url` (liveness-probes recorded + candidate URLs, with
