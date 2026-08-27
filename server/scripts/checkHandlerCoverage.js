@@ -264,6 +264,20 @@ sent.length = 0;
 await handleBuiltinIntent(ws, 'system.chit_chat.how_do_i', 'how do i push to production', proj, {});
 eq('push flow: production-shaped question answers the git entry directly', ws.sent.length === 2 && ws.sent[0].type === 'answer' && /push to github/.test(ws.sent[0].data) && ws.sent[1].type === 'suggestions', true);
 
+// Question-phrasing variants (2026-08-26 live crosscheck): helper verbs, best-way phrasing and
+// the `pus` typo all land on the SAME disambiguation — the handler normalizes before the
+// branch tests. Each answers, never confirms, never executes.
+for (const [input, expect] of [
+  ['how can i push my code', /Where do you want to push/],
+  ['whats the best way to push', /Where do you want to push/],
+  ['how do i pus', /Where do you want to push/],
+  ['what is the best way to push', /Where do you want to push/],
+]) {
+  sent.length = 0;
+  await handleBuiltinIntent(ws, 'system.chit_chat.how_do_i', input, proj, {});
+  eq(`push flow: ${input} asks the three-way question`, ws.sent.length === 2 && ws.sent[0].type === 'answer' && expect.test(ws.sent[0].data) && ws.sent[1].type === 'suggestions', true);
+}
+
 sent.length = 0;
 await handleBuiltinIntent(ws, 'system.chit_chat.needs_ai_mode', 'make me a landing page', proj, {});
 eq('chitchat leaf: needs_ai_mode guidance names the AI dock with a concrete instruction', ws.sent.length === 1 && ws.sent[0].type === 'answer' && /AI dock/.test(ws.sent[0].data) && /write it for you/.test(ws.sent[0].data), true);

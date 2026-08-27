@@ -354,6 +354,16 @@ const BATTERIES = [
       ['how do you make a checkpoint', 'BUILTIN=system.chit_chat.how_do_i'],
       ['command to see test coverage', 'BUILTIN=system.chit_chat.how_do_i'],
       ['how to deploy the site', 'BUILTIN=system.chit_chat.how_do_i'],
+      // 2026-08-26 live crosscheck additions: the full question-helper set (can i), the
+      // best-way phrasing, the `pus` typo, and the backup/note/remember/old-chat subjects all
+      // fired EXECUTING intents or dead-ended live — each is now pinned to how_do_i.
+      ['how can i push my code', 'BUILTIN=system.chit_chat.how_do_i'],
+      ['whats the best way to push', 'BUILTIN=system.chit_chat.how_do_i'],
+      ['how do i pus', 'BUILTIN=system.chit_chat.how_do_i'],
+      ['how do i take a backup', 'BUILTIN=system.chit_chat.how_do_i'],
+      ['how do i make a note', 'BUILTIN=system.chit_chat.how_do_i'],
+      ['how do i remember things', 'BUILTIN=system.chit_chat.how_do_i'],
+      ['how do i open an old chat', 'BUILTIN=system.chit_chat.how_do_i'],
       ['how to run the site', 'BUILTIN=project.knowledge.how_to_run'],
       ['how do i run the site', 'BUILTIN=project.knowledge.how_to_run'],
       ['how do you run the server', 'BUILTIN=project.knowledge.how_to_run'],

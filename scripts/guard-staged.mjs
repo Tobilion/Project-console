@@ -20,6 +20,28 @@
 // covers types; CI runs the full set).
 
 import { spawnSync } from 'child_process';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+// npm.cmd via shell:false is EINVAL on this Node/Windows combo (live-probed 2026-08-26 — the
+// guard's harness runs 'failed' instantly with no output). process.execPath + the npm CLI
+// avoids the shell entirely and is deterministic across platforms. npm ships with Node (not
+// per-project): resolve next to process.execPath first, then the npm_execpath npm itself
+// sets when it runs a lifecycle script (the husky hook path).
+const npmCli =
+  (() => {
+    const candidates = [
+      process.env.npm_execpath && path.resolve(process.env.npm_execpath),
+      path.join(path.dirname(process.execPath), 'node_modules', 'npm', 'bin', 'npm-cli.js'),
+    ];
+    return candidates.find((c) => c && fs.existsSync(c));
+  })();
+if (!npmCli) {
+  console.error('[guard-staged] Could not locate npm-cli.js — cannot run batteries.');
+  process.exit(1);
+}
 
 const staged = process.argv.slice(2);
 if (staged.length === 0) {
@@ -78,7 +100,8 @@ if (toRun.length === 0) {
 
 console.log(`[guard-staged] Running: ${toRun.join(', ')}`);
 for (const script of toRun) {
-  const res = spawnSync(process.platform === 'win32' ? 'npm.cmd' : 'npm', ['run', script], {
+  const res = spawnSync(process.execPath, [npmCli, 'run', script], {
+    cwd: rootDir,
     stdio: 'inherit',
     shell: false,
   });

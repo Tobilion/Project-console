@@ -213,9 +213,18 @@ export const chitChatHandlers = {
     // the catalog has no bare-'push' keyword, and the three push paths (git / npm / desktop
     // build) are genuinely different flows, so the question now asks which target and arms
     // sessionContext.pendingPushTarget for the reply (consumed in connectionInterceptors.js).
-    const PUSH_PRODUCTION_RE = /^how\s+(?:do\s+i|to)\s+push\s+to\s+(?:production|prod|live)$/i;
-    const PUSH_TARGET_RE = /^how\s+(?:do\s+i|to)\s+push(?:\s+(?:this|it|my\s+changes?))?$/i;
-    const pushStripped = input.trim().replace(/[?!.]+$/g, '');
+    const PUSH_PRODUCTION_RE = /^how\s+(?:(?:do|can|would|could|should)\s+i|to)\s+push\s+to\s+(?:production|prod|live)$/i;
+    const PUSH_TARGET_RE = /^how\s+(?:(?:do|can|would|could|should)\s+i|to)\s+push(?:\s+(?:this|it|my\s+(?:changes?|code)|the\s+code))?$/i;
+    // Question-phrasing + typo normalization (2026-08-26 live crosscheck): "how can i push my
+    // code", "whats the best way to push" and "how do i pus" all misfired (deploy confirm,
+    // dead-end, dead-end). The canonical forms below feed ONLY the branch tests — the generic
+    // catalog path still sees the raw input. `pus` is word-boundaried so "pusher" never
+    // normalizes.
+    const pushStripped = input
+      .trim()
+      .replace(/[?!.]+$/g, '')
+      .replace(/^what(?:'s|s| is) the (?:best|easiest) way to\s*/i, 'how do i ')
+      .replace(/\bpus\w*\b/gi, 'push');
     if (PUSH_PRODUCTION_RE.test(pushStripped)) {
       await answerDocMatches(ws, 'push to github', project);
       return;

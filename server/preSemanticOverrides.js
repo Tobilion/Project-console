@@ -27,7 +27,12 @@ export const PRE_SEMANTIC_OVERRIDES = [
   // the deploy git-push confirm — the deploy example cluster owns publish-shaped phrases, and
   // "publish" was missing from this list. Added alongside deploy; the catalog answers with the
   // push-to-github guidance first and the npm publish option as the suggestion.
-  { intent: 'system.chit_chat.how_do_i', pattern: /^(?:how\s+(?:to|do\s+(?:you|i|we))\s+|(?:what\s+is\s+the\s+)?command\s+to\s+)(?:push|commit|deploy|publish|build|stop\s+the\s+server|open\s+in|show|make\s+a\s+checkpoint|see\s+(?:the\s+)?(?:dashboard|test\s+coverage|bundle)|switch\s+projects|change\s+the\s+theme|check\s+(?:git\s+status|the\s+console\s+health|collisions)|export|schedule|review|approve)/i },
+  // 2026-08-26 live crosscheck: "how CAN i push my code" AND "whats the best way to push" both
+  // fired the deploy confirm — the how-prefix only covered to/do-you-i-we, and "best way to"
+  // shapes were entirely uncovered. The full question-helper set (can/would/could/should) and
+  // the best-way prefix are covered now; `pus` (the live typo) too. All are unambiguous HOW
+  // questions and must never execute or confirm.
+  { intent: 'system.chit_chat.how_do_i', pattern: /^(?:(?:how\s+(?:to|do\s+(?:you|i|we)|can\s+(?:i|we)|would\s+(?:i|we)|could\s+(?:i|we)|should\s+(?:i|we))\s+)|(?:what(?:'s|s| is) the (?:best|easiest) way to\s+)|(?:what\s+is\s+the\s+)?command\s+to\s+)(?:pus|push|commit|deploy|publish|build|(?:take|make)\s+a\s+backup|backup|remember|(?:make|write|add)\s+a\s+note|open\s+(?:an\s+old|a\s+previous|my\s+old)\s+chat|stop\s+the\s+server|open\s+in|show|make\s+a\s+checkpoint|see\s+(?:the\s+)?(?:dashboard|test\s+coverage|bundle)|switch\s+projects|change\s+the\s+theme|check\s+(?:git\s+status|the\s+console\s+health|collisions)|export|schedule|review|approve)/i },
   // Desktop build/release self-documentation (2026-08-25): "how do i rebuild the desktop app"
   // drifted to project.knowledge.how_to_run (answered with the scanned project's CLAUDE.md),
   // "how do i release an update" matched git_fetch and fired a CONFIRM PROMPT (git fetch), and
