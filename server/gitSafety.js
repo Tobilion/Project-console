@@ -18,12 +18,13 @@ const execFileAsync = util.promisify(execFile);
 // win32, where the same folder can be referenced with different casing).
 const checkpointMutexes = new Map();
 function getCheckpointMutex(projectPath) {
-  const key = process.platform === 'win32' ? projectPath.toLowerCase() : projectPath;
+  const key = typeof projectPath === 'string' ? (process.platform === 'win32' ? projectPath.toLowerCase() : projectPath) : '__no_path__';
   if (!checkpointMutexes.has(key)) checkpointMutexes.set(key, new Mutex());
   return checkpointMutexes.get(key);
 }
 
 export async function isGitRepo(projectPath) {
+  if (!projectPath || typeof projectPath !== 'string') return false;
   try {
     const { stdout } = await execAsync('git rev-parse --is-inside-work-tree', { cwd: projectPath });
     return stdout.trim() === 'true';
