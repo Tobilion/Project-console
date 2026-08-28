@@ -1,0 +1,23 @@
+{
+  "packageManager": "npm",
+  "reporters": ["clear-text", "progress"],
+  "testRunner": "command",
+  "commandRunner": {
+    "command": "node --import tsx --test server/test/fuzzSafety.test.js server/test/safetyExtras.test.js"
+  },
+  "coverageAnalysis": "off",
+  "mutate": [
+    "server/dangerousPatterns.ts",
+    "server/commandRisk.ts",
+    "server/toolGate.ts",
+    "server/gitSafety.js"
+  ],
+  "ignorePatterns": ["data/**", ".cache/**", ".stryker-tmp/**", "dist/**", "desktop/dist/**", "desktop/stage/**", "node_modules/**", "*.console/**", "logs/**"],
+  "thresholds": {
+    "high": 80,
+    "low": 60,
+    "break": null
+  },
+  "timeoutMS": 10000,
+  "timeoutFactor": 2
+}
