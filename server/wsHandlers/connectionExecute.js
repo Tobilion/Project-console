@@ -110,14 +110,21 @@ async function handleExecuteBody(ws, parsed, sessionContext) {
       // (folder-name slug ids collide), so the slug check alone passes for the WRONG folder.
       // The session records its project's path at creation — compare paths too, so a chat
       // opened against root A's "matchday" can never run commands against root B's folder.
-      if (session && session.projectPath && project.path && session.projectPath !== project.path) {
-        ws.send(JSON.stringify({
-          type: 'error_output',
-          data: `This chat is tied to "${session.projectName || session.projectId}" at \`${session.projectPath}\`, but your current tab has "${project.name}" at \`${project.path}\` — same folder name, different location. Switch to that project or create a new chat for this one.\n`,
-          switchProjectAction: { projectId: session.projectId, projectName: session.projectName || session.projectId },
-        }));
-        ws.send(JSON.stringify({ type: 'end' }));
-        return;
+      if (session && session.projectPath && project.path) {
+        // Windows paths are case-insensitive — `projects` vs `Projects` is the same folder
+        // (live 6bcd4c99: `Projects` vs `projects` triggered a false "different location").
+        const samePath = process.platform === 'win32'
+          ? session.projectPath.toLowerCase() === project.path.toLowerCase()
+          : session.projectPath === project.path;
+        if (!samePath) {
+          ws.send(JSON.stringify({
+            type: 'error_output',
+            data: `This chat is tied to "${session.projectName || session.projectId}" at \`${session.projectPath}\`, but your current tab has "${project.name}" at \`${project.path}\` — same folder name, different location. Switch to that project or create a new chat for this one.\n`,
+            switchProjectAction: { projectId: session.projectId, projectName: session.projectName || session.projectId },
+          }));
+          ws.send(JSON.stringify({ type: 'end' }));
+          return;
+        }
       }
     } catch (err) {
       // The session is only an optimization here (lock/path guard) — a failed read must not

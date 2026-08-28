@@ -25,7 +25,12 @@ export const chitChatHandlers = {
     if (undoResult.success) {
       ws.send(JSON.stringify({ type: 'answer', data: undoResult.message }));
     } else {
-      ws.send(JSON.stringify({ type: 'error_output', data: undoResult.message + '\n' }));
+      // When the last commit isn't a console checkpoint, point the user at history/logs
+      // so they can see what *is* revertible (the guard itself is correct — we just add UX).
+      const hint = undoResult.message.includes('not a Console checkpoint')
+        ? '\n\nTip: Try `show history` to see recent console actions, or `git log --oneline -5` to see commits. Only `console-checkpoint:` commits can be undone this way.'
+        : '';
+      ws.send(JSON.stringify({ type: 'error_output', data: undoResult.message + hint + '\n' }));
     }
   },
 
