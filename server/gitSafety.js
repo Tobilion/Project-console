@@ -4,9 +4,24 @@ import os from 'os';
 import path from 'path';
 import { exec, execFile } from 'child_process';
 import util from 'util';
+import { Mutex } from 'async-mutex';
 
 const execAsync = util.promisify(exec);
 const execFileAsync = util.promisify(execFile);
+
+// Per-project mutex for git operations that touch the index (add/commit/reset).
+// Concurrent checkpoints on the same repo race on .git/index.lock — the second `git add -A`
+// fails with "Unable to create index.lock" (reproduced via concurrent Promise.all in
+// partB-concurrency.mjs, 2026-08-28). JS is single-threaded but async ops interleave at
+// await points, so two checkpoints can interleave between `git add` and `git commit`.
+// The mutex serializes the whole add+commit sequence per project path (case-insensitive on
+// win32, where the same folder can be referenced with different casing).
+const checkpointMutexes = new Map();
+function getCheckpointMutex(projectPath) {
+  const key = process.platform === 'win32' ? projectPath.toLowerCase() : projectPath;
+  if (!checkpointMutexes.has(key)) checkpointMutexes.set(key, new Mutex());
+  return checkpointMutexes.get(key);
+}
 
 export async function isGitRepo(projectPath) {
   try {
@@ -21,23 +36,26 @@ export async function createCheckpoint(projectPath, trigger) {
   if (!(await isGitRepo(projectPath))) {
     return { success: false, message: 'Project is not a git repository. Skipping git checkpoint.' };
   }
-  const tmpFile = path.join(os.tmpdir(), `console-checkpoint-${crypto.randomUUID()}.txt`);
-  try {
-    await execAsync('git add -A', { cwd: projectPath });
-    const commitMsg = `console-checkpoint: before "${trigger}"`;
-    // -F tempfile instead of `git commit -m "..."` interpolation: the trigger can contain
-    // double quotes (a user's quoted commit message riding a deploy/push confirm), and cmd.exe
-    // does not honor \" escaping, so the interpolated -m used to fail with a confusing
-    // "[GIT SAFETY] Failed to create git checkpoint" warning (live-probed 2026-08-18). -F
-    // passes the message out-of-band through execFile — no shell ever parses the trigger text.
-    fs.writeFileSync(tmpFile, commitMsg, 'utf8');
-    await execFileAsync('git', ['commit', '--allow-empty', '-F', tmpFile], { cwd: projectPath });
-    return { success: true, message: `Git checkpoint created: ${commitMsg}` };
-  } catch (err) {
-    return { success: false, message: `Failed to create git checkpoint: ${err.message}` };
-  } finally {
-    try { fs.unlinkSync(tmpFile); } catch {}
-  }
+  const mutex = getCheckpointMutex(projectPath);
+  return mutex.runExclusive(async () => {
+    const tmpFile = path.join(os.tmpdir(), `console-checkpoint-${crypto.randomUUID()}.txt`);
+    try {
+      await execAsync('git add -A', { cwd: projectPath });
+      const commitMsg = `console-checkpoint: before "${trigger}"`;
+      // -F tempfile instead of `git commit -m "..."` interpolation: the trigger can contain
+      // double quotes (a user's quoted commit message riding a deploy/push confirm), and cmd.exe
+      // does not honor \" escaping, so the interpolated -m used to fail with a confusing
+      // "[GIT SAFETY] Failed to create git checkpoint" warning (live-probed 2026-08-18). -F
+      // passes the message out-of-band through execFile — no shell ever parses the trigger text.
+      fs.writeFileSync(tmpFile, commitMsg, 'utf8');
+      await execFileAsync('git', ['commit', '--allow-empty', '-F', tmpFile], { cwd: projectPath });
+      return { success: true, message: `Git checkpoint created: ${commitMsg}` };
+    } catch (err) {
+      return { success: false, message: `Failed to create git checkpoint: ${err.message}` };
+    } finally {
+      try { fs.unlinkSync(tmpFile); } catch {}
+    }
+  });
 }
 
 /**
@@ -72,25 +90,27 @@ export async function performUndo(projectPath) {
   if (!(await isGitRepo(projectPath))) {
     return { success: false, message: 'This project is not a git repository. Undo checkpoint is not available.' };
   }
+  const mutex = getCheckpointMutex(projectPath);
+  return mutex.runExclusive(async () => {
+    try {
+      const { stdout: commitMsg } = await execAsync('git log -1 --pretty=%B', { cwd: projectPath });
+      const trimmedMsg = commitMsg.trim();
 
-  try {
-    const { stdout: commitMsg } = await execAsync('git log -1 --pretty=%B', { cwd: projectPath });
-    const trimmedMsg = commitMsg.trim();
+      if (!trimmedMsg.startsWith('console-checkpoint:')) {
+        const topCommitFirstLine = trimmedMsg.split('\n')[0];
+        return {
+          success: false,
+          message: `Undo refused: The last commit ("${topCommitFirstLine}") is not a Console checkpoint. Aborting undo to protect your work.`
+        };
+      }
 
-    if (!trimmedMsg.startsWith('console-checkpoint:')) {
-      const topCommitFirstLine = trimmedMsg.split('\n')[0];
+      await execAsync('git reset --hard HEAD~1', { cwd: projectPath });
       return {
-        success: false,
-        message: `Undo refused: The last commit ("${topCommitFirstLine}") is not a Console checkpoint. Aborting undo to protect your work.`
+        success: true,
+        message: `Undo successful! Restored pre-command state from checkpoint: "${trimmedMsg.split('\n')[0]}"`
       };
+    } catch (err) {
+      return { success: false, message: `Undo failed: ${err.message}` };
     }
-
-    await execAsync('git reset --hard HEAD~1', { cwd: projectPath });
-    return {
-      success: true,
-      message: `Undo successful! Restored pre-command state from checkpoint: "${trimmedMsg.split('\n')[0]}"`
-    };
-  } catch (err) {
-    return { success: false, message: `Undo failed: ${err.message}` };
-  }
+  });
 }
