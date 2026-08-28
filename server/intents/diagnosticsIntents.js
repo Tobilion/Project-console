@@ -74,6 +74,8 @@ export const DIAGNOSTICS_INTENTS = {
       'do i have good test coverage', 'how much of my code is covered by tests',
       'how well are my tests covering the code', 'are my tests covering everything',
       'test coverage percentage', 'check my coverage numbers',
+      'how much coverage do we have', 'how much coverage do i have',
+      'whats my coverage', 'what is the coverage',
     ],
   },
   'project.diagnostics.bundle_size_analysis': {

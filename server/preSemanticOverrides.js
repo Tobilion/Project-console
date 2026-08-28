@@ -44,6 +44,7 @@ export const PRE_SEMANTIC_OVERRIDES = [
   { intent: 'system.chit_chat.how_do_i', pattern: /^where\s+does\s+my\s+data\b/i },
   { intent: 'system.chit_chat.how_do_i', pattern: /^how\s+is\s+this\s+different\s+from\b/i },
   { intent: 'system.chit_chat.how_do_i', pattern: /^what\s+can\s+this\s+actually\s+do\b/i },
+  { intent: 'system.chit_chat.how_do_i', pattern: /^check\s+for\s+updates\b/i },
   { intent: 'system.chit_chat.how_do_i', pattern: /^(?:turn\s+on|enable|disable|turn\s+off)\s+(?:sandbox|clipboard|accent|theme|permission)\b/i },
   { intent: 'system.chit_chat.how_do_i', pattern: /^what(?:'s|s| is)\s+my\s+(?:permission\s+mode|theme|clipboard|accent)/i },
   { intent: 'system.chit_chat.how_do_i', pattern: /^what\s+theme\b/i },
@@ -116,6 +117,10 @@ export const PRE_SEMANTIC_OVERRIDES = [
   // see. A leading did/have/is/was/are + a pushed/committed mention is unambiguous: a state
   // question, answered by git status (which shows the ahead/behind state), never an action.
   // Imperatives ("push", "commit now") don't start with these verbs and stay untouched.
+  // "do i need to push/pull" is the git_ahead_behind diagnostic, not git_status — pin early
+  // so it wins over the broad git_status pin that would otherwise steal it.
+  { intent: 'git_ahead_behind', pattern: /\b(?:do|does|should|did)\s+(?:i|we)\s+need\s+to\s+(?:push|pull)\b/i },
+  { intent: 'git_ahead_behind', pattern: /\bneed\s+to\s+(?:push|pull)\b/i },
   // 2026-08-28 audit: non-native "the code, is it pushed already?" carries the same meaning
   // but with a leading noun clause before the verb — allow an optional comma-prefixed lead-in.
   { intent: 'system.chit_chat.git_status', pattern: /^(?:.*,\s*)?(?:did|have|has|had|was|were|is|are|do|does)\s+(?:i|we|you|my|it|the|this|that|everything|all|anything|nothing|any)\b.*\b(?:push(?:ed)?|commit(?:ted)?)\b/i },
@@ -335,6 +340,62 @@ export const PRE_SEMANTIC_OVERRIDES = [
   { intent: 'npm_install', pattern: /\b(?:instal|isntall|install\s+dependancies|install\s+depedencies)\b/i },
   { intent: 'run_tests', pattern: /\b(?:runtests|runtest|run\s+tets|run\s+tst)\b/i },
   { intent: 'system.chit_chat.ack', pattern: /^\s*hmm\s*$/i },
+  // Audit 2026-08-28 Part A v2 — additional typo/ bare-token pins found in the 598-variation pass
+  { intent: 'git_push', pattern: /^\s*push\s*\??\s*$/i },
+  { intent: 'git_push', pattern: /^\s*push\?\s*$/i },
+  { intent: 'git_commit', pattern: /\bcommittt+\b/i },
+  { intent: 'git_branch', pattern: /\bbrnaches\b/i },
+  { intent: 'git_branch', pattern: /\bbrnach\b/i },
+  // "do i need to push/pull" is the git_ahead_behind diagnostic, not git_status — the git_status
+  // pin's broad "did|do i ... push" would otherwise steal it (driver showed "do i need to push"
+  // -> git_status). Pin ahead_behind explicitly before the git_status stage can claim it.
+  { intent: 'git_ahead_behind', pattern: /\b(?:do|does|should|did)\s+(?:i|we)\s+need\s+to\s+(?:push|pull)\b/i },
+  { intent: 'git_ahead_behind', pattern: /\bneed\s+to\s+(?:push|pull)\b/i },
+  // Frustration extended — "i am frustrated", "im so frustrated", "this is driving me crazy", etc.
+  // The main how_do_i frustration pin only covers why/this/that/ugh shapes; standalone frustrated
+  // statements were falling to tech_preview/help/overview.
+  { intent: 'system.chit_chat.how_do_i', pattern: /\b(?:i\s+am|i'?m|im)\s+(?:so\s+)?frustrated\b/i },
+  { intent: 'system.chit_chat.how_do_i', pattern: /\bthis\s+is\s+driving\s+me\s+crazy\b/i },
+  { intent: 'system.chit_chat.how_do_i', pattern: /\bwhy\s+does\s+nothing\s+work\b/i },
+  { intent: 'system.chit_chat.how_do_i', pattern: /\bwhy\s+can'?t\s+this\s+just\s+work\b/i },
+  { intent: 'system.chit_chat.how_do_i', pattern: /\bim\s+stuck\b/i },
+  { intent: 'system.chit_chat.how_do_i', pattern: /\bim\s+annoyed\b/i },
+  // Offline / data privacy — "am i offline", "does this work offline", "is my data private",
+  // "where is my data stored" all drifted to tech_preview/identity/file_find.
+  { intent: 'system.chit_chat.how_do_i', pattern: /^\s*am\s+i\s+offline\b/i },
+  { intent: 'system.chit_chat.how_do_i', pattern: /\bdoes\s+this\s+work\s+offline\b/i },
+  { intent: 'system.chit_chat.how_do_i', pattern: /^is\s+my\s+data\s+private\b/i },
+  { intent: 'system.chit_chat.how_do_i', pattern: /^where\s+is\s+my\s+data\s+stored\b/i },
+  { intent: 'system.chit_chat.how_do_i', pattern: /\bam\s+i\s+offline\b/i },
+  // Settings with optional "current" — "what is my current permission mode" failed because the
+  // existing pin required "my permission mode" adjacent. Allow an optional adjective and the
+  // inverted "what permission mode am i in" shape.
+  { intent: 'system.chit_chat.how_do_i', pattern: /^what(?:'s|s| is)\s+my\s+(?:current\s+)?(?:permission\s+mode|theme|clipboard|accent)/i },
+  { intent: 'system.chit_chat.how_do_i', pattern: /^what\s+permission\s+mode\b/i },
+  { intent: 'system.chit_chat.how_do_i', pattern: /^what\s+accent\s+color\b/i },
+  { intent: 'system.chit_chat.how_do_i', pattern: /\bpermission\s+mode\s+am\s+i\s+in\b/i },
+  // Navigation — specific "where/how do i ..." UI questions that were routing to git/project
+  // actions instead of the how_do_i catalog (which guides to the UI). Keep each pin narrow.
+  { intent: 'system.chit_chat.how_do_i', pattern: /^where\s+do\s+i\s+find\s+my\s+saved\s+notes\b/i },
+  { intent: 'system.chit_chat.how_do_i', pattern: /^how\s+do\s+i\s+get\s+to\s+(?:the\s+)?settings\b/i },
+  { intent: 'system.chit_chat.how_do_i', pattern: /^how\s+do\s+i\s+see\s+what\s+happened\b/i },
+  { intent: 'system.chit_chat.how_do_i', pattern: /^how\s+do\s+i\s+open\s+(?:the\s+)?terminal\s+view\b/i },
+  { intent: 'system.chit_chat.how_do_i', pattern: /^show\s+history\s*$/i },
+  { intent: 'system.chit_chat.how_do_i', pattern: /^where\s+is\s+my\s+chat\s+history\b/i },
+  { intent: 'system.chit_chat.how_do_i', pattern: /^where\s+is\s+my\s+chat\s+history\??\s*$/i },
+  { intent: 'system.chit_chat.how_do_i', pattern: /^how\s+do\s+i\s+find\s+settings\b/i },
+  { intent: 'system.chit_chat.how_do_i', pattern: /^how\s+do\s+i\s+go\s+to\s+dashboard\b/i },
+  { intent: 'system.chit_chat.how_do_i', pattern: /^how\s+do\s+i\s+see\s+recent\s+actions\b/i },
+  { intent: 'system.chit_chat.how_do_i', pattern: /^where\s+is\s+the\s+history\s+tab\b/i },
+  { intent: 'system.chit_chat.how_do_i', pattern: /^how\s+do\s+i\s+see\s+my\s+old\s+chats\b/i },
+  // Coverage — "how much coverage do we have" drifted to status; pin to diagnostics
+  { intent: 'project.diagnostics.test_coverage_report', pattern: /\bhow\s+much\s+coverage\b/i },
+  { intent: 'project.diagnostics.test_coverage_report', pattern: /\bcoverage\s+do\s+we\s+have\b/i },
+  // Platform Finder — "reveal in Finder" without filename is a folder open, not file reveal;
+  // the file reveal intent requires a filename token, so folder reveal correctly goes to
+  // open_in_explorer. Pin the folder-reveal shape explicitly.
+  { intent: 'project.action.open_in_explorer', pattern: /^(?:reveal|show)\s+in\s+(?:Finder|Explorer)\s*$/i },
+  { intent: 'project.action.open_in_explorer', pattern: /^reveal\s+in\s+Finder\s*$/i },
   // Phase 6 (2026-08-12): the expanded calculator grammar — "convert 5 km to miles" /
   // "15% of 80" / "18% tip on 64.50" / "add 8.25% tax to 120". The percent sign and unit
   // words carry little embedding weight, so these shapes drift off the calculate cluster;
