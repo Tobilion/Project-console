@@ -346,6 +346,9 @@ export const PRE_SEMANTIC_OVERRIDES = [
   { intent: 'git_commit', pattern: /\bcommittt+\b/i },
   { intent: 'git_branch', pattern: /\bbrnaches\b/i },
   { intent: 'git_branch', pattern: /\bbrnach\b/i },
+  { intent: 'git_push', pattern: /\bpus\s+h\b/i },
+  { intent: 'git_commit', pattern: /\bcommmit\b/i },
+  { intent: 'npm_build', pattern: /\bbild\b/i },
   // "do i need to push/pull" is the git_ahead_behind diagnostic, not git_status — the git_status
   // pin's broad "did|do i ... push" would otherwise steal it (driver showed "do i need to push"
   // -> git_status). Pin ahead_behind explicitly before the git_status stage can claim it.

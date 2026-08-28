@@ -2,9 +2,32 @@
 // The grammar is intentionally small and fixed; every column/file name is validated by
 // isSafeParamValue() (paramCommand.js) before use. All handlers are read-only — no writes,
 // no confirmation needed, nothing journaled.
+import fs from 'fs';
 import path from 'path';
 import { isSafeParamValue } from '../paramCommand';
 import { loadCsv, findColumn, matchOp, aggregateColumn } from '../csvTools.js';
+
+function csvNotFoundHint(projectPath) {
+  try {
+    const out = [];
+    const walk = (dir, relDir) => {
+      let names = [];
+      try { names = fs.readdirSync(dir); } catch { return; }
+      for (const name of names) {
+        if (out.length >= 5) return;
+        if (name === 'node_modules' || name === '.git' || name === '.console') continue;
+        const p = path.join(dir, name);
+        let st;
+        try { st = fs.statSync(p); } catch { continue; }
+        if (st.isDirectory()) walk(p, path.join(relDir, name));
+        else if (/\.csv$/i.test(name)) out.push(path.join(relDir, name).replace(/\\/g, '/'));
+      }
+    };
+    walk(projectPath, '.');
+    if (out.length === 0) return ' No CSVs in this project — upload one via the Spreadsheet panel (Tools > Spreadsheet) or POST /api/projects/:id/csv-upload.';
+    return ` Available CSVs: ${out.slice(0,5).join(', ')}. Use one of those, or upload via the Spreadsheet panel.`;
+  } catch { return ''; }
+}
 
 const answer = (ws, data) => ws.send(JSON.stringify({ type: 'answer', data }));
 
@@ -44,7 +67,11 @@ export const csvHandlers = {
     const { file, column } = agg;
     if (!isSafeParamValue(file) || !isSafeParamValue(column)) { answer(ws, 'Unsafe filename/column name.'); return; }
     const csv = await loadCsv(project.path, file);
-    if (!csv.ok) { answer(ws, csv.error); return; }
+    if (!csv.ok) {
+      const hint = csv.error.includes('not found') ? csvNotFoundHint(project.path) : '';
+      answer(ws, csv.error + hint);
+      return;
+    }
     const idx = findColumn(csv.headers, column);
     if (idx === -1) { answer(ws, columnError(file, column)); return; }
     const result = aggregateColumn(csv, csv.headers[idx], 'sum');
@@ -58,7 +85,11 @@ export const csvHandlers = {
     const { file, column } = agg;
     if (!isSafeParamValue(file) || !isSafeParamValue(column)) { answer(ws, 'Unsafe filename/column name.'); return; }
     const csv = await loadCsv(project.path, file);
-    if (!csv.ok) { answer(ws, csv.error); return; }
+    if (!csv.ok) {
+      const hint = csv.error.includes('not found') ? csvNotFoundHint(project.path) : '';
+      answer(ws, csv.error + hint);
+      return;
+    }
     const idx = findColumn(csv.headers, column);
     if (idx === -1) { answer(ws, columnError(file, column)); return; }
     const result = aggregateColumn(csv, csv.headers[idx], 'average');
@@ -72,7 +103,11 @@ export const csvHandlers = {
     const { file, column, op, value } = clause;
     if (!isSafeParamValue(file) || !isSafeParamValue(column)) { answer(ws, 'Unsafe filename/column name.'); return; }
     const csv = await loadCsv(project.path, file);
-    if (!csv.ok) { answer(ws, csv.error); return; }
+    if (!csv.ok) {
+      const hint = csv.error.includes('not found') ? csvNotFoundHint(project.path) : '';
+      answer(ws, csv.error + hint);
+      return;
+    }
     const idx = findColumn(csv.headers, column);
     if (idx === -1) { answer(ws, columnError(file, column)); return; }
     let count = 0;
@@ -86,7 +121,11 @@ export const csvHandlers = {
     const { file, column, op, value } = clause;
     if (!isSafeParamValue(file) || !isSafeParamValue(column)) { answer(ws, 'Unsafe filename/column name.'); return; }
     const csv = await loadCsv(project.path, file);
-    if (!csv.ok) { answer(ws, csv.error); return; }
+    if (!csv.ok) {
+      const hint = csv.error.includes('not found') ? csvNotFoundHint(project.path) : '';
+      answer(ws, csv.error + hint);
+      return;
+    }
     const idx = findColumn(csv.headers, column);
     if (idx === -1) { answer(ws, columnError(file, column)); return; }
     const matched = csv.rows.filter((row) => matchOp(op, row[idx], value));

@@ -62,7 +62,19 @@ export async function handleExecute(ws, parsed, sessionContext) {
   // 2026-08-10). `executeInFlight` is set synchronously, before any await, so the second
   // message is rejected the instant it's evaluated instead of racing through the same window.
   if (sessionContext.aiAbortController || sessionContext.executeInFlight) {
-    ws.send(JSON.stringify({ type: 'error_output', data: 'The AI is still working on your previous message — wait for it to finish (or press Cancel).\n' }));
+    // Debounce the busy spam — the same client spamming keys while a long command/AI turn
+    // is in flight used to flood 24–118 `error_output` bubbles per session (live 34b3742d 124–147,
+    // 4ac32f8e 118 hits). Throttle to one bubble per 2 s; the web client already disables the
+    // input while `commandPending`/`aiQueryInFlight` is true, but CLI and rapid typing still hit it.
+    const now = Date.now();
+    if (!sessionContext.lastBusySentAt || now - sessionContext.lastBusySentAt > 2000) {
+      const isAI = !!sessionContext.aiAbortController;
+      const msg = isAI
+        ? 'The AI is still working on your previous message — wait for it to finish (or press Cancel).\n'
+        : 'Still working on your previous message — wait for it to finish.\n';
+      ws.send(JSON.stringify({ type: 'error_output', data: msg }));
+      sessionContext.lastBusySentAt = now;
+    }
     ws.send(JSON.stringify({ type: 'end' }));
     return;
   }

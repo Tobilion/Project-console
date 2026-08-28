@@ -4,7 +4,7 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { execSync } from 'child_process';
-import { isGatedToolCall, isAskModeBlocked, resolveToolGate, toolGrantKey, GATED_TOOLS, ALWAYS_CONFIRM_TOOLS } from '../toolGate';
+import { isGatedToolCall, isAskModeBlocked, resolveToolGate, toolGrantKey, GATED_TOOLS, ALWAYS_CONFIRM_TOOLS, getToolPermission } from '../toolGate';
 import { isDestructiveCommand } from '../commandRisk';
 import { createCheckpoint, pushCommandWithUpstream, performUndo } from '../gitSafety';
 
@@ -167,4 +167,28 @@ test('toolGate: executeCommand destructive never auto-approved', async ()=>{
 });
 test('toolGate: toolGrantKey format', ()=>{
   assert.equal(toolGrantKey('/a', 'b'), '/a::b');
+});
+test('toolGate: getToolPermission handles missing manifest and optional chaining', async ()=>{
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'console-perm-'));
+  // No manifest -> undefined, should not throw
+  assert.equal(await getToolPermission(dir, 'writeFile'), undefined);
+  // Create manifest with no permissions
+  fs.writeFileSync(path.join(dir, 'console.tools.json'), JSON.stringify({tools: []}));
+  assert.equal(await getToolPermission(dir, 'writeFile'), undefined);
+  // With permissions
+  fs.writeFileSync(path.join(dir, 'console.tools.json'), JSON.stringify({tools: [], permissions: {writeFile: 'deny'}}));
+  // Need to invalidate cache to re-read
+  const { invalidatePluginManifest } = await import('../toolGate.js');
+  invalidatePluginManifest(dir);
+  assert.equal(await getToolPermission(dir, 'writeFile'), 'deny');
+  assert.equal(await getToolPermission(dir, 'readFile'), undefined);
+  // Test optional chaining safety: manifest null case already covered, ensure no throw
+  assert.equal(await getToolPermission('', 'writeFile'), undefined);
+  assert.equal(await getToolPermission(null, 'writeFile'), undefined);
+  fs.rmSync(dir, {recursive:true, force:true});
+});
+test('commandRisk: tab whitespace still destructive', ()=>{
+  assert.equal(isDestructiveCommand('git\tpush -f'), true);
+  assert.equal(isDestructiveCommand('rm\t-rf\t/'), true);
+  assert.equal(isDestructiveCommand('git push\t-f'), true);
 });
