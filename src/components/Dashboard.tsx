@@ -13,7 +13,7 @@ interface DashboardProps {
   refreshSignal?: number;
   projects: Project[];
   /** Phase 1: fallback mode for entries the server hasn't classified yet (pre-feature cache).
-   *  Per-card rendering is driven by the entry's OWN workspaceType â€” the server persists the
+   *  Per-card rendering is driven by the entry's OWN workspaceType — the server persists the
    *  switch in console.config.json, so each card reflects its project's real mode. */
   workspaceMode?: 'dev' | 'general';
   /** Server's current scan directory (used to shorten project paths for display). */
@@ -22,7 +22,7 @@ interface DashboardProps {
   tabId?: string | null;
   onSelectProject: (p: Project) => Promise<void> | void;
   /** Phase 2 (2026-08-17): like onSelectProject but REUSES the project's open chat when one
-   *  exists â€” card action buttons (Run/Stop/Push/Open chat) must not hijack the view into an
+   *  exists — card action buttons (Run/Stop/Push/Open chat) must not hijack the view into an
    *  empty new session. */
   onSelectProjectReuse: (p: Project) => Promise<void> | void;
   onSendMessage: (content: string) => Promise<void> | void;
@@ -39,7 +39,7 @@ export const Dashboard = ({ onClose, refreshSignal = 0, projects, workspaceMode 
   const [filter, setFilter] = useState('');
   const [refreshing, setRefreshing] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
-  // True once the first dashboard fetch has resolved â€” the tab's empty states say "no
+  // True once the first dashboard fetch has resolved — the tab's empty states say "no
   // projects/URLs" which is misleading while the initial fetch is still in flight.
   const [loaded, setLoaded] = useState(false);
   const [fetchError, setFetchError] = useState(false);
@@ -51,11 +51,11 @@ export const Dashboard = ({ onClose, refreshSignal = 0, projects, workspaceMode 
     if (refreshingTimer.current) clearTimeout(refreshingTimer.current);
     if (copiedTimer.current) clearTimeout(copiedTimer.current);
   }, []);
-  // Phase 19: connected users (LAN attribution labels â€” hidden for the single-user case).
+  // Phase 19: connected users (LAN attribution labels — hidden for the single-user case).
   const [users, setUsers] = useState<{ name: string }[]>([]);
 
   // Phase 1: a card in general mode hides git/npm/dev-server panels and actions behind a
-  // placeholder â€” file tools/notes/reminders cards arrive in later phases (the roadmap
+  // placeholder — file tools/notes/reminders cards arrive in later phases (the roadmap
   // explicitly says not to invent fake data for them yet). Fallback to the dashboard-level
   // mode only when the server hasn't classified the entry (stale cache from before Phase 1).
   const entryMode = (e: DashboardEntry) => e.workspaceType ?? workspaceMode;
@@ -68,7 +68,7 @@ export const Dashboard = ({ onClose, refreshSignal = 0, projects, workspaceMode 
       setLoaded(true);
       setFetchError(false);
     } else {
-      // Server unreachable/failed â€” stop the perpetual "Loadingâ€¦" spinner and surface the
+      // Server unreachable/failed — stop the perpetual "Loading…" spinner and surface the
       // failure with a retry (audit 2026-08-17: the old code only set loaded on success, so a
       // dead server left the Projects tab spinning forever).
       setLoaded(true);
@@ -106,7 +106,7 @@ export const Dashboard = ({ onClose, refreshSignal = 0, projects, workspaceMode 
     refreshingTimer.current = setTimeout(() => setRefreshing(false), 400);
   };
 
-  // Dirty/running projects surface first â€” the ones that actually need attention shouldn't be
+  // Dirty/running projects surface first — the ones that actually need attention shouldn't be
   // buried below a long list of idle, clean projects (QoL request, 2026-08-10).
   const filteredEntries = useMemo(() => {
     const needle = filter.trim().toLowerCase();
@@ -134,7 +134,7 @@ export const Dashboard = ({ onClose, refreshSignal = 0, projects, workspaceMode 
     // Dirty working tree -> stage+commit+push so the button always "just works"; a clean tree
     // with commits already ahead only needs a bare push. Sent as a normal chat message (not a
     // direct/bypassed command) so it goes through the same confirm_prompt flow as if the user
-    // had typed it themselves â€” the button is a shortcut into chat, not a silent auto-push.
+    // had typed it themselves — the button is a shortcut into chat, not a silent auto-push.
     const text = entry.uncommitted.length > 0 ? 'commit and push my changes' : 'push my changes';
     await onSelectProjectReuse(project);
     await onSendMessage(text);
@@ -148,7 +148,7 @@ export const Dashboard = ({ onClose, refreshSignal = 0, projects, workspaceMode 
     onClose();
   };
 
-  // Run/Stop route through the normal chat flow (same pattern as handlePush) â€” the command
+  // Run/Stop route through the normal chat flow (same pattern as handlePush) — the command
   // lands on the same confirm cards the user would get from typing it, never a bypass.
   const handleRun = async (entry: DashboardEntry) => {
     const project = projects.find((p) => p.id === entry.id);
@@ -173,7 +173,7 @@ export const Dashboard = ({ onClose, refreshSignal = 0, projects, workspaceMode 
       if (copiedTimer.current) clearTimeout(copiedTimer.current);
       copiedTimer.current = setTimeout(() => setCopiedId((id) => (id === entry.id ? null : id)), 1500);
     } catch {
-      // Clipboard API unavailable (non-HTTPS/non-localhost context) â€” silently no-op, nothing
+      // Clipboard API unavailable (non-HTTPS/non-localhost context) — silently no-op, nothing
       // sensitive is at stake and there's no good fallback UI for a stray copy button.
     }
   };
@@ -215,7 +215,7 @@ export const Dashboard = ({ onClose, refreshSignal = 0, projects, workspaceMode 
             </span>
           )}
           {users.length > 1 && (
-            <span className="text-xs text-accent bg-accent/10 px-2 py-0.5 rounded" title="Connected users (LAN mode â€” attribution labels, no accounts)">
+            <span className="text-xs text-accent bg-accent/10 px-2 py-0.5 rounded" title="Connected users (LAN mode — attribution labels, no accounts)">
               {users.length} connected: {users.map((u) => u.name).join(', ')}
             </span>
           )}
@@ -243,7 +243,7 @@ export const Dashboard = ({ onClose, refreshSignal = 0, projects, workspaceMode 
 
       <div className="flex-1 overflow-y-auto space-y-2 pr-1">
         {!loaded && entries.length === 0 ? (
-          <div className="text-sm text-fg-dim italic text-center py-12">Loadingâ€¦</div>
+          <div className="text-sm text-fg-dim italic text-center py-12">Loading…</div>
         ) : fetchError && entries.length === 0 ? (
           <div className="flex flex-col items-center gap-3 py-12">
             <p className="text-sm text-fg-muted">Could not reach the server.</p>
@@ -254,7 +254,7 @@ export const Dashboard = ({ onClose, refreshSignal = 0, projects, workspaceMode 
         ) : tab === 'live' ? (
           liveEntries.length === 0 ? (
             <div className="text-sm text-fg-dim italic text-center py-12">
-              No projects have a known dev URL yet â€” start a dev server from a project's chat to record one.
+              No projects have a known dev URL yet — start a dev server from a project's chat to record one.
             </div>
           ) : (
             liveEntries.map((entry, i) => (
@@ -267,14 +267,14 @@ export const Dashboard = ({ onClose, refreshSignal = 0, projects, workspaceMode 
               >
                 <div className="flex items-center gap-3 min-w-0">
                   {/* Live truth comes from the server's probe at dashboard-build time (entry.running),
-                      NOT runningCommand â€” there'd otherwise always be tracked-process absence for the
+                      NOT runningCommand — there'd otherwise always be tracked-process absence for the
                       console's own card and for servers started outside this console (reported live
                       2026-08-11: both showed "process not currently running" while answering). */}
                   <span className={`w-2 h-2 rounded-full flex-shrink-0 ${entry.running ? 'bg-accent-green animate-pulse' : 'bg-fg-dim'}`} />
                   <div className="min-w-0">
                     <div className="text-sm font-bold text-fg-strong truncate">{entry.name}</div>
                     <div className="text-[10px] text-fg-dim">
-                      {entry.running ? 'live now' : 'recorded â€” not currently answering'}
+                      {entry.running ? 'live now' : 'recorded — not currently answering'}
                     </div>
                   </div>
                 </div>
@@ -326,7 +326,7 @@ export const Dashboard = ({ onClose, refreshSignal = 0, projects, workspaceMode 
           <EmptyState
             icon={<FolderGit2 size={18} />}
             title="No projects loaded"
-            hint="Scan a directory to get started â€” paste a folder path into the scan box in the sidebar."
+            hint="Scan a directory to get started — paste a folder path into the scan box in the sidebar."
             className="py-12"
           />
         )}

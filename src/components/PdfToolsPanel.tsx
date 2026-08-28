@@ -9,10 +9,10 @@ import { MergeCard, PdfFileList } from './pdfTools/mergeCard';
 import { formatSize, sanitizeOutputName } from './pdfTools/utils';
 import type { PdfFileInfo } from './pdfTools/utils';
 
-// Phase 3 (UPGRADE-ROADMAP.md, 2026-08-11): the PDF Tools panel â€” the interactive half of the
+// Phase 3 (UPGRADE-ROADMAP.md, 2026-08-11): the PDF Tools panel — the interactive half of the
 // PDF toolkit. The panel never executes anything itself: every operation composes the exact
 // trigger-command line the chat already understands ("merge a.pdf and b.pdf into c.pdf"), so
-// the message goes through the normal pipeline â€” matcher -> pdf.* intent -> standard confirm
+// the message goes through the normal pipeline — matcher -> pdf.* intent -> standard confirm
 // flow -> pdfKit.js execution -> actionHistory journaling. The terminal stays the single
 // source of truth for confirm cards, answers and errors (same contract as Dashboard's Run/Stop
 // buttons); this panel is the file-picking convenience layer around it.
@@ -40,7 +40,7 @@ export function PdfToolsPanel({ project, onSendMessage, tabId = null }: PdfTools
   // Single-file picker used by split / extract-text / extract-pages / watermark.
   const [selected, setSelected] = useState<string>('');
   // Merge picks its own multi-selection, ORDERED (2026-08-24): PDF merge output depends on
-  // input order (a+b+c != a+c+b), so the selection is an ordered array â€” chips append on
+  // input order (a+b+c != a+c+b), so the selection is an ordered array — chips append on
   // click, and the order row below reorders before sending.
   const [mergeOrder, setMergeOrder] = useState<string[]>([]);
   const [mergeOutput, setMergeOutput] = useState('combined.pdf');
@@ -86,7 +86,7 @@ export function PdfToolsPanel({ project, onSendMessage, tabId = null }: PdfTools
     const data = await apiFetchJson<{ files: PdfFileInfo[] }>(projectApi(`/api/projects/${encodeURIComponent(project.id)}/pdf-files`, tabId));
     setLoading(false);
     if (!data) {
-      setError('Could not load the PDF list â€” check that the server is up.');
+      setError('Could not load the PDF list — check that the server is up.');
       return;
     }
     setError(null);
@@ -105,7 +105,7 @@ export function PdfToolsPanel({ project, onSendMessage, tabId = null }: PdfTools
   }, [project?.id, fetchFiles]);
 
   // Selection must never point at a file that vanished from the list (a deleted/renamed PDF
-  // would compose a command against a name the server can't resolve â€” harmless, but stale UI).
+  // would compose a command against a name the server can't resolve — harmless, but stale UI).
   useEffect(() => {
     const names = new Set(files.map((f) => f.name));
     if (selected && !names.has(selected)) setSelected('');
@@ -130,7 +130,7 @@ export function PdfToolsPanel({ project, onSendMessage, tabId = null }: PdfTools
         body: JSON.stringify({ path }),
       });
     } catch {
-      // Best-effort convenience â€” a failed reveal never blocks the panel.
+      // Best-effort convenience — a failed reveal never blocks the panel.
     }
   };
 
@@ -177,7 +177,7 @@ export function PdfToolsPanel({ project, onSendMessage, tabId = null }: PdfTools
 
   const sendWatermark = () => {
     if (!selected || !watermarkText.trim()) return;
-    // No output name is sent â€” the handler composes "<stem>-watermarked.pdf" itself.
+    // No output name is sent — the handler composes "<stem>-watermarked.pdf" itself.
     send(`watermark ${selected} with ${watermarkText.trim()}`);
   };
 
@@ -187,7 +187,7 @@ export function PdfToolsPanel({ project, onSendMessage, tabId = null }: PdfTools
       onChange={(e) => setSelected(e.target.value)}
       className="w-full text-xs bg-panel-strong border border-border-soft rounded-lg px-2.5 py-2 text-fg-strong focus:outline-none focus:border-accent/50"
     >
-      <option value="">Pick a PDFâ€¦</option>
+      <option value="">Pick a PDF…</option>
       {files.map((f) => (
         <option key={f.path} value={f.name}>{f.name} ({formatSize(f.size)})</option>
       ))}
@@ -210,7 +210,7 @@ export function PdfToolsPanel({ project, onSendMessage, tabId = null }: PdfTools
             </div>
             <h2 className="text-sm font-semibold text-fg-strong tracking-wide uppercase">PDF Tools</h2>
             {project && (
-              <span className="text-xs text-fg-dim font-normal normal-case">â€” {project.name}</span>
+              <span className="text-xs text-fg-dim font-normal normal-case">— {project.name}</span>
             )}
           </div>
           <button onClick={fetchFiles} className={cn(smallBtn, loading && 'opacity-50')} title="Refresh the file list">
@@ -224,7 +224,7 @@ export function PdfToolsPanel({ project, onSendMessage, tabId = null }: PdfTools
           </div>
         ) : (
           <>
-            {/* Drag-and-drop upload zone â€” dashed --border-strong, file-picker fallback */}
+            {/* Drag-and-drop upload zone — dashed --border-strong, file-picker fallback */}
             <div
               onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
               onDragLeave={() => setDragging(false)}
@@ -249,13 +249,13 @@ export function PdfToolsPanel({ project, onSendMessage, tabId = null }: PdfTools
                 }}
               />
               <p className="text-[13px] text-fg-muted">
-                {uploading ? 'Uploadingâ€¦' : dragging ? 'Drop it to upload' : 'Drag & drop a PDF into this project'}
+                {uploading ? 'Uploading…' : dragging ? 'Drop it to upload' : 'Drag & drop a PDF into this project'}
               </p>
               <button
                 onClick={(e) => { e.stopPropagation(); fileInputRef.current?.click(); }}
                 className="mt-1.5 text-[11px] text-accent-blue hover:underline"
               >
-                or pick a fileâ€¦
+                or pick a file…
               </button>
             </div>
 
@@ -324,7 +324,7 @@ export function PdfToolsPanel({ project, onSendMessage, tabId = null }: PdfTools
                 </button>
               </div>
 
-              {/* Extract â€” text | pages sub-mode in one card */}
+              {/* Extract — text | pages sub-mode in one card */}
               <div className={card}>
                 <h3 className="text-xs font-semibold text-fg-strong mb-3">Extract from a PDF</h3>
                 {FilePicker}

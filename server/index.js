@@ -145,7 +145,17 @@ async function init() {
     });
     app.use(vite.middlewares);
   } else {
-    const distPath = __dirname;
+    // In production the frontend is served from __dirname when running as
+    // server/index.js (dev source or staged server/), but the esbuild bundle
+    // lives at dist/server.js — its __dirname is `dist`, which has no
+    // index.html (the built frontend is at `server/` next to it). Resolve to
+    // the correct static root regardless of entry point.
+    const candidatePaths = [
+      __dirname,
+      path.resolve(__dirname, '..', 'server'),
+      path.resolve(__dirname, 'server'),
+    ];
+    const distPath = candidatePaths.find((p) => fs.existsSync(path.join(p, 'index.html'))) || __dirname;
     app.use(express.static(distPath));
     app.get('*', (req, res, next) => {
       if (req.path.startsWith('/api/') || req.path.startsWith('/stream')) return next();
@@ -397,10 +407,14 @@ async function init() {
 // the same crash class as the HTTP/upgrade socket errors above. Log and keep serving; the
 // console is a single-user local tool whose in-flight state survives individual failures.
 process.on('unhandledRejection', (reason) => {
-  log.error('Unhandled promise rejection (non-fatal, state preserved):', reason instanceof Error ? reason.stack : reason);
+  const stack = reason instanceof Error ? reason.stack : String(reason);
+  try { console.error('Unhandled promise rejection (non-fatal, state preserved):', stack); } catch {}
+  log.error({ err: stack }, 'Unhandled promise rejection (non-fatal, state preserved)');
 });
 process.on('uncaughtException', (err) => {
-  log.error('Uncaught exception (non-fatal, state preserved):', err.stack);
+  const stack = err instanceof Error ? err.stack : String(err);
+  try { console.error('Uncaught exception (non-fatal, state preserved):', stack); } catch {}
+  log.error({ err: stack }, 'Uncaught exception (non-fatal, state preserved)');
 });
 
 // A rejection inside init() (discoverProjects, NLP training, watcher setup) used to be absorbed
@@ -409,6 +423,13 @@ process.on('uncaughtException', (err) => {
 // looks like a hung app instead of a crash (audit 2026-08-06, Phase 2). Fail loudly instead:
 // the listen loop only ever ran at the end of init(), so there's nothing worth preserving.
 init().catch((err) => {
-  log.error('Fatal init failure:', err instanceof Error ? err.stack : err);
+  const stack = err instanceof Error ? err.stack : String(err);
+  try { console.error('Fatal init failure:', stack); } catch {}
+  log.error({ err: stack }, 'Fatal init failure');
+  // Keep the legacy string-form log for any external grep, but the structured {err} form is
+  // what pino actually serializes — the old `log.error('msg:', stack)` swallowed the stack
+  // because pino treats the second string arg as a separate message, not a field (found live
+  // 2026-08-27: desktop's 20s splash → "Fatal init failure:" with no stack hid the vite ENOENT).
+  log.error('Fatal init failure:', stack);
   process.exit(1);
 });

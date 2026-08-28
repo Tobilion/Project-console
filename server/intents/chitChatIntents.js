@@ -17,6 +17,10 @@ export const CHIT_CHAT_INTENTS = {
       'hey there friend', 'hi again', 'hello again',
       'yo whats good', 'hi im back', 'hey im back', 'hello again friend',
       'oi', 'alright then', 'top of the morning', 'evenin', 'mornin',
+      // 2026-08-26 live crosscheck: the apostrophe forms missed — 'whats up' was in the set
+      // but "what's up" and "how's it going" fell to the fallback; the embedding treats the
+      // contraction as a different token.
+      "what's up", "whats going on", "how's it going", 'how is it going', 'sup',
       'hows things', 'hiya there', 'well hello', 'hello hello',
       'greetings friend', 'good to see you', 'nice to see you',
       'howdy doody', 'what is up', 'what is good', 'hello everyone',
@@ -58,6 +62,9 @@ export const CHIT_CHAT_INTENTS = {
       'nice one thanks', 'perfect thank you', 'good stuff thanks',
       'thanks for the help', 'appreciate the help', 'thank you so kindly',
       'ty', 'tysm', 'thx', 'thnx', 'much love for the help',
+      // 2026-08-26 live crosscheck: the contraction form "you're the best" missed while
+      // 'you are the best' was in the set — a real compliment dead-ended on the fallback.
+      "you're the best", 'i like this app', 'this app is great', 'i love this',
       'that helped a lot thanks', 'nice work thanks', 'solid thanks',
       'good looking out thanks', 'you rock', 'legend thanks',
       'this was helpful thanks', 'great stuff', 'perfect thanks a lot',
@@ -92,6 +99,9 @@ export const CHIT_CHAT_INTENTS = {
       'what is this application', 'describe yourself', 'who am i talking to',
       'is this ai or scripted', 'do you run locally', 'are you local',
       'is my data private', 'does this send data anywhere',
+      // 2026-08-26 live crosscheck: "what's your name" fell to the fallback — the name
+      // questions were never in the set.
+      "what's your name", 'what is your name', 'your name', 'do you have a name',
       'what makes you different from chatgpt', 'are you an llm',
     ],
   },
@@ -158,6 +168,15 @@ export const CHIT_CHAT_INTENTS = {
       'have i changed anything', 'anything to commit', 'is the working tree clean',
       'is my working directory clean', 'do i have unsaved changes',
       'is there anything uncommitted', 'show working tree status',
+      // 2026-08-26 live crosscheck: yes/no state questions about pushing/committing — the
+      // pre-semantic pin routes them here; the examples keep the embedding/fuzzy tiers
+      // aligned with the pin so a marginal phrasing doesn't drift back to the action intents.
+      'did i push yet', 'have i pushed', 'have i pushed recently', 'is it pushed',
+      'did my push go through', 'are my changes pushed', 'is my work committed',
+      'did i commit', 'is everything pushed', 'is everything committed',
+      // 2026-08-26: "check the repo state" dead-ended on the fallback (DYM pointed at
+      // git_status) — the repo-state phrasing now belongs to the example set.
+      'check the repo state', 'repo state',
     ],
   },
   'system.chit_chat.deploy': {
@@ -225,6 +244,7 @@ export const CHIT_CHAT_INTENTS = {
       'yup', 'yeaa', 'ye', 'sounds good', 'go for it', 'lets do it',
       'proceed', 'i confirm', 'confirmed', 'no way', 'absolutely not',
       'nah dont', 'hold off', 'not yet', 'hold on',
+      'y', 'n', 'y please', 'n thanks',
     ],
   },
   // Confirmed live 2026-07-30 (CLI chat): "what port are you running on" had no real intent and
@@ -336,6 +356,12 @@ export const CHIT_CHAT_INTENTS = {
       'nice', 'cool', 'great', 'perfect', 'nice one',
       'good stuff', 'sweet', 'thats great',
       'awesome work', 'cool cool',
+      // 2026-08-26 live crosscheck: "ok"/"okay"/"lol"/"haha" fell to yes_no ("No pending
+      // confirmation") or the project-size intent — common acknowledgments now ack.
+      'ok', 'okay', 'k', 'kk', 'lol', 'haha', 'hehe', 'got it', 'gotcha', 'i see',
+      'understood', 'alright', 'fine', 'sounds good', 'noice',
+      'hmm', 'uh huh', 'just chatting', 'again', 'do it again', 'one more time',
+      'try again', 'once more',
     ],
   },
   'system.chit_chat.joke': {

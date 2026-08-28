@@ -89,7 +89,7 @@ const WRAP_QUOTES_RE = /^(['"`])([\s\S]*)\1$/;
 // instead of reaching their intents. A first token in this set followed only by plain words
 // (no flags, paths, globs, pipes, quotes) is a sentence, not a command — reject it so the
 // matcher decides. Real command lines ("find . -name x", "sort data.csv") keep working.
-const NATURAL_LANG_FIRST_TOKENS = new Set(['find', 'sort', 'where', 'convert']);
+const NATURAL_LANG_FIRST_TOKENS = new Set(['find', 'sort', 'where', 'convert', 'help']);
 const PLAIN_WORD_RE = /^[a-z']+$/i;
 
 /**
@@ -133,8 +133,14 @@ export function extractCommandLine(input, projectRoot) {
   // command — "convert 5 km to miles" is the calculate intent, not the Windows `convert`
   // binary. Real command lines ("find . -name x", "convert d: /fs:ntfs") contain flags or
   // drive-letter colons that fail the plain-word test and still bypass.
-  if (NATURAL_LANG_FIRST_TOKENS.has(first.toLowerCase()) && tokens.length >= 2 &&
-      tokens.slice(1).every((t) => PLAIN_WORD_RE.test(t) || /^[\d.]+$/.test(t))) {
+  // 2026-08-26 live crosscheck: "help all" (the documented list_commands phrase) EXECUTED the
+  // Windows help.exe binary ("This command is not supported by the help utility"). A bare
+  // natural-lang token also never needs to run ("help", "find", "sort", "where", "convert"
+  // with no arguments at all are useless invocations of their Windows binaries), so the guard
+  // now covers single-token inputs too.
+  if (NATURAL_LANG_FIRST_TOKENS.has(first.toLowerCase()) &&
+      (tokens.length === 1 ||
+       tokens.slice(1).every((t) => PLAIN_WORD_RE.test(t) || /^[\d.]+$/.test(t)))) {
     return null;
   }
 

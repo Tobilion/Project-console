@@ -79,4 +79,11 @@ export const TOOL_PANEL_INTENTS = {
       'open repo map', 'open the repo map', 'show the repo map', 'show me the repo map',
     ],
   },
+  'system.tools.open_folder_explorer': {
+    opensPanel: 'folder-explorer',
+    examples: [
+      'open folder explorer', 'open the folder explorer', 'open file explorer', 'open the file explorer',
+      'browse a folder', 'browse folders', 'explore folders',
+    ],
+  },
 };

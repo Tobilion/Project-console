@@ -73,7 +73,7 @@ export async function initializeMatcher(owner) {
 
     owner.ready = true;
     broadcast({ type: 'semantic_matcher_progress', data: { stage: 'ready', percent: 100 } });
-    log.info(`[SemanticMatcher] Ready — ${Object.keys(INTENTS).length} base intents, ${Object.values(INTENTS).reduce((s, c) => s + c.examples.length, 0)} phrases`);
+    log.info(`[SemanticMatcher] Ready -- ${Object.keys(INTENTS).length} base intents, ${Object.values(INTENTS).reduce((s, c) => s + c.examples.length, 0)} phrases`);
     // First-message warm-up (Phase 6): the phrase batch above warms the model runtime, but
     // the first INPUT embed still pays one-off tokenizer/thread-pool setup inside the model.
     // Fire one throwaway embed (cached under 'warm-up check', harmless) so the first real

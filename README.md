@@ -418,6 +418,8 @@ App-global identity (name/title/custom role) edited from the ⚙ Settings modal;
 | `console doctor` / `npm run doctor` | Proactive machine-side checks: ports 3000–3019, daemon, embedding cache, writability, Ollama, update, tooling, disk — works without a running server |
 | `what is my test coverage` / `analyze bundle size` | Reads existing coverage/build artifacts — never runs anything |
 | `what port are you running on` | The console's own port |
+| `check for updates` / `what version am i running` | Shows the console version and whether an npm update is available (`update console` installs it) |
+| `is this offline` / `does this need internet` | Offline-first status — what works without network vs what needs Ollama/cloud or a registry fetch |
 
 ### UI, settings & AI
 
@@ -443,6 +445,10 @@ App-global identity (name/title/custom role) edited from the ⚙ Settings modal;
 | `how do i fix an eperm permission error` | Close locked files / elevated terminal / clear cache; remove the partial `AppData\Roaming\npm\node_modules` folder first |
 | `how do i build the desktop app` | `cd desktop && npm install && npm run dist` — NSIS `.exe` (Windows), `.dmg` (macOS), `.AppImage` (Linux) |
 | `npx local-project-console cli` | Launch the console in CLI chat mode — the server boots in the background and the terminal becomes the interactive chat agent (same mode as start.bat's [C] option; installed users run `local-project-console cli`) |
+| `what is ai mode vs trigger mode` / `how is this different from terminal` | Explains trigger (deterministic local matcher) vs AI (local Ollama with tools) and terminal differences |
+| `is my data safe` / `where does my data get stored` | Local-only storage — sessions in `.console/`, global state in `data/`, no cloud unless you use cloud models/search |
+| `open settings` / `change accent color` / `turn on sandbox mode` | User Profile modal (gear icon): theme, accent, locale, clipboard opt-in, sandbox, permission mode |
+| `how do i get to settings` / `how do i see history` / `open terminal view` | Navigation help — settings, history/revert, dashboard, terminal, project/tabs/chats |
 
 ---
 

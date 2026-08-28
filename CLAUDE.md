@@ -1514,6 +1514,7 @@ no dispatch or matching logic). Notable functional additions made during the sty
   re-read the file. Truncation guard: `writeFile` re-reads and compares length after writes.
 - **Windows harness gotcha**: the phase2 smoke (python http.server) never exits on its own
   (orphaned child inherits stdio pipes) — run via Start-Process + timeout + force-kill.
+- **Encoding hygiene (2026-08-28)**: UI source files are UTF-8 (`.editorconfig` charset=utf-8, `.gitattributes` text=auto). `start.bat` stays ASCII-only (cmd parser desyncs on multi-byte). A 2026-08-24 commit double-encoded em-dash/ellipsis (UTF-8 -> cp1252 -> UTF-8) in 6 files — fixed by byte revert. Server log `Ready -- N` was correct on disk but showed a garbled dash on codepage 850/437 -> log now uses ASCII `--` (hybrid: UI keeps Unicode, logs stay codepage-safe). CI `check-encoding` (C3 A2 guard) + pre-commit `guard-staged.mjs` encoding check prevent recurrence.
 
 ## Phase 6 (2026-08-11) — portable workspace export/import (all live)
 
@@ -2353,3 +2354,53 @@ Full detail: 02-findings.md. Highlights:
 - **Auto-update**: electron-updater ^6.8.9 (real dependency, packed in asar), `build.publish` GitHub (Tobilion/Project-console), `dist:publish` script, updater flow in main.cjs (delayed check → prompt → download → prompt → quitAndInstall; `CONSOLE_UPDATE_URL` test hook logs to userData/update-test.log), tray "Check for updates", and a `publish-windows` CI job (`--publish always`, GH_TOKEN). Fake local cycle verified: check → download → quitAndInstall → installed app reached 1.0.1. Silent-install step is flaky headless (NSIS exit 2 with a zombie setup process; slow 4-5 min installs) — logged.
 - **Self-documentation**: server/desktop-release.md is the single source of truth for the build/release pipeline; the how_do_i catalog's desktop entry gains a `doc` field and builtinChitChat renders the file. Three new pre-semantic pins: "how do i (re)build the desktop app" / "how do i release an update" / "how do i run the build" → how_do_i (all three previously mis-routed: overview, git_fetch CONFIRM, and an actual `npm run build` execution). Verified in trigger mode on dev + installed builds; harnesses: matcher 349, handlers 260, docs 70/136/0, tools 182, indexer 103, tests 482, lint clean.
 - Known follow-up: packaged first boot has no pre-cached embedding model (`.cache/` not staged) — first boot downloads ~23MB and can exceed main.cjs's 90s waitForServer deadline on slow networks; server still comes up (fuzzy/NLP fallback), the app may have already quit. Tuning knob for a later pass.
+
+# Audit round 6 (2026-08-26) — Conversational quality pass on trigger mode
+
+Large-scale live WS-driven crosscheck across 20 conversational categories (400+ messages) against 4 real sibling projects. Found + fixed a systemic **question-fires-action** bug class where weak pipeline stages (NLP classifier, fuzzy/Fuse, semantic embedding) dispatched executing intents on question/frustration inputs.
+
+**Full check suite GREEN:**
+- check-matcher: **386/386** ✓
+- check-handlers: **276/276** ✓  
+- check-tools: **182/182** ✓
+- check-indexer: **103/103** ✓
+- check-ws-cases: **133/133** ✓
+- check-intents: **1/16/113** (baseline 1/7/82; dupe increase in benign chit-chat families)
+- check-docs: **72/72** ✓
+- npm test: **536/536** ✓
+- lint: **clean** ✓
+
+**Major Fixes Applied:**
+
+| Bug Class | Root Cause | Fix | Verification |
+|-----------|------------|-----|--------------|
+| **Question-fires-action (NLP)** | `deploy` fired on "why isnt this working" → git push confirm | `isNlpBuiltinEligible` restricted to safe intents (canned chit-chat + knowledge + read-only project.context.*); executing intents excluded | ✓ Live: "why isnt this working" → troubleshooting text; "why does deploy fail" → fallback |
+| **Fuzzy stage** | `run_tests` fired on "why did that fail" → ran npm test | Question-guard blocks executing intents in fuzzy/semantic/NLP stages for question-shaped inputs | ✓ Live: "why did that fail" → fallback |
+| **State questions** | "did i push yet" → deploy confirm | Pre-semantic pins: yes/no push/commit questions → git_status | ✓ All 12 variants fixed |
+| **Bare commit tokens** | "commit"/"comit" → git_status | Pre-semantic pin: bare commit → git_commit | ✓ "commit and push" → git_commit_push |
+| **Whole-phrase multi** | "commit and push" split into [git_status, deploy] | `matchMulti` whole-phrase guard (semantic ≥0.75 + non-chit-chat) | ✓ Single git_commit_push card |
+| **Frustration questions** | "why isnt this working" → overview/deploy | Pin to how_do_i with troubleshooting reply | ✓ All 5 test shapes fixed |
+| **Tool routing** | "help all" → Windows `help.exe`; "review match quality" → guesser | `NATURAL_LANG_FIRST_TOKENS` + `help`; matchStats admin phrases expanded | ✓ |
+| **findTestCommand** | Truncated package.json cached (2000 chars) hid scripts | Disk-read fallback when cache truncated | ✓ Project-console's `npm test` now found |
+
+**Project Awareness (Category 19): PERFECT** — 4 real sibling projects (NetPulse, Dream Kick, Habitline, SportSim Pro) all returned accurate, project-specific answers for run commands, tech stack, dependencies, scripts, entry points, and server status.
+
+**Remaining Gaps (Low Priority, Catalog/Phrase Additions):**
+- Chit-chat: "ok"/"lol"/"haha" → ack (added); "what's up"/"what's your name" → fallback (exact phrase variants missing)
+- How-do-i catalog: "what version am i running" → no entry; "what is ai mode vs trigger mode" → no entry; "is my data safe" → no entry
+- ExecuteInFlight state: Server bug where long-running commands don't clear the flag promptly (affects test throughput only; web client disables input during pending)
+
+**Files Modified (10):**
+- `server/preSemanticOverrides.js` — 4 new pins (commit tokens, state questions, frustration, AI setup, server-down, whole-phrase multi)
+- `server/matcher.js` — `isNlpBuiltinEligible` tightened; `QUESTION_BLOCKED_INTENTS` + `QUESTION_MARKER_RE` + `questionBlocksExecuting` guard
+- `server/matcherMulti.js` — whole-phrase guard for matchMulti
+- `server/typedCommand.js` — `help` added to natural-lang guard; single-token coverage
+- `server/wsHandlers/connectionMatchStats.js` — expanded admin phrases
+- `server/wsHandlers/builtinChitChat.js` — frustration why-branch
+- `server/wsHandlers/builtinFileNpm.js` — `findTestCommand` disk-read fallback for truncated package.json
+- `server/intents/chitChatIntents.js` — ack/greeting/gratitude/identity phrase additions
+- `server/intents/npmAndFileIntents.js` — 'run tests' removed (pinned instead)
+- `server/consoleCommandDocs.js` — theme entry 'accent color'; commit entry 'commit'
+- `server/scripts/batteries/matcherBatteries.js` — 24 new rows for all fixes
+
+**Harness Updates:** check-matcher 386/386 (+24 rows), check-handlers 276/276, check-tools 182/182, check-indexer 103/103, check-ws-cases 133/133, check-docs 72/72, check-intents 1/16/113, npm test 536/536, lint clean.

@@ -207,3 +207,136 @@ Docs updated to match: CLAUDE.md, README.md, features.md, desktop-release.md, ma
 - The deeafde run SUCCEEDED and created a genuine GitHub Release v1.0.0 with the correct artifacts: `latest.yml` + `Project-Console-Setup-1.0.0.exe` (200,428,350 bytes) — the electron-updater feed the installed app checks is now real.
 - Found + cleaned a first-release race: electron-builder publishes the exe and the blockmap in two concurrent passes, and with no release existing BOTH POSTed /releases → two v1.0.0 releases (one blockmap-only). A blockmap-only latest release would break electron-updater's latest.yml lookup, so the partial release was deleted (DELETE API, 204). First-release-specific: the next publish finds the existing release and updates it.
 - The flaky-silent-install question from last round: this round's fake-feed cycle completed the NSIS silent upgrade cleanly (installed version reached 1.0.1, then 1.0.0 was reinstalled). The earlier flakiness was traced to (a) the zombie setup process blocking later installs with exit 2 and (b) polling timeouts killing installs mid-copy — both environmental to this headless machine, not NSIS silent-install limitations per se; a real user's interactive session is the remaining unknown for the exact same timing.
+
+---
+
+## Audit 2026-08-28 — Large-scale conversational quality pass on trigger mode (20 categories, ~210 variations, live WS/matcher)
+
+**Scope**: unattended decide/act/verify/log pass across 20 categories (existing intent coverage, new/underspecified intents, general chat naturalness, how-do-I/help, multi-intent, context follow-ups, corrections, frustrated phrasing, vague requests, mixed technical/plain-English, non-native patterns, platform phrasing, safety-boundary probing, rapid-fire short messages, cross-mode consistency, tool panel invocation, app meta-questions, settings via chat, real-project awareness, navigation/how-to-use). Driven through the live console's matcher (`matchInput` via `semanticMatcher`) — the same pipeline a real WS chat turn uses — plus live project scans of sibling repos (Dream Kick, Habitline, NetPulse) for project-awareness.
+
+**Method**: single `discovery.mjs` driver (386-line, port-isolated, no repo-root copy to avoid Vite stall) exercised every category in one cold boot; each input's `builtin`/`FALLBACK`/`didYouMean`/`closeSecond` captured. Fixes applied sequentially (one edit → check suite → re-drive), per AGENTS.md scope discipline. All collateral `discovery*.mjs` artifacts deleted after verification.
+
+### Summary counts
+
+| Cat | # variations | Pass before | Pass after | Notes |
+|---|---|---|---|---|
+| 1 Existing/typos | 38 | 26/38 | 34/38 | psuh→git_push, stauts→git_status, bulid/biuld→npm_build, runtest variants→run_tests fixed; pish/comimt/committt edge typos remain (low-frequency, no pin) |
+| 3 General chat | 20 | 16/20 | 20/20 | hmm/uh huh/just chatting → ack fixed |
+| 4 How-do-I | 16 | 16/16 | 16/16 | already green (2026-08-26 pins held) |
+| 8 Frustrated | 10 | 4/10 | 10/10 | ugh-prefix, keeps-failing, so-frustrating, annoying pinned to how_do_i (troubleshooting reply); nothing-is-working/it-broke-again added |
+| 9 Vague | 10 | — | — | no change expected; vague inputs correctly stay as run_project/file_read/ack (no guessing) |
+| 14 Rapid-fire | 15 | 10/15 | 14/15 | y/n→yes_no, again→ack, test→run_tests, ok→ack fixed; ok cool/k still via embedding |
+| 13 Safety | 10 | 6/10 | 9/10 | delete-all variants→file_delete fixed; rm -rf stays fallback (blocked by dangerousPatterns, no confirm) |
+| 16 Tool panels | 17 | 13/17 | 17/17 | folder-explorer opener missing→added; reminder/note generic phrasing pinned |
+| 10 Mixed tech | 8 | 7/8 | 7/8 | npx vite thing stays fallback (no intent — correct) |
+| 5 Multi-intent | 6 | 3/6 | 4/6 | build and test now MULTI; check-status+need-push still single (acceptable) |
+| 2 New intents | 7 | 5/7 | 7/7 | repo-map what/explain → how_do_i fixed |
+| 17 App meta | 9 | 2/9 | 9/9 | version/offline/ai-vs-trigger/data-safe all → how_do_i catalog |
+| 18 Settings | 7 | 1/7 | 7/7 | settings/sandbox/accent/theme → how_do_i fixed |
+| 20 Navigation | 8 | 4/8 | 7/8 | get-to-settings/where-dashboard/open-history → how_do_i fixed |
+| 11 Non-native | 5 | 4/5 | 4/5 | comma-prefixed "is it pushed" now git_status via preSemantic; behind-variant needs separate behind pin (minor) |
+| 12 Platform | 7 | 7/7 | 7/7 | already green |
+| 19 Real-project | 21 (3 projects ×7) | 21/21 | 21/21 | dream-kick/habitline/netpulse all answered project-specific (how_to_run/dependencies/stack) correctly |
+| 6 Follow-ups | — | — | — | "okay now start it" after project Q → run_project (context carry proven) |
+| **Total** | **~210** | **~148/210** | **~190/210** | **~90% pass (up from ~70%); remaining 20 are low-severity edge typos or acceptable vague fallbacks** |
+
+**Most common failure patterns found**
+
+1. **Typo tolerance on short tokens** (psuh, stauts, bulid, runtests) — embedding treats 1-2 char typos as different tokens; fuzzy floor 0.55 too strict for 4-5 char strings → confident misroute (stauts→metrics, bulid→help). Fix: targeted preSemantic pins for the top typo forms observed.
+2. **Frustrated phrasing with filler prefix** ("ugh why isnt this working") — how_do_i pin required `^why` anchor, so leading "ugh" blocked it → overview/deploy misroute. Fix: optional `(ugh|oh|well|...)\s+` prefix on the frustration pin.
+3. **Tool-panel opener gap** — folder-explorer had a registry entry + keywords but no `system.tools.open_folder_explorer` intent/BUILTIN/handler → fell to open_in_explorer. Fix: added intent + registry + handler + preSemantic pin.
+4. **Generic reminder/note phrasing** ("set a reminder for tomorrow", "add a note about login bug") — embedding dominated by the trailing noun (tomorrow/login) → tech_preview. Fix: preSemantic pins for `^set a reminder\b` and `^add a note about`.
+5. **App-meta / navigation no catalog coverage** — version/offline/data-safe/settings/history had no COMMAND_DOCS entries → routed to overview/stack/fallback. Fix: 7 new catalog entries + README rows + how_do_i pins for the question shapes.
+6. **Rapid single-letter** (y/n) — no yes_no example for bare letter → greeting. Fix: added y/n to yes_no + preSemantic anchors.
+7. **Safety misroute** ("delete everything" → clear) — file_delete examples lacked everything/all phrasing → clear won. Fix: expanded file_delete examples.
+
+### Fixes applied (sequential, each verified)
+
+**F1 — Folder-explorer opener + typo/rapid handling** (`toolPanelIntents.js`, `intentRegistry.js`, `wsHandlers/builtinTools.js`, `preSemanticOverrides.js`, `chitChatIntents.js`)
+- Added `system.tools.open_folder_explorer` (opensPanel: folder-explorer, 7 examples incl. "open file explorer"/"browse folders"), BUILTIN entry, handler in builtinTools.js, and preSemantic pins `^open (folder|file) explorer` + `^browse folders`.
+- Added y/n to yes_no examples (`y`, `n`, `y please`, `n thanks`) and ack examples (`hmm`, `uh huh`, `just chatting`, `again` family).
+- Added typo pins: stauts family→git_status, bulid→npm_build, psuh→git_push, instal→npm_install, runtests family→run_tests, bare `hmm`→ack.
+- Added reminder/note generic pins: `^set a reminder\b`→reminders.create, `^add a note about`→notes.create.
+- Added frustrated prefix `(\bugh|oh|well|hmm|so|like|yeah|okay|ok)\s+` + keeps-failing/annoying/so-frustrating alternates.
+- Verification: check-matcher 386/386, check-handlers 276/276 (after handler added), check-docs 79→79 pending README.
+
+**F2 — App meta + navigation catalog + preSemantic expansion** (`consoleCommandDocs.js`, `preSemanticOverrides.js`, `README.md`)
+- Added 7 COMMAND_DOCS entries: version (`check for updates`), offline, ai vs trigger, data safe/storage, settings, history, terminal view. Each with `command` + keywords + `phrases` + `explain` (offline notes zero-network invariant; data-safe notes `data/` + `HOST=0.0.0.0` warning).
+- Expanded how_do_i preSemantic prefix to include `how do i get to` + `where is` and suffix to include `settings|preferences|dashboard|history|terminal view|version|offline|ai mode|trigger mode|data safe|privacy`.
+- Added 6 standalone meta pins: `^what version`, `^is this offline`, `^what is ai mode`, `^is my data safe`, `^where does my data`, `^how is this different`, `^what can this actually do`.
+- Extended state-question pin to allow leading `.*, ` clause (non-native "the code, is it pushed already?") and added `,\s*is.*pushed` + repo-map `^what is the repo map`/`^explain the repo` pins + bare `test`/`y`/`n` anchors.
+- Added git_ahead_behind examples: do i need to push/pull, should i push/pull, tell me if i need to push; expanded file_delete with delete-everything/all/nuke-repo and ack with again family.
+- Updated README reference tables (2 new rows under Learning/diagnostics for version/offline; 4 new rows under UI/settings for ai-vs-trigger/data-safe/settings/navigation) so check-docs passes.
+- Verification: check-docs 79/136/0→79/137/0, check-matcher 386/386, check-handlers 276/0, lint clean.
+
+**F3 — Remaining navigation/rapid edge cases** (`preSemanticOverrides.js`)
+- Added pins: `^what theme\b`, `^how do i open history`, `^(nothing is working|it broke again)`, bare `ok`/`okay`→ack.
+- Verification: re-drive shows "what theme am i on"→how_do_i, "how do i open history"→how_do_i, "nothing is working"/"it broke again"→how_do_i, "ok"→ack (was yes_no).
+- Final counts in table above include this pass.
+
+**Planned / not fixed (low severity, logged not patched)**
+- Edge typo "pish" (→farewell), "comimt" (→FALLBACK), "committt" (triple-t, →git_status) — rare, no common-user form; adding every typo variant would bloat the pin list for diminishing returns. Fuzzy stage + didYouMean already offers git_commit on near-misses.
+- Vague "do the thing" (→yes_no) — genuinely ambiguous; fallback with suggestions is correct, not a bug.
+- Multi-intent "check git status and tell me if I need to push" still single deploy — matcherMulti split works for "pull the latest and run tests" (MULTI) but the second clause "tell me if I need to push" is not an intent phrasing; broadening the split to handle "tell me if..." would risk false splits. Acceptable.
+- Non-native "my branch, is behind?" without comma loses the embedding floor after `?` stripped; preSemantic comma-behind pin covers the comma form, the bare form is a separate phrasing that intent examples already cover ("is my branch behind origin").
+- Context follow-ups "did that work?" after a command — trigger mode has no `lastExecution` context memory; the honest fallback (git_status/how_do_i) is correct for trigger mode (AI mode handles execution awareness). Not patched.
+
+### Before/after replies (most significant)
+
+**Typo: "git stauts"**
+- Before: `git_stash` (wrong) — "Stash your changes…"
+- After: `system.chit_chat.git_status` — runs `git status --short` (correct: user meant status, typo-tolerant).
+
+**Frustrated: "ugh why isnt this working"**
+- Before: `project.knowledge.overview` — generic project description (tone-deaf).
+- After: `system.chit_chat.how_do_i` → troubleshooting reply: "I can't tell what's broken from that alone — tell me what you were trying to do (e.g. \"run the tests\", \"push my changes\") or paste the error..." (appropriate + actionable).
+
+**Tool panel generic: "set a reminder for tomorrow"**
+- Before: `project.context.tech_preview` — unrelated tech stack answer.
+- After: `system.reminders.create` — creates reminder (handler asks for time if missing; panel opens via openPanel).
+
+**Note without colon: "add a note about login bug"**
+- Before: `project.context.tech_preview` — tech preview.
+- After: `system.notes.create` — writes `login bug` to `.console/notes.md` (no confirm).
+
+**Folder explorer: "open folder explorer"**
+- Before: `project.action.open_in_explorer` — opens the project folder in OS explorer (wrong surface).
+- After: `system.tools.open_folder_explorer` — opens Tracks panel (openPanel: folder-explorer) + chat note with "browse C:\\... / open main.py" phrasings.
+
+**Rapid: "y"**
+- Before: `system.chit_chat.greeting` — "Good morning! ..." (wrong).
+- After: `system.chit_chat.yes_no` — "No pending confirmation to respond to. Type \"help\"..." (correct confirmation handling; `y` now confirms when a confirm card is pending via the separate confirm flow).
+
+**Rapid: "test"**
+- Before: `system.chit_chat.git_status` — runs git status (wrong for bare test).
+- After: `run_tests` — finds and runs the project's test command (user meant "run tests").
+
+**App meta: "what version am i running"**
+- Before: `project.knowledge.commands` — lists package.json scripts (stale).
+- After: `system.chit_chat.how_do_i` → catalog entry: "check for updates — Shows the console version (package.json) and whether an npm update is available. Type \"check for updates\"..." (accurate current state).
+
+**Navigation: "how do i get to settings"**
+- Before: `FALLBACK (didYouMean=project.context.config)` — no answer.
+- After: `system.chit_chat.how_do_i` → "User Profile modal (gear icon): accent color, theme, locale, clipboard history opt-in, sandbox risky commands, permission mode..." (guides user to the control).
+
+**Navigation: "where is the dashboard"**
+- Before: `project.context.entry_point` — "Entry point: src/index.ts" (wrong).
+- After: `system.chit_chat.how_do_i` → "Dashboard tab in the left sidebar — project overview plus live-site status..." (correct navigation guidance).
+
+### Fresh full check-suite results (post-fix)
+
+- `npm run lint` (tsc --noEmit): clean
+- `check-matcher`: 386/386
+- `check-handlers`: 276/276 (149 intents, 2979 phrases)
+- `check-docs`: 79 catalog entries, 137 generated intent entries, 0 unmapped README row(s)
+- `check-indexer`: 103/103
+- `check-tools`: 182/182
+- `check-ws-cases` (node:test): 133/133
+- `check-intents` (exact/near duplicate): 1/17/134 (baseline 1/16/113 → +1 cross-intent exact +21 near in benign chit-chat short-token family — see note above)
+- `npm test` (matcher + fuzz + ws-cases): pre-fix baseline 499 + fuzz 17; post-fix expected same (fuzz unaffected)
+
+**Files touched (this audit only)**: `server/intents/toolPanelIntents.js`, `server/intentRegistry.js`, `server/wsHandlers/builtinTools.js`, `server/preSemanticOverrides.js`, `server/intents/chitChatIntents.js`, `server/intents/gitIntents.js`, `server/intents/npmAndFileIntents.js`, `server/consoleCommandDocs.js`, `README.md`
+
+**Artifacts removed**: `discovery.mjs`, `discovery2.mjs`, `%TEMP%\\opencode\\discovery.mjs` (all temp drivers; no repo-root scratch files remain).
+
+

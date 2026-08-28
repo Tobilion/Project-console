@@ -11,7 +11,12 @@ function matchStatsPhrases(input) {
   const i = input.toLowerCase();
   return (
     i === 'review match quality' || i === 'match quality' || i === 'match stats' ||
-    i === 'review matching quality' || i === 'show match quality'
+    i === 'review matching quality' || i === 'show match quality' ||
+    // 2026-08-26 live crosscheck: "review the match stats" fell through the admin tier and
+    // the command guesser CONFIRMED `type "match stats"` (the Windows TYPE binary) — a
+    // nonsense command for a stats-review request. The natural variants now reach the tier.
+    i === 'review the match stats' || i === 'review match stats' ||
+    i === 'check match quality' || i === 'check match stats' || i === 'check matching quality'
   );
 }
 

@@ -210,6 +210,8 @@ export const GIT_INTENTS = {
       'is my branch behind the remote', 'check if i am behind origin',
       'is my work synced with the remote', 'is my branch up to date',
       'is my code in sync with the remote', 'am i up to date with origin',
+      'do i need to push', 'do i need to pull', 'should i push', 'should i pull',
+      'tell me if i need to push', 'do i have anything to push',
     ],
   },
   'git_tag': {

@@ -37,7 +37,17 @@ export { getFallbackSuggestions } from './matchHelpers.js';
  *  eligible here — that branch stays below, untouched. */
 export function isNlpBuiltinEligible(intent, input) {
   if (!BUILTIN_INTENTS.has(intent)) return false;
-  if ((intent.startsWith('system.chit_chat.') || intent.startsWith('project.context.')) && isTrustworthyChitChat(intent, input)) return true;
+  // 2026-08-26 live crosscheck: the NLP classifier is the pipeline's weakest stage (flat 0.45
+  // gate, no margin — its documented failure mode on out-of-distribution input), and it
+  // dispatched `deploy` for "why isnt this working", firing the git-push CONFIRM on a
+  // frustration question. This stage may only dispatch canned chit-chat, read-only knowledge
+  // intents, and the read-only project.context.* diagnostics (entry_point/structure/tests/
+  // dev_server_status/... — none of them execute or confirm anything); every EXECUTING intent
+  // claimed by this stage on input the semantic tier already failed is the trap class it was
+  // never meant to decide. git_status is excluded too — it runs a command, and this stage
+  // cannot be trusted to pick it.
+  if (PURE_CHITCHAT_INTENTS.has(intent) && isTrustworthyChitChat(intent, input)) return true;
+  if (intent.startsWith('project.context.') && isTrustworthyChitChat(intent, input)) return true;
   return KNOWLEDGE_CANON_MAP[intent] !== undefined && isTrustworthyKnowledgeIntent(intent, input);
 }
 
@@ -47,7 +57,43 @@ const KNOWLEDGE_CANON_MAP = {
   'project.knowledge.commands': 'project.knowledge.commands',
   'project.knowledge.gotchas': 'project.knowledge.gotchas',
   'project.knowledge.architecture': 'project.knowledge.architecture',
+  'project.knowledge.repo_map': 'project.knowledge.repo_map',
+  'project.knowledge.ask_documents': 'project.knowledge.ask_documents',
 };
+
+// Intents that execute a command, mutate the project, or open a confirm card. A QUESTION-shaped
+// input must never reach one through the semantic/fuzzy/NLP stages — the how_do_i and
+// state-question pre-semantic pins own the covered shapes ("how do i push", "did i push yet"),
+// and every uncovered question shape (why/frustration wording) falls through to the fallback
+// + suggestions instead of firing an action. Read-only diagnostics (git_status, git_log,
+// dev_server_status, project.context.tests, ...) are deliberately NOT in this set: "why is the
+// server down" honestly answers from a URL probe, "what went wrong" from git status.
+const QUESTION_BLOCKED_INTENTS = new Set([
+  'system.chit_chat.deploy', 'system.chit_chat.undo',
+  'git_push', 'git_commit', 'git_commit_push', 'git_pull', 'git_fetch', 'git_add',
+  'git_rm_cached', 'git_remote_add', 'git_init', 'git_ignore_add', 'git_tag',
+  'git_branch_create', 'git_stash', 'git_stash_pop', 'git_checkout',
+  'run_project', 'npm_run', 'run_tests', 'npm_install', 'npm_build',
+  'file_create', 'file_append', 'file_delete', 'file_write',
+  'project.workflow.checkpoint', 'backup.create', 'general.files.tidy',
+  'general.files.duplicates_delete', 'general.files.rename', 'general.files.move',
+  'pdf.merge', 'pdf.split', 'pdf.extract_pages', 'pdf.watermark',
+]);
+
+// Question/frustration markers: an input leading with one of these asks about state or help —
+// it never issues an action. Read-only intent winners stay dispatchable ("what changed" →
+// git_status), executing/confirming winners are dropped to the fallback. The pins above run
+// BEFORE this check, so every covered question shape keeps its intended answer ("did i push
+// yet" → git_status, "can i undo that" → how_do_i). "can/could/would/should YOU" forms are
+// deliberately NOT markers — "can you help me add a file" is a polite request, not a
+// question; "can/could/would/should i" are pinned to how_do_i for every action verb the
+// catalog covers, so they need no guard entry here.
+const QUESTION_MARKER_RE = /^(?:why|when|where|who|how|what|whats|what'?s)\b|^(?:did|have|has|had|was|were|is|are|do|does)\s+(?:i|we|you|it|the|this|that|my|your|their|our)\b|^(?:should|would)\s+(?:i|we)\b|^am\s+i\b/i;
+
+function questionBlocksExecuting(input, intent) {
+  if (!QUESTION_BLOCKED_INTENTS.has(intent)) return false;
+  return QUESTION_MARKER_RE.test(input.trim());
+}
 
 /** Unified 3-stage matching pipeline:
  *  1. Semantic (embedding cosine similarity — highest confidence)
@@ -160,6 +206,7 @@ export async function matchInput(input, project, projectIndex, options = {}) {
       // 1b. Builtin intent match
       if (
         BUILTIN_INTENTS.has(semanticResult.intent) &&
+        !questionBlocksExecuting(input, semanticResult.intent) &&
         isTrustworthyChitChat(semanticResult.intent, input) &&
         isTrustworthyKnowledgeIntent(semanticResult.intent, input)
       ) {
@@ -236,7 +283,7 @@ export async function matchInput(input, project, projectIndex, options = {}) {
   if (nlpResult && nlpResult.score >= 0.45) {
     const intent = nlpResult.intent;
 
-    if (isNlpBuiltinEligible(intent, input)) {
+    if (isNlpBuiltinEligible(intent, input) && !questionBlocksExecuting(input, intent)) {
       metrics.event({ type: 'match_result', input: input.slice(0, 80), outcome: 'nlp_builtin', duration: Date.now() - t0 });
       return { match: null, builtin: intent, suggestions: [], telemetryId };
     }

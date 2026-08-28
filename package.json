@@ -35,6 +35,7 @@
     "check-handlers": "node --import tsx server/scripts/checkHandlerCoverage.js",
     "check-ws-cases": "node --import tsx --test scripts/checkWsMessageCases.ts",
     "check-docs": "node --import tsx server/scripts/checkDocsSync.js",
+    "check-encoding": "node server/scripts/checkEncoding.js",
     "daemon": "node scripts/daemon.mjs",
     "daemon:start": "node scripts/daemon.mjs start",
     "daemon:stop": "node scripts/daemon.mjs stop",

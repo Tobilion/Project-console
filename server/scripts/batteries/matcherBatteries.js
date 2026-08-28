@@ -54,7 +54,7 @@ const BATTERIES = [
       ['run the network speed', 'ENTRY action=python main.py watch --interval {interval}'],
       ['run the tests', 'BUILTIN=run_tests'],
       // how_do_i's Phase 9 question-shape cluster ("how do you check git status" etc.) now sits
-      // within did-you-mean chip margin of the bare imperative â€” winner unchanged, chip added.
+      // within did-you-mean chip margin of the bare imperative — winner unchanged, chip added.
       ['check git status', 'BUILTIN=system.chit_chat.git_status(closeSecond=system.chit_chat.how_do_i)'],
       ['help', 'BUILTIN=system.chit_chat.help'],
       ['overview', 'BUILTIN=project.knowledge.overview'],
@@ -73,7 +73,7 @@ const BATTERIES = [
       ['where is main.py', 'BUILTIN=file_find'],
       ['find the config file', 'BUILTIN=file_find'],
       // Quirk (calibrated): the exact spec seed 'find the file main.py' loses to
-      // entry_point on real embeddings â€” pre-existing, not a regression. Fixing the
+      // entry_point on real embeddings — pre-existing, not a regression. Fixing the
       // routing (example trimming/override) is a deliberate behavior change, not a
       // split-safety issue, so the harness records current behavior until that lands.
       ['find the file main.py', 'BUILTIN=project.context.entry_point'],
@@ -113,6 +113,54 @@ const BATTERIES = [
       ['ask the ai', 'BUILTIN=system.chit_chat.needs_ai_mode'],
       ['list stashes', 'BUILTIN=git_stash_list'],
       ['show the stash', 'BUILTIN=git_stash_list'],
+    ],
+  },
+  {
+    name: 'AUDIT-2026-08-26 (yes/no state questions + commit token + whole-phrase multi guard)',
+    items: [
+      // Yes/no STATE questions must never fire the push/commit actions (pre-semantic pins).
+      ['did i push yet', 'BUILTIN=system.chit_chat.git_status'],
+      ['have i pushed recently', 'BUILTIN=system.chit_chat.git_status'],
+      ['is it pushed', 'BUILTIN=system.chit_chat.git_status'],
+      ['was it pushed', 'BUILTIN=system.chit_chat.git_status'],
+      ['did my push go through', 'BUILTIN=system.chit_chat.git_status'],
+      ['are my changes pushed', 'BUILTIN=system.chit_chat.git_status'],
+      ['did i commit', 'BUILTIN=system.chit_chat.git_status'],
+      ['is my work committed', 'BUILTIN=system.chit_chat.git_status'],
+      // Bare commit tokens (incl. the live typo) must offer the commit flow, not run status.
+      ['commit', 'BUILTIN=git_commit'],
+      ['comit', 'BUILTIN=git_commit'],
+      ['commit now', 'BUILTIN=git_commit'],
+      ['commit it', 'BUILTIN=git_commit'],
+      // Compound commit+push phrases are ONE intent (git_commit_push), not a split — the
+      // whole-phrase matchMulti guard keeps the split from firing on its own example.
+      ['commit and push', 'BUILTIN=git_commit_push'],
+      ['commit everything and push', 'BUILTIN=git_commit_push'],
+      // Genuine compound requests must still split.
+      ['pull the latest changes and then run the tests', 'MULTI[builtin=git_pull | builtin=run_tests]'],
+      // Bare "run tests" is pinned (was falling below the semantic floor into the fallback).
+      ['run tests', 'BUILTIN=run_tests'],
+      ['run test', 'BUILTIN=run_tests'],
+      // Frustration/why questions never fire executing intents: the weak NLP stage used to
+      // claim deploy on "why isnt this working" (git-push CONFIRM on a question — live) and
+      // fuzzy claimed run_tests on "why did that fail". Unspecified shapes pin to how_do_i
+      // (troubleshooting reply); specific why-shapes keep read-only diagnostics.
+      ['why isnt this working', 'BUILTIN=system.chit_chat.how_do_i'],
+      ['why did that fail', 'BUILTIN=system.chit_chat.how_do_i'],
+      ['what went wrong', 'BUILTIN=system.chit_chat.how_do_i'],
+      ['i give up, just show me the error', 'BUILTIN=system.chit_chat.how_do_i'],
+      ['this is broken again', 'BUILTIN=system.chit_chat.how_do_i'],
+      ['why is the server down', 'BUILTIN=project.context.dev_server_status'],
+      // Question-guard: executing intents are dropped for uncovered question shapes.
+      ['why is the push failing', 'FALLBACK(didYouMean=system.chit_chat.git_status)'],
+      ['why does deploy fail', 'FALLBACK(didYouMean=system.chit_chat.deploy)'],
+      ['should i push', 'BUILTIN=system.chit_chat.how_do_i'],
+      // Polite request forms are NOT questions — they keep their action routing.
+      ['can you help me add a file', 'BUILTIN=file_create'],
+      ['Can I attach the github link', 'BUILTIN=git_remote_add'],
+      // Undo questions pin to how_do_i (the catalog undo entry), never the undo action.
+      ['how do i undo that', 'BUILTIN=system.chit_chat.how_do_i'],
+      ['can i undo that', 'BUILTIN=system.chit_chat.how_do_i'],
     ],
   },
   {
@@ -188,12 +236,12 @@ const BATTERIES = [
   {
     name: 'GARBAGE (must not land on a confident intent)',
     items: [
-      // Still a fallback (no confident match) â€” only the chip target moved: how_to_run's Phase 9
+      // Still a fallback (no confident match) — only the chip target moved: how_to_run's Phase 9
       // site question cluster now owns the nearest intent for run-site-garbled input.
       ['please to running the site for me today', 'FALLBACK(didYouMean=project.knowledge.how_to_run)'],
       ['Call it jimmyjagz.md with tex :- "', 'FALLBACK'],
       ['gibberish qxzqwplk zzz', 'FALLBACK'],
-      ['asdfghjkl', 'FALLBACK'],
+      ['asdfghjkl', 'FALLBACK(didYouMean=system.chit_chat.ack)'],
     ],
   },
   {
@@ -216,10 +264,10 @@ const BATTERIES = [
     ],
   },
   {
-    // Phase 10 (2026-08-12): full-catalog command list â€” "list commands" / "help all" render
+    // Phase 10 (2026-08-12): full-catalog command list — "list commands" / "help all" render
     // every consoleCommandDocs entry (CLI equivalent of the web Command Reference tab).
     // "list all commands"/"show all commands" still route to help (its compact summary is a
-    // fine answer for those â€” both are command-list requests, no behavior loss).
+    // fine answer for those — both are command-list requests, no behavior loss).
     name: 'PHASE10 (command reference list)',
     items: [
       ['list commands', 'BUILTIN=system.chit_chat.list_commands'],
@@ -230,11 +278,11 @@ const BATTERIES = [
     ],
   },
   {
-    // Phase 14 (2026-08-12): i18n scaffolding â€” German POC phrases ADD to English. These rows
+    // Phase 14 (2026-08-12): i18n scaffolding — German POC phrases ADD to English. These rows
     // only apply when the profile locale is 'de' (the locale merge is a no-op for 'en', and
     // the harness must stay machine-independent); the English shapes must keep matching even
     // with the locale active (additive, never replace).
-    name: 'PHASE14 (i18n: de locale POC â€” active only when profile locale is de)',
+    name: 'PHASE14 (i18n: de locale POC — active only when profile locale is de)',
     activeWhen: () => {
       try {
         const raw = fs.readFileSync(path.join(process.cwd(), 'data', 'user-profile.json'), 'utf-8');
@@ -251,7 +299,7 @@ const BATTERIES = [
     ],
   },
   {
-    // Phase 6 (2026-08-12): expanded calculator grammar â€” unit conversion + percentage/tax/tip
+    // Phase 6 (2026-08-12): expanded calculator grammar — unit conversion + percentage/tax/tip
     // stay on the same calculate intent; the percent sign / unit words carry little embedding
     // weight, so these shapes are pinned by pre-semantic overrides.
     name: 'PHASE6 (expanded calculator: convert / percent / tip / tax)',
@@ -284,7 +332,7 @@ const BATTERIES = [
     ],
   },
   {
-    // Stage-level dispatch coverage for matcher.js itself (Phase 7, 2026-08-04) â€” the
+    // Stage-level dispatch coverage for matcher.js itself (Phase 7, 2026-08-04) — the
     // batteries above already route through matchInput(), but several branches had no
     // dedicated input: the stage-1b config-run-entry redirect positive path (winner
     // run_project/npm_run + bestProjectCommandEntry >= 0.55), trust-guard-blocked
@@ -292,11 +340,11 @@ const BATTERIES = [
     // and didYouMean presence on no-match fallbacks (needs a didYouMean display in fmt).
     name: 'MATCHER-DISPATCH (matcher.js stage-level, Phase 7)',
     items: [
-      // 1a â€” direct config-entry hits via semantic meta (project.action.*)
+      // 1a — direct config-entry hits via semantic meta (project.action.*)
       ['run one measurement', 'ENTRY action=python main.py once'],
       ['export the data', 'ENTRY action=python main.py export'],
       ['watch network at interval', 'ENTRY action=python main.py watch --interval {interval}'],
-      // 1a vs 1b config redirect â€” probe-calibrated pre-split (2026-08-04)
+      // 1a vs 1b config redirect — probe-calibrated pre-split (2026-08-04)
       ['start the flask server', 'ENTRY action=python main.py serve'],
       ['run the site please', 'BUILTIN=run_project'],
       ['start netpulse', 'ENTRY action=python main.py serve'],
@@ -304,7 +352,7 @@ const BATTERIES = [
       ['run the tests and watch network', 'MULTI[builtin=run_tests | entry=python main.py watch --interval {interval}]'],
       // Trust guards: filename/quote-bearing chit-chat must not land on the chit-chat intent.
       // Phase 1.5 (2026-08-11): the didYouMean target for the .pdf example moved from file_read
-      // to system.tools.open_pdf_tools â€” the new opener's phrases own the "pdf" token, and a
+      // to system.tools.open_pdf_tools — the new opener's phrases own the "pdf" token, and a
       // pdf-named file suggesting the PDF-tools panel is the intended direction of the feature
       // (the row still pins the guard itself: FALLBACK, never chit-chat).
       ['thanks for the file report.pdf', 'FALLBACK(didYouMean=system.tools.open_pdf_tools)'],
@@ -318,7 +366,7 @@ const BATTERIES = [
     // command to / what is the command to" question shapes route to the how_do_i catalog
     // (which now answers with the real shell command + example phrases + a run chip), while
     // site/server-flavored run questions route to how_to_run (project-specific commands).
-    // The guard rows pin the imperative launch family â€” after how_to_run gained
+    // The guard rows pin the imperative launch family — after how_to_run gained
     // site/server-shaped question examples, bare "run the site" drifted onto how_to_run and
     // a PRE_SEMANTIC_OVERRIDE had to win it back for run_project (see preSemanticOverrides.js).
     name: 'HOWTO (Phase 9 question shapes + imperative guards)',
@@ -344,7 +392,7 @@ const BATTERIES = [
       ['command to see the dashboard', 'BUILTIN=system.chit_chat.how_do_i'],
       // Question-shape guard rows (probe-verified 2026-08-11): these all previously misfired onto
       // EXECUTING intents (deploy/run_project/npm_build/status) because the "how to"/"command to"
-      // prefix carries no embedding weight â€” the PRE_SEMANTIC_OVERRIDES question rule above now
+      // prefix carries no embedding weight — the PRE_SEMANTIC_OVERRIDES question rule above now
       // catches them before the semantic stage. Answer-only, never execute.
       ['how to push my changes', 'BUILTIN=system.chit_chat.how_do_i'],
       ['how do you build the project', 'BUILTIN=system.chit_chat.how_do_i'],
@@ -384,14 +432,14 @@ const BATTERIES = [
       ['serve the site', 'BUILTIN=npm_run'],
       ['serve the site on port 3040', 'BUILTIN=npm_run'],
       ['run the tests', 'BUILTIN=run_tests'],
-      // The fixture's own "run tests" entry wins at 0.71 â€” a project-specific test command beats
+      // The fixture's own "run tests" entry wins at 0.71 — a project-specific test command beats
       // the generic builtin; without a matching entry this input routes to run_tests instead.
       ['run api tests', 'ENTRY action=python -m pytest'],
       ['run the numbers', 'BUILTIN=project.knowledge.commands'],
     ],
   },
   {
-    // NetPulse crosscheck (2026-08-17): "How do I publish" fired the deploy git-push confirm â€”
+    // NetPulse crosscheck (2026-08-17): "How do I publish" fired the deploy git-push confirm —
     // deploy's example cluster owns publish-shaped phrases and "publish" was missing from the
     // question-shape override's verb list. Question shapes now pin to how_do_i (the catalog
     // answers push-to-github first, npm publish as the suggestion); the imperative guard row
@@ -404,7 +452,7 @@ const BATTERIES = [
       ['how to publish my changes', 'BUILTIN=system.chit_chat.how_do_i'],
       ['what is the command to publish', 'BUILTIN=system.chit_chat.how_do_i'],
       ['command to publish to npm', 'BUILTIN=system.chit_chat.how_do_i'],
-      // imperative guard: publishing to production IS the deploy flow â€” checkpoint + git push
+      // imperative guard: publishing to production IS the deploy flow — checkpoint + git push
       ['publish to production', 'BUILTIN=system.chit_chat.deploy'],
     ],
   },
@@ -418,14 +466,14 @@ const BATTERIES = [
       ['which file handles the websocket connections', 'BUILTIN=project.code.search'],
       ['where is the database code', 'BUILTIN=project.code.search'],
       // Name-shaped "where is X" must NOT leave file_find (locates by file NAME, different
-      // contract â€” code.search is about code inside files).
+      // contract — code.search is about code inside files).
       ['where is main.py', 'BUILTIN=file_find'],
     ],
   },
   {
     name: 'GENERAL-FILES (Phase 2 general-mode file tools)',
     items: [
-      // Content-search shapes route to general.files.find â€” file_find is locate-by-name and
+      // Content-search shapes route to general.files.find — file_find is locate-by-name and
       // must not steal them ("search my files for X" names content, not a file).
       ['search my files for budget', 'BUILTIN=general.files.find'],
       ['search for rent in my files', 'BUILTIN=general.files.find'],
@@ -444,7 +492,7 @@ const BATTERIES = [
       ['organize my files by date', 'BUILTIN=general.files.tidy'],
       ['sort these files by type', 'BUILTIN=general.files.tidy'],
       // Phase 2 audit: the panel's move-preview table sends an explicit file list after a
-      // colon â€” pinned by a pre-semantic override (the filenames dominate the vector).
+      // colon — pinned by a pre-semantic override (the filenames dominate the vector).
       ['tidy this folder: pic.jpg', 'BUILTIN=general.files.tidy'],
       ['tidy this folder: pic.jpg, doc.pdf', 'BUILTIN=general.files.tidy'],
       // Duplicates: find vs delete must split cleanly.
@@ -470,13 +518,13 @@ const BATTERIES = [
   },
   {
     // Phase 3 (2026-08-11): the .pdf-bearing merge/extract/watermark shapes are pinned by
-    // PRE_SEMANTIC_OVERRIDES (preSemanticOverrides.js) â€” "merge alpha.pdf and beta.pdf into
+    // PRE_SEMANTIC_OVERRIDES (preSemanticOverrides.js) — "merge alpha.pdf and beta.pdf into
     // combined.pdf" was confirmed live routing to system.chit_chat.deploy, whose example
     // clusters own every "merge ... into ..." shape. The override makes these rows
     // machine-independent; the no-pdf guard rows below stay embedding-driven by design.
     name: 'PDF (Phase 3 PDF toolkit intents)',
     items: [
-      // Merge family â€” every shape lands on pdf.merge, not git_add/deploy.
+      // Merge family — every shape lands on pdf.merge, not git_add/deploy.
       ['merge these pdfs into combined.pdf', 'BUILTIN=pdf.merge'],
       ['merge a.pdf and b.pdf into merged.pdf', 'BUILTIN=pdf.merge'],
       ['merge alpha.pdf and beta.pdf into combined.pdf', 'BUILTIN=pdf.merge'],
@@ -488,7 +536,7 @@ const BATTERIES = [
       ['split report.pdf at page 5', 'BUILTIN=pdf.split'],
       ['split the pdf at page 3', 'BUILTIN=pdf.split'],
       ['split this pdf into single pages', 'BUILTIN=pdf.split'],
-      // Extract-text family â€” .pdf-suffixed and pdf-noun shapes only; ".py"-suffixed inputs
+      // Extract-text family — .pdf-suffixed and pdf-noun shapes only; ".py"-suffixed inputs
       // stay away (verified: "extract text from main.py" routes to entry_point, not here).
       ['extract text from report.pdf', 'BUILTIN=pdf.extract_text'],
       ['extract the text from this pdf', 'BUILTIN=pdf.extract_text'],
@@ -502,7 +550,7 @@ const BATTERIES = [
       ['watermark the pdf with draft', 'BUILTIN=pdf.watermark'],
       ['add a watermark to this pdf', 'BUILTIN=pdf.watermark'],
       // Guards: non-PDF senses of the same verbs must not land on the toolkit (probe-verified
-      // 2026-08-11). Name-less pdf-verb inputs routing here is fine â€” the handlers only act on
+      // 2026-08-11). Name-less pdf-verb inputs routing here is fine — the handlers only act on
       // a resolved .pdf file and otherwise open the panel (Phase 1.5 convention).
       ['merge this branch into main', 'BUILTIN=project.context.entry_point'],
       ['merge my changes', 'BUILTIN=git_add'],
@@ -516,7 +564,7 @@ const BATTERIES = [
   },
   {
     // Phase 4 (2026-08-12): personal reminders. The create shapes are embedding-driven (no
-    // pre-semantic override â€” "remind me" is a distinctive verb, probe-verified); the list
+    // pre-semantic override — "remind me" is a distinctive verb, probe-verified); the list
     // and cancel shapes must not drift to the schedule admin tier (which is pre-matcher and
     // answers "schedule/list schedules/remove schedule" shapes directly, so no conflict).
     name: 'REMINDERS (Phase 4 reminder intents)',
@@ -647,7 +695,7 @@ const BATTERIES = [
   },
   {
     // Matchday-Exchange live session (2026-08-14): "what is the site about" triggered the
-    // deploy confirm (git push) and "what is the details of the site" landed on server status â€”
+    // deploy confirm (git push) and "what is the details of the site" landed on server status —
     // the "the site" token collision. The typo'd time questions drifted onto stack/git_status.
     // The pre-semantic overrides pin all five shapes; these rows make the regression visible.
     name: 'MATCHDAY-2026-08-14 (site-question + time-typo misroute set)',
@@ -662,7 +710,7 @@ const BATTERIES = [
     ],
   },
   {
-    // Phase T (2026-08-14): "open X.html in the browser" / "preview the page" â€” pinned by the
+    // Phase T (2026-08-14): "open X.html in the browser" / "preview the page" — pinned by the
     // pre-semantic open_html override (the open_file rule's filename pattern would otherwise
     // send .html names to the editor). Guards: the editor/repo/site owners keep their shapes.
     name: 'HTML-OPEN (Phase T open-in-browser set)',
@@ -675,7 +723,7 @@ const BATTERIES = [
       ['open the page in the browser', 'BUILTIN=project.action.open_html'],
       ['show the html file in the browser', 'BUILTIN=project.action.open_html'],
       ['view the html file', 'BUILTIN=project.action.open_html'],
-      // Any file type with an explicit browser mention opens in the browser (rule d) â€” the
+      // Any file type with an explicit browser mention opens in the browser (rule d) — the
       // OS association handles HTML (renders) and other types (open/download).
       ['open report.pdf in the browser', 'BUILTIN=project.action.open_html'],
       ['view main.py in the browser', 'BUILTIN=project.action.open_html'],
@@ -714,13 +762,13 @@ const BATTERIES = [
     ],
   },
   {
-    // Audit 2026-08-17: NLP-stage dispatch gate (isNlpBuiltinEligible). Unit rows â€” the full
+    // Audit 2026-08-17: NLP-stage dispatch gate (isNlpBuiltinEligible). Unit rows — the full
     // pipeline rarely reaches the NLP stage (semantic wins first), so the gate is asserted
     // directly: registered canned intents pass unless the input looks like a real request;
     // knowledge intents fail on file-naming queries; STALE ids (removed from the registry)
-    // and config-entry ids (project.action.N.M â€” resolved against config, never the registry)
+    // and config-entry ids (project.action.N.M — resolved against config, never the registry)
     // are never eligible.
-    name: 'NLP-GATE (isNlpBuiltinEligible â€” audit 2026-08-17)',
+    name: 'NLP-GATE (isNlpBuiltinEligible — audit 2026-08-17)',
     unit: true,
     items: [
       ['system.chit_chat.gratitude', 'thanks a lot', true],

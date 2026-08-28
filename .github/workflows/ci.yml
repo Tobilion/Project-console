@@ -52,3 +52,6 @@ jobs:
 
       - name: WS message-case coverage
         run: npm run check-ws-cases
+
+      - name: Encoding hygiene (mojibake guard)
+        run: npm run check-encoding

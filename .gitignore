@@ -92,3 +92,6 @@ desktop/stage/
 
 # Unattended-run execution plan (2026-08-26) — durable session record, never committed
 /.plans/
+
+# Local Project Console workspace mode (console-managed, not for git)
+console.config.json

@@ -6,12 +6,12 @@ import { ResultTable } from './spreadsheet/resultTable';
 import { cn } from '../lib/utils';
 import type { Project } from '../types';
 
-// Phase 7 (UPGRADE-ROADMAP.md, 2026-08-12): the Spreadsheet panel â€” Apple Numbers/Sheets
+// Phase 7 (UPGRADE-ROADMAP.md, 2026-08-12): the Spreadsheet panel — Apple Numbers/Sheets
 // reference (toolbar row above a real table: sticky header, zebra striping, hover rows,
 // sortable columns). Sum/Average/Count Run buttons compose the exact chat trigger command;
 // Filter renders the result in-panel from the same read-only csvTools.js path the chat
 // answer uses (GET /api/projects/:id/csv-filter), so the table and the terminal can never
-// diverge. Every evaluation still goes through the server-side CSV engine â€” no client-side
+// diverge. Every evaluation still goes through the server-side CSV engine — no client-side
 // reimplementation.
 
 interface CsvFile {
@@ -44,7 +44,7 @@ export function SpreadsheetPanel({ project, onSendMessage, tabId = null }: Sprea
   const [error, setError] = useState<string | null>(null);
   const [lastSent, setLastSent] = useState<string | null>(null);
   const [table, setTable] = useState<{ headers: string[]; rows: string[][] } | null>(null);
-  // Phase 5: file preview â€” first N rows + total row count, so the panel shows the data
+  // Phase 5: file preview — first N rows + total row count, so the panel shows the data
   // before any query runs (previously a dead zone until Sum/Average/Count/Filter).
   const [preview, setPreview] = useState<{ headers: string[]; rows: string[][]; total: number; truncated: boolean } | null>(null);
   const [sortCol, setSortCol] = useState<number | null>(null);
@@ -227,7 +227,7 @@ export function SpreadsheetPanel({ project, onSendMessage, tabId = null }: Sprea
               <Table size={16} />
             </div>
             <h2 className="text-sm font-semibold text-fg-strong tracking-wide uppercase">Spreadsheet</h2>
-            {project && <span className="text-xs text-fg-dim font-normal normal-case">â€” {project.name}</span>}
+            {project && <span className="text-xs text-fg-dim font-normal normal-case">— {project.name}</span>}
           </div>
           <button onClick={fetchFiles} className="p-1.5 text-fg-dim hover:text-fg-strong rounded-lg transition-colors" title="Refresh">
             <RefreshCw size={15} className={cn(loading && 'animate-spin')} />
@@ -242,7 +242,7 @@ export function SpreadsheetPanel({ project, onSendMessage, tabId = null }: Sprea
           </div>
         ) : (
           <>
-            {/* Drag-and-drop upload zone â€” dashed --border-strong, file-picker fallback */}
+            {/* Drag-and-drop upload zone — dashed --border-strong, file-picker fallback */}
             <div
               onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
               onDragLeave={() => setDragging(false)}
@@ -267,20 +267,20 @@ export function SpreadsheetPanel({ project, onSendMessage, tabId = null }: Sprea
                 }}
               />
               <p className="text-[13px] text-fg-muted">
-                {uploading ? 'Uploadingâ€¦' : dragging ? 'Drop it to upload' : 'Drag & drop a CSV into this project'}
+                {uploading ? 'Uploading…' : dragging ? 'Drop it to upload' : 'Drag & drop a CSV into this project'}
               </p>
               <button
                 onClick={(e) => { e.stopPropagation(); fileInputRef.current?.click(); }}
                 className="mt-1.5 text-[11px] text-accent-blue hover:underline"
               >
-                or pick a fileâ€¦
+                or pick a file…
               </button>
             </div>
 
             {/* Toolbar */}
             <div className="flex items-center gap-2 px-3 py-2 rounded-t-xl border border-border-soft border-b-0 bg-panel flex-wrap">
               <select value={selectedFile} onChange={(e) => { setSelectedFile(e.target.value); if (e.target.value) { fetchHeaders(e.target.value); fetchPreview(e.target.value); } setTable(null); setAggregate(null); }} className={selectCls}>
-                <option value="">Pick a CSVâ€¦</option>
+                <option value="">Pick a CSV…</option>
                 {files.map((f) => <option key={f.path} value={f.path}>{f.name}</option>)}
               </select>
               <select value={mode} onChange={(e) => { setMode(e.target.value as Mode); setTable(null); }} className={selectCls}>
@@ -290,7 +290,7 @@ export function SpreadsheetPanel({ project, onSendMessage, tabId = null }: Sprea
                 <option value="filter">Filter</option>
               </select>
               <select value={column} onChange={(e) => setColumn(e.target.value)} className={selectCls} disabled={headers.length === 0}>
-                <option value="">Columnâ€¦</option>
+                <option value="">Column…</option>
                 {headers.map((h) => <option key={h} value={h}>{h}</option>)}
               </select>
               {(mode === 'count' || mode === 'filter') && (
@@ -334,7 +334,7 @@ export function SpreadsheetPanel({ project, onSendMessage, tabId = null }: Sprea
               <div className="text-2xl font-semibold text-fg-strong font-mono">
                 {aggregate.op === 'average' ? aggregate.value.toFixed(2) : aggregate.value.toLocaleString()}
               </div>
-              <div className="text-[11px] text-fg-dim">{aggregate.file} â€” {aggregate.count} numeric row{aggregate.count === 1 ? '' : 's'}</div>
+              <div className="text-[11px] text-fg-dim">{aggregate.file} — {aggregate.count} numeric row{aggregate.count === 1 ? '' : 's'}</div>
             </div>
           </div>
         )}
@@ -347,11 +347,11 @@ export function SpreadsheetPanel({ project, onSendMessage, tabId = null }: Sprea
             sortCol={sortCol}
             sortAsc={sortAsc}
             onToggleSort={toggleSort}
-            footer={`${sortedRows.length} matching row${sortedRows.length === 1 ? '' : 's'} â€” click a header to sort.`}
+            footer={`${sortedRows.length} matching row${sortedRows.length === 1 ? '' : 's'} — click a header to sort.`}
           />
         )}
 
-        {/* Phase 5: file preview â€” first N rows render before any query runs, with a
+        {/* Phase 5: file preview — first N rows render before any query runs, with a
             truncation warning when the file is larger than the preview window. */}
         {preview && !table && !aggregate && (
           <ResultTable
@@ -363,10 +363,10 @@ export function SpreadsheetPanel({ project, onSendMessage, tabId = null }: Sprea
             footer={
               preview.truncated ? (
                 <span className="text-accent-orange">
-                  Large file â€” previewing the first {preview.rows.length} of {preview.total.toLocaleString()} rows. Run a filter for the full result set.
+                  Large file — previewing the first {preview.rows.length} of {preview.total.toLocaleString()} rows. Run a filter for the full result set.
                 </span>
               ) : (
-                <>{preview.total.toLocaleString()} row{preview.total === 1 ? '' : 's'} â€” click a header to sort.</>
+                <>{preview.total.toLocaleString()} row{preview.total === 1 ? '' : 's'} — click a header to sort.</>
               )
             }
           />

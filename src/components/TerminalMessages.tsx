@@ -57,7 +57,7 @@ interface TerminalMessagesProps {
   onCancel?: () => void;
   // Confirm cards render inline in the thread when the chat is the active view (the
   // App-level ConfirmCardsOverlay covers the panel/dashboard views where this thread
-  // is unmounted â€” see App.tsx).
+  // is unmounted — see App.tsx).
   pendingConfirm: { token: string; command: string } | null;
   onConfirm: (confirmed: boolean) => void;
   pendingToolConfirm: PendingToolConfirm | null;
@@ -69,10 +69,10 @@ interface TerminalMessagesProps {
   emptyStateActions: string[];
   onDidYouMeanPick?: (intent: string) => void;
   /** Dev-server site URLs the console has actually seen (server_url events + processes
-   *  polls) â€” the "Click here to open the site" chip is gated on these so arbitrary links
+   *  polls) — the "Click here to open the site" chip is gated on these so arbitrary links
    *  in messages (e.g. an Ollama endpoint inside an error text) never get one. */
   knownDevUrls: string[];
-  /** Phase 6 (2026-08-17): "load earlier" â€” visible while the buffer holds fewer stored
+  /** Phase 6 (2026-08-17): "load earlier" — visible while the buffer holds fewer stored
       messages than the session log contains; fetches the previous page and prepends. */
   historyHasMore?: boolean;
   onLoadEarlier?: () => void;
@@ -120,7 +120,7 @@ const TerminalMessagesComponent = ({
   }), [aiMode, onSendMessage]);
 
   // Auto-scroll to the newest message ONLY while the user is already at (or near) the bottom
-  // of the thread â€” scrolling up to re-read something must not be yanked back down by new
+  // of the thread — scrolling up to re-read something must not be yanked back down by new
   // output (M6/M22). The container owns both the scroll events and the anchor, so this lives
   // here instead of Terminal.tsx.
   const containerRef = useRef<HTMLDivElement>(null);
@@ -133,7 +133,7 @@ const TerminalMessagesComponent = ({
   }, []);
   useEffect(() => {
     // Phase 6: gate on the tail's identity+length. Mid-list updates (tool_start status,
-    // confirm-card state) rebuild the messages array but leave the tail untouched â€” those
+    // confirm-card state) rebuild the messages array but leave the tail untouched — those
     // must not trigger redundant scrollIntoView calls. A changed tail (new message, or a
     // stream flush that grew the last row) still scrolls exactly as before.
     const last = messages[messages.length - 1];
@@ -154,7 +154,7 @@ const TerminalMessagesComponent = ({
       {messages.length === 0 ? (
         <div className={`${centerCol} min-h-full flex flex-col items-center justify-center`}>
           <TerminalEmptyState greeting={emptyStatePrompt} actions={emptyStateActions} onAction={onSendMessage} />
-          {/* An empty thread still needs its confirm cards â€” a confirm-gated action can
+          {/* An empty thread still needs its confirm cards — a confirm-gated action can
               arrive with a fresh session (panel-triggered, then the user comes back here). */}
           <div className="w-full max-w-[85%] mt-4 space-y-3">
             <TerminalConfirmCards
@@ -171,7 +171,7 @@ const TerminalMessagesComponent = ({
       ) : (
       <div className={`${centerCol} space-y-3`}>
       {historyHasMore && (
-        // Phase 6: pagination â€” prepending shifts the thread, but the auto-scroll gate keys
+        // Phase 6: pagination — prepending shifts the thread, but the auto-scroll gate keys
         // on the tail's identity+length, so a loaded page never yanks the view.
         <div className="flex justify-center pt-1">
           <button
@@ -198,7 +198,7 @@ const TerminalMessagesComponent = ({
                 className={`${rowClass} px-3 py-2 text-xs text-accent-red/80 bg-accent-red/5 border border-accent-red/20 rounded-lg`}
               >
                 <AlertTriangle size={12} className="inline-block mr-1" />
-                Couldn't render this message â€” malformed or removed.
+                Couldn't render this message — malformed or removed.
               </div>
             }
           >
@@ -238,7 +238,7 @@ const TerminalMessagesComponent = ({
 
       {/* Gate on aiThinking OR aiThinkingText: stream_start (which the server sends before
           the model's thinking phase) clears aiThinking, so a reasoning trace that only ever
-          accumulated AFTER that event never rendered â€” the panel was hidden the entire time
+          accumulated AFTER that event never rendered — the panel was hidden the entire time
           the model was deliberating (audit 2026-08-06, Phase 3). The trace is cleared by the
           turn's final 'end', so the panel can't linger after the turn either. */}
       {(aiThinking || aiThinkingText) && (
@@ -269,7 +269,7 @@ const TerminalMessagesComponent = ({
         </motion.div>
       )}
 
-      {/* Trigger-mode busy indicator â€” requested directly after "run the site" gave no visual
+      {/* Trigger-mode busy indicator — requested directly after "run the site" gave no visual
           sign the console was still working on a slow-starting command (e.g. a dev server
           still booting), leaving no way to tell "still running" from "silently done". */}
       {commandPending && !aiThinking && (

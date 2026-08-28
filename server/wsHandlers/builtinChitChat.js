@@ -235,6 +235,20 @@ export const chitChatHandlers = {
       ws.send(JSON.stringify({ type: 'suggestions', data: pushTargetQuestion().chips }));
       return;
     }
+    // 2026-08-26 live crosscheck: unspecified frustration/why questions ("why isnt this
+    // working", "what went wrong", "i give up") used to fall onto executing intents (deploy
+    // confirm, run_tests) or the overview. They pin here; the console cannot know what
+    // broke from "this" alone, so the honest reply is a troubleshooting prompt — never a
+    // canned cheer, never an action. Specific why-shapes ("why is the server down") keep
+    // their read-only diagnostic intents and never reach this branch.
+    const FRUSTRATION_RE = /^(?:why\s+(?:is|isn'?t|isnt|are|aren'?t|arent|did|didn'?t|didnt|does|doesn'?t|doesnt|do|don'?t|dont|was|were|won'?t|wont|can'?t|cant|has|have|had|couldn'?t|couldnt|wouldn'?t|wouldnt)\s+(?:this|that|it|everything|nothing|anything|the\s+thing)\b|what\s+(?:went\s+wrong|happened|is\s+wrong)|(?:whats|what's)\s+wrong|this\s+is\s+broken|it'?s\s+broken|nothing\s+works|i\s+give\s+up|just\s+fix\s+it|fix\s+it\s+already)/i;
+    if (FRUSTRATION_RE.test(input)) {
+      ws.send(JSON.stringify({
+        type: 'answer',
+        data: `I can't tell what's broken from that alone — tell me what you were trying to do (e.g. "run the tests", "push my changes") or paste the error you saw, and I'll dig in. If something I ran failed, the error is usually in the last output block above.`,
+      }));
+      return;
+    }
     await answerDocMatches(ws, input, project);
   },
 

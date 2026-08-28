@@ -324,6 +324,21 @@ export const fileNpmHandlers = {
       return true;
     }
 
+    // Vague-input guard (2026-08-28): bare pronouns / generic nouns ("run the thing",
+    // "start it up", "run it", "open the project" with no qualifying noun) previously
+    // auto-executed the default dev script with no confirmation. Per user preference,
+    // vague inputs now surface a chip list via projectTypeSuggestions() instead of a
+    // silent auto-run — the user picks the concrete command from the chip.
+    const VAGUE_RUN_RE = /^(?:run|start|open|launch|boot)\s+(?:the\s+)?(?:thing|it(?:\s+up)?|something|whatever|stuff|that|this)\b/i;
+    // "open the project" is vague when the phrasing contains no specific site/server/app
+    // noun beyond the bare "project" — site/server-flavored variants ("open the site",
+    // "run the server") remain direct runs.
+    const isVagueOpenProject = /^open\s+the\s+project\s*$/i.test(input.trim());
+    if (VAGUE_RUN_RE.test(input) || isVagueOpenProject) {
+      await projectTypeSuggestions(ws, project, input, scripts);
+      return true;
+    }
+
     // Check for known dev/start scripts first
     if (scripts.dev) {
       executeCommand(applyRequestedPort('npm run dev', requestedPort, { script: scripts.dev, projectRoot: project.path }), runDir, ws, project.id);

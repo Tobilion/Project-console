@@ -123,4 +123,13 @@ export const toolsHandlers = {
       openPanel: panel.id,
     }));
   },
+  'system.tools.open_folder_explorer': async (ws, action) => {
+    const panel = getToolPanel(TOOL_PANEL_INTENTS[action].opensPanel);
+    if (!panel) return false;
+    ws.send(JSON.stringify({
+      type: 'answer',
+      data: `The ${panel.name} panel is an interactive web-UI browser for ANY folder on disk (header → Tools, or type this again). Pick a path, descend into subfolders (breadcrumb + back/forward), switch between Lines and Objects views, search the current folder by name, and open files in your IDE or default app, or reveal them in the OS explorer. From chat — including the CLI — the same browsing works as plain commands: \`open main.py\` / \`show main.py in explorer\` / \`open main.py with PyCharm\`.`,
+      openPanel: panel.id,
+    }));
+  },
 };

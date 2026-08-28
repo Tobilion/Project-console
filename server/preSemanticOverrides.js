@@ -32,7 +32,29 @@ export const PRE_SEMANTIC_OVERRIDES = [
   // shapes were entirely uncovered. The full question-helper set (can/would/could/should) and
   // the best-way prefix are covered now; `pus` (the live typo) too. All are unambiguous HOW
   // questions and must never execute or confirm.
-  { intent: 'system.chit_chat.how_do_i', pattern: /^(?:(?:how\s+(?:to|do\s+(?:you|i|we)|can\s+(?:i|we)|would\s+(?:i|we)|could\s+(?:i|we)|should\s+(?:i|we))\s+)|(?:what(?:'s|s| is) the (?:best|easiest) way to\s+)|(?:what\s+is\s+the\s+)?command\s+to\s+)(?:pus|push|commit|deploy|publish|build|(?:take|make)\s+a\s+backup|backup|remember|(?:make|write|add)\s+a\s+note|open\s+(?:an\s+old|a\s+previous|my\s+old)\s+chat|stop\s+the\s+server|open\s+in|show|make\s+a\s+checkpoint|see\s+(?:the\s+)?(?:dashboard|test\s+coverage|bundle)|switch\s+projects|change\s+the\s+theme|check\s+(?:git\s+status|the\s+console\s+health|collisions)|export|schedule|review|approve)/i },
+  { intent: 'system.chit_chat.how_do_i', pattern: /^(?:(?:how\s+(?:to|do\s+(?:you|i|we)|can\s+(?:i|we)|would\s+(?:i|we)|could\s+(?:i|we)|should\s+(?:i|we))\s+)|(?:what(?:'s|s| is) the (?:best|easiest) way to\s+)|(?:what\s+is\s+the\s+)?command\s+to\s+|(?:can|could|would|should)\s+(?:i|we)\s+|how\s+do\s+i\s+get\s+to\s+|where\s+is\s+(?:the\s+)?)(?:pus|push|commit|deploy|publish|build|undo|(?:take|make)\s+a\s+backup|backup|remember|(?:make|write|add)\s+a\s+note|open\s+(?:an\s+old|a\s+previous|my\s+old|my\s+previous|the\s+previous)\s+chat|stop\s+(?:the\s+server|it\b)|open\s+in|show|make\s+a\s+checkpoint|see\s+(?:the\s+)?(?:dashboard|test\s+coverage|bundle|history|terminal)|switch\s+projects|change\s+(?:the\s+)?(?:theme|accent\s+color)|check\s+(?:git\s+status|the\s+console\s+health|collisions)|settings?|preferences?|dashboard|history|terminal\s+view|export|schedule|review|approve|version|offline|ai\s+mode|trigger\s+mode|data\s+safe|privacy)/i },
+  // App meta questions (2026-08-28 audit): "what version am i running", "is this offline",
+  // "what is ai mode vs trigger mode", "is my data safe" all drifted to overview/stack/status
+  // because their nouns dominate the embedding. They are how_do_i catalog questions with their
+  // own entries — pin the question shapes so they answer from the catalog, never a project Q&A.
+  { intent: 'system.chit_chat.how_do_i', pattern: /^what\s+version\b/i },
+  { intent: 'system.chit_chat.how_do_i', pattern: /^is\s+this\s+offline\b/i },
+  { intent: 'system.chit_chat.how_do_i', pattern: /^what\s+is\s+ai\s+mode\b/i },
+  { intent: 'system.chit_chat.how_do_i', pattern: /^is\s+my\s+data\s+safe\b/i },
+  { intent: 'system.chit_chat.how_do_i', pattern: /^where\s+does\s+my\s+data\b/i },
+  { intent: 'system.chit_chat.how_do_i', pattern: /^how\s+is\s+this\s+different\s+from\b/i },
+  { intent: 'system.chit_chat.how_do_i', pattern: /^what\s+can\s+this\s+actually\s+do\b/i },
+  { intent: 'system.chit_chat.how_do_i', pattern: /^(?:turn\s+on|enable|disable|turn\s+off)\s+(?:sandbox|clipboard|accent|theme|permission)\b/i },
+  { intent: 'system.chit_chat.how_do_i', pattern: /^what(?:'s|s| is)\s+my\s+(?:permission\s+mode|theme|clipboard|accent)/i },
+  { intent: 'system.chit_chat.how_do_i', pattern: /^what\s+theme\b/i },
+  { intent: 'system.chit_chat.how_do_i', pattern: /^change\s+(?:my\s+)?accent\s+color\b/i },
+  { intent: 'system.chit_chat.how_do_i', pattern: /^how\s+do\s+i\s+open\s+history\b/i },
+  { intent: 'system.chit_chat.how_do_i', pattern: /^(?:nothing\s+is\s+working|it\s+broke\s+again)\b/i },
+  { intent: 'system.chit_chat.ack', pattern: /^\s*ok\s*\??\s*$/i },
+  { intent: 'system.chit_chat.ack', pattern: /^\s*okay\s*\??\s*$/i },
+  // "how do i set up ai mode" (live 2026-08-26) answered the status line — the needs_ai_mode
+  // intent owns the AI-setup questions; pin every set-up/turn-on/use-ai phrasing to it.
+  { intent: 'system.chit_chat.needs_ai_mode', pattern: /^(?:how\s+(?:do|can|would|should)\s+i\s+)?(?:set\s+up|turn\s+on|enable|activate|start|use)\s+(?:ai\s+mode|the\s+ai|ai\s+assistant|ai)\b/i },
   // Desktop build/release self-documentation (2026-08-25): "how do i rebuild the desktop app"
   // drifted to project.knowledge.how_to_run (answered with the scanned project's CLAUDE.md),
   // "how do i release an update" matched git_fetch and fired a CONFIRM PROMPT (git fetch), and
@@ -43,6 +65,7 @@ export const PRE_SEMANTIC_OVERRIDES = [
   { intent: 'system.chit_chat.how_do_i', pattern: /^how\s+(?:do|can|would|should)\s+i\s+(?:re)?build\s+(?:the\s+)?desktop\s+app\b/i },
   { intent: 'system.chit_chat.how_do_i', pattern: /^how\s+(?:do|can|would|should)\s+i\s+release\s+(?:an|a)\s+update\b/i },
   { intent: 'system.chit_chat.how_do_i', pattern: /^how\s+(?:do|can|would|should)\s+i\s+run\s+the\s+build\b/i },
+  { intent: 'system.chit_chat.how_do_i', pattern: /^how\s+(?:do|can|would|should)\s+i\s+.*\bapp\s+icon\b/i },
   // CI/embedding determinism (2026-08-25): two matcher rows drifted on the ubuntu CI runner
   // (a fresh model download produces slightly different floats than this Windows machine):
   // "push the site with the comment ..." flipped todos→git_push, and the multi-split parts of
@@ -76,6 +99,53 @@ export const PRE_SEMANTIC_OVERRIDES = [
   // confirm card. A leading negative/question marker routes those to normal matching instead
   // (the how_do_i rule above already owns the "how do i deploy" shapes).
   { intent: 'system.chit_chat.deploy', pattern: /^(?!.*\b(?:don'?t|dont|do\s+not|should\s+(?:i|we|you)|is\s+it|stop)\b).*(?:\bdeploy\b|\bpush\s+live\b)/i },
+  // 2026-08-26 live batch crosscheck: bare "commit" / "comit" routed to git_status by the
+  // fuzzy stage ("commit" prefix-matches git_status's "commit history" example) and RAN A
+  // STATUS CHECK instead of offering the commit flow. A bare commit token with no object is
+  // unambiguous in this app's domain — it is the commit action, never a status question
+  // ("what changed"/"any changes" own the status phrasings and are untouched). The same pin
+  // fixes the "commit" PART of conjunction splits ("commit and push" used to split into
+  // [git_status, deploy]); the whole-phrase matchMulti guard in matcherMulti.js keeps the
+  // compound itself on git_commit_push.
+  { intent: 'git_commit', pattern: /^com?mit\s*(?:it|now|everything|all|this|my changes|the changes|the code|my work)?$/i },
+  // 2026-08-26 live batch crosscheck: yes/no STATE questions about pushing/committing fired
+  // the ACTIONS — "did i push yet" opened the git-push confirm, "did i commit" opened the
+  // commit confirm, "have i pushed recently" landed on deploy. The how_do_i helper override
+  // covers how-can-would-should forms, but the English yes/no-past form ("did/have/is/was
+  // ... pushed?") carries the action verb with no question marker the embedding clusters can
+  // see. A leading did/have/is/was/are + a pushed/committed mention is unambiguous: a state
+  // question, answered by git status (which shows the ahead/behind state), never an action.
+  // Imperatives ("push", "commit now") don't start with these verbs and stay untouched.
+  // 2026-08-28 audit: non-native "the code, is it pushed already?" carries the same meaning
+  // but with a leading noun clause before the verb — allow an optional comma-prefixed lead-in.
+  { intent: 'system.chit_chat.git_status', pattern: /^(?:.*,\s*)?(?:did|have|has|had|was|were|is|are|do|does)\s+(?:i|we|you|my|it|the|this|that|everything|all|anything|nothing|any)\b.*\b(?:push(?:ed)?|commit(?:ted)?)\b/i },
+  { intent: 'system.chit_chat.git_status', pattern: /,\s*(?:is|are|was|were|did|have|has)\s+(?:it|this|that|my|the).*pushed/i },
+  { intent: 'system.chit_chat.how_do_i', pattern: /^what\s+is\s+the\s+repo\s+map\b/i },
+  { intent: 'system.chit_chat.how_do_i', pattern: /^explain\s+the\s+repo\b/i },
+  { intent: 'run_tests', pattern: /^\s*test\s*\??\s*$/i },
+  { intent: 'system.chit_chat.yes_no', pattern: /^\s*y\s*\??\s*$/i },
+  { intent: 'system.chit_chat.yes_no', pattern: /^\s*n\s*\??\s*$/i },
+  // 2026-08-26 live crosscheck: "why isnt this working" fired the DEPLOY CONFIRM (git push) —
+  // the weak NLP stage claimed deploy on a frustration question. Unspecified frustration/
+  // why-question shapes pin to how_do_i, whose handler answers a troubleshooting reply for
+  // them (it cannot know what "this" is, and says so) — never a canned cheer, never an
+  // action. Deliberately limited to UNSPECIFIC subjects ("this/that/it/everything") so
+  // "why is the server down" keeps its read-only dev_server_status probe and "why is my
+  // push failing" falls to the fallback (safe) instead of the generic text.
+  // 2026-08-28 audit: "ugh why isnt this working" and "this keeps failing" were missed —
+  // leading filler (ugh/oh/well/hmm/so) and the keeps-failing phrasing are the same unspecified
+  // frustration class. Prefix is optional and non-capturing so specific why-shapes stay below.
+  { intent: 'system.chit_chat.how_do_i', pattern: /^(?:(?:ugh|oh|well|hmm|so|like|yeah|okay|ok)\s+)*(?:why\s+(?:is|isn'?t|isnt|are|aren'?t|arent|did|didn'?t|didnt|does|doesn'?t|doesnt|do|don'?t|dont|was|were|won'?t|wont|can'?t|cant|has|have|had|couldn'?t|couldnt|wouldn'?t|wouldnt)\s+(?:this|that|it|everything|nothing|anything|the\s+thing)\b|what\s+(?:went\s+wrong|happened|is\s+wrong)|(?:whats|what's)\s+wrong|this\s+is\s+broken|it'?s\s+broken|nothing\s+works|i\s+give\s+up|just\s+fix\s+it|fix\s+it\s+already|this\s+keeps\s+failing|it\s+keeps\s+failing|this\s+is\s+annoying|it'?s\s+annoying|so\s+frustrating)/i },
+  // "why is the server down"-shaped questions answer from a read-only URL probe, never from
+  // the stack/overview or an action (live 2026-08-26: the why-frustration pin deliberately
+  // leaves specific nouns alone, and the semantic stage drifted this one to stack).
+  { intent: 'project.context.dev_server_status', pattern: /^why\s+is\s+(?:the\s+)?(?:server|site|app|api|backend)\s+(?:down|not\s+running|not\s+working|offline)\b/i },
+  // 2026-08-26 live batch crosscheck: bare "run tests" (no article) fell below the semantic
+  // floor and dead-ended on the fallback (which offered "run tests" as a chip) — the short
+  // form is the one a hurried user actually types. The pin is exact-phrase narrow so
+  // project-specific test entries ("run api tests" on a project with its own config entry)
+  // keep winning their own triggers.
+  { intent: 'run_tests', pattern: /^run\s+tests?$/i },
   // Confirmed live: "add a file" / "can you help me add a file" (no filename, no git
   // context) was resolving to git_add instead of file_create — both intents' example
   // phrases share the bag-of-words "add" + "file(s)", and git_add's semantic-embedding
@@ -152,6 +222,9 @@ export const PRE_SEMANTIC_OVERRIDES = [
   // won those). The editor-name capture is deliberately loose (a-z0-9 spaces +._-).
   { intent: 'project.action.open_with', pattern: /^(?:open|open\s+up|open\s+me|launch)\b(?!(?:.*\b(?:explorer|folder|directory|site|website|url|link|github|vs\s*c?ode|vscode|cursor|browser|preview)\b))(?=[\s\S]*\b[\w./-]+\.[a-zA-Z0-9]{1,10}\b)(?=[\s\S]*\b(?:with|in)\s+(?:the\s+)?(?:default\s+)?[a-z][a-z0-9 .+_-]*\s*$)/i },
   { intent: 'project.action.reveal_file', pattern: /^(?:open|open\s+up|open\s+me|show|reveal|locate)\b(?!(?:.*\b(?:github|vs\s*c?ode|vscode|cursor|browser|editor)\b))(?=[\s\S]*\b[\w./-]+\.[a-zA-Z0-9]{1,10}\b)(?=[\s\S]*\b(?:in\s+the\s+folder|in\s+file\s+explorer|in\s+explorer)\b)/i },
+  { intent: 'backup.create', pattern: /^backup\s+(?:this\s+|the\s+|my\s+)?(?:project|folder)\b/i },
+  { intent: 'backup.create', pattern: /^create\s+a\s+backup\b/i },
+  { intent: 'backup.create', pattern: /\bzip\s+this\s+project\b/i },
   // Phase 8 follow-up (2026-08-24): "rename X to Y" / "move X into Y" where X is a FILE-shaped
   // token (a bare "file" noun or an extension-bearing name). Probed live: the embedding stage
   // routes those correctly, but abstract nouns drift ("rename the site to production" → deploy,
@@ -209,12 +282,21 @@ export const PRE_SEMANTIC_OVERRIDES = [
   // leading "remind me" is unambiguous in this app's domain — it is always a reminder
   // request, and the create handler asks for the when/what it's missing. Deliberately
   // anchored to the start; "set a reminder" shapes verified routing correctly without it.
+  // 2026-08-28 audit: "set a reminder for tomorrow" (generic, no time) still drifted to
+  // tech_preview — the "set a reminder" + time-word prefix is the same unambiguous class.
   { intent: 'system.reminders.create', pattern: /^remind\s+me\b/i },
+  { intent: 'system.reminders.create', pattern: /^set\s+a\s+reminder\b/i },
   // Phase 2 catch-up (2026-08-12, probe-verified): "open file tools" / "open the file
   // tools" is unambiguous in this app's domain — it opens the File Tools panel. Without
   // this override the open_file literal rule below catches "file" and routes to
   // project.action.open_file (which asks "Which file?"). Placed BEFORE the open_file rule.
   { intent: 'system.tools.open_file_tools', pattern: /^open\s+(?:the\s+)?file\s+tools(?:\s+panel)?$/i },
+  // 2026-08-28 audit: "open folder explorer" / "open file explorer" had no dedicated intent
+  // and fell to open_in_explorer (the project folder). The explorer panel is a first-class
+  // Tools surface with its own opener — same class as the file-tools pin above. Must sit
+  // before the open_in_explorer territory.
+  { intent: 'system.tools.open_folder_explorer', pattern: /^open\s+(?:the\s+)?(?:folder|file)\s+explorer(?:\s+panel)?$/i },
+  { intent: 'system.tools.open_folder_explorer', pattern: /^browse\s+(?:a\s+)?folders?$/i },
   // Phase 2 audit (2026-08-12, probe-verified): the File Tools panel's move-preview table
   // sends "tidy this folder: <explicit file list>" — the colon + filenames after the verb
   // dominate the vector and the input drifts onto project.context.structure. A leading
@@ -232,10 +314,27 @@ export const PRE_SEMANTIC_OVERRIDES = [
   // low in the embedding stage because the trailing nouns dominate the vector — same trap
   // as the "remind me" override. A leading "note:" / "add a note:" / "write a note:" /
   // "jot down:" prefix is unambiguous — it is always a note-creation request.
+  // 2026-08-28 audit: "add a note about login bug" (no colon) and similar task-phrased notes
+  // dominate the vector with the topic noun and drift to tech_preview. The about-phrasing is
+  // the same unambiguous note-create class — no colon needed when the verb + note noun is present.
   { intent: 'system.notes.create', pattern: /^(?:note|add\s+a\s+note|write\s+a\s+note|jot\s+down)\s*:/i },
+  { intent: 'system.notes.create', pattern: /^(?:add|create|make|write)\s+a\s+note\s+(?:about|on|for)\s+\S/i },
   // Same class of trap for note SEARCH: "search my notes for <free text>" — the query
   // terms after "for/about/with" dominate the vector. The prefix is unambiguous.
   { intent: 'system.notes.search', pattern: /^(?:search|find)\s+(?:my\s+)?notes?\s+(?:for|about|with)\s+\S/i },
+  // Typo tolerance (2026-08-28 audit): the most common typo/mangled forms of high-traffic
+  // intents that repeatedly drifted onto the wrong cluster in the live audit. The embedding
+  // stage treats a 1-2 char typo as a different token and the fuzzy stage's floor (0.55) is
+  // tuned for longer phrases, so short typo tokens slip through to the wrong semantic winner
+  // (e.g. "stauts" -> metrics, "bulid" -> help). Pinning the common typos directly keeps the
+  // user's intent instead of a confident wrong answer. Keep narrow — only the top typo forms
+  // that actually appeared in the audit, not a generic typo dictionary.
+  { intent: 'system.chit_chat.git_status', pattern: /\b(?:stauts|staus|statu|git\s+stauts|chek\s+status|chekc\s+status)\b/i },
+  { intent: 'npm_build', pattern: /\b(?:bulid|biuld|buil\s+the\s+project|buil)\b/i },
+  { intent: 'git_push', pattern: /\b(?:psuh|git\s+psuh|pish\s+push|psuh)\b/i },
+  { intent: 'npm_install', pattern: /\b(?:instal|isntall|install\s+dependancies|install\s+depedencies)\b/i },
+  { intent: 'run_tests', pattern: /\b(?:runtests|runtest|run\s+tets|run\s+tst)\b/i },
+  { intent: 'system.chit_chat.ack', pattern: /^\s*hmm\s*$/i },
   // Phase 6 (2026-08-12): the expanded calculator grammar — "convert 5 km to miles" /
   // "15% of 80" / "18% tip on 64.50" / "add 8.25% tax to 120". The percent sign and unit
   // words carry little embedding weight, so these shapes drift off the calculate cluster;

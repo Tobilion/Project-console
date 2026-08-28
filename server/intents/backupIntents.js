@@ -4,8 +4,8 @@ export const BACKUP_INTENTS = {
   'backup.create': {
     opensPanel: 'backup',
     examples: [
-      'backup this folder', 'backup the project', 'export this project as a zip',
-      'make a backup of this folder', 'create a backup',
+      'backup this folder', 'backup this project', 'backup the project', 'export this project as a zip',
+      'make a backup of this folder', 'create a backup', 'zip this project',
     ],
   },
   'backup.list': {

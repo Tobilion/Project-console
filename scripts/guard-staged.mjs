@@ -81,6 +81,7 @@ const has = {
     f.includes('checkWsMessageCases'),
   indexer: (f) => f.startsWith('server/codeIndex/') || f.includes('codebaseIndexer') || f.includes('codebaseParser') || f.includes('codebaseDetect'),
   tests: (f) => f.startsWith('server/test/'),
+  encoding: (f) => /\.(js|ts|tsx|css|json|md)$/.test(f),
 };
 
 const toRun = [];
@@ -92,6 +93,7 @@ if (wanted([has.docs])) toRun.push('check-docs');
 if (wanted([has.wsCases])) toRun.push('check-ws-cases');
 if (wanted([has.indexer])) toRun.push('check-indexer');
 if (wanted([has.tests])) toRun.push('test');
+if (wanted([has.encoding])) toRun.push('check-encoding');
 
 if (toRun.length === 0) {
   console.log('[guard-staged] No server batteries needed for the staged files.');

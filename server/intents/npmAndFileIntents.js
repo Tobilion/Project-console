@@ -111,6 +111,8 @@ export const NPM_AND_FILE_INTENTS = {
       'get rid of file', 'wipe this file',
       'nuke this file', 'destroy this file', 'kill this file',
       'toss this file', 'clear out this file',
+      'delete everything', 'delete all files', 'delete all my files',
+      'remove all files', 'nuke the repo',
     ],
   },
   'file_find': {

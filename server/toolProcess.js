@@ -6,6 +6,7 @@ import { isProbeableUrl } from './urlSafety';
 import { buildSandboxEnv } from './executorSandbox';
 import { readProfile } from './routes/profileRoutes.js';
 import fs from 'fs/promises';
+import fsSync from 'fs';
 import path from 'path';
 import { getCommandDir } from './commandDir.js';
 
@@ -140,10 +141,24 @@ export function findTestCommand(project) {
   const keyFiles = project?.codebaseIndex?.keyFiles || {};
   const pkgJson = keyFiles['package.json'];
   let scripts = {};
+  let keyFilesTruncated = false;
   if (pkgJson) {
     try {
       scripts = JSON.parse(pkgJson.replace(/\n\.\.\. \(truncated\)$/, '')).scripts || {};
-    } catch {}
+    } catch {
+      keyFilesTruncated = true;
+    }
+    // A package.json cached by readKeyFiles is truncated at 2000 chars with a marker tail —
+    // on a real project the scripts block usually sits AFTER the cut, so a truncated cache
+    // silently reports "no test setup detected" (live 2026-08-26: project-console's own
+    // package.json). Re-read the real file from disk when the cached copy was cut or
+    // unparseable; the cache cap stays untouched for everything else.
+    if (!scripts.test && (keyFilesTruncated || pkgJson.includes('... (truncated)'))) {
+      try {
+        const live = fsSync.readFileSync(path.join(project.path, 'package.json'), 'utf-8');
+        scripts = JSON.parse(live).scripts || {};
+      } catch {}
+    }
   }
   if (scripts.test) return 'npm test';
   if (keyFiles['cargo.toml']) return 'cargo test';

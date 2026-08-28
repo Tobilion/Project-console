@@ -1,0 +1,13 @@
+* text=auto eol=lf
+*.js text
+*.ts text
+*.tsx text
+*.css text
+*.json text
+*.md text
+# Binary assets — do not touch line endings or encoding
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.ico binary
+*.icns binary

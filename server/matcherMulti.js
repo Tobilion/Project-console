@@ -1,6 +1,7 @@
 // Phase 3 decomposition leaf: conjunction-splitting + multi-intent matching for
 // SemanticMatcher (extracted verbatim from semanticMatcher.js — see that file's
 // matchMulti / _splitConjunctions for the originals).
+import { PURE_CHITCHAT_INTENTS } from './intentTrust.js';
 
 /**
  * Splits an input on common conjunctions. Confirmed live 2026-07-29: `push this code with
@@ -32,6 +33,26 @@ export function splitConjunctions(input) {
 export async function matchMultiParts(matcher, input) {
   const parts = splitConjunctions(input);
   if (!parts) return null;
+
+  // 2026-08-26 live batch crosscheck: "commit and push" split into [git_status, deploy] —
+  // the parts matched wrong intents ("commit" prefix-matches git_status's "commit history"
+  // example; bare "push" lands on deploy by design), dispatching a status check + a push
+  // confirm instead of the single git_commit_push flow. When the WHOLE phrase already
+  // matches one intent confidently (semantic stage only — pre-semantic overrides and the
+  // keyword tier stay out of this decision), the split is a false positive: the user said
+  // one thing, not two. The 0.75 floor keeps genuinely compound requests ("pull the latest
+  // changes and then run the tests") splitting as before — the whole phrase never clears the
+  // floor for two different actions — and PURE_CHITCHAT_INTENTS stay splittable ("hi and
+  // thanks" still answers twice).
+  const whole = await matcher.match(input);
+  if (
+    whole &&
+    whole.source === 'semantic' &&
+    whole.confidence >= 0.75 &&
+    !PURE_CHITCHAT_INTENTS.has(whole.intent)
+  ) {
+    return null;
+  }
 
   const results = [];
   const seenIntents = new Set();
