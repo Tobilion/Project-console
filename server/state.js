@@ -4,6 +4,7 @@
 import os from 'os';
 import path from 'path';
 import crypto from 'crypto';
+import { getDataDir } from './dataPath.js';
 import { Mutex } from 'async-mutex';
 
 export const projectsMutex = new Mutex();
@@ -36,7 +37,7 @@ export function getGeneralProject() {
     id: GENERAL_PROJECT_ID,
     folderName: 'General',
     name: 'General',
-    path: path.join(process.cwd(), 'data', 'general-workspace'),
+    path: path.join(getDataDir(), 'general-workspace'),
     config: { projectName: 'General', entries: [] },
     workspaceType: 'general',
     contextFiles: [],

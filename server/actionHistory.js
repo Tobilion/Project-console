@@ -16,6 +16,7 @@ import crypto from 'crypto';
 import util from 'util';
 import { exec } from 'child_process';
 import { ensureGitignored } from './sessionMigration.js';
+import { resolveData } from './dataPath.js';
 import { writeFileAtomicSync } from './atomicWrite.js';
 
 const execAsync = util.promisify(exec);
@@ -172,7 +173,7 @@ export async function revertAction(projectPath, id) {
   if (action.type === 'file_write' && !action.existed && typeof action.path === 'string' && action.path.startsWith('backups/')) {
     const name = action.path.slice('backups/'.length);
     if (name && path.basename(name) === name && name.endsWith('.zip')) {
-      const abs = path.join(process.cwd(), 'data', 'backups', name);
+      const abs = path.join(resolveData('backups'), name);
       try {
         if (fs.existsSync(abs)) fs.rmSync(abs, { force: true });
       } catch (err) {

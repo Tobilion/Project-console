@@ -6,9 +6,10 @@
 
 import fs from 'fs';
 import path from 'path';
+import { resolveData } from '../dataPath.js';
 import { writeFileAtomicSync } from '../atomicWrite.js';
 
-const SCHEDULES_FILE = process.env.SCHEDULES_FILE || path.join(process.cwd(), 'data', 'schedules.json');
+const SCHEDULES_FILE = process.env.SCHEDULES_FILE || resolveData('schedules.json');
 
 let schedules = [];
 let saveTimer = null;

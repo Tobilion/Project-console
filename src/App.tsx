@@ -12,6 +12,7 @@ import { useAppViewState } from './hooks/useAppViewState';
 import { getRandomGreeting } from './utils/greetings';
 import { readWorkspaceTabs, readToolPanels, WORKSPACE_TAB_KEY, TOOL_PANEL_KEY } from './utils/appStorage';
 import type { TourSection } from './tours';
+import { AppFooter } from './components/AppFooter';
 import { GENERAL_PROJECT_ID } from './types';
 import type { Project } from './types';
 
@@ -424,6 +425,8 @@ function App() {
           }}
         />
       </main>
+
+      {!chatFullscreen && <AppFooter />}
 
       {/* 2026-08-24 split: every fixed overlay (confirm cards, deck, modals, tours,
           shortcuts, toasts) lives in AppOverlays. */}

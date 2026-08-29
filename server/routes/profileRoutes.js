@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import { resolveData } from '../dataPath.js';
 import { syncClipboardPolling } from '../clipboardHistory.js';
 import { log } from '../logger.js';
 
@@ -7,7 +8,7 @@ import { log } from '../logger.js';
 // Lives in data/ — the app's own runtime-state home — so writes never trigger the
 // per-project console.config.json file watcher or Vite's watch (data/ is excluded
 // from both in server/index.js).
-const PROFILE_FILE = path.resolve('data/user-profile.json');
+const PROFILE_FILE = resolveData('user-profile.json');
 
 // Neutral defaults for a fresh install — `data/user-profile.json` isn't published with the npm
 // package (see package.json's "files" list) and is only ever created once a user sets their own

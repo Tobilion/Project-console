@@ -1,5 +1,6 @@
 import { exec } from 'child_process';
 import path from 'path';
+import { getDataDir } from '../dataPath.js';
 import { semanticMatcher } from '../semanticMatcher.js';
 import { getOllamaHost } from '../ollama.js';
 import { runningProcesses } from '../executor.js';
@@ -44,7 +45,7 @@ async function probeOllama() {
 }
 
 async function probeDiskSpace() {
-  const root = path.parse(path.resolve('data')).root; // e.g. "C:\"
+  const root = path.parse(getDataDir()).root; // e.g. "C:\"
   return new Promise((resolve) => {
     // Get-PSDrive's Free is bytes; format to the same unit the rest of the reply uses.
     exec(

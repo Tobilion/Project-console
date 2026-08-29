@@ -4,9 +4,10 @@
 // which is what closes the intentTelemetry <-> confidenceModel import cycle.
 import fs from 'fs';
 import path from 'path';
+import { resolveData } from './dataPath.js';
 import { writeFileAtomicSync } from './atomicWrite.js';
 
-export const TELEMETRY_DIR = path.join(process.cwd(), 'data', 'telemetry');
+export const TELEMETRY_DIR = resolveData('telemetry');
 
 export function filePath(projectId) {
   return path.join(TELEMETRY_DIR, `${projectId}.jsonl`);

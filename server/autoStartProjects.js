@@ -34,10 +34,11 @@ import { matchInput } from './matcher.js';
 import { handleBuiltinIntent } from './wsHandlers/builtinIntents.js';
 import { handleMatchedEntry } from './wsHandlers/matchedEntry.js';
 import { candidateDevUrls, probeUrl } from './livenessProbe.js';
+import { resolveData } from './dataPath.js';
 import { writeFileAtomicSync } from './atomicWrite.js';
 
-const AUTO_START_FILE = path.join(process.cwd(), 'data', 'auto-start.json');
-const AUTO_START_LOG_FILE = path.join(process.cwd(), 'data', 'auto-start-log.md');
+const AUTO_START_FILE = resolveData('auto-start.json');
+const AUTO_START_LOG_FILE = resolveData('auto-start-log.md');
 const AUTO_START_LOG_CAP_LINES = 200;
 const AUTO_START_STAGGER_MS = 20 * 1000;
 const AUTO_START_PROBE_TIMEOUT_MS = 1500;

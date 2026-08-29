@@ -1,6 +1,6 @@
 {
   "name": "local-project-console-desktop",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Project Console desktop shell — Electron wrapper around the local Express+WS server",
   "main": "main.cjs",
   "private": true,
@@ -35,8 +35,20 @@
       "icon": "build/icon.ico"
     },
     "nsis": {
-      "oneClick": true,
+      "oneClick": false,
       "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "allowElevation": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Project Console",
+      "installerIcon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico",
+      "installerHeaderIcon": "build/icon.ico",
+      "license": "../LICENSE",
+      "artifactName": "Project Console Setup ${version}.${ext}",
+      "deleteAppDataOnUninstall": false,
+      "displayLanguageSelector": false,
       "include": "scripts/nsis-cli-shortcut.nsh"
     },
     "afterPack": "scripts/after-pack.cjs",

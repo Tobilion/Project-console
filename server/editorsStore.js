@@ -8,7 +8,8 @@ import { writeFileAtomicSync } from './atomicWrite.js';
 // (machine-specific paths/commands must never land in the git-tracked user-profile.json;
 // same treatment as schedules/notifications/tuning). Env-overridable for the harness
 // (EDITORS_FILE), like WATCH_RULES_FILE/SCHEDULES_FILE.
-const EDITORS_FILE = process.env.EDITORS_FILE || path.resolve('data/editors.json');
+import { resolveData } from './dataPath.js';
+const EDITORS_FILE = process.env.EDITORS_FILE || resolveData('editors.json');
 
 // Seed set of well-known editors. `command` is the executable invoked with the file/folder
 // path as its argument (PATH-resolved at spawn time, same as `code`); a user can edit

@@ -42,16 +42,39 @@ let autoUpdater = null;
 
 // Splash shown while the server child cold-boots (scan + NLP + embeddings can take 40-90s on
 // a fresh install). A data: URL keeps this dependency-free — no extra asset to package.
-const SPLASH_HTML =
-  'data:text/html;charset=utf-8,' +
-  encodeURIComponent(
-    '<!doctype html><html><head><meta charset="utf-8"><style>' +
-    'html,body{height:100%;margin:0;display:flex;align-items:center;justify-content:center;' +
-    'background:#0D0D0E;color:#E5E5EA;font-family:Segoe UI,system-ui,sans-serif}' +
-    'div{text-align:center}span{display:inline-block;width:14px;height:14px;border-radius:50%;' +
-    'background:#64D2FF;animation:p 1s infinite ease-in-out}@keyframes p{50%{transform:scale(.6);opacity:.4}}' +
-    '</style></head><body><div><span></span><p>Project Console — starting the local server…</p></div></body></html>'
+let appVersion = '1.0.1';
+try { appVersion = require('./package.json').version || appVersion; } catch {}
+try { if (app.isPackaged) appVersion = app.getVersion() || appVersion; } catch {}
+
+function buildSplashHtml() {
+  return (
+    'data:text/html;charset=utf-8,' +
+    encodeURIComponent(
+      '<!doctype html><html><head><meta charset="utf-8"><style>' +
+      '*{box-sizing:border-box}html,body{height:100%;margin:0}' +
+      'body{display:flex;align-items:center;justify-content:center;background:#0D0D0E;color:#E5E5EA;font-family:Inter,Segoe UI,system-ui,sans-serif;}' +
+      '.card{width:420px;padding:36px 32px 28px;background:#161618;border:1px solid #2C2C2E;border-radius:18px;box-shadow:0 20px 40px rgba(0,0,0,0.5);text-align:center}' +
+      '.icon{width:56px;height:56px;margin:0 auto 16px;border-radius:50%;background:#0D2A4A;border:1px solid #1a3a5c;display:flex;align-items:center;justify-content:center;font-size:22px;color:#64D2FF}' +
+      '.title{font-size:19px;font-weight:700;letter-spacing:-0.02em;color:#FFFFFF;margin:0}' +
+      '.subtitle{font-size:11px;letter-spacing:0.18em;text-transform:uppercase;color:#86868B;margin:6px 0 18px;font-weight:600}' +
+      '.bar{height:3px;background:#2C2C2E;border-radius:999px;overflow:hidden;margin:18px 0 14px}' +
+      '.fill{height:100%;width:38%;background:linear-gradient(90deg,#0071E3,#64D2FF);border-radius:999px;animation:load 1.1s ease-in-out infinite}' +
+      '@keyframes load{0%{transform:translateX(-60%)}50%{transform:translateX(70%)}100%{transform:translateX(160%)}}' +
+      '.hint{font-size:12px;color:#A1A1AA;line-height:1.5;margin:0}' +
+      '.ver{margin-top:16px;font-size:10px;letter-spacing:0.14em;text-transform:uppercase;color:#48484A}' +
+      '@keyframes p{50%{transform:scale(.6);opacity:.4}}' +
+      '</style></head><body><div class="card">' +
+      '<div class="icon">&#62;_</div>' +
+      '<h1 class="title">Project Console</h1>' +
+      '<p class="subtitle">Local Project Engine &middot; v' + appVersion + '</p>' +
+      '<div class="bar"><div class="fill"></div></div>' +
+      '<p class="hint">Starting the local server…<br><span style="color:#86868B">First boot can take up to 40s while the workspace is indexed.</span></p>' +
+      '<p class="ver">Made by Tobiloba Jagun &middot; github.com/Tobilion</p>' +
+      '</div></body></html>'
+    )
   );
+}
+const SPLASH_HTML = buildSplashHtml();
 
 // Fatal-startup error page (2026-08-26): a clear, specific message instead of a silent hang or
 // an unexplained quit. Shown in the window AND as a native dialog with Retry/Quit — the dialog
@@ -247,6 +270,29 @@ function showFatalError(message, detail) {
   }
 }
 
+function getPersistentDataDir() {
+  // Desktop data must survive reinstalls — the old resources/data/ was wiped on every
+  // NSIS update (the install dir is replaced). userData (%APPDATA%/Project Console on
+  // Windows, ~/Library/Application Support on mac) persists across versions and is the
+  // Electron-idiomatic location. Dev keeps the repo's ./data (zero behaviour change).
+  if (!app.isPackaged) return null;
+  try {
+    const dir = app.getPath('userData');
+    fs.mkdirSync(dir, { recursive: true });
+    // One-time migration: a profile that already exists in userData wins; otherwise copy
+    // the legacy resources/data/user-profile.json (from installs before this fix) so the
+    // user's name doesn't vanish on the first post-fix launch.
+    const legacyProfile = path.join(process.resourcesPath, 'data', 'user-profile.json');
+    const nextProfile = path.join(dir, 'user-profile.json');
+    if (!fs.existsSync(nextProfile) && fs.existsSync(legacyProfile)) {
+      try { fs.copyFileSync(legacyProfile, nextProfile); } catch {}
+    }
+    return dir;
+  } catch {
+    return null;
+  }
+}
+
 function startServer() {
   // Packaged: the staged runtime (server source, built frontend, prod node_modules) lives in
   // resources/ via extraResources — `node <entry>` cannot execute a script from inside the
@@ -262,6 +308,7 @@ function startServer() {
   // packaged path always carries the esbuild bundle, which needs no loader). The flag is
   // harmless when the entry is already the bundle, so it is applied unconditionally.
   const loaderArgs = entry === serverPath ? ['--import', 'tsx'] : [];
+  const persistentDataDir = getPersistentDataDir();
   // ELECTRON_RUN_AS_NODE=1 is MANDATORY: process.execPath is the Electron binary itself, and
   // without the flag Electron relaunches the child as ANOTHER app instance (crash-looping
   // helper processes — verified live 2026-08-24) instead of running server/index.js as plain
@@ -277,6 +324,7 @@ function startServer() {
       // (updateChecker.js) — the desktop app is a separate product with its own update channel
       // (electron-updater), and the npm banner would point users at `npm install -g`.
       CONSOLE_DESKTOP: '1',
+      ...(persistentDataDir ? { CONSOLE_DATA_DIR: persistentDataDir } : {}),
     },
     // stderr is piped (not inherited) so a startup failure can be shown to the user verbatim —
     // before this, "Failed to start server: ..." went to an invisible console and the app

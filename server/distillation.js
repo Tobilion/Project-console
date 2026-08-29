@@ -2,9 +2,10 @@ import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
 import { writeFileAtomicSync } from './atomicWrite.js';
+import { resolveData } from './dataPath.js';
 import { log as logger } from './logger.js';
 
-const DISTILL_DIR = path.join(process.cwd(), 'data', 'distillations');
+const DISTILL_DIR = resolveData('distillations');
 const KNOWN_SCRIPT_NAMES = ['dev', 'start', 'build', 'preview', 'lint', 'test', 'format', 'deploy', 'publish', 'release'];
 // Pending suggestions nobody has acted on after this long are stale noise — drop them so the
 // log doesn't grow unbounded and `review distillations` doesn't dredge up ancient guesses.

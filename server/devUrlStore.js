@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import { resolveData } from './dataPath.js';
 import { state } from './state.js';
 
 // Persists the last-known dev-server URLs (state.lastDevUrls) across server restarts so
@@ -15,7 +16,7 @@ import { state } from './state.js';
 // dev_server_status row probes live candidate ports and records hits — without a redirect it
 // wrote fixture ids (p1) into the REAL data/dev-urls.json. Same pattern as WATCH_RULES_FILE /
 // SCHEDULES_FILE / EDITORS_FILE.
-const DEV_URLS_FILE = process.env.DEV_URLS_FILE || path.join(process.cwd(), 'data', 'dev-urls.json');
+const DEV_URLS_FILE = process.env.DEV_URLS_FILE || resolveData('dev-urls.json');
 
 let saveTimer = null;
 

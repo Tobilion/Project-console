@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import { resolveData } from './dataPath.js';
 import { writeFileAtomicSync } from './atomicWrite.js';
 
 // Phase 8 (UPGRADE-ROADMAP.md, 2026-08-12): named text snippets — "save this as a snippet:
@@ -7,7 +8,7 @@ import { writeFileAtomicSync } from './atomicWrite.js';
 // gitignored data/snippets.json with the same atomic-write pattern every other runtime-state
 // file uses. Same conceptual shape as notesStore.js (capped, deduped) but a distinct store:
 // snippets are named, retrievable text blocks for copying, not a journal.
-const SNIPPETS_FILE = process.env.SNIPPETS_FILE || path.join(process.cwd(), 'data', 'snippets.json');
+const SNIPPETS_FILE = process.env.SNIPPETS_FILE || resolveData('snippets.json');
 const MAX_SNIPPETS = 100;
 const MAX_SNIPPET_CHARS = 4000;
 

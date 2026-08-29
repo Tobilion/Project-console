@@ -6,6 +6,7 @@ import { readProfile, writeProfile, sanitizeProfile } from './routes/profileRout
 import { loadModel, saveModel } from './modelStore.js';
 import { getTuningState, resetTuning, setTuning } from './tuningStore.js';
 import { getThresholdOverrides, replaceThresholdOverrides } from './telemetryThresholds.js';
+import { resolveData } from './dataPath.js';
 import { writeFileAtomicSync } from './atomicWrite.js';
 import { validateToolEntry } from './pluginTools.js';
 
@@ -17,7 +18,7 @@ import { validateToolEntry } from './pluginTools.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-export const EXPORT_DIR = path.resolve('data', 'workspace-exports');
+export const EXPORT_DIR = resolveData('workspace-exports');
 
 export const BUNDLE_FORMAT = 'project-console-workspace';
 const BUNDLE_VERSION = 1;

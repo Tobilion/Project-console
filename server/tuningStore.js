@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import { resolveData } from './dataPath.js';
 import { writeFileAtomicSync } from './atomicWrite.js';
 
 // Phase 8 (2026-08-11): runtime-overridable tuning constants. The named exports in the
@@ -9,7 +10,7 @@ import { writeFileAtomicSync } from './atomicWrite.js';
 // so a knob the user has not touched resolves to the exported default with zero behavior
 // change. Deliberately plain numbers only — no booleans/lists/objects: these are fine-grained
 // power-user knobs, and number-only keeps validation and the UI trivially safe.
-const TUNING_FILE = path.resolve('data/tuning.json');
+const TUNING_FILE = resolveData('tuning.json');
 
 export const TUNING_DEFAULTS = {
   // semanticMatcher: fuzzy-match floor / min length / init poll / suggestion count / collision

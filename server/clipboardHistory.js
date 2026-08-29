@@ -7,9 +7,10 @@ import { spawn } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 import { readProfile } from './routes/profileRoutes.js';
+import { resolveData } from './dataPath.js';
 import { getTuning } from './tuningStore.js';
 
-const HISTORY_FILE = path.join(process.cwd(), 'data', 'clipboard-history.json');
+const HISTORY_FILE = process.env.CLIPBOARD_HISTORY_FILE || resolveData('clipboard-history.json');
 const MAX_ENTRIES = 25; // Windows Clipboard History caps at 25 — a readable list, not a dump
 
 // In-memory ring buffer of recent clipboard texts, most-recent-first. Not persisted unless

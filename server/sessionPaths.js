@@ -4,8 +4,9 @@
  * the per-project .console/sessions layout that replaced it.
  */
 import path from 'path';
+import { resolveData } from './dataPath.js';
 
-export const LEGACY_STORE_DIR = path.resolve('data/conversations');
+export const LEGACY_STORE_DIR = resolveData('conversations');
 export const INDEX_PATH = path.join(LEGACY_STORE_DIR, 'index.json');
 
 export function legacyFilePath(id) {

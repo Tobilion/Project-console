@@ -12,10 +12,11 @@
 
 import fs from 'fs';
 import path from 'path';
+import { resolveData } from './dataPath.js';
 import { fileURLToPath } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const defaultFile = path.join(path.resolve(__dirname, '..'), 'data', 'match-stats.jsonl');
+const defaultFile = resolveData('match-stats.jsonl');
 
 const MAX_LINES = 10000;
 const TRIM_BYTES = 2 * 1024 * 1024; // ~10k lines × ~200B — trim pass at this size

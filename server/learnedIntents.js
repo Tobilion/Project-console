@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { INTENTS } from './intentsData.js';
 import { writeFileAtomicSync } from './atomicWrite.js';
+import { resolveData } from './dataPath.js';
 import { log } from './logger.js';
 
 // `INTENTS` (from intentsData.js) is a single module-level object shared by the whole running
@@ -11,7 +12,7 @@ import { log } from './logger.js';
 // persistence: that mutation was never written to disk, so a server restart silently forgot
 // every phrase the app had ever learned, in every project, at once. This module closes that gap.
 
-const LEARNED_FILE = path.join(process.cwd(), 'data', 'learned-intents.json');
+const LEARNED_FILE = resolveData('learned-intents.json');
 
 function ensureDataDir() {
   const dir = path.dirname(LEARNED_FILE);

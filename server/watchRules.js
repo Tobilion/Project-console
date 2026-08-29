@@ -6,9 +6,10 @@
 // to gitignored data/watch-rules.json (debounced, atomic, same pattern as scheduleStore).
 import fs from 'fs';
 import path from 'path';
+import { resolveData } from './dataPath.js';
 import { writeFileAtomicSync } from './atomicWrite.js';
 
-const RULES_FILE = process.env.WATCH_RULES_FILE || path.join(process.cwd(), 'data', 'watch-rules.json');
+const RULES_FILE = process.env.WATCH_RULES_FILE || resolveData('watch-rules.json');
 const SAVE_DEBOUNCE_MS = 500;
 
 let rules = [];

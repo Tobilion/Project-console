@@ -7,9 +7,10 @@
 import fs from 'fs';
 import path from 'path';
 import { writeFileAtomicSync } from '../atomicWrite.js';
+import { resolveData } from '../dataPath.js';
 import { NOTIFY_EVENTS, NOTIFY_EVENT_KEYS } from './notifyEvents.js';
 
-const NOTIFY_FILE = path.join(process.cwd(), 'data', 'notifications.json');
+const NOTIFY_FILE = resolveData('notifications.json');
 
 // The event map is seeded from the catalog (audit 2026-08-17): it used to hardcode three
 // events, so every event added to NOTIFY_EVENTS later (collision-found, the Phase 15

@@ -19,7 +19,7 @@ import { fileURLToPath, pathToFileURL } from 'url';
 const execFileAsync = promisify(execFile);
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, '..');
-const dataDir = path.join(rootDir, 'data');
+const dataDir = process.env.CONSOLE_DATA_DIR ? path.resolve(process.env.CONSOLE_DATA_DIR) : path.join(rootDir, 'data');
 const cacheDir = path.join(rootDir, '.cache');
 const logDir = path.join(rootDir, 'logs');
 const WIN = process.platform === 'win32';

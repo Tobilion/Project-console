@@ -9,6 +9,7 @@
 // per-project.
 import fs from 'fs';
 import path from 'path';
+import { resolveData } from '../dataPath.js';
 
 export const LOCALE_PHRASES = {
   de: {
@@ -32,7 +33,7 @@ export const LOCALE_PHRASES = {
   },
 };
 
-const PROFILE_FILE = path.join(process.cwd(), 'data', 'user-profile.json');
+const PROFILE_FILE = resolveData('user-profile.json');
 
 /** The active locale from the user profile (default 'en' — no phrase additions). */
 export function getActiveLocale() {

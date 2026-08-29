@@ -18,9 +18,10 @@ import fs from 'fs';
 import path from 'path';
 import { semanticMatcher } from './semanticMatcher.js';
 import { notify } from './notify.js';
+import { resolveData } from './dataPath.js';
 import { writeFileAtomicSync } from './atomicWrite.js';
 
-const COLLISIONS_FILE = path.join(process.cwd(), 'data', 'collisions.json');
+const COLLISIONS_FILE = resolveData('collisions.json');
 
 const DEFAULT_THRESHOLD = 0.9;
 

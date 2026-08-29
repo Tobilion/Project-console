@@ -1,9 +1,10 @@
 import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
+import { resolveData } from './dataPath.js';
 import { writeFileAtomicSync } from './atomicWrite.js';
 
-const NEAR_MISS_DIR = path.join(process.cwd(), 'data', 'near-misses');
+const NEAR_MISS_DIR = resolveData('near-misses');
 
 function ensureDir() {
   if (!fs.existsSync(NEAR_MISS_DIR)) {

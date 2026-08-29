@@ -8,6 +8,7 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { resolveData } from './dataPath.js';
 import cowsay from 'cowsay';
 import chalk from 'chalk';
 
@@ -21,7 +22,7 @@ export function renderMascot() {
   // raised while generalizing for npm/public distribution).
   let name = 'there';
   try {
-    const profile = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'data', 'user-profile.json'), 'utf8'));
+    const profile = JSON.parse(fs.readFileSync(resolveData('user-profile.json'), 'utf8'));
     if (profile.userProfile?.name) name = profile.userProfile.name;
   } catch {
     // Missing/corrupt profile must not fail the whole CLI — keep the fallback name.

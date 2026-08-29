@@ -19,10 +19,11 @@ import { enqueueTask } from '../taskQueue.js';
 import { matchInput } from '../matcher.js';
 import { handleBuiltinIntent } from '../wsHandlers/builtinIntents.js';
 import { isReadOnlyIntent, readOnlySummary } from './scheduleIntents.js';
+import { resolveData } from '../dataPath.js';
 import { markFired } from './scheduleStore.js';
 import { notify } from '../notify.js';
 
-const SCHEDULE_LOG_FILE = path.join(process.cwd(), 'data', 'schedule-log.md');
+const SCHEDULE_LOG_FILE = resolveData('schedule-log.md');
 const SCHEDULE_LOG_CAP_LINES = 400;
 
 /** Header prefix that marks a fire result as scheduled, not user-typed. */

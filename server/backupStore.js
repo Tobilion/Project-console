@@ -11,10 +11,11 @@ import { createRequire } from 'module';
 
 // archiver is CommonJS — the project's other CJS deps (ws, chrono-node, pdf-lib) resolve
 // through createRequire for the same reason.
+import { resolveData } from './dataPath.js';
 const require = createRequire(import.meta.url);
 const archiver = require('archiver');
 
-const BACKUPS_DIR = path.join(process.cwd(), 'data', 'backups');
+const BACKUPS_DIR = resolveData('backups');
 
 // Consistent order of magnitude with workspaceTransfer.js's 50MB bundle cap — raw files (not
 // JSON), so the same 50MB ceiling is the honest bound; anything over is refused outright.

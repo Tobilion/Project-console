@@ -13,10 +13,11 @@ import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
 import { writeFileAtomicSync } from './atomicWrite.js';
+import { resolveData } from './dataPath.js';
 import { isSafeExternalUrl } from './urlSafety';
 import { validateToolEntry, sanitizePermissions } from './pluginTools.js';
 
-const REGISTRY_CONFIG_FILE = path.join(process.cwd(), 'data', 'registry-config.json');
+const REGISTRY_CONFIG_FILE = resolveData('registry-config.json');
 const FETCH_TIMEOUT_MS = 8000;
 
 export function getRegistryUrl() {
