@@ -75,7 +75,7 @@
     "@types/node": "^22.14.0",
     "@vitejs/plugin-react": "^5.0.4",
     "clsx": "^2.1.1",
-    "esbuild": "^0.25.0",
+    "esbuild": "^0.28.2",
     "fast-check": "^4.9.0",
     "husky": "^9.1.7",
     "jspdf": "^4.2.1",
