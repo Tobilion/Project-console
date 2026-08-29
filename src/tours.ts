@@ -339,7 +339,7 @@ export const TOUR_SECTIONS: TourSection[] = [
         body: 'Offline semantic search over the project’s PDFs, .docx (via mammoth), and .md/.txt notes via the same embedding index as code search (<project>/.console/code-index.json, chunked ~40 lines, background builds via taskQueue, in-memory brute-force cosine at ask time). “search my documents for X” or “what did i write about the budget” returns file:line citations; with AI on, a synthesized answer renders above the raw chunks — the chunks are always the fallback, never suppressed. Panels: Tools > Documents shows status (unavailable/indexing/ready).',
         view: 'tools',
         panel: 'knowledge-base',
-        target: 'documents-panel',
+        target: 'knowledge-base-panel',
       },
       {
         icon: '▦',
@@ -413,7 +413,7 @@ export const TOUR_SECTIONS: TourSection[] = [
         body: 'Tools > Spreadsheet picks a CSV + column and runs a dependency-free quoted-field parser (2MB/20k-row caps): sum/average column X in Y, count rows in Y where X <op> v, filter Y where X <op> v (ops: equals/contains/greater than/less than). read-only by design — no filter-to-file write exists (a future one must go through confirm + action-history). Results render as a sortable zebra table with sticky headers. Chat: the same four intent shapes with identical validation via isSafeParamValue for column/file names.',
         view: 'tools',
         panel: 'csv-tools',
-        target: 'spreadsheet-panel',
+        target: 'csv-tools-panel',
       },
       {
         icon: '⬆',

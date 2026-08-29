@@ -121,6 +121,14 @@ if /i "!PROBE_RESULT:~0,2!"=="UP" (
     ) ELSE (
         call npm run dev
     )
+    if errorlevel 1 (
+        echo.
+        echo %ESC%[31m  Server exited with code %ERRORLEVEL%. Check the error above.%ESC%[0m
+        echo %ESC%[90m  If this was a missing dependency, try: npm install%ESC%[0m
+        echo %ESC%[90m  For a full diagnostic, run: npm run doctor%ESC%[0m
+        pause
+        exit /b %ERRORLEVEL%
+    )
 )
 exit /b 0
 

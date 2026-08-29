@@ -12,6 +12,7 @@
 
 import pino from 'pino';
 import { createRequire } from 'module';
+import { appendLogFile } from './fileLogger.js';
 
 const require = createRequire(import.meta.url);
 
@@ -27,9 +28,27 @@ function prettyResolvable() {
 const usePretty =
   !process.env.CONSOLE_DESKTOP && !!process.stdout.isTTY && prettyResolvable() && !process.env.PINO_PLAIN;
 
+// File tee: every pino line also goes to logs/server.log (capped/rotated). Desktop's main.cjs
+// has its own desktop-crash.log tee; this covers the dev/daemon/npm case where stdout is not
+// captured. Never throws — a full disk or missing logs/ must not take the server down.
+function fileDestination() {
+  return {
+    write(str) {
+      try { process.stdout.write(str); } catch {}
+      const line = str.endsWith('\n') ? str.slice(0, -1) : str;
+      // Fire-and-forget file write — never block the event loop for a log line.
+      try { appendLogFile('server.log', line); } catch {}
+    },
+  };
+}
+
+const pinoDest = usePretty
+  ? pino.transport({ target: 'pino-pretty', options: { colorize: true, translateTime: 'HH:MM:ss', ignore: 'pid,hostname' } })
+  : fileDestination();
+
 export const log = usePretty
   ? pino(
       { level: process.env.LOG_LEVEL || 'info', base: undefined },
-      pino.transport({ target: 'pino-pretty', options: { colorize: true, translateTime: 'HH:MM:ss', ignore: 'pid,hostname' } }),
+      pinoDest,
     )
-  : pino({ level: process.env.LOG_LEVEL || 'info', base: undefined });
+  : pino({ level: process.env.LOG_LEVEL || 'info', base: undefined }, fileDestination());

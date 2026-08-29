@@ -49,21 +49,21 @@ import { registerMarketplaceRoutes } from './routes/marketplaceRoutes.js';
 import { registerConnectedUsersRoutes } from './routes/connectedUsersRoutes.js';
 import { registerBrowseRoutes } from './routes/browseRoutes.js';
 import { registerEditorRoutes } from './routes/editorRoutes.js';
+import { registerLogRoutes } from './routes/logRoutes.js';
 import { syncProjectWatchers } from './codeIndex/codeIndexBuilder.js';
 import { loadTuning } from './tuningStore.js';
 import { loadEditors } from './editorsStore.js';
 import { setCachedScan, invalidateScanCacheForPath } from './scanCache.js';
+import { BASE_PORT as PORT, HOST } from './portConfig.js';
 import { log } from './logger.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
-const PORT = parseInt(process.env.PORT, 10) || 3000;
-// Binds to localhost only by default — this server can execute arbitrary shell commands
+// HOST binds to localhost only by default — this server can execute shell commands
 // and (with AI mode on) read/write files, so it should not be reachable from the LAN
-// unless you explicitly opt in via HOST=0.0.0.0.
-const HOST = process.env.HOST || '127.0.0.1';
+// unless you explicitly opt in via HOST=0.0.0.0. BASE_PORT/HOST are from portConfig.js.
 
 app.use(compression());
 app.use(express.json());
@@ -91,6 +91,7 @@ registerMarketplaceRoutes(app);
 registerConnectedUsersRoutes(app);
 registerBrowseRoutes(app);
 registerEditorRoutes(app);
+registerLogRoutes(app);
 // Final error middleware: a rejection that slips past asyncHandler (or a throw inside a sync
 // handler) used to bypass Express entirely — the request never got a response and the client
 // hung (see asyncHandler.js). Any async route handler wrapped with asyncHandler lands here;
@@ -316,10 +317,10 @@ async function init() {
     log.error('Auto-apply near-miss learning failed (non-fatal):', err.message);
   }
 
-  // Port fallback: try PORT through PORT+10 like start.bat does. Reuses the single `httpServer`
-  // created above (rather than a fresh server per attempt) so Vite's HMR upgrade listener,
-  // already attached to it, stays valid once we actually bind.
-  const MAX_PORT_ATTEMPTS = 20; // 3000-3019 (widened 2026-08-26: a fully-occupied 3000-3009 is rare but not impossible)
+  // Port fallback: try PORT through PORT+MAX_PORT_ATTEMPTS-1 like start.bat does. Reuses
+  // the single `httpServer` created above (rather than a fresh server per attempt) so Vite's
+  // HMR upgrade listener, already attached to it, stays valid once we actually bind.
+  // MAX_PORT_ATTEMPTS is from portConfig.js — same constant every launcher shares.
   let server = null;
   for (let attempt = 0; attempt < MAX_PORT_ATTEMPTS; attempt++) {
     const tryPort = PORT + attempt;

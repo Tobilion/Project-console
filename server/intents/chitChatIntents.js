@@ -199,6 +199,18 @@ export const CHIT_CHAT_INTENTS = {
       'trigger a deploy', 'ready for deployment', 'deploy now',
     ],
   },
+  'system.chit_chat.where_are_logs': {
+    examples: [
+      'where are my logs', 'where is the log file', 'log file location',
+      'diagnostic logs', 'crash log', 'show me the logs', 'where are the logs',
+    ],
+  },
+  'system.chit_chat.export_logs': {
+    examples: [
+      'export logs', 'bundle logs', 'collect logs', 'share logs',
+      'attach logs', 'bundle the logs', 'collect diagnostics', 'export diagnostics',
+    ],
+  },
   'system.chit_chat.explain_followup': {
     examples: [
       'explain more', 'tell me more', 'elaborate', 'deep dive',

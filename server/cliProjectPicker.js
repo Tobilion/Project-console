@@ -18,22 +18,31 @@ export function selectProject(projects) {
 }
 
 async function selectProjectInteractive(projects) {
-  const selected = await p.select({
-    message: 'Select a project to open in CLI session:',
-    options: [
-      { value: generalPseudoProject(), label: 'General workspace', hint: chalk.dim('chat + tools, no project selected') },
-      ...projects.map((proj) => ({
-        value: proj,
-        label: proj.name,
-        hint: chalk.dim(proj.path),
-      })),
-    ],
-  });
-  if (p.isCancel(selected)) {
-    p.cancel('CLI Session cancelled.');
-    process.exit(0);
+  try {
+    const selected = await p.select({
+      message: 'Select a project to open in CLI session:',
+      options: [
+        { value: generalPseudoProject(), label: 'General workspace', hint: chalk.dim('chat + tools, no project selected') },
+        ...projects.map((proj) => ({
+          value: proj,
+          label: proj.name,
+          hint: chalk.dim(proj.path),
+        })),
+      ],
+    });
+    if (p.isCancel(selected)) {
+      p.cancel('CLI Session cancelled.');
+      process.exit(0);
+    }
+    return selected;
+  } catch (err) {
+    // @clack/prompts requires raw-mode TTY (process.stdin.setRawMode). Under Electron's
+    // ELECTRON_RUN_AS_NODE the stdin handle may not support raw mode, or the terminal
+    // that launched cli.cmd may be a non-TTY. Falling back to the numbered readout keeps
+    // the CLI usable instead of crashing right after projects load.
+    console.log(`\n${C.yellow}Interactive picker unavailable (${err.message}) — falling back to numbered list.${C.reset}\n`);
+    return selectProjectLegacy(projects);
   }
-  return selected;
 }
 
 // Confirmed live 2026-07-30 (real transcript): typing anything that wasn't a valid in-range

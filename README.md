@@ -415,7 +415,8 @@ App-global identity (name/title/custom role) edited from the ⚙ Settings modal;
 | `show history` / `recent actions` / `revert action 3f2a9c1d` | Recent file edits + confirmed commands; revert restores a file edit or advises the git undo |
 | `health check` / `is my console healthy` | Ollama reachability, embedding state, disk space, zombie tracked processes |
 | `review match quality` / `match quality` | Per-intent mean/min match confidence over the rolling log + drift flags when a mean drops >0.1 vs the prior window |
-| `console doctor` / `npm run doctor` | Proactive machine-side checks: ports 3000–3019, daemon, embedding cache, writability, Ollama, update, tooling, disk — works without a running server |
+| `console doctor` / `npm run doctor` | Proactive machine-side checks: ports 3000–3019, daemon, embedding cache, writability, TTY/raw-mode, data dir, log writability, Ollama, update, tooling, disk — works without a running server |
+| `where are my logs` / `export logs` | Logs live in `logs/` (server.log, cli.log, daemon.log, desktop-crash.log); `export logs` bundles recent logs + a doctor report for a bug report |
 | `what is my test coverage` / `analyze bundle size` | Reads existing coverage/build artifacts — never runs anything |
 | `what port are you running on` | The console's own port |
 | `check for updates` / `what version am i running` | Shows the console version and whether an npm update is available (`update console` installs it) |

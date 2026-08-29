@@ -24,6 +24,13 @@ export class ErrorBoundary extends React.Component<{ children: React.ReactNode }
   componentDidCatch(error: Error, info: React.ErrorInfo) {
     // eslint-disable-next-line no-console
     console.error('Unhandled error in app tree:', error, info.componentStack);
+    try {
+      const payload = JSON.stringify({ ts: new Date().toISOString(), error: error.message, stack: error.stack, componentStack: info.componentStack });
+      // Best-effort: persist so a stranger can attach it via export-logs without devtools.
+      // Uses localStorage because the file logger is server-side only.
+      const key = 'console.lastError';
+      localStorage.setItem(key, payload);
+    } catch {}
   }
 
   handleReset = () => {

@@ -27,12 +27,28 @@ import { fileURLToPath } from 'url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, '..');
 const logDir = path.join(rootDir, 'logs');
+
+process.on('uncaughtException', (err) => {
+  const stack = err && err.stack ? err.stack : String(err);
+  try { console.error('Daemon uncaughtException:', stack); } catch {}
+  try { fs.mkdirSync(logDir, { recursive: true }); fs.appendFileSync(path.join(logDir, 'daemon-error.log'), `${new Date().toISOString()} uncaughtException: ${stack}\n`); } catch {}
+  process.exit(1);
+});
+process.on('unhandledRejection', (reason) => {
+  const stack = reason instanceof Error ? reason.stack : String(reason);
+  try { console.error('Daemon unhandledRejection:', stack); } catch {}
+  try { fs.mkdirSync(logDir, { recursive: true }); fs.appendFileSync(path.join(logDir, 'daemon-error.log'), `${new Date().toISOString()} unhandledRejection: ${stack}\n`); } catch {}
+  process.exit(1);
+});
 const PORT_FILE = path.join(logDir, 'daemon.port');
 const PID_FILE = path.join(logDir, 'daemon.pid');
 const LOG_FILE = path.join(logDir, 'daemon.log');
 const SERVER_ENTRY = path.join(rootDir, 'server', 'index.js');
-const BASE_PORT = 3000;
-const MAX_PORT = 3019; // widened 2026-08-26
+// Port range matches server/portConfig.js (daemon is .mjs, not .ts, and must run without
+// importing the server graph — keep in sync when portConfig.js changes).
+const BASE_PORT = parseInt(process.env.PORT, 10) || 3000;
+const MAX_PORT_ATTEMPTS = 20;
+const MAX_PORT = BASE_PORT + MAX_PORT_ATTEMPTS - 1; // 3000-3019 (widened 2026-08-26)
 const BOOT_TIMEOUT_MS = 90_000; // cold boot ~41s (embeddings + NLP + discovery); 90s ceiling
 const POLL_MS = 1500;
 const WIN = process.platform === 'win32';

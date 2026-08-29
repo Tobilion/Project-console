@@ -2,12 +2,12 @@
 // Everything here is pure config: nothing reads stdin or connects to the server, so the
 // interactive path and the scripted path share one view of the options.
 
-// Mirrors server/index.js's own PORT..PORT+9 fallback range — if something else already had
-// BASE_PORT (a stale console instance, another dev server, anything), the real server may have
-// landed anywhere in this range, and this client used to have no way to find it.
-export const BASE_PORT = parseInt(process.env.PORT, 10) || 3000;
-export const HOST = process.env.HOST || 'localhost';
-export const MAX_PORT_ATTEMPTS = 20; // 3000-3019, widened 2026-08-26
+// Re-export the shared port/host constants so every CLI module reads one source of truth
+// (server/portConfig.js). cliOptions previously computed these inline and diverged from
+// server/index.js and doctor.js (different HOST defaults, hardcoded ranges).
+import { BASE_PORT, MAX_PORT_ATTEMPTS, CLI_HOST } from './portConfig.js';
+export { BASE_PORT, MAX_PORT_ATTEMPTS };
+export const HOST = CLI_HOST;
 // Bumped again 2026-07-30 (40s → 90s) based on a real measured cold boot of ~41s — right at the
 // old timeout's edge, meaning some boots were likely already failing silently before this. The
 // 2026-07-30 intent-expansion batch also grew intentsData.js by roughly a third (more phrases for
@@ -39,10 +39,17 @@ export const C = {
   bgBlue: '\x1b[44m',
 };
 
-// @clack/prompts requires an interactive TTY (raw-mode input) and throws on piped/redirected
-// stdin, so every clack call below is gated on this and falls back to the plain readline
-// implementations the CLI had before — those still work in non-interactive shells.
-export const isTTY = Boolean(process.stdin.isTTY && process.stdout.isTTY);
+// @clack/prompts requires raw-mode TTY (process.stdin.setRawMode). Under Electron's
+// ELECTRON_RUN_AS_NODE the stdin handle may report isTTY=true yet reject setRawMode, so
+// we also check that setRawMode is actually callable. The fallback readline path works
+// in every environment (plain terminal, piped, SSH, ConPTY, Electron) — same pattern as
+// selectProjectInteractive() → selectProjectLegacy().
+export const isTTY = Boolean(
+  process.stdin.isTTY &&
+  process.stdout.isTTY &&
+  typeof process.stdin.setRawMode === 'function' &&
+  !process.env.ELECTRON_RUN_AS_NODE
+);
 
 // Scripted / terminal-agent flags (2026-08-24). --resume <id>/--last continue an existing
 // session (conversation memory survives a relaunch), --json emits every server message as one

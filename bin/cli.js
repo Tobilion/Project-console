@@ -10,6 +10,16 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const rootDir = path.resolve(__dirname, '..');
 
+process.on('uncaughtException', (err) => {
+  console.error(`\nCLI launcher crashed: ${err && err.stack ? err.stack : err}`);
+  process.exit(1);
+});
+process.on('unhandledRejection', (reason) => {
+  const msg = reason instanceof Error ? reason.stack : String(reason);
+  console.error(`\nCLI launcher unhandled rejection: ${msg}`);
+  process.exit(1);
+});
+
 async function startServer() {
   // Default mode: launch the server in production
   process.env.NODE_ENV = 'production';
@@ -56,8 +66,9 @@ async function startServer() {
 async function probeRunningPort() {
   // A running console server answers /api/projects on one of 3000-3019. When one is found
   // the launcher hands off to it instead of starting a duplicate instance (which would only
-  // bind a fallback port and leave a second server behind).
-  for (let i = 3000; i <= 3019; i++) {
+  // bind a fallback port and leave a second server behind). Range mirrors server/portConfig.js.
+  const base = parseInt(process.env.PORT, 10) || 3000;
+  for (let i = base; i < base + 20; i++) {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 5000);
     try {
@@ -122,7 +133,8 @@ async function runLauncher() {
     process.exit(0);
   }
 
-  console.log('\n  [+] Checking for a running server on ports 3000-3019...');
+  const __probeBase = parseInt(process.env.PORT, 10) || 3000;
+  console.log(`\n  [+] Checking for a running server on ports ${__probeBase}-${__probeBase + 19}...`);
   const runningPort = await probeRunningPort();
 
   if (choice === 'w') {
@@ -201,9 +213,20 @@ async function main() {
   // the console itself cannot start. server/doctor.js imports no server-graph modules, so
   // this stays import-light.
   if (process.argv[2] === 'doctor' || process.argv[2] === '--doctor') {
-    const { runDoctorChecks, printDoctorReport, doctorExitCode } = await import(
+    const { runDoctorChecks, printDoctorReport, doctorExitCode, autoFixDoctor } = await import(
       pathToFileURL(path.join(rootDir, 'server', 'doctor.js')).href
     );
+    const wantFix = process.argv.includes('--fix') || process.argv.includes('-f');
+    if (wantFix) {
+      const fixes = await autoFixDoctor();
+      if (fixes.length === 0) {
+        console.log('No auto-fixable issues found.');
+      } else {
+        console.log('Applied fixes:');
+        for (const f of fixes) console.log(`  - ${f}`);
+      }
+      process.exit(0);
+    }
     const checks = await runDoctorChecks();
     process.stdout.write(printDoctorReport(checks).replace(/\*\*/g, '') + '\n');
     process.exit(doctorExitCode(checks));

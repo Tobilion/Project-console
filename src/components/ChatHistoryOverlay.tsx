@@ -130,11 +130,11 @@ export function ChatHistoryOverlay({
           </span>
         </span>
         {editingId !== s.id && (
-          <button onClick={(e) => { e.stopPropagation(); setEditingId(s.id); setDraftTitle(s.title); }} className="opacity-0 group-hover:opacity-100 text-fg-dim hover:text-accent-blue transition-all flex-shrink-0" title="Rename chat">
+          <button onClick={(e) => { e.stopPropagation(); setEditingId(s.id); setDraftTitle(s.title); }} className="opacity-100 md:opacity-0 md:group-hover:opacity-100 text-fg-dim hover:text-accent-blue transition-all flex-shrink-0" title="Rename chat">
             <Pencil size={12} />
           </button>
         )}
-        <button onClick={(e) => { e.stopPropagation(); onDeleteSession(s.id); }} className="opacity-0 group-hover:opacity-100 text-fg-dim hover:text-accent-red transition-all flex-shrink-0" title="Delete chat">
+        <button onClick={(e) => { e.stopPropagation(); onDeleteSession(s.id); }} className="opacity-100 md:opacity-0 md:group-hover:opacity-100 text-fg-dim hover:text-accent-red transition-all flex-shrink-0" title="Delete chat">
           <Trash2 size={12} />
         </button>
       </div>

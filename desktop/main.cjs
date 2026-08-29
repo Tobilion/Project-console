@@ -32,8 +32,23 @@ const path = require('path');
 const fs = require('fs');
 const http = require('http');
 
-const BASE_PORT = 3000;
-const MAX_PORT_ATTEMPTS = 20; // 3000-3019, same rule as start.bat / bin/cli.js (widened 2026-08-26)
+// The CLI's ELECTRON_RUN_AS_NODE crash (2026-08-29) showed an entry point with no
+// top-level handler lives or dies on its first throw. The desktop shell is the only
+// entry point that cannot rely on node --import tsx guards — it is CJS under Electron.
+process.on('uncaughtException', (err) => {
+  const stack = err && err.stack ? err.stack : String(err);
+  try { console.error('Desktop uncaughtException:', stack); } catch {}
+  try { fs.appendFileSync(path.join(app.getPath('userData'), 'desktop-crash.log'), `${new Date().toISOString()} uncaughtException: ${stack}\n`); } catch {}
+  try { dialog.showErrorBox('Project Console — unexpected error', `${err && err.message ? err.message : err}\n\n${stack.slice(0, 800)}`); } catch {}
+});
+process.on('unhandledRejection', (reason) => {
+  const stack = reason instanceof Error ? reason.stack : String(reason);
+  try { console.error('Desktop unhandledRejection:', stack); } catch {}
+  try { fs.appendFileSync(path.join(app.getPath('userData'), 'desktop-crash.log'), `${new Date().toISOString()} unhandledRejection: ${stack}\n`); } catch {}
+});
+
+const BASE_PORT = parseInt(process.env.PORT, 10) || 3000;
+const MAX_PORT_ATTEMPTS = 20; // 3000-3019, same rule as server/portConfig.js (widened 2026-08-26)
 
 let tray = null;
 let serverChild = null;

@@ -15,17 +15,17 @@ import path from 'path';
 import { exec, execFile } from 'child_process';
 import { promisify } from 'util';
 import { fileURLToPath, pathToFileURL } from 'url';
+import { getDataDir } from './dataPath.js';
+import { BASE_PORT, MAX_PORT_ATTEMPTS, OLLAMA_DEFAULT_HOST } from './portConfig.js';
 
 const execFileAsync = promisify(execFile);
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, '..');
-const dataDir = process.env.CONSOLE_DATA_DIR ? path.resolve(process.env.CONSOLE_DATA_DIR) : path.join(rootDir, 'data');
+const dataDir = getDataDir();
 const cacheDir = path.join(rootDir, '.cache');
 const logDir = path.join(rootDir, 'logs');
 const WIN = process.platform === 'win32';
-const BASE_PORT = 3000;
-const MAX_PORT = 3019; // must match every launcher (widened 2026-08-26)
-const OLLAMA_DEFAULT_HOST = process.env.OLLAMA_HOST || 'http://localhost:11434';
+const MAX_PORT = BASE_PORT + MAX_PORT_ATTEMPTS - 1;
 
 // --- port probe ----------------------------------------------------------------
 
@@ -185,6 +185,135 @@ async function checkUpdate() {
   }
 }
 
+// --- TTY / raw-mode / ELECTRON_RUN_AS_NODE --------------------------------------
+
+function checkTTY() {
+  const hasTTY = Boolean(process.stdin.isTTY && process.stdout.isTTY);
+  const hasRaw = typeof process.stdin.setRawMode === 'function';
+  const underElectron = !!process.env.ELECTRON_RUN_AS_NODE;
+  if (underElectron) {
+    return {
+      name: 'TTY / raw mode',
+      status: 'warn',
+      detail:
+        'ELECTRON_RUN_AS_NODE is set — raw-mode input is unavailable; the CLI falls back to the numbered list (install with --project "<name>" to skip the picker)',
+    };
+  }
+  if (!hasTTY) {
+    return {
+      name: 'TTY / raw mode',
+      status: 'warn',
+      detail: 'no interactive TTY detected (piped/redirected stdin) — @clack/prompts fall back to readline; run in a real terminal for the arrow-key picker',
+    };
+  }
+  if (!hasRaw) {
+    return {
+      name: 'TTY / raw mode',
+      status: 'warn',
+      detail: 'stdin reports isTTY but setRawMode is unavailable — same effect as ELECTRON_RUN_AS_NODE (fallback picker)',
+    };
+  }
+  return { name: 'TTY / raw mode', status: 'ok', detail: 'interactive TTY with raw-mode input available' };
+}
+
+// --- data-dir consistency -----------------------------------------------------
+
+function checkDataDir() {
+  const expected = getDataDir();
+  const real = fs.existsSync(expected) ? 'exists' : 'missing (created on first write)';
+  const env = process.env.CONSOLE_DATA_DIR ? `CONSOLE_DATA_DIR=${process.env.CONSOLE_DATA_DIR}` : 'CONSOLE_DATA_DIR not set (using repo ./data)';
+  return {
+    name: 'Data dir',
+    status: 'ok',
+    detail: `${expected} — ${real}; ${env}`,
+  };
+}
+
+async function checkLogWritability() {
+  const dir = logDir;
+  const probe = path.join(dir, `.doctor-log-probe-${process.pid}.tmp`);
+  try {
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(probe, 'probe');
+    fs.rmSync(probe, { force: true });
+    return { name: 'Log writability', status: 'ok', detail: `${dir} is writable (server.log/cli.log can be written)` };
+  } catch (e) {
+    return { name: 'Log writability', status: 'fail', detail: `${dir} is NOT writable (${e.message}) — crash stacks and lifecycle events will be lost` };
+  }
+}
+
+// --- auto-fix (small safe reconciliations) ----------------------------------
+
+export async function autoFixDoctor() {
+  // Offer = perform automatically where safe and unambiguous. Caller confirms before invoking.
+  const fixes = [];
+  // Stale daemon.port with no live server
+  const portFile = path.join(logDir, 'daemon.port');
+  if (fs.existsSync(portFile)) {
+    const port = parseInt(fs.readFileSync(portFile, 'utf8').trim(), 10);
+    if (Number.isFinite(port)) {
+      const alive = await probeConsolePort(port);
+      if (!alive) {
+        try {
+          fs.rmSync(portFile, { force: true });
+          const pidFile = path.join(logDir, 'daemon.pid');
+          fs.rmSync(pidFile, { force: true });
+          fixes.push(`removed stale daemon.port/${port} + daemon.pid (no server answering there)`);
+        } catch (e) { fixes.push(`failed to remove stale daemon files: ${e.message}`); }
+      }
+    } else {
+      try { fs.rmSync(portFile, { force: true }); fixes.push('removed unreadable daemon.port (corrupt)'); } catch {}
+    }
+  }
+  // Corrupted/unreadable data/dev-urls.json is handled at read time (skipped), but a
+  // zero-byte file can be removed safely so the next write recreates it clean.
+  for (const fname of ['dev-urls.json']) {
+    const p = path.join(dataDir, fname);
+    try {
+      if (fs.existsSync(p) && fs.statSync(p).size === 0) { fs.unlinkSync(p); fixes.push(`removed zero-byte ${fname}`); }
+    } catch {}
+  }
+  // Corrupted code-index.json (typed-array-as-object vectors from pre-fix save) - remove so it rebuilds
+  try {
+    const projects = fs.readdirSync(dataDir, { withFileTypes: true })
+      .filter(d => d.isDirectory())
+      .map(d => d.name);
+    for (const proj of projects) {
+      const idxPath = path.join(dataDir, proj, '.console', 'code-index.json');
+      if (fs.existsSync(idxPath)) {
+        try {
+          const content = JSON.parse(fs.readFileSync(idxPath, 'utf8'));
+          // Check for typed-array-as-object corruption: vectors like {"0":..., "1":...}
+          const hasCorruption = content.chunks?.some((c) =>
+            c.vector && typeof c.vector === 'object' && !Array.isArray(c.vector) && Object.keys(c.vector).every(k => !isNaN(Number(k)))
+          );
+          if (hasCorruption) {
+            fs.unlinkSync(idxPath);
+            fixes.push(`removed corrupted code-index.json for ${proj} (typed-array-as-object vectors)`);
+          }
+        } catch {
+          // Unreadable/corrupt - remove it
+          fs.unlinkSync(idxPath);
+          fixes.push(`removed unreadable code-index.json for ${proj}`);
+        }
+      }
+    }
+  } catch {}
+  // Corrupted conversation index - remove so it reconciles on next listSessions()
+  try {
+    const indexPath = path.join(dataDir, 'conversations', 'index.json');
+    if (fs.existsSync(indexPath)) {
+      try {
+        JSON.parse(fs.readFileSync(indexPath, 'utf8'));
+      } catch {
+        fs.unlinkSync(indexPath);
+        fixes.push('removed corrupted conversations/index.json (will reconcile on next boot)');
+      }
+    }
+  } catch {}
+  return fixes;
+}
+
 // --- tooling + disk --------------------------------------------------------------
 
 async function checkTooling() {
@@ -228,6 +357,9 @@ export async function runDoctorChecks() {
     checkDaemon(),
     checkEmbeddingModel(),
     checkWritable(),
+    checkTTY(),
+    checkDataDir(),
+    checkLogWritability(),
     checkOllama(),
     checkUpdate(),
     checkTooling(),

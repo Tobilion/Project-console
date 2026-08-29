@@ -25,6 +25,25 @@ import { stripMarkdown, discoverServer, pickResumeSession } from './cliDiscovery
 import { selectProject, findProjectFromArgs } from './cliProjectPicker.js';
 import { renderMascot } from './cliMascot.js';
 import { createCliRenderer } from './cliRenderer.js';
+import { appendLogFile } from './fileLogger.js';
+
+// Global crash guard — the Start Menu launches via cli.cmd which closes on exit, so an
+// uncaught throw after "Connected" (e.g. clack raw-mode failure under ELECTRON_RUN_AS_NODE)
+// vanished with no message. Log verbosely and keep the window open via the cmd PAUSE branch.
+process.on('uncaughtException', (err) => {
+  const stack = err && err.stack ? err.stack : String(err);
+  try { appendLogFile('cli.log', `${new Date().toISOString()} uncaughtException: ${stack}`); } catch {}
+  console.error(`\n${C.red}CLI crashed:${C.reset} ${stack}`);
+  console.error(`${C.dim}Tip: run with --project "<name>" to skip the picker, or launch via PowerShell to see full logs.${C.reset}`);
+  // Give cmd's `if errorlevel 1 pause` a non-zero exit; also pause here when run interactively.
+  setTimeout(() => process.exit(1), 100);
+});
+process.on('unhandledRejection', (reason) => {
+  const stack = reason && reason.stack ? reason.stack : String(reason);
+  try { appendLogFile('cli.log', `${new Date().toISOString()} unhandledRejection: ${stack}`); } catch {}
+  console.error(`\n${C.red}CLI unhandled rejection:${C.reset} ${stack}`);
+  setTimeout(() => process.exit(1), 100);
+});
 
 // Real-shell Ctrl+C (2026-08-24): send the server's `cancel` (which stops only the current AI
 // turn's own processes) instead of Node's default abrupt kill, then exit 130 like a shell. A
@@ -152,38 +171,47 @@ async function main() {
   // Scripted runs (--json/--query/--export) keep stdout clean for piping — no banner, no
   // mascot, no picker chrome.
   if (!SCRIPTED) {
-    console.clear();
+    try { console.clear(); } catch {}
     if (isTTY) {
-      console.log(chalk.cyan(figlet.textSync('PROJECT CONSOLE', { horizontalLayout: 'full' })));
-      console.log(
-        boxen(chalk.dim('Local Project Engine — Offline Project & AI Assistant'), {
-          padding: { left: 2, right: 2 },
-          margin: { bottom: 1 },
-          borderStyle: 'round',
-          borderColor: 'cyan',
-        })
-      );
-      renderMascot();
+      try {
+        console.log(chalk.cyan(figlet.textSync('PROJECT CONSOLE', { horizontalLayout: 'full' })));
+        console.log(
+          boxen(chalk.dim('Local Project Engine — Offline Project & AI Assistant'), {
+            padding: { left: 2, right: 2 },
+            margin: { bottom: 1 },
+            borderStyle: 'round',
+            borderColor: 'cyan',
+          })
+        );
+      } catch (err) {
+        console.log(`\n${C.bgBlue}${C.bold}  Local Project Console — CLI Chat  ${C.reset}\n`);
+        console.log(`${C.dim}(banner unavailable: ${err.message})${C.reset}`);
+      }
+      try { renderMascot(); } catch (err) {
+        console.log(`${C.dim}(mascot unavailable: ${err && err.message ? err.message : err})${C.reset}`);
+      }
     } else {
       console.log(`\n${C.bgBlue}${C.bold}  Local Project Console — CLI Chat  ${C.reset}\n`);
     }
     console.log(`${C.dim}Tip: skip the picker next time with --dir "<full project path>" or --project "<name>".${C.reset}`);
   }
 
-  const spinner = !SCRIPTED && isTTY ? p.spinner() : null;
+  let spinner = null;
+  try { spinner = !SCRIPTED && isTTY ? p.spinner() : null; } catch { spinner = null; }
   if (spinner) {
-    spinner.start(`Connecting to local server (ports ${BASE_PORT}-${BASE_PORT + MAX_PORT_ATTEMPTS - 1})...`);
-  } else if (!SCRIPTED) {
+    try { spinner.start(`Connecting to local server (ports ${BASE_PORT}-${BASE_PORT + MAX_PORT_ATTEMPTS - 1})...`); } catch { spinner = null; }
+  }
+  if (!spinner && !SCRIPTED) {
     console.log(`${C.dim}Connecting (checking ports ${BASE_PORT}-${BASE_PORT + MAX_PORT_ATTEMPTS - 1}, retrying for up to ${CONNECT_TIMEOUT_MS / 1000}s)...${C.reset}`);
   }
 
   const discovered = await discoverServer(
     spinner
-      ? (elapsed) => spinner.message(`Still connecting (${elapsed}s elapsed, checking ports ${BASE_PORT}-${BASE_PORT + MAX_PORT_ATTEMPTS - 1})...`)
+      ? (elapsed) => { try { spinner.message(`Still connecting (${elapsed}s elapsed, checking ports ${BASE_PORT}-${BASE_PORT + MAX_PORT_ATTEMPTS - 1})...`); } catch {} }
       : (SCRIPTED ? () => {} : null)
   );
   if (!discovered || discovered.projects.length === 0) {
-    if (spinner) spinner.stop(chalk.red(`✖ Could not connect to a server on ports ${BASE_PORT}-${BASE_PORT + MAX_PORT_ATTEMPTS - 1}`));
+    if (spinner) try { spinner.stop(chalk.red(`✖ Could not connect to a server on ports ${BASE_PORT}-${BASE_PORT + MAX_PORT_ATTEMPTS - 1}`)); } catch {}
     else process.stderr.write(`${C.red}✖ Could not connect to a server on ports ${BASE_PORT}-${BASE_PORT + MAX_PORT_ATTEMPTS - 1}${C.reset}\n`);
     process.stderr.write(`${C.yellow}  Make sure the console is running (start the Project Console app, or "npm run dev"), then try again.${C.reset}\n`);
     process.exit(1);
@@ -193,7 +221,7 @@ async function main() {
   // Stop the spinner BEFORE the port-collision note so stdout writes don't interleave with the
   // still-animating spinner line (clack owns that line until .stop()).
   if (spinner) {
-    spinner.stop(chalk.green(`✔ Connected to Local Engine on port ${PORT}`));
+    try { spinner.stop(chalk.green(`✔ Connected to Local Engine on port ${PORT}`)); } catch {}
   } else if (!SCRIPTED) {
     console.log(`${C.green}✔ Connected.${C.reset}`);
   }
@@ -293,9 +321,20 @@ async function main() {
     if (resumed || SCRIPTED) {
       project = generalPseudoProject();
     } else {
-      project = isTTY
-        ? await selectProject(projects)
-        : (projects.length === 1 ? projects[0] : await selectProject(projects));
+      try {
+        project = isTTY
+          ? await selectProject(projects)
+          : (projects.length === 1 ? projects[0] : await selectProject(projects));
+      } catch (err) {
+        console.error(`\n${C.red}Project picker failed:${C.reset} ${err.message}`);
+        console.error(`${C.dim}Falling back to numbered list. Re-run with --project "<name>" to skip the picker.${C.reset}\n`);
+        // Re-enter via legacy path directly — don't re-throw and crash the window.
+        const { selectProject: legacyPick } = await import('./cliProjectPicker.js');
+        // legacyPick will detect isTTY but we force the legacy readline path by calling it explicitly
+        // via a direct import of the internal function fallback: just re-call selectProject which now
+        // itself falls back, or if that also fails, pick first project.
+        try { project = await selectProject(projects); } catch { project = projects[0] || generalPseudoProject(); }
+      }
     }
   }
 
@@ -374,4 +413,7 @@ async function main() {
   });
 }
 
-main();
+main().catch((err) => {
+  console.error(`\n${C.red}Fatal CLI error:${C.reset} ${err && err.stack ? err.stack : err}`);
+  process.exit(1);
+});

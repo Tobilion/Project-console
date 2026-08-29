@@ -12,6 +12,10 @@ import { buildHelpMessage } from './builtinHelp.js';
 import { evaluateArithmetic, formatValue, convertUnits, percentageQuery } from '../mathEval.js';
 import { lookupCommandDocs, resolveShell } from '../consoleCommandDocs.js';
 import { aiDockInstruction } from '../aiDockHints.js';
+import { getLogDir, listLogFiles, readLogFile, whereAreLogs } from '../fileLogger.js';
+import { runDoctorChecks, printDoctorReport } from '../doctor.js';
+import archiver from 'archiver';
+import os from 'os';
 
 /**
  * system.chit_chat.* handlers (Phase 10 step 3, extracted verbatim from builtinIntents.js).
@@ -388,7 +392,47 @@ export const chitChatHandlers = {
         trigger: 'deploy'
       }));
     }
-  }
+  },
+
+  'system.chit_chat.where_are_logs': async (ws, action, input, project, sessionContext) => {
+    ws.send(JSON.stringify({ type: 'answer', data: whereAreLogs() }));
+  },
+
+  'system.chit_chat.export_logs': async (ws, action, input, project, sessionContext) => {
+    try {
+      const logDir = getLogDir();
+      const files = listLogFiles();
+      if (files.length === 0) {
+        ws.send(JSON.stringify({ type: 'answer', data: 'No log files found to export.' }));
+        return;
+      }
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+      const exportPath = path.join(os.homedir(), `console-logs-${timestamp}.zip`);
+      const archive = archiver('zip', { zlib: { level: 9 } });
+      const output = fs.createWriteStream(exportPath);
+      archive.pipe(output);
+      for (const f of files) {
+        const content = readLogFile(f);
+        if (content) archive.append(content, { name: f });
+      }
+      // Add doctor report
+      const checks = await runDoctorChecks();
+      const report = printDoctorReport(checks).replace(/\*\*/g, '');
+      archive.append(report, { name: 'doctor-report.txt' });
+      await new Promise((resolve, reject) => {
+        output.on('close', resolve);
+        output.on('error', reject);
+        archive.finalize().catch(reject);
+      });
+      ws.send(JSON.stringify({
+        type: 'answer',
+        data: `Exported ${files.length} log file(s) + doctor report to:\n\`${exportPath}\`\n\nAttach this file to a bug report — it contains recent server/cli/daemon/desktop crash logs and a full machine diagnostic.`,
+      }));
+    } catch (err) {
+      ws.send(JSON.stringify({ type: 'error_output', data: `Failed to export logs: ${err.message}` }));
+    }
+  },
+
 };
 
 // Shared how-do-i answer renderer (2026-08-26): the lookup + markdown answer + suggestion

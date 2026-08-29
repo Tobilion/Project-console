@@ -16,23 +16,31 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const MASCOT_COWS = ['cat', 'owl', 'dragon', 'robot', 'stegosaurus', 'tux', 'doge'];
 
 export function renderMascot() {
-  // Generic fallback, not a hardcoded person's name — data/user-profile.json isn't published
-  // with the npm package and only exists once a user sets their own profile, so a fresh install
-  // used to greet every stranger as "Tobi" (the original author) by name (audit 2026-08-10,
-  // raised while generalizing for npm/public distribution).
-  let name = 'there';
   try {
-    const profile = JSON.parse(fs.readFileSync(resolveData('user-profile.json'), 'utf8'));
-    if (profile.userProfile?.name) name = profile.userProfile.name;
-  } catch {
-    // Missing/corrupt profile must not fail the whole CLI — keep the fallback name.
+    // Generic fallback, not a hardcoded person's name — data/user-profile.json isn't published
+    // with the npm package and only exists once a user sets their own profile, so a fresh install
+    // used to greet every stranger as "Tobi" (the original author) by name (audit 2026-08-10,
+    // raised while generalizing for npm/public distribution).
+    let name = 'there';
+    try {
+      const profile = JSON.parse(fs.readFileSync(resolveData('user-profile.json'), 'utf8'));
+      if (profile.userProfile?.name) name = profile.userProfile.name;
+    } catch {
+      // Missing/corrupt profile must not fail the whole CLI — keep the fallback name.
+    }
+    const animal = MASCOT_COWS[Math.floor(Math.random() * MASCOT_COWS.length)];
+    let art;
+    try {
+      art = cowsay.say({ text: `Welcome back, ${name}! Select a project to initialize session:`, e: 'oO', T: 'U ', f: animal });
+    } catch {
+      try { art = cowsay.say({ text: `Welcome back, ${name}!`, f: 'cat' }); } catch { art = `Welcome back, ${name}!`; }
+    }
+    try { console.log(chalk.cyan(art)); } catch { console.log(`Welcome back, ${name}!`); }
+  } catch (err) {
+    // cowsay/figlet/chalk can throw when the terminal doesn't support ANSI or the cows
+    // directory is missing in a staged install — never let a cosmetic banner crash the CLI
+    // right after it successfully discovered projects.
+    try { console.log(chalk.cyan(`Welcome! Select a project to initialize session:`)); } catch { console.log('Welcome! Select a project to initialize session:'); }
+    try { console.log(chalk.dim(`(mascot unavailable: ${err.message})`)); } catch {}
   }
-  const animal = MASCOT_COWS[Math.floor(Math.random() * MASCOT_COWS.length)];
-  let art;
-  try {
-    art = cowsay.say({ text: `Welcome back, ${name}! Select a project to initialize session:`, e: 'oO', T: 'U ', f: animal });
-  } catch {
-    art = cowsay.say({ text: `Welcome back, ${name}!`, f: 'cat' });
-  }
-  console.log(chalk.cyan(art));
 }

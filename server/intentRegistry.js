@@ -151,6 +151,8 @@ export const BUILTIN_INTENTS = new Set([
   // Phase 8 follow-up (2026-08-24): file rename + move — Folder Explorer in-place rename and
   // drag-and-drop move. General-mode mutations, journaled as file_move like tidy (not dev-only).
   'general.files.rename', 'general.files.move',
+  // Phase 10 (2026-08-12): log diagnostics — where are my logs / export logs (builtinChitChat.js).
+  'system.chit_chat.where_are_logs', 'system.chit_chat.export_logs',
 ]);
 
 // Phase 1 workspaceType filtering (UPGRADE-ROADMAP.md, 2026-08-11): builtin intents that make

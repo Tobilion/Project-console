@@ -18,6 +18,15 @@
           document.documentElement.dataset.theme = theme;
         } catch (e) {}
       })();
+      // Global promise-rejection guard — an uncaught rejection outside React (e.g. a
+      // failed fetch in a tool panel's effect) otherwise surfaces as a console error
+      // with no UI signal. Log it so the user can report it; the app stays mounted.
+      window.addEventListener('unhandledrejection', function (e) {
+        try { console.error('Unhandled promise rejection:', e.reason); } catch {}
+      });
+      window.addEventListener('error', function (e) {
+        try { console.error('Window error:', e.message, e.filename + ':' + e.lineno); } catch {}
+      });
     </script>
   </head>
   <body>
