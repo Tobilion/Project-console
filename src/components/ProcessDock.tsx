@@ -127,6 +127,7 @@ export function ProcessDock({
     <AnimatePresence initial={false}>
       {(processes.length > 0 || projects.length > 0) && (
         <motion.div
+          data-tour="process-dock"
           initial={{ height: 0, opacity: 0 }}
           animate={{ height: 'auto', opacity: 1 }}
           exit={{ height: 0, opacity: 0 }}

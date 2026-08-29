@@ -140,6 +140,7 @@ export const SidebarDrawer = ({
             <FolderSearch size={13} />
           </button>
           <input
+            data-tour="scan-input"
             type="text"
             value={scanPath}
             onChange={(e) => setScanPath(e.target.value)}
@@ -166,7 +167,7 @@ export const SidebarDrawer = ({
 
       <div className="px-2.5 mb-1 flex items-center justify-between flex-shrink-0">
         <span className="text-[10px] tracking-[0.2em] uppercase text-fg-dim font-bold">Chats</span>
-        <button onClick={onOpenChatHistory} className="p-1 text-fg-dim hover:text-fg-strong rounded transition-colors" title="Open full chat history">
+        <button data-tour="chat-history-button" onClick={onOpenChatHistory} className="p-1 text-fg-dim hover:text-fg-strong rounded transition-colors" title="Open full chat history">
           <Maximize2 size={12} />
         </button>
       </div>
@@ -189,7 +190,7 @@ export const SidebarDrawer = ({
           className="w-full bg-surface/50 border border-border-soft rounded-md px-2 py-1 text-[11px] text-fg placeholder:text-fg-dim focus:outline-none focus:border-accent-blue/50"
         />
       </div>
-      <div className="flex-1 min-h-0 overflow-y-auto px-2 pb-1">
+      <div data-tour="chats-list" className="flex-1 min-h-0 overflow-y-auto px-2 pb-1">
         {filteredSessions.length === 0 && (
           <button onClick={() => chatTab === 'general' ? createSession(undefined, undefined) : createSession(activeProject?.id, activeProject?.name)} className="w-full text-xs text-fg-dim italic text-left py-2 px-2 rounded-lg hover:bg-panel transition-colors">
             {visibleSessions.length === 0
@@ -252,7 +253,7 @@ export const SidebarDrawer = ({
       <div className="px-2.5 mt-1 mb-1 flex-shrink-0">
         <span className="text-[10px] tracking-[0.2em] uppercase text-fg-dim font-bold">Projects</span>
       </div>
-      <div className="max-h-44 overflow-y-auto px-2 pb-2 flex-shrink-0 [scrollbar-width:thin]">
+      <div data-tour="project-list" className="max-h-44 overflow-y-auto px-2 pb-2 flex-shrink-0 [scrollbar-width:thin]">
         {projects.length === 0 ? (
           <div className="text-[11px] text-fg-dim italic px-2 py-2">No projects found. Try scanning a different path.</div>
         ) : (

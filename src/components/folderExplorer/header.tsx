@@ -83,9 +83,10 @@ export function ExplorerHeader(props: ExplorerHeaderProps) {
 
       {/* Search bar — filters the current listing by name (Windows Explorer style); the
           back/forward/up/breadcrumb navigation stays fully functional while searching. */}
-      <div className="flex items-center gap-2 px-4 py-1.5 border-b border-border-faint shrink-0">
+      <div data-tour="folder-explorer-search" className="flex items-center gap-2 px-4 py-1.5 border-b border-border-faint shrink-0">
         <SearchIcon size={13} className="text-fg-dim shrink-0" />
         <input
+          data-tour="folder-explorer-search-input"
           type="text"
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}

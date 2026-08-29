@@ -22,5 +22,6 @@
     },
     "allowImportingTsExtensions": true,
     "noEmit": true
-  }
+  },
+  "exclude": ["dist", "desktop/dist", "desktop/node_modules", "node_modules", ".cache", "data"]
 }

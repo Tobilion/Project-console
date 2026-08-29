@@ -16,7 +16,7 @@ interface BentoGridProps {
 
 export const BentoGrid = ({ projects, activeProject, onSelect, workspaceProjects, addToWorkspace, removeFromWorkspace }: BentoGridProps) => {
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+    <div data-tour="bento-grid" className="grid grid-cols-1 sm:grid-cols-2 gap-3">
       {projects.map((project, i) => (
         <motion.div
           key={project.id}

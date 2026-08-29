@@ -4,6 +4,7 @@ import { Settings, X, LayoutGrid, List, Compass } from 'lucide-react';
 import { ModalShell } from './ui/ModalShell';
 import { EditorsSection } from './profile/EditorsSection';
 import { TuningSection } from './profile/TuningSection';
+import { TOUR_GROUPS, TOUR_SECTIONS } from '../tours';
 
 interface UserProfileModalProps {
   open: boolean;
@@ -351,35 +352,45 @@ export function UserProfileModal({ open, profile, onClose, onSave }: UserProfile
         {/* Phase T2: Editors & IDEs — registry + per-extension defaults (self-contained). */}
         <EditorsSection />
 
-        {/* Phase T2: Tours — replay any section */}
+        {/* Phase T2: Tours — replay any section (grouped, 10 sections) */}
         <div className="pt-2 border-t border-border-faint">
           <div className="flex items-center gap-1.5 mb-1.5">
             <Compass size={13} className="text-accent-teal" />
             <p className="text-sm text-fg">Tours</p>
           </div>
-          <p className="text-[11px] text-fg-dim mb-2">Replay any guided walkthrough, any time.</p>
-          <div className="grid grid-cols-2 gap-1.5">
-            {[
-              ['welcome', 'Welcome'],
-              ['general', 'General mode'],
-              ['tools', 'Tools panels'],
-              ['developer', 'Developer mode'],
-              ['chat-ai', 'Chat & AI'],
-              ['tabs', 'Tabs & Folders'],
-              ['settings', 'Settings'],
-            ].map(([id, label]) => (
-              <button
-                key={id}
-                type="button"
-                onClick={() => launchTour(id)}
-                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-border-soft text-[11px] text-fg-subtle hover:border-accent-teal/50 hover:text-fg-strong transition-colors"
-              >
-                <Compass size={11} className="text-accent-teal" />
-                {label}
-                {toursTaken[id] && <span className="ml-auto text-[9px] text-accent-green">done</span>}
-              </button>
-            ))}
-          </div>
+          <p className="text-[11px] text-fg-dim mb-2">Replay any guided walkthrough, any time — 10 sections across 3 groups, ~50 steps total.</p>
+          {(() => {
+            const groups = TOUR_GROUPS.length
+              ? TOUR_GROUPS.map((g) => ({
+                  label: g.label,
+                  sections: g.sectionIds.map((id) => TOUR_SECTIONS.find((s) => s.id === id)).filter(Boolean) as import('../tours').TourSection[],
+                }))
+              : [{ label: 'All tours', sections: TOUR_SECTIONS }];
+            return (
+              <div className="space-y-3">
+                {groups.map((grp) => (
+                  <div key={grp.label}>
+                    <p className="text-[11px] font-bold tracking-wider uppercase text-fg-dim mb-1">{grp.label}</p>
+                    <div className="grid grid-cols-2 gap-1.5">
+                      {grp.sections.map((s) => (
+                        <button
+                          key={s.id}
+                          type="button"
+                          onClick={() => launchTour(s.id)}
+                          className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-border-soft text-[11px] text-fg-subtle hover:border-accent-teal/50 hover:text-fg-strong transition-colors text-left"
+                          title={s.description}
+                        >
+                          <Compass size={11} className="text-accent-teal flex-shrink-0" />
+                          <span className="truncate">{s.label}</span>
+                          {toursTaken[s.id] && <span className="ml-auto text-[9px] text-accent-green flex-shrink-0">done</span>}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            );
+          })()}
         </div>
 
         {/* Phase 8: runtime tuning-constant editor (self-contained). */}

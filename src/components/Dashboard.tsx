@@ -179,18 +179,20 @@ export const Dashboard = ({ onClose, refreshSignal = 0, projects, workspaceMode 
   };
 
   return (
-    <div className="flex flex-col gap-4 h-full overflow-hidden">
+    <div data-tour="dashboard-grid" className="flex flex-col gap-4 h-full overflow-hidden">
       <div className="flex items-center justify-between flex-shrink-0 flex-wrap gap-2">
         <div className="flex items-center gap-3 flex-wrap">
           <h2 className="text-lg font-bold text-fg-strong">Dashboard</h2>
           <div className="flex items-center gap-1 bg-scrim-faint rounded-lg p-0.5 border border-border-soft">
             <button
+              data-tour="dashboard-projects-tab"
               onClick={() => setTab('projects')}
               className={`px-2.5 py-1 text-xs rounded-lg transition-colors ${tab === 'projects' ? 'bg-panel-strong text-fg-strong' : 'text-fg-dim hover:text-fg-muted'}`}
             >
               Projects
             </button>
             <button
+              data-tour="dashboard-live-tab"
               onClick={() => setTab('live')}
               className={`flex items-center gap-1 px-2.5 py-1 text-xs rounded-lg transition-colors ${tab === 'live' ? 'bg-panel-strong text-fg-strong' : 'text-fg-dim hover:text-fg-muted'}`}
             >

@@ -41,12 +41,28 @@ export function useAppGlobalListeners(deps: UseAppGlobalListenersDeps) {
 
   // Phase T2: guided-tour plumbing. 'lpc:tour-view' switches the main view so a guided
   // step can point at the Tools grid / dashboard / chat; 'lpc:launch-tour' starts a section
-  // (dispatched by the settings modal's Tours section).
+  // (dispatched by the settings modal's Tours section). Expanded to carry panel detail so a
+  // guided step can open a specific Tools panel before spotlighting inside it.
   useEffect(() => {
     const onTourView = (e: Event) => {
-      const view = (e as CustomEvent).detail?.view;
-      if (view === 'tools') { setShowDashboard(false); setShowCommandRef(false); setToolsOpen(true); }
-      else if (view === 'dashboard') { setShowDashboard(true); setShowCommandRef(false); setToolsOpen(false); }
+      const detail = (e as CustomEvent).detail || {};
+      const view = detail.view;
+      const panel = detail.panel as string | undefined;
+      if (view === 'tools') {
+        setShowDashboard(false);
+        setShowCommandRef(false);
+        setToolsOpen(true);
+        if (panel) {
+          // Open the specific panel inside Tools so a data-tour inside it exists.
+          // Dispatch a second event that AppMainView listens to? Simpler: set the activeToolPanel
+          // via a dedicated event handled where that state lives — broadcast here and let the
+          // App's tour-panel listener handle it (see useAppViewState's tour-panel extension).
+          window.dispatchEvent(new CustomEvent('lpc:tour-panel', { detail: { panel } }));
+        } else {
+          window.dispatchEvent(new CustomEvent('lpc:tour-panel', { detail: { panel: '' } }));
+        }
+      } else if (view === 'dashboard') { setShowDashboard(true); setShowCommandRef(false); setToolsOpen(false); }
+      else if (view === 'commandRef') { setShowDashboard(false); setShowCommandRef(true); setToolsOpen(false); }
       else if (view === 'general') { setShowDashboard(false); setToolsOpen(false); setShowCommandRef(false); }
       else { setShowDashboard(false); setToolsOpen(false); setShowCommandRef(false); }
     };

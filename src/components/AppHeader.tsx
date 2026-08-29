@@ -49,7 +49,7 @@ export function AppHeader(props: AppHeaderProps) {
         )}
       </div>
       <div className="flex items-center gap-2 ml-auto flex-shrink-0">
-        <div className="flex items-center gap-1 bg-overlay rounded-full p-1 border border-border-faint">
+        <div data-tour="header-pill" className="flex items-center gap-1 bg-overlay rounded-full p-1 border border-border-faint">
           <button
             onClick={() => onWorkspaceTabChange('dev')}
             className={`px-3 py-1 text-xs rounded-full transition-colors ${workspaceTab === 'dev' ? 'bg-accent-blue text-white' : 'text-fg-dim hover:text-fg-strong'}`}
@@ -81,13 +81,13 @@ export function AppHeader(props: AppHeaderProps) {
         <button onClick={onHome} className="p-3 text-fg-dim hover:text-fg-strong transition-colors" title="Home">
           <Home size={18} />
         </button>
-        <button onClick={onToggleDeck} className="p-3 text-fg-dim hover:text-fg-strong transition-colors" title="Command deck (Ctrl+K)">
+        <button data-tour="deck-button" onClick={onToggleDeck} className="p-3 text-fg-dim hover:text-fg-strong transition-colors" title="Command deck (Ctrl+K)">
           <Search size={18} />
         </button>
-        <button onClick={onToggleCommandRef} className={`p-3 transition-colors ${showCommandRef ? 'text-accent-blue' : 'text-fg-dim hover:text-fg-strong'}`} title="Command reference (all commands)">
+        <button data-tour="commandref-button" onClick={onToggleCommandRef} className={`p-3 transition-colors ${showCommandRef ? 'text-accent-blue' : 'text-fg-dim hover:text-fg-strong'}`} title="Command reference (all commands)">
           <BookOpen size={18} />
         </button>
-        <button onClick={onToggleDashboard} className={`p-3 transition-colors ${showDashboard ? 'text-accent-blue' : 'text-fg-dim hover:text-fg-strong'}`} title="Dashboard">
+        <button data-tour="dashboard-button" onClick={onToggleDashboard} className={`p-3 transition-colors ${showDashboard ? 'text-accent-blue' : 'text-fg-dim hover:text-fg-strong'}`} title="Dashboard">
           <LayoutDashboard size={18} />
         </button>
         {/* Stage B: the Tools icon is visible in BOTH Developer and General modes — a

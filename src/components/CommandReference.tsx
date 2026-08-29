@@ -120,7 +120,7 @@ export function CommandReference({ onClose }: CommandReferenceProps) {
   };
 
   return (
-    <div className="h-full overflow-y-auto p-4">
+    <div data-tour="commandref-panel" className="h-full overflow-y-auto p-4">
       <div className="max-w-5xl mx-auto h-full flex flex-col">
         <div className="flex items-center justify-between mb-4 shrink-0">
           <div className="flex items-center gap-2">
@@ -140,7 +140,7 @@ export function CommandReference({ onClose }: CommandReferenceProps) {
         <div className="flex gap-4 flex-1 min-h-0">
           {/* Left category rail — 220px, --overlay. Hidden below md: at 375px the rail plus
               the content column leaves the table ~135px wide (2026-08-24 responsive pass). */}
-          <aside className="hidden md:block w-[220px] shrink-0 bg-overlay border-r border-border-faint p-3 overflow-y-auto">
+          <aside data-tour="commandref-rail" className="hidden md:block w-[220px] shrink-0 bg-overlay border-r border-border-faint p-3 overflow-y-auto">
             <button
               onClick={() => setActiveCategory(null)}
               className={cn('w-full text-left px-2.5 py-1.5 text-xs rounded-lg transition-colors mb-0.5', !activeCategory ? 'bg-accent-blue/15 text-accent-blue font-semibold' : 'text-fg-muted hover:text-fg-strong hover:bg-panel-strong/60')}

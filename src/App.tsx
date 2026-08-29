@@ -12,6 +12,7 @@ import { useAppViewState } from './hooks/useAppViewState';
 import { getRandomGreeting } from './utils/greetings';
 import { readWorkspaceTabs, readToolPanels, WORKSPACE_TAB_KEY, TOOL_PANEL_KEY } from './utils/appStorage';
 import type { TourSection } from './tours';
+import { getTourSection } from './tours';
 import { AppFooter } from './components/AppFooter';
 import { GENERAL_PROJECT_ID } from './types';
 import type { Project } from './types';
@@ -114,6 +115,45 @@ function App() {
 
   // Phase 9 (2026-08-24 split): global keyboard + tour CustomEvent listeners.
   useAppGlobalListeners({ setDeckOpen, setShortcutsOpen, setShowDashboard, setShowCommandRef, setToolsOpen, setTourPickerOpen, setTourSection });
+
+  // Tour-driven panel opening: guided steps inside Tools can request a specific panel.
+  // The overlay dispatches 'lpc:tour-view' with {view:'tools', panel:'folder-explorer'}; the
+  // global listener above opens Tools, and this handler opens the requested panel within it.
+  useEffect(() => {
+    const onTourPanel = (e: Event) => {
+      const detail = (e as CustomEvent).detail || {};
+      const panel = typeof detail.panel === 'string' ? detail.panel : '';
+      // Empty string = back to grid (close panel)
+      setActiveToolPanel(panel || null);
+    };
+    window.addEventListener('lpc:tour-panel', onTourPanel);
+    return () => window.removeEventListener('lpc:tour-panel', onTourPanel);
+  }, [setActiveToolPanel]);
+
+  // Welcome auto-show: first time the welcome screen is visible (and onboarding is done),
+  // automatically open the Welcome tour once (group Get Oriented). Respects an opt-out flag
+  // localStorage 'console.autoTour' = 'off' set by the picker close. Purely client-side, no
+  // server call, and never during FirstRunSetup.
+  useEffect(() => {
+    if (!profileLoaded || showFirstRunSetup) return;
+    if (!showWelcome || chatFullscreen) return;
+    try {
+      if (localStorage.getItem('console.autoTour') === 'off') return;
+      if (localStorage.getItem('console.welcomed') === '1') return;
+      if (tourSection || tourPickerOpen) return;
+    } catch { return; }
+    // Defer one frame so WelcomeScreen has mounted (bento-grid exists for guided step 2)
+    const raf = requestAnimationFrame(() => {
+      const sec = getTourSection('welcome');
+      if (sec) {
+        setTourSection(sec);
+        setTourMode('guided');
+        try { localStorage.setItem('console.welcomed', '1'); } catch {}
+      }
+    });
+    return () => cancelAnimationFrame(raf);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [profileLoaded, showFirstRunSetup, showWelcome, chatFullscreen]);
 
   // Phase 9 (2026-08-24 split): view-restore effects (per-tab view sync, workspace tab,
   // tool panel, tools fetch, General-tools-first landing).

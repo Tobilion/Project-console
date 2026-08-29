@@ -119,13 +119,15 @@ export function ToolsPanel({ panels, panelsError, onRetryPanels, activePanel, on
     const view = PANEL_VIEWS[active.id];
     if (view) {
       return (
+        <div data-tour={`${active.id}-panel`} className="h-full">
         <PanelShell onClose={() => onOpenPanel('')}>
           <PanelErrorBoundary resetKey={active.id} label={`${active.name} hit an error`}>
             <Suspense fallback={<div className="text-sm text-fg-muted bg-panel rounded-xl border border-border-soft p-6">Loading panel…</div>}>
-              {view({ project, onSendMessage, aiEnabled, tabId })}
+              <div data-tour={`${active.id}-panel-inner`}>{view({ project, onSendMessage, aiEnabled, tabId })}</div>
             </Suspense>
           </PanelErrorBoundary>
         </PanelShell>
+        </div>
       );
     }
     const Icon = ICONS[active.icon] || LayoutGrid;
@@ -199,14 +201,28 @@ export function ToolsPanel({ panels, panelsError, onRetryPanels, activePanel, on
             </button>
           </div>
         ) : (
-        <div className="grid gap-3 sm:grid-cols-2">
+        <div data-tour="tools-grid" className="grid gap-3 sm:grid-cols-2">
           <PanelErrorBoundary label="The tool grid hit an error">
           {panels.map(p => {
             const Icon = ICONS[p.icon] || LayoutGrid;
+            const tourId =
+              p.id === 'folder-explorer' ? 'tool-folder-explorer' :
+              p.id === 'pdf-tools' ? 'tool-pdf-tools' :
+              p.id === 'file-tools' ? 'tool-file-tools' :
+              p.id === 'repo-map' ? 'tool-repo-map' :
+              p.id === 'knowledge-base' ? 'tool-documents' :
+              p.id === 'notes' ? 'tool-notes' :
+              p.id === 'reminders' ? 'tool-reminders' :
+              p.id === 'clipboard' ? 'tool-clipboard' :
+              p.id === 'backup' ? 'tool-backup' :
+              p.id === 'notifications' ? 'tool-notifications' :
+              p.id === 'csv-tools' ? 'tool-spreadsheet' :
+              p.id === 'calculator' ? 'tool-calculator' :
+              p.id === 'marketplace' ? 'tool-marketplace' : undefined;
             return (
               <button
                 key={p.id}
-                data-tour={p.id === 'folder-explorer' ? 'tool-folder-explorer' : p.id === 'pdf-tools' ? 'tool-pdf-tools' : undefined}
+                data-tour={tourId}
                 onClick={() => onOpenPanel(p.id)}
                 className={`text-left bg-panel rounded-xl border border-border-soft p-4 transition-colors ${
                   p.available

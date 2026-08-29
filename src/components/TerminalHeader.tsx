@@ -44,7 +44,7 @@ export function TerminalHeader({
  }: TerminalHeaderProps) {
   const [showSessionMenu, setShowSessionMenu] = useState(false);
   return (
-    <div className="flex items-center gap-3 px-6 py-4 border-b border-border-soft bg-panel flex-wrap">
+    <div data-tour="terminal-header" className="flex items-center gap-3 px-6 py-4 border-b border-border-soft bg-panel flex-wrap">
       <TerminalIcon size={18} className="text-accent-blue" />
       <span className="text-sm text-fg-muted flex-1">
         {activeProject ? `Connected: ${activeProject.name}` : 'No Project Selected'}
