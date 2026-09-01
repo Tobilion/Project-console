@@ -387,7 +387,13 @@ export function printDoctorReport(checks) {
 }
 
 // Standalone entry: `node --import tsx server/doctor.js` (also wired as `npm run doctor`).
-if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
+// In the esbuild bundle (dist/server.js) this module is inlined and import.meta.url
+// becomes the bundle's URL (dist/server.js) — without the endsWith guard the check
+// `import.meta.url === pathToFileURL(argv[1])` is true when the SERVER is the main
+// entry, so every `node dist/server.js` boot spuriously ran the doctor report
+// (and its network/disk probes) alongside the server. Guard on the file name so
+// only a direct `doctor.js` invocation triggers it.
+if (import.meta.url.endsWith('/doctor.js') && import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
   const checks = await runDoctorChecks();
   process.stdout.write(printDoctorReport(checks).replace(/\*\*/g, '') + '\n');
   process.exitCode = doctorExitCode(checks);

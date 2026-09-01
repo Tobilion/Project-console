@@ -54,7 +54,7 @@ import { syncProjectWatchers } from './codeIndex/codeIndexBuilder.js';
 import { loadTuning } from './tuningStore.js';
 import { loadEditors } from './editorsStore.js';
 import { setCachedScan, invalidateScanCacheForPath } from './scanCache.js';
-import { BASE_PORT as PORT, HOST } from './portConfig.js';
+import { BASE_PORT as PORT, HOST, MAX_PORT_ATTEMPTS } from './portConfig.js';
 import { log } from './logger.js';
 
 const __filename = fileURLToPath(import.meta.url);
