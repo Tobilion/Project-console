@@ -3,6 +3,7 @@ import path from 'path';
 import { queueMemoryWrite, loadMemory } from './projectMemoryStore.js';
 import { checkThresholds } from './memoryThresholdChecks.js';
 import { QUESTION_THRESHOLD } from './memoryThresholds.js';
+import { log } from './logger.js';
 
 export function trackCommand(projectPath, command) {
   let suggestion = null;
@@ -58,7 +59,16 @@ export function addToClaudeMd(projectPath, topic, content) {
     if (fs.existsSync(claudePath)) {
       existing = fs.readFileSync(claudePath, 'utf-8');
     }
-  } catch {}
+  } catch (err) {
+    log.warn('[projectMemory] failed to read CLAUDE.md before append:', err.message);
+  }
+
+  // K-4 safety: if reading failed but the file exists, abort the write to avoid
+  // overwriting the existing document with just the new section.
+  if (!existing && fs.existsSync(claudePath)) {
+    log.error('[projectMemory] CLAUDE.md exists but could not be read — aborting append to prevent overwrite');
+    return false;
+  }
 
   const section = `\n\n## ${topic}\n\n${content.trim()}\n`;
   fs.writeFileSync(claudePath, existing + section);

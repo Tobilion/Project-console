@@ -6,6 +6,7 @@
  * The role labels intentionally mirror the inline writer that used to live in appendMessage.
  */
 import fs from 'fs/promises';
+import { log } from './logger.js';
 
 export async function appendChatLogEntry({ logPath, entry, messageCount, createdAt, title }) {
   try {
@@ -17,5 +18,7 @@ export async function appendChatLogEntry({ logPath, entry, messageCount, created
     const roleLabel = { user: '**You:**', bot: '**Console:**', error: '**Error:**', system: '**System:**' }[entry.role] || `**${entry.role}:**`;
     chunk += `${roleLabel} ${entry.content}\n\n`;
     await fs.appendFile(logPath, chunk);
-  } catch {}
+  } catch (err) {
+    log.warn('[chatLog] appendChatLogEntry failed:', err.message);
+  }
 }

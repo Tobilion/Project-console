@@ -93,7 +93,11 @@ export async function discoverProjects(baseDir, opts = {}) {
             config = JSON.parse(configData);
             sanitizeChatReplies(config);
           }
-        } catch (err) {}
+        } catch (err) {
+          if (err.code !== 'ENOENT') {
+            log.warn(`[projectScanContainer] failed to read console.config.json at ${projectPath}:`, err.message);
+          }
+        }
 
         const docs = await readProjectContextDocs(projectPath);
         const contextFiles = docs?.contextFiles || [];

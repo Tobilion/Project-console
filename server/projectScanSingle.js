@@ -3,6 +3,7 @@ import path from 'path';
 import { indexProject } from './codebaseIndexer.js';
 import { deriveScriptEntriesForProject, mergeAutoEntries } from './scriptEntries.js';
 import { sanitizeChatReplies, readProjectContextDocs, commandEntriesFromDocs, isRecognizableByCodeAlone, buildFallbackConfig, detectWorkspaceType } from './projectScanHelpers.js';
+import { log } from './logger.js';
 
 /**
  * Reads a single project folder's console.config.json (validated) + context docs, merges
@@ -23,7 +24,13 @@ export async function scanSingleProject(folderName, projectPath, opts = {}) {
       config = JSON.parse(configData);
       sanitizeChatReplies(config);
     }
-  } catch (err) {}
+  } catch (err) {
+    if (err.code === 'ENOENT') {
+      // File doesn't exist — normal for projects without a console.config.json
+    } else {
+      log.warn(`[projectScanSingle] failed to read console.config.json at ${projectPath}:`, err.message);
+    }
+  }
 
   const docs = await readProjectContextDocs(projectPath);
   const contextFiles = docs?.contextFiles || [];
