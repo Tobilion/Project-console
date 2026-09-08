@@ -18,8 +18,14 @@ import path from 'path';
 
 const SCAN_CACHE_TTL_MS = 8000;
 const SCAN_CACHE_MAX_ENTRIES = 12;
+// D-2 (2026-09-08): a stale entry within this grace window past the TTL is still served
+// immediately (stale-while-revalidate) rather than blocking the request on a full re-scan —
+// the signature check still runs first, so an actually-changed project never serves stale
+// data regardless of this window. Past the grace window a miss blocks as before; this only
+// smooths over the common "just barely expired" case a poll/tab-switch is likely to hit.
+const SCAN_CACHE_STALE_GRACE_MS = 60000;
 
-// scanDir + includeAll -> { projects, scannedAt, signature }
+// scanDir + includeAll -> { projects, scannedAt, signature, refreshing }
 const entries = new Map();
 
 function cacheKey(scanDir, includeAll) {
@@ -75,20 +81,39 @@ function rootSignature(scanDir, projects) {
   return `${sig}|${projectParts}`;
 }
 
-/** Cached scan result for a root, or null on TTL expiry / signature mismatch. */
-export function getCachedScan(scanDir, includeAll) {
+/** Cache lookup, D-2 stale-while-revalidate aware. Returns `{ projects, fresh }` —
+ *  `fresh: true` inside the normal TTL, `fresh: false` when the TTL has passed but the
+ *  signature still matches and we're within the grace window (safe to serve immediately
+ *  while the caller kicks off a background refresh). Returns null when there's no entry,
+ *  the signature no longer matches (a real change — never serve this stale regardless of
+ *  age), or the grace window has also elapsed (true cold miss, caller must block on a fresh
+ *  scan). The signature check runs before the age check on purpose: a real edit invalidates
+ *  the entry immediately, it doesn't get a grace-window reprieve just because it's recent. */
+export function getCachedScanStale(scanDir, includeAll) {
   const key = cacheKey(scanDir, includeAll);
   const entry = entries.get(key);
   if (!entry) return null;
-  if (Date.now() - entry.scannedAt > SCAN_CACHE_TTL_MS) {
-    entries.delete(key);
-    return null;
-  }
   if (rootSignature(scanDir, entry.projects) !== entry.signature) {
     entries.delete(key);
     return null;
   }
-  return entry.projects;
+  const age = Date.now() - entry.scannedAt;
+  if (age <= SCAN_CACHE_TTL_MS) return { projects: entry.projects, fresh: true };
+  if (age <= SCAN_CACHE_TTL_MS + SCAN_CACHE_STALE_GRACE_MS) return { projects: entry.projects, fresh: false };
+  entries.delete(key);
+  return null;
+}
+
+/** Marks/reads whether a background revalidation is already in flight for this root, so a
+ *  burst of requests hitting the same stale entry (multi-tab poll, rapid tab switches)
+ *  triggers exactly one re-scan instead of one per request. */
+export function isRevalidating(scanDir, includeAll) {
+  return entries.get(cacheKey(scanDir, includeAll))?.refreshing === true;
+}
+
+export function setRevalidating(scanDir, includeAll, value) {
+  const entry = entries.get(cacheKey(scanDir, includeAll));
+  if (entry) entry.refreshing = value;
 }
 
 /** Store a fresh whole-scan result. Callers must pass the array they also stored in the

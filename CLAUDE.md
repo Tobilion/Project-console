@@ -59,7 +59,8 @@ re-reading from scratch or re-deriving the plan.
   across 9 panels, the port-probing consolidation across desktop/CLI/daemon), the rest of B.3,
   and B.4's naming/comment-length audit. This is the largest remaining phase — chunk it across
   many commits, one dedup/split target per commit, not one giant pass.
-- **Phase D: started.** D-8 done (see below). D-5 and D-6 done (see below). D-4 done (new `server/intentVectorCache.js`: hashes the model id +
+- **Phase D: started.** D-2 and D-3 done (see below). D-8 done (see below). D-5 and D-6
+  done (see below). D-4 done (new `server/intentVectorCache.js`: hashes the model id +
   every intent/phrase pair, persists the batch-embed output to
   `data/.cache/intent-vectors.json` via `writeFileAtomicSync`, and `semanticMatcherInit.js`
   now checks it before running the ~2500-phrase batch embed — a cache hit skips essentially
@@ -67,8 +68,7 @@ re-reading from scratch or re-deriving the plan.
   full recompute + re-save, so this can never serve stale vectors). `.gitignore` gained
   `data/.cache/` (the model download cache at `.cache/xenova` was already ignored via
   `.cache/`, but `data/.cache/` needed its own line since `data/` isn't blanket-ignored).
-  **Still open**: D-1 (tab-switch loading indicator), D-2/D-3 (scan-cache pre-warm/reuse),
-  D-7 ("the single most impactful latency fix" per the master prompt — migrate mutating
+  **Still open**: D-1 (tab-switch loading indicator), D-7 ("the single most impactful latency fix" per the master prompt — migrate mutating
   panel actions to direct REST+journal instead of round-tripping through the chat/WS
   pipeline). D-6 verified: both historical CLI-crash root
   causes (`server/index.js`'s dynamic `import('vite')`, `server/pdfKit.js`'s lazy/guarded
@@ -97,6 +97,23 @@ re-reading from scratch or re-deriving the plan.
   task/time nouns hijack the embedding vector), and three "add reminder to ..." example
   phrases were added to `reminderIntents.js` + the REMINDERS matcher battery. Notes
   ("add a note: ...") already had this phrasing covered — verified, no change needed there.
+  D-2/D-3 done (`server/scanCache.js`, `server/routes/projectRoutes.js`): the whole-scan
+  cache previously either hit within its 8s TTL or blocked the request on a full re-scan —
+  no middle ground. `getCachedScan` (delete-on-expiry, no signature-preserving path) is
+  replaced by `getCachedScanStale`, which distinguishes a fresh hit from a TTL-expired-but-
+  signature-still-matching hit within a new 60s grace window; the latter is served
+  immediately while a background re-scan refreshes the entry (`isRevalidating`/
+  `setRevalidating` ensure exactly one refresh per root in flight, so a burst of requests
+  against the same stale entry — several tabs, rapid polling — doesn't fan out into N
+  redundant scans). A signature mismatch (a real edit) is never served stale regardless of
+  age — this is a latency optimization, not a staleness-tolerance increase. Both
+  `GET /api/projects` and `POST /api/scan-path` now go through this path; the scan-path
+  endpoint previously cold-scanned unconditionally even when a duplicated/restored tab
+  pointed at a root another tab had just scanned (D-3's exact complaint — 5 saved tabs on
+  the same root meant 5 full container walks). The background-refresh branch in both routes
+  re-syncs the tab/global project cache and broadcasts `projects_updated` once the real scan
+  lands, matching the existing config-watcher's own broadcast pattern so open clients pick
+  up the refresh without polling harder.
 - Phases C, E, F, G, H, I, J, L: **not started.**
 
 **Verification caveat carried across all of the above**: everything was checked with

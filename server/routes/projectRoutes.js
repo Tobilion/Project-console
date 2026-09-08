@@ -12,7 +12,7 @@ import { projectChatLogPath } from '../sessionExport.js';
 import { listActions } from '../actionHistory.js';
 import { syncProjectWatchers } from '../codeIndex/codeIndexBuilder.js';
 import { readProfile } from './profileRoutes.js';
-import { getCachedScan, setCachedScan, invalidateScanCacheForPath } from '../scanCache.js';
+import { getCachedScanStale, isRevalidating, setRevalidating, setCachedScan, invalidateScanCacheForPath } from '../scanCache.js';
 import { log as logger } from '../logger.js';
 
 // Phase T (2026-08-14): whether discovery includes every subfolder as a project — read fresh
@@ -52,11 +52,47 @@ export function registerProjectRoutes(app, dirname) {
     // doc/git edits apply immediately; code-content-only changes are bounded by the TTL
     // (scanCache.js documents the staleness contract). On a hit the projects are the same
     // objects already injected into the matcher/NLP, so the refresh below is skipped.
-    let projects = getCachedScan(dirToScan, includeAll);
-    let cacheHit = projects !== null;
-    if (!cacheHit) {
+    // D-2 (2026-09-08): getCachedScanStale distinguishes a fresh hit from a TTL-expired-but-
+    // signature-still-matching hit — the latter is served immediately (stale by at most a
+    // few seconds, no correctness cost) while a background re-scan refreshes it, instead of
+    // blocking this request the same way a true cold miss must. Exactly one background
+    // re-scan runs per root at a time (isRevalidating/setRevalidating guards it), so a burst
+    // of requests hitting the same stale entry (multiple tabs, rapid polling) doesn't fan out
+    // into N redundant scans.
+    const staleEntry = getCachedScanStale(dirToScan, includeAll);
+    let projects;
+    let cacheHit;
+    if (staleEntry) {
+      projects = staleEntry.projects;
+      cacheHit = true;
+      if (!staleEntry.fresh && !isRevalidating(dirToScan, includeAll)) {
+        setRevalidating(dirToScan, includeAll, true);
+        (async () => {
+          try {
+            const refreshed = dedupeProjectIds(await discoverProjects(dirToScan, { includeAll }));
+            setCachedScan(dirToScan, includeAll, refreshed);
+            if (tabWs) {
+              tabWs.projectsCache = refreshed;
+            } else {
+              await projectsMutex.runExclusive(async () => {
+                state.activeProjectsCache = refreshed;
+              });
+            }
+            const known = allKnownProjects();
+            await semanticMatcher.clearProjectIntents().catch(() => {});
+            await semanticMatcher.addProjectIntents(known).catch(() => {});
+            broadcast({ type: 'projects_updated', data: refreshed });
+          } catch (err) {
+            logger.warn('[projectRoutes] background scan revalidation failed:', err?.message || err);
+          } finally {
+            setRevalidating(dirToScan, includeAll, false);
+          }
+        })();
+      }
+    } else {
       projects = dedupeProjectIds(await discoverProjects(dirToScan, { includeAll }));
       setCachedScan(dirToScan, includeAll, projects);
+      cacheHit = false;
     }
     if (tabWs) {
       tabWs.projectsCache = projects;
@@ -66,7 +102,10 @@ export function registerProjectRoutes(app, dirname) {
       });
     }
     // Global consumers (matcher intents, NLP) must see projects from ALL tabs — one tab's
-    // rescan must never silently drop another tab's projects from those views.
+    // rescan must never silently drop another tab's projects from those views. Skipped for a
+    // stale-served hit above: the background task above (if just kicked off) will do this
+    // once the fresh scan actually lands, and re-running it here against still-stale data
+    // would be wasted work.
     if (!cacheHit) {
       const known = allKnownProjects();
       semanticMatcher.clearProjectIntents().catch(() => {});
@@ -137,10 +176,44 @@ export function registerProjectRoutes(app, dirname) {
       // Move the mock-seed inside the try too — it does filesystem work that can throw, and
       // previously sat outside the handler's only guard (audit 2026-08-06, Phase 2).
       const effectivePath = setupMockProjectsIfMissing(resolvedPath, dirname);
-      const projects = dedupeProjectIds(await discoverProjects(effectivePath, { includeAll: scanAllFoldersEnabled() }));
-      // Phase 6: prime the whole-scan cache so the next GET /api/projects for this root
-      // (tab restore, dashboard-ish fetches) hits instead of re-walking the container.
-      setCachedScan(effectivePath, scanAllFoldersEnabled(), projects);
+      const includeAll = scanAllFoldersEnabled();
+      // D-3 (2026-09-08): this endpoint used to cold-scan unconditionally, even when a
+      // duplicated tab or a restored tab pointed at the SAME root another tab had already
+      // scanned moments earlier (5 saved tabs on the same root previously meant 5 full
+      // container walks instead of 1). Check the whole-scan cache first — a fresh hit skips
+      // the scan entirely; a stale-but-valid hit is served immediately with a background
+      // refresh, same as GET /api/projects' D-2 fix — and only a genuine miss re-scans.
+      const staleEntry = getCachedScanStale(effectivePath, includeAll);
+      let projects;
+      if (staleEntry) {
+        projects = staleEntry.projects;
+        if (!staleEntry.fresh && !isRevalidating(effectivePath, includeAll)) {
+          setRevalidating(effectivePath, includeAll, true);
+          (async () => {
+            try {
+              const refreshed = dedupeProjectIds(await discoverProjects(effectivePath, { includeAll }));
+              setCachedScan(effectivePath, includeAll, refreshed);
+              if (tabId) {
+                setTabWorkspace(tabId, { scanDirectory: resolvedPath, projectsCache: refreshed });
+              } else {
+                await projectsMutex.runExclusive(async () => {
+                  state.activeProjectsCache = refreshed;
+                });
+              }
+              broadcast({ type: 'projects_updated', data: refreshed });
+            } catch (err) {
+              logger.warn('[projectRoutes] background scan-path revalidation failed:', err?.message || err);
+            } finally {
+              setRevalidating(effectivePath, includeAll, false);
+            }
+          })();
+        }
+      } else {
+        projects = dedupeProjectIds(await discoverProjects(effectivePath, { includeAll }));
+        // Phase 6: prime the whole-scan cache so the next GET /api/projects for this root
+        // (tab restore, dashboard-ish fetches) hits instead of re-walking the container.
+        setCachedScan(effectivePath, includeAll, projects);
+      }
       if (tabId) {
         setTabWorkspace(tabId, { scanDirectory: resolvedPath, projectsCache: projects });
       } else {
