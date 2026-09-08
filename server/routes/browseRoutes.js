@@ -8,6 +8,7 @@ import fs from 'fs';
 import path from 'path';
 import { spawn } from 'child_process';
 import { asyncHandler } from '../asyncHandler.js';
+import { resolveEditor, defaultEditorFor, getEditorsState } from '../editorsStore.js';
 
 const MAX_BROWSE_ENTRIES = 2000;
 
@@ -114,5 +115,74 @@ export function registerBrowseRoutes(app) {
       return res.status(500).json({ error: `Could not open: ${err.message}` });
     }
     res.json({ success: true });
+  }));
+
+  // D-7 (2026-09-08): direct-REST equivalent of project.action.open_with
+  // (builtinProjectActions.js) for the Folder Explorer's per-file "Open with..." menu.
+  // The panel already has the resolved absolute path and the exact editor id from its own
+  // menu (no free-text "open X with Y" parsing needed here, unlike the chat intent, which
+  // has to extractEditorName() out of a typed sentence) -- same editorsStore.js lookups
+  // (resolveEditor / defaultEditorFor) and the same spawn/ENOENT/malformed-command handling
+  // as the chat handler, so behavior can't diverge between the two paths. Body:
+  // { path, editor? } -- editor omitted or 'default' uses the per-extension default,
+  // falling back to VS Code (matching the chat handler's "open X in the editor" branch);
+  // the reserved 'browser' pseudo-editor delegates to the same open-in-default-app spawn
+  // used by /api/browse/open.
+  app.post('/api/browse/open-with', asyncHandler(async (req, res) => {
+    const raw = req.body?.path;
+    if (!isValidBrowsePath(raw)) {
+      return res.status(400).json({ error: 'Open requires an absolute path.' });
+    }
+    const abs = path.resolve(raw);
+    if (!fs.existsSync(abs)) return res.status(404).json({ error: `Not found: ${abs}` });
+    const editorQuery = typeof req.body?.editor === 'string' ? req.body.editor.trim() : '';
+    let editor = null;
+    if (!editorQuery || editorQuery === 'default') {
+      editor = defaultEditorFor(abs) || resolveEditor('vscode');
+    } else {
+      editor = resolveEditor(editorQuery);
+    }
+    if (editor?.id === 'browser') {
+      try {
+        if (process.platform === 'win32') {
+          spawn('cmd', ['/c', 'start', '', abs], { detached: true, stdio: 'ignore' }).unref();
+        } else if (process.platform === 'darwin') {
+          spawn('open', [abs], { detached: true, stdio: 'ignore' }).unref();
+        } else {
+          spawn('xdg-open', [abs], { detached: true, stdio: 'ignore' }).unref();
+        }
+      } catch (err) {
+        return res.status(500).json({ error: `Could not open the browser: ${err.message}` });
+      }
+      return res.json({ success: true, editor: 'Browser' });
+    }
+    if (!editor || !editor.command) {
+      const known = getEditorsState().editors.map((e) => e.name).join(', ');
+      return res.status(404).json({ error: `Unknown editor "${editorQuery}". Configured: ${known || 'none yet'}.` });
+    }
+    let child;
+    try {
+      child = spawn(editor.command, [abs], { detached: true, stdio: 'ignore', windowsHide: true });
+    } catch (err) {
+      return res.status(400).json({ error: `Could not launch ${editor.name}: the command "${editor.command}" is not a single executable.` });
+    }
+    let errored = false;
+    child.on('error', (err) => {
+      errored = true;
+      if (!res.headersSent) {
+        if (err.code === 'ENOENT' || err.message.includes('not recognized')) {
+          res.status(404).json({ error: `${editor.name} (${editor.command}) was not found on PATH.` });
+        } else {
+          res.status(500).json({ error: `Failed to open ${editor.name}: ${err.message}` });
+        }
+      }
+    });
+    child.unref();
+    // A synchronous spawn error would already have thrown above; an async ENOENT ('error'
+    // event) can still land after this point since detached children fire it on their own
+    // tick -- give it a beat so a same-tick ENOENT can still answer with the error response
+    // above instead of racing a premature 200.
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    if (!errored && !res.headersSent) res.json({ success: true, editor: editor.name });
   }));
 }

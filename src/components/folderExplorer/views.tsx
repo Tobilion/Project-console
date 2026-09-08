@@ -34,6 +34,7 @@ export interface EntryRowProps {
   onRenameValue: (value: string) => void;
   onSendMessage: (text: string) => void;
   onOpenWith: (path: string) => void;
+  onOpenWithEditor: (path: string, editorId?: string) => void;
 }
 
 export function EntryRow(props: EntryRowProps) {
@@ -41,7 +42,7 @@ export function EntryRow(props: EntryRowProps) {
     entry: e, index: i, cursor, selected, dropTargetPath, renaming, renameValue, renameInputRef,
     editors, canRename, onBrowse, onOpenDefault, onToggleSelect, onDragStart, onDrop,
     onSetDropTarget, onContextMenu, onStartRename, onCommitRename, onCancelRename,
-    onBlurRename, onRenameValue, onSendMessage, onOpenWith,
+    onBlurRename, onRenameValue, onSendMessage, onOpenWith, onOpenWithEditor,
   } = props;
 
   const dropTarget = dropTargetPath === e.path;
@@ -108,6 +109,7 @@ export function EntryRow(props: EntryRowProps) {
           editors={editors}
           onSendMessage={onSendMessage}
           onOpenWith={() => onOpenWith(e.path)}
+          onOpenWithEditor={(editorId) => onOpenWithEditor(e.path, editorId)}
           onOpenDefault={() => { if (!e.isDir) onOpenDefault(e.path); }}
           onRename={() => onStartRename(e)}
           canRename={canRename}
@@ -117,7 +119,7 @@ export function EntryRow(props: EntryRowProps) {
   );
 }
 
-export interface EntryTileProps extends Omit<EntryRowProps, 'canRename' | 'editors' | 'onSendMessage' | 'onOpenWith'> {
+export interface EntryTileProps extends Omit<EntryRowProps, 'canRename' | 'editors' | 'onSendMessage' | 'onOpenWith' | 'onOpenWithEditor'> {
   tileIconSize: number;
 }
 

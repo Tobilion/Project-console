@@ -271,6 +271,32 @@ export function FolderExplorerPanel({ onSendMessage, tabId = null, project = nul
     }).catch(() => {});
   }, []);
 
+  // D-7 (2026-09-08): "open in editor" / "open with <editor>" now hit a direct REST
+  // endpoint (/api/browse/open-with) instead of composing an `open X with Y` chat phrase --
+  // the panel already has the resolved absolute path and the exact editor id from its own
+  // menu/chooser, so there's no free-text editor-name parsing to preserve (unlike the chat
+  // intent, which has to extractEditorName() out of a typed sentence). Surfaces a real error
+  // via setError on failure -- openDefaultApp above still swallows errors silently, a
+  // pre-existing gap (master prompt F-10) left alone here since fixing it is out of scope
+  // for this D-7 pass.
+  const openWithEditor = useCallback(async (target: string, editorId?: string) => {
+    // Not apiFetchJson: /api/browse/open-with (like its /api/browse/open and /reveal
+    // siblings) reports failure via a real HTTP status, not an { ok: false } 200 body --
+    // apiFetchJson discards the response body on any non-2xx, which would silently lose
+    // the specific error message here.
+    try {
+      const res = await fetch('/api/browse/open-with', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: target, editor: editorId }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data?.success) { setError(data?.error || 'Could not open the file.'); return; }
+      setError(null);
+    } catch {
+      setError('Could not reach the server.');
+    }
+  }, []);
+
   const filteredEntries = useMemo(() => {
     if (!searchQuery.trim()) return entries;
     const q = searchQuery.trim().toLowerCase();
@@ -381,9 +407,9 @@ export function FolderExplorerPanel({ onSendMessage, tabId = null, project = nul
     setSelectedPaths(new Set());
   };
 
-  const sendOpenWith = (editorName: string) => {
+  const sendOpenWith = (editorId: string) => {
     if (!openWithFor) return;
-    onSendMessage(`open ${openWithFor} with ${editorName}`);
+    openWithEditor(openWithFor, editorId);
     setOpenWithFor(null);
   };
 
@@ -416,6 +442,7 @@ export function FolderExplorerPanel({ onSendMessage, tabId = null, project = nul
     onRenameValue: setRenameValue,
     onSendMessage,
     onOpenWith: setOpenWithFor,
+    onOpenWithEditor: openWithEditor,
   };
 
   return (
@@ -568,7 +595,7 @@ export function FolderExplorerPanel({ onSendMessage, tabId = null, project = nul
               <MenuItem label="Open (default app)" onClick={() => { openDefaultApp(ctxEntry.path); close(); }} />
             )}
             {!ctxEntry.isDir && (
-              <MenuItem label="Open in editor" onClick={() => { onSendMessage(`open ${name} in the editor`); close(); }} />
+              <MenuItem label="Open in editor" onClick={() => { openWithEditor(ctxEntry.path, undefined); close(); }} />
             )}
             {!ctxEntry.isDir && (
               <MenuItem label="Open with…" onClick={() => { setOpenWithFor(ctxEntry.path); close(); }} />
@@ -607,7 +634,7 @@ export function FolderExplorerPanel({ onSendMessage, tabId = null, project = nul
               {editors.map((ed) => (
                 <button
                   key={ed.id}
-                  onClick={() => sendOpenWith(ed.name)}
+                  onClick={() => sendOpenWith(ed.id)}
                   className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-fg-strong hover:bg-scrim-faint border border-transparent hover:border-border-soft transition-colors text-left"
                 >
                   <Code size={13} className="text-accent-blue shrink-0" />

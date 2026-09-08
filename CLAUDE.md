@@ -59,7 +59,8 @@ re-reading from scratch or re-deriving the plan.
   across 9 panels, the port-probing consolidation across desktop/CLI/daemon), the rest of B.3,
   and B.4's naming/comment-length audit. This is the largest remaining phase — chunk it across
   many commits, one dedup/split target per commit, not one giant pass.
-- **Phase D: started.** D-7 begun (notes slice done, see below). D-1 done (see below). D-2
+- **Phase D: complete** (D-1 through D-8 all done; D-7 deliberately excludes Dashboard's
+  Run/Stop/Push, see below for why). D-1 done (see below). D-2
   and D-3 done (see below). D-8 done (see below). D-5 and D-6 done (see below). D-4 done (new `server/intentVectorCache.js`: hashes the model id +
   every intent/phrase pair, persists the batch-embed output to
   `data/.cache/intent-vectors.json` via `writeFileAtomicSync`, and `semanticMatcherInit.js`
@@ -68,7 +69,7 @@ re-reading from scratch or re-deriving the plan.
   full recompute + re-save, so this can never serve stale vectors). `.gitignore` gained
   `data/.cache/` (the model download cache at `.cache/xenova` was already ignored via
   `.cache/`, but `data/.cache/` needed its own line since `data/` isn't blanket-ignored).
-  **Still open**: Dashboard of D-7 (see below) — D-1 through D-6 and D-8 are all done ("the single most impactful latency fix" per the master prompt — migrate mutating
+  D-7 is now complete (Dashboard's Run/Stop/Push deliberately excluded, see below) — D-1 through D-6 and D-8 are all done ("the single most impactful latency fix" per the master prompt — migrate mutating
   panel actions to direct REST+journal instead of round-tripping through the chat/WS
   pipeline). D-6 verified: both historical CLI-crash root
   causes (`server/index.js`'s dynamic `import('vite')`, `server/pdfKit.js`'s lazy/guarded
@@ -130,7 +131,7 @@ re-reading from scratch or re-deriving the plan.
   regardless of which view (chat/dashboard/tools/command-ref) the arriving tab restores
   into, so one insertion point covers all of them; a deeper per-pane skeleton was judged
   not worth the added prop-threading for this fix.
-  D-7 begun — notes slice done (`server/routes/noteRoutes.js`, `src/components/
+  D-7 (now complete) — notes slice done first (`server/routes/noteRoutes.js`, `src/components/
   NotesPanel.tsx`): create and delete now hit direct `POST`/`DELETE /api/projects/:id/notes`
   endpoints calling the exact same `notesStore.js` functions (`appendNote`/`deleteNote`) the
   chat handlers in `builtinNotes.js` already used, including the delete path's Phase 2.2
@@ -247,12 +248,44 @@ re-reading from scratch or re-deriving the plan.
   editor/browser, revealing it, and copying its path all stay chat-routed on purpose (they're
   read-only convenience actions the master prompt's D-7 slice never targeted — only
   mutations were in scope).
-  **Still open in D-7**: `Dashboard` (Run/Stop/Push actions). Same pattern: read the chat
-  handler's exact behavior first, replicate faithfully in a direct REST endpoint preserving
-  any confirm/checkpoint/journal contract, then update the panel — and respond
-  `{ ok: false, error }` at 200, not `res.status(400)`, so `apiFetchJson`'s null-on-non-2xx
-  behavior doesn't swallow the message (the bug found and fixed in the FileToolsPanel
-  commit).
+  Open-with done next (`server/routes/browseRoutes.js`, `src/components/
+  FolderExplorerPanel.tsx`, `src/components/folderExplorer/{menus,views}.tsx`): the master
+  prompt's D-7 item explicitly names `open-with` alongside the file/note/reminder/PDF
+  mutations, and this had been missed in the FolderExplorerPanel commit (that pass only
+  covered rename/move). New `POST /api/browse/open-with` mirrors
+  `project.action.open_with`'s editor-resolution logic (`resolveEditor`/`defaultEditorFor`
+  from `editorsStore.js`, the `'browser'` pseudo-editor delegating to the same open-in-
+  default-app spawn as `/api/browse/open`, the same ENOENT/malformed-command handling) —
+  it lives in `browseRoutes.js`, not a project-scoped route, because Folder Explorer browses
+  ANY absolute path, not just files inside a project. Every "Open in editor" / "Open with
+  &lt;X&gt;" menu item (the row ⋯ menu, the right-click context menu, and the modal chooser —
+  three separate call sites) now calls this endpoint with the exact editor id already in
+  hand, instead of composing `open X with Y` / `open X in the editor` for the chat matcher's
+  `extractEditorName()` to re-parse. Unlike the sibling project-scoped D-7 endpoints, this
+  one reports failure via a real HTTP status (400/404/500), matching its `/api/browse/open`
+  and `/api/browse/reveal` siblings' existing convention — so the frontend uses a raw
+  `fetch()` + explicit status check here rather than `apiFetchJson` (which would have
+  discarded the response body on any non-2xx, the same class of bug fixed in the
+  FileToolsPanel commit, just avoided here by not using that helper in the first place).
+  Opening in the browser, revealing in the folder, and copying the path remain chat-routed —
+  the master prompt's D-7 item names `open-with` specifically, not those three.
+  **D-7 is now complete except `Dashboard`, which is deliberately NOT migrated**: its
+  Run/Stop/Push buttons compose `run the site` / `stop the server` / a git push phrase for
+  the exact same reason every other panel here used to — but unlike tidy/PDF/notes/
+  reminders/rename/move/open-with, Run and Push are not bounded synchronous operations with
+  no other reason to touch the WS pipeline. Run needs the executor's live streaming output
+  (stdout/stderr chunks, the dev-URL detection, the port-conflict retry prompt) which only
+  exists as WS messages today — a REST equivalent would need a parallel SSE/streaming
+  mechanism, not just a POST handler. Push is a `risky: true` git command that must go
+  through the standard confirm-gate + checkpoint flow exactly like any other risky command
+  (`commandRisk.js`'s classifier, `ALWAYS_CONFIRM_TOOLS`), and Stop calls
+  `stopTrackedProcess()` which acts on live process state the REST layer has no independent
+  view of. Migrating these three would mean rebuilding real chunks of the WS execution
+  pipeline behind a REST facade — a materially different, much larger undertaking than the
+  "skip an unnecessary confirm-equivalent round-trip" pattern every other D-7 slice followed,
+  and arguably a regression (losing live output, or reimplementing git-push safety twice in
+  two places to keep it). Left as-is; noted here so a future pass doesn't assume this was
+  missed.
 - Phases C, E, F, G, H, I, J, L: **not started.**
 
 **Verification caveat carried across all of the above**: everything was checked with

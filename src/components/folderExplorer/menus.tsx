@@ -11,11 +11,12 @@ import type { BrowseEntry, EditorDef } from './utils';
 /** Per-entry action menu — opens via chat commands (terminal stays the source of truth);
  *  "Open (default app)" is the one direct endpoint (browse/open) — the double-click
  *  equivalent, same trust level as reveal. */
-export function EntryMenu({ entry, editors, onSendMessage, onOpenWith, onOpenDefault, onRename, canRename }: {
+export function EntryMenu({ entry, editors, onSendMessage, onOpenWith, onOpenWithEditor, onOpenDefault, onRename, canRename }: {
   entry: BrowseEntry;
   editors: EditorDef[];
   onSendMessage: (text: string) => void;
   onOpenWith: () => void;
+  onOpenWithEditor: (editorId?: string) => void;
   onOpenDefault: () => void;
   onRename: () => void;
   canRename: boolean;
@@ -56,13 +57,13 @@ export function EntryMenu({ entry, editors, onSendMessage, onOpenWith, onOpenDef
         <div className="absolute right-0 top-full z-30 mt-1 w-52 bg-panel border border-border-strong rounded-xl shadow-float py-1 text-xs">
           <MenuItem label="Open (default app)" onClick={() => { onOpenDefault(); setOpen(false); }} />
           <div className="border-t border-border-faint my-1" />
-          <MenuItem label="Open in editor" onClick={() => { onSendMessage(`open ${name} in the editor`); setOpen(false); }} />
+          <MenuItem label="Open in editor" onClick={() => { onOpenWithEditor(undefined); setOpen(false); }} />
           <MenuItem label="Open with…" onClick={() => { setOpen(false); onOpenWith(); }} />
           {editors.length > 0 && (
             <div className="border-t border-border-faint my-1" />
           )}
           {editors.slice(0, 4).map((ed) => (
-            <MenuItem key={ed.id} label={`Open with ${ed.name}`} onClick={() => { onSendMessage(`open ${name} with ${ed.name}`); setOpen(false); }} />
+            <MenuItem key={ed.id} label={`Open with ${ed.name}`} onClick={() => { onOpenWithEditor(ed.id); setOpen(false); }} />
           ))}
           {isHtml && (
             <>
