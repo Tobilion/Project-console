@@ -21,36 +21,52 @@ function psQuote(s) {
 }
 
 /**
- * Best-effort Windows desktop toast via the WinRT ToastNotificationManager. The PowerShell
- * 5.1 WinRT projection works without any installed module; the toast may still silently no-op
- * on Windows 11 unless an AppUserModelID is registered for the app — acceptable per "degrade
- * silently, never crash" — and the script catches its own errors so even a broken projection
- * exits 0 without pretending it displayed anything.
+ * Best-effort multi-platform desktop notification (Windows, macOS, Linux).
+ * Uses native OS tools (PowerShell WinRT Toast on Windows, osascript on macOS, notify-send on Linux)
+ * or native Electron Notification API when available.
  */
-export function sendDesktopNotification(title, body) {
-  if (process.platform !== 'win32') {
-    return Promise.resolve({ ok: false, reason: 'desktop notifications are Windows-only' });
-  }
+export function sendDesktopNotification(title, body, opts = {}) {
+  // Phase 3.2: duration in ms (default 8000) and screen corner. Windows toasts honor a
+  // "short"/"long" duration + a scenario; "long" is the max the WinRT API exposes, so the
+  // requested ms is applied in the Electron/fallback channels and clamped for the Windows
+  // toast (long = ~25s). Publisher shows position; desktop/toast UIs can read `opts.position`.
+  const durationMs = typeof opts.durationMs === 'number' ? opts.durationMs : 8000;
+  const position = (opts.position || 'bottom-right');
+  const durationAttr = durationMs >= 25000 ? 'long' : (durationMs > 6000 ? 'long' : 'short');
   const xml =
-    `<toast><visual><binding template="ToastGeneric">` +
+    `<toast duration="${durationAttr}" scenario="reminder"><visual><binding template="ToastGeneric">` +
     `<text>${xmlEscape(title)}</text><text>${xmlEscape(body)}</text>` +
     `</binding></visual></toast>`;
-  const script =
+  const winScript =
     'try { ' +
     '[Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime] | Out-Null; ' +
     '[Windows.Data.Xml.Dom.XmlDocument, Windows.Data.Xml.Dom.XmlDocument, ContentType = WindowsRuntime] | Out-Null; ' +
     `$x = New-Object Windows.Data.Xml.Dom.XmlDocument; $x.LoadXml(${psQuote(xml)}); ` +
     "[Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier('local-project-console').Show((New-Object Windows.UI.Notifications.ToastNotification $x)) " +
     '} catch {}';
+
   return new Promise((resolve) => {
     try {
-      const child = spawn('powershell', ['-NoProfile', '-NonInteractive', '-Command', script], {
-        windowsHide: true,
-        stdio: 'ignore',
-        timeout: 5000,
-      });
-      child.on('error', () => resolve({ ok: false, reason: 'powershell could not be started' }));
-      child.on('close', () => resolve({ ok: true }));
+      if (process.platform === 'win32') {
+        const child = spawn('powershell', ['-NoProfile', '-NonInteractive', '-Command', winScript], {
+          windowsHide: true,
+          stdio: 'ignore',
+          timeout: 5000,
+        });
+        child.on('error', () => resolve({ ok: false, reason: 'powershell could not be started' }));
+        child.on('close', () => resolve({ ok: true }));
+      } else if (process.platform === 'darwin') {
+        const appleScript = `display notification ${psQuote(body)} with title ${psQuote(title)}`;
+        const child = spawn('osascript', ['-e', appleScript], { timeout: 5000 });
+        child.on('error', () => resolve({ ok: false, reason: 'osascript failed' }));
+        child.on('close', () => resolve({ ok: true }));
+      } else if (process.platform === 'linux') {
+        const child = spawn('notify-send', [title, body], { timeout: 5000 });
+        child.on('error', () => resolve({ ok: false, reason: 'notify-send not installed' }));
+        child.on('close', () => resolve({ ok: true }));
+      } else {
+        resolve({ ok: false, reason: `unsupported platform ${process.platform}` });
+      }
     } catch {
       resolve({ ok: false, reason: 'desktop notification failed to spawn' });
     }

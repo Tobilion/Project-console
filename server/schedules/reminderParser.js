@@ -12,20 +12,21 @@
 
 import * as chrono from 'chrono-node';
 
-const PREFIX_RE = /^(?:remind me to|remind me about|remind me|set a reminder to|set a reminder for|set a reminder)\b/i;
+const PREFIX_RE = /^(?:remind me to|remind me about|remind me|set a reminder to|set a reminder for|set a reminder|set an? alarm|alarm)\b/i;
 
 const WEEKDAY_IDS = { sunday: 0, monday: 1, tuesday: 2, wednesday: 3, thursday: 4, friday: 5, saturday: 6 };
 
-// "at 5pm", "at 5:30 pm", "at 17:00" — 24h times require minutes, 12h times require am/pm
-// so bare "at 9" is rejected instead of guessed.
-const TIME_RE = /\bat\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\b/i;
+// "at 5pm", "at 5:30 pm", "at 17:00", "at 2 44" — 24h times require minutes, 12h times require am/pm
+// so bare "at 9" is rejected instead of guessed. Space-separated minutes (2 44) are also accepted.
+const TIME_RE = /\bat\s+(\d{1,2})(?::(\d{2})|\s+(\d{2}))?\s*(am|pm)?\b/i;
 
 function parseTime(when) {
   const m = when.match(TIME_RE);
   if (!m) return null;
   const hourStr = m[1];
-  const minutes = m[2] !== undefined ? parseInt(m[2], 10) : 0;
-  const meridian = (m[3] || '').toLowerCase();
+  // m[2] is colon-separated minutes, m[3] is space-separated minutes
+  const minutes = m[2] !== undefined ? parseInt(m[2], 10) : (m[3] !== undefined ? parseInt(m[3], 10) : 0);
+  const meridian = (m[4] || '').toLowerCase();
   let hour = parseInt(hourStr, 10);
   if (meridian) {
     if (hour < 1 || hour > 12) return null;
@@ -155,11 +156,37 @@ export function parseReminderInput(input) {
   }
 
   // One-shot: chrono with forwardDate so "at 7pm" resolves to the NEXT 7pm, never a past one.
-  const parsed = chrono.parse(when, new Date(), { forwardDate: true });
+  // Before chrono, normalize space-separated times: "at 2 44" → "at 2:44" so chrono captures
+  // the full time span instead of splitting "2" and "44" into separate tokens.
+  const chronoWhen = when.replace(/\bat\s+(\d{1,2})\s+(\d{2})\s*(am|pm)?\b/i, (_, h, m, ap) =>
+    `at ${h}:${m}${ap ? ' ' + ap : ''}`);
+  const parsed = chrono.parse(chronoWhen, new Date(), { forwardDate: true });
   if (parsed.length === 0) {
     return { ok: false, reason: `I can't read "${when}" as a time. Try "tomorrow at 9am", "in 3 days", "every friday at 5pm", or "daily at 09:30".` };
   }
   let fireAt = parsed[0].start.date().getTime();
+
+  // Same-day PM preference: when chrono resolves a bare time without meridian (no AM/PM
+  // specified) to tomorrow AM, check if the PM equivalent for TODAY is closer and in the
+  // future. Example: "at 2:44" at 2:43 PM → chrono returns 2:44 AM tomorrow, but 2:44 PM
+  // today is only 1 minute away. Without this fix, the user sees "Tomorrow 2:44 AM" when
+  // they clearly meant "Today 2:44 PM". The 2-minute tolerance handles clock-skew and
+  // parse-delay edge cases (a user at exactly 14:44:01 should still get today 14:44).
+  if (!parsed[0].start.isCertain('meridian') && parsed[0].start.isCertain('hour')) {
+    const chronoDate = parsed[0].start.date();
+    const chronoHour = chronoDate.getHours();
+    const chronoMinute = chronoDate.getMinutes();
+    if (chronoHour >= 0 && chronoHour < 12) {
+      const pmToday = new Date();
+      pmToday.setHours(chronoHour + 12, chronoMinute, 0, 0);
+      const now = Date.now();
+      const TWO_MIN_TOLERANCE_MS = 2 * 60 * 1000;
+      if (pmToday.getTime() > now - TWO_MIN_TOLERANCE_MS && pmToday.getTime() < fireAt) {
+        fireAt = pmToday.getTime();
+      }
+    }
+  }
+
   if (fireAt <= Date.now()) {
     if (parsed[0].start.isCertain('day')) {
       return { ok: false, reason: `"${when}" is in the past — try a future time.` };
@@ -172,7 +199,7 @@ export function parseReminderInput(input) {
     ok: true,
     type: 'oneshot',
     fireAt,
-    label: parsed[0].start.date().toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }),
+    label: new Date(fireAt).toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }),
     text,
   };
 }

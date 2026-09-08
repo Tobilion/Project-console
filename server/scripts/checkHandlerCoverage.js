@@ -49,6 +49,7 @@ const { projectKnowledgeHandlers } = await import(pathToFileURL(base + 'wsHandle
 const { projectContextHandlers } = await import(pathToFileURL(base + 'wsHandlers/builtinProjectContext.js').href);
 const { projectActionHandlers } = await import(pathToFileURL(base + 'wsHandlers/builtinProjectActions.js').href);
 const { normalizeGithubPageUrl } = await import(pathToFileURL(base + 'wsHandlers/builtinProjectActions.js').href);
+const { extractAbsolutePath } = await import(pathToFileURL(base + 'wsHandlers/projectFileOpen.js').href);
 const { diagnosticsHandlers } = await import(pathToFileURL(base + 'wsHandlers/builtinDiagnostics.js').href);
 const { generalFileHandlers, performTidy, planDuplicateDeletes, performDuplicateDeletes, extractFindQuery, performRename, performMove } = await import(pathToFileURL(base + 'wsHandlers/builtinGeneralFiles.js').href);
 const { toolsHandlers } = await import(pathToFileURL(base + 'wsHandlers/builtinTools.js').href);
@@ -186,6 +187,18 @@ sent.length = 0;
 await handleBuiltinIntent(ws, 'project.action.reveal_file', 'open a file in the folder', proj, {});
 eq('actions leaf: reveal_file without a name asks which file', ws.sent.length === 1 && ws.sent[0].type === 'answer' && ws.sent[0].data.includes('Which file'), true);
 
+// 2026-09-08: absolute-path reveal fast path (extractAbsolutePath unit shapes).
+eq('extractAbsolutePath: drive-letter path with in-folder suffix', extractAbsolutePath('open C:\\Users\\tobil\\Documents\\School (CU)\\Random Notes\\TEXTBOOK in the folder'), 'C:\\Users\\tobil\\Documents\\School (CU)\\Random Notes\\TEXTBOOK');
+eq('extractAbsolutePath: leading-slash path', extractAbsolutePath('reveal /home/u/notes in the folder'), '/home/u/notes');
+eq('extractAbsolutePath: quoted path', extractAbsolutePath('open "C:\\My Dir\\X" in the folder'), 'C:\\My Dir\\X');
+eq('extractAbsolutePath: UNC path', extractAbsolutePath('show \\\\server\\share in the folder'), '\\\\server\\share');
+eq('extractAbsolutePath: relative path returns null', extractAbsolutePath('open main.py in the folder'), null);
+eq('extractAbsolutePath: bare open-the-folder returns null', extractAbsolutePath('open the folder'), null);
+eq('extractAbsolutePath: no suffix returns null (not a reveal request)', extractAbsolutePath('open in explorer'), null);
+sent.length = 0;
+await handleBuiltinIntent(ws, 'project.action.reveal_file', 'open C:\\Users\\Public\\Documents in the folder', proj, {});
+eq('actions leaf: reveal_file with absolute path opens explorer directly', ws.sent.length === 1 && ws.sent[0].type === 'answer' && /Opened/.test(ws.sent[0].data) && /Documents/.test(ws.sent[0].data), true);
+
 // --- NORMALIZER (Phase 16: GitHub remote URL -> repo page) --------------------
 eq('normalizer: git@ ssh shape', normalizeGithubPageUrl('git@github.com:tobi/user-repo.git'), 'https://github.com/tobi/user-repo');
 eq('normalizer: https with .git', normalizeGithubPageUrl('https://github.com/tobi/user-repo.git'), 'https://github.com/tobi/user-repo');
@@ -281,6 +294,14 @@ for (const [input, expect] of [
 sent.length = 0;
 await handleBuiltinIntent(ws, 'system.chit_chat.needs_ai_mode', 'make me a landing page', proj, {});
 eq('chitchat leaf: needs_ai_mode guidance names the AI dock with a concrete instruction', ws.sent.length === 1 && ws.sent[0].type === 'answer' && /AI dock/.test(ws.sent[0].data) && /write it for you/.test(ws.sent[0].data), true);
+
+sent.length = 0;
+await handleBuiltinIntent(ws, 'system.chit_chat.empathy', 'Ugh I am tired', proj, {});
+eq('chitchat leaf: empathy answers tired small talk with no side effects', ws.sent.length === 1 && ws.sent[0].type === 'answer' && /(Take a break|Long days|No rush|That's fair|I hear you|Hydrate)/.test(ws.sent[0].data), true);
+
+sent.length = 0;
+await handleBuiltinIntent(ws, 'system.chit_chat.needs_ai_mode', 'make me a landing page', proj, { client: 'cli' });
+eq('chitchat leaf: needs_ai_mode answers CLI sessions with the ai on/off command, not web-only UI', ws.sent.length === 1 && ws.sent[0].type === 'answer' && /ai on/.test(ws.sent[0].data) && !/AI dock/.test(ws.sent[0].data), true);
 
 // Phase 1.5 (2026-08-11): tool-panel openers. The answer must carry the additive `openPanel`
 // field on the SAME 'answer' payload (never a new WS type), stay plain-text-usable for the CLI,
@@ -794,6 +815,9 @@ eq('notes leaf: list answers empty state', ws.sent.length === 1 && ws.sent[0].ty
 sent.length = 0;
 await handleBuiltinIntent(ws, 'system.notes.search', 'search my notes for wifi', proj, {});
 eq('notes leaf: search answers no-hits on empty store', ws.sent.length === 1 && ws.sent[0].type === 'answer' && /No notes match/.test(ws.sent[0].data), true);
+sent.length = 0;
+await handleBuiltinIntent(ws, 'system.notes.delete', 'delete note:', proj, {});
+eq('notes leaf: delete without text asks', ws.sent.length === 1 && ws.sent[0].type === 'answer' && /Which note should I delete/.test(ws.sent[0].data), true);
 
 // Temp-dir smoke: append -> list round trip -> search hit -> dedupe -> cap behavior.
 const notesRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'console-notes-'));

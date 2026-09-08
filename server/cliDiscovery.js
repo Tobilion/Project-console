@@ -2,6 +2,7 @@
 // fetch logic: find which port the server actually bound to, and resolve a --resume/--last
 // session from the server's session index.
 
+import fs from 'fs';
 import { BASE_PORT, HOST, MAX_PORT_ATTEMPTS, CONNECT_TIMEOUT_MS, RETRY_INTERVAL_MS, WANT_LAST, RESUME_ID } from './cliOptions.js';
 
 export function stripMarkdown(text) {
@@ -53,6 +54,28 @@ export async function discoverServer(onCycle) {
   }
   if (printedDots) process.stdout.write('\n');
   return null;
+}
+
+/**
+ * Tail of the last server boot logs (repo-root server.log / server.err.log — start.bat's
+ * Start-Process redirects land there; the 2026-09-03 rotation keeps the previous failed boot
+ * in the .prev files). Printed when discovery fails so a server that died during boot
+ * explains itself instead of a bare "could not connect". Read-only, never throws; the CLI's
+ * cwd under start.bat is the repo root, so the relative paths resolve there.
+ */
+export function readBootLogTail(maxLines = 12) {
+  const out = [];
+  for (const name of ['server.err.log', 'server.log', 'server.err.log.prev', 'server.log.prev']) {
+    try {
+      if (!fs.existsSync(name)) continue;
+      const text = fs.readFileSync(name, 'utf8');
+      const lines = text.split(/\r?\n/).filter((l) => l.trim()).slice(-maxLines);
+      if (lines.length) out.push(`--- ${name} (last ${lines.length} lines) ---`, ...lines);
+    } catch {
+      // unreadable log must never break the failure path
+    }
+  }
+  return out;
 }
 
 /** Resolves the session a --resume/--last should continue, from the server's session index. */

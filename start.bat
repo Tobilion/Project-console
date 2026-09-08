@@ -69,6 +69,12 @@ if /i "!PROBE_RESULT:~0,2!"=="UP" (
     REM the window sat idle at "Starting server..." with no child process and no error. A file
     REM has no handles, so nothing can hold it open.
     echo %ESC%[33m  [+] Starting server in the background - logs: server.log, server.err.log...%ESC%[0m
+    REM Rotate the previous run's logs first (2026-09-03): Start-Process redirects TRUNCATE on
+    REM open, so a failed boot's stderr was overwritten by the next attempt and the cause
+    REM vanished (live: the first attempt died mid-boot and the second attempt's logs hid it).
+    REM server.log.prev / server.err.log.prev keep the last boot's evidence for diagnosis.
+    if exist server.log move /y server.log server.log.prev >nul 2>&1
+    if exist server.err.log move /y server.err.log server.err.log.prev >nul 2>&1
     IF EXIST "dist\server.js" (
         powershell -NoProfile -Command "$p = Start-Process -FilePath 'npm.cmd' -ArgumentList 'start' -RedirectStandardOutput 'server.log' -RedirectStandardError 'server.err.log' -WindowStyle Hidden -PassThru; $p.Id | Set-Content server.pid"
     ) ELSE (

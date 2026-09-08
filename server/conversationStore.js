@@ -184,6 +184,10 @@ export async function appendMessage(sessionId, message) {
       // Additive matching metadata (2026-08-24): the trigger-mode pipeline patches the user
       // record's `meta` afterwards with the stage that resolved it — see patchMessageMeta.
       ...(message.meta ? { meta: message.meta } : {}),
+      // Panel origin (2026-09-07): tool-panel sends persist their source so reloaded chats
+      // keep the collapsed tool-activity rendering instead of full user bubbles.
+      ...(message.source ? { source: message.source } : {}),
+      ...(message.tool ? { tool: message.tool } : {}),
     };
 
     // Append to NDJSON log (append-only — safe, fast)

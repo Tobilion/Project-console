@@ -182,6 +182,15 @@ async function routeMessage(ws, parsed, sessionContext) {
       sendAiStatus(ws, sessionContext);
       return;
     }
+    case 'client_info': {
+      // 2026-09-03: additive client identity marker — server/cli-client.js sends
+      // { client: 'cli' } once on connect so client-aware answers (needs_ai_mode's
+      // guidance, which references the web-only AI header toggle) can phrase themselves
+      // for the terminal. The web client never sends this; the default stays 'web'.
+      const { client } = parsed.payload || {};
+      if (client === 'cli') sessionContext.client = 'cli';
+      return;
+    }
     case 'workspace_set': {
       const { projectIds, activeProjectId } = parsed.payload || {};
       if (Array.isArray(projectIds)) {

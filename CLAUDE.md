@@ -49,7 +49,11 @@ npm run doctor  # standalone machine-side diagnostics (ports/daemon/embedding/wr
   broke echo lines; an OEM-encoded variant survived cmd but corrupted on any editor save).
   Also no parentheses inside echo lines inside IF blocks ("X was unexpected at this time").
   The frontend derives the WebSocket URL from `window.location`, so it follows whatever port
-  the server used.
+  the server used. 2026-09-03: before each hidden server start the previous run's
+  `server.log`/`server.err.log` are rotated to `.prev` (Start-Process redirects TRUNCATE on
+  open, so a failed boot's stderr used to be overwritten by the next attempt — the CLI's
+  connect-failure path now prints the `.prev` tail so a boot that died mid-model-load
+  explains itself).
 - **Global npx launcher**: `node bin/cli.js` (or `npx local-project-console`) imports the
   bundled or source server into the same process and polls `globalThis.__consoleServerPort`
   (a process-global integer set by `server/index.js` once the port-fallback loop binds).
@@ -79,7 +83,14 @@ npm run doctor  # standalone machine-side diagnostics (ports/daemon/embedding/wr
   status: source is lint/syntax-clean; the `npm install` in desktop/ + `npm run dist`
   (electron-builder NSIS for Windows; mac dmg / Linux AppImage are stretch targets per the
   roadmap) + the clean-machine install test CANNOT be done headless — flagged for manual
-  review (see the roadmap summary at the top of UPGRADE-ROADMAP.md).
+  review (see the roadmap summary at the top of UPGRADE-ROADMAP.md). 2026-09-03: `Project
+  Console.exe --cli [args]` (what resources\cli.cmd runs) is a standalone CLI mode — it
+  attaches to a running console or starts the server child itself (same rules as the GUI
+  path), waits for the port, then spawns server/cli-client.js with ELECTRON_RUN_AS_NODE, so
+  the terminal client works even when the app is closed; no window/tray/updater, forwards
+  extra args to the client, and kills its own server child on exit (never one it attached
+  to). Also hoisted `serverStderrTail` to module scope — it was a startServer() local read
+  by whenReady's fatal paths (latent ReferenceError on those rare paths).
 - CLI chat mode: `node server/cli-client.js [--dir "<full path>"] [--project "<name>"]`;
   it scans ports 3000-3019, retries up to 90s (cold boot is ~41s), and reports which port it
   connected on. Interactive arrow-key picker via @clack/prompts when a TTY is available,
@@ -98,6 +109,17 @@ npm run doctor  # standalone machine-side diagnostics (ports/daemon/embedding/wr
   fire a pick from a dead turn). Per-port probe timeout is 5s, not 2s: this machine's
   `/api/projects` takes ~1.7s on a freshly booted server, so the old 2s abort fired on most
   retry cycles and the CLI reported "could not connect" against a healthy server.
+  **AI mode in the CLI (2026-09-03)**: `ai on` / `ai off` (and turn on/off-ai-mode spellings)
+  are client-side commands in cliRenderer.js that send the same `ai_toggle` message the web
+  sends — the terminal has no header switch, and the renderer already handled the AI
+  streaming/tool messages, so AI mode works in the terminal once toggled. `ai_status` renders
+  the state (pushed on connect + after every toggle). The CLI announces itself once on connect
+  via an additive `client_info` WS message (`{ client: 'cli' }`), stored on sessionContext by
+  connectionRoutes.js; `needs_ai_mode` answers CLI sessions with the `ai on` instruction
+  instead of web-only "flip the header toggle" text. Connect-failure path (2026-09-03) prints
+  the tail of `server.log`/`server.err.log` (and their `.prev` rotations — see the start.bat
+  bullet below) so a server that died during boot explains itself instead of a bare
+  "could not connect".
 
 ## Architecture
 
@@ -1069,6 +1091,10 @@ routing when an intent intentionally changes). Batteries live in
   time/date (server-local clock, never a model call), calculate (safe arithmetic via
   `mathEval.js` — `evaluateArithmetic`, no eval/Function, word-synonym + `+ - * / ( )`
   only, `formatValue`), git_status, undo alias, needs_ai_mode,
+  empathy (2026-09-03, live CLI report: tired/exhausted small talk — "Ugh I am tired" — used
+  to answer with the Tech Preview; canned sympathy + a soft nudge, pinned by pre-semantic
+  overrides like the remind-me/notes traps, in PURE_CHITCHAT_INTENTS so the garbled-input
+  guard applies),
   how_do_i (Phase 1, 2026-08-10: "how do i <feature>" guidance answered from the
   consoleCommandDocs.js catalog — side-effect-free, no model call; examples deliberately
   exclude run/open/push/stop-shaped phrasings so how_to_run/deploy/stop-server keep their
@@ -1502,6 +1528,14 @@ no dispatch or matching logic). Notable functional additions made during the sty
    pushCommandWithUpstream offer matrix over a temp bare remote + the quoted-trigger
    checkpoint -F row; the git-retry trigger row from the earlier fix pass is folded in).
    Run the relevant battery after ANY edit to the corresponding module.
+   2026-09-03 (bad-chat + startup pass): check-matcher 399/399 (baseline 386 + 13 EMPATHY
+   rows — tired/exhausted small talk pinned to the new system.chit_chat.empathy intent);
+   check-handlers 278/278 (baseline 276 + empathy dispatch row + needs_ai_mode CLI-session
+   row asserting the `ai on` instruction instead of web-only AI-dock text); check-intents
+   1/17/137 (no new dupes — the apostrophe-form phrase was dropped before landing);
+   check-ws-cases 133/133 (the setupReadline readyState-guard regex now also accepts the
+   `sendClientInfo(ws); setupReadline()` form — the CLI announces itself as `client_info`
+   on connect); npm test 572/572; lint clean.
    Hardening run (2026-08-26, ADRs/fuzz/doctor/TS/pino): check-handlers 266/266 (+3 doctor
    rows, +3 match-quality rows with temp-file MATCH_STATS_FILE determinism), check-docs
    72/72 (+1 doctor entry, +1 match-quality entry; README rows synced),

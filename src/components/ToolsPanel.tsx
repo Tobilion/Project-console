@@ -47,7 +47,7 @@ const ICONS: Record<string, React.ComponentType<{ size?: number; className?: str
 
 interface PanelProps {
   project: Project | null;
-  onSendMessage: (text: string) => void;
+  onSendMessage: (text: string, opts?: { source?: string; tool?: string }) => void;
   aiEnabled?: boolean;
   tabId?: string | null;
 }
@@ -113,23 +113,28 @@ interface ToolsPanelProps {
 }
 
 export function ToolsPanel({ panels, panelsError, onRetryPanels, activePanel, onOpenPanel, onClose, project, onSendMessage, aiEnabled, tabId = null }: ToolsPanelProps) {
+  // The registry (GET /api/tool-panels) can lag behind the open request — the bell icon and
+  // chat `openPanel` both set activePanel before the fetch resolves, which used to fall
+  // through to the card grid and read as "Notifications opened Tools". Known panel ids
+  // render directly from the static view map; the registry only supplies names/icons.
   const active = activePanel ? panels.find(p => p.id === activePanel) : null;
+  const activeView = activePanel ? PANEL_VIEWS[activePanel] : null;
 
-  if (active) {
-    const view = PANEL_VIEWS[active.id];
-    if (view) {
-      return (
-        <div data-tour={`${active.id}-panel`} className="h-full">
+  if (activeView) {
+    const activeName = active?.name ?? activePanel!;
+    return (
+      <div data-tour={`${activePanel}-panel`} className="h-full">
         <PanelShell onClose={() => onOpenPanel('')}>
-          <PanelErrorBoundary resetKey={active.id} label={`${active.name} hit an error`}>
+          <PanelErrorBoundary resetKey={activePanel!} label={`${activeName} hit an error`}>
             <Suspense fallback={<div className="text-sm text-fg-muted bg-panel rounded-xl border border-border-soft p-6">Loading panel…</div>}>
-              <div data-tour={`${active.id}-panel-inner`}>{view({ project, onSendMessage, aiEnabled, tabId })}</div>
+              <div data-tour={`${activePanel}-panel-inner`} className="h-full">{activeView({ project, onSendMessage, aiEnabled, tabId })}</div>
             </Suspense>
           </PanelErrorBoundary>
         </PanelShell>
-        </div>
-      );
-    }
+      </div>
+    );
+  }
+  if (active) {
     const Icon = ICONS[active.icon] || LayoutGrid;
     return (
       <div className="h-full overflow-y-auto p-4">

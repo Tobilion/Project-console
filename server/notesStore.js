@@ -87,6 +87,45 @@ export async function appendNote(projectPath, content, createdBy = 'local') {
     await fs.mkdir(path.dirname(filePath), { recursive: true });
     await ensureGitignored(projectPath);
     await fs.writeFile(filePath, capped.join('\n') + '\n', 'utf-8');
-    return { success: true, data: `Note added: ${trimmed}` };
+    return { success: true, data: `Note added: ${trimmed}`, id: target };
+  });
+}
+
+/** Delete one user-authored note by exact text. Returns { success, data } — the note's
+ *  pre-delete text on success, an error message when nothing matched. Exact-normalized
+ *  matching (same normalize() appendNote uses) so the panel can round-trip a note's text
+ *  back to a reliable delete key. */
+export async function deleteNote(projectPath, noteText) {
+  const target = normalize(noteText || '');
+  if (!target) return { success: false, error: 'Nothing to delete — give me the note text.' };
+
+  return withNoteLock(projectPath, async () => {
+    const filePath = notesPath(projectPath);
+    let content = '';
+    try {
+      content = await fs.readFile(filePath, 'utf-8');
+    } catch (err) {
+      if (err.code === 'ENOENT') return { success: false, error: 'No notes here yet.' };
+      throw err;
+    }
+
+    const lines = content.split('\n').filter((l) => l.trim());
+    const kept = [];
+    let removed = null;
+    for (const line of lines) {
+      const bare = line.replace(/^- /, '').replace(/\s*\(\d{4}-\d{2}-\d{2}\)\s*$/, '').replace(/\s*· by .+$/, '');
+      if (normalize(bare) === target && !removed) {
+        removed = bare;
+      } else {
+        kept.push(line);
+      }
+    }
+
+    if (!removed) return { success: false, error: 'No note matched that text.' };
+
+    await fs.mkdir(path.dirname(filePath), { recursive: true });
+    await ensureGitignored(projectPath);
+    await fs.writeFile(filePath, (kept.length ? kept.join('\n') + '\n' : ''), 'utf-8');
+    return { success: true, data: removed };
   });
 }

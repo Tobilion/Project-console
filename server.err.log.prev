@@ -1,0 +1,6 @@
+npm notice run local-project-console@1.0.11 dev
+npm notice run tsx server/index.js
+[boot-state]scanning
+[boot-state]matcher-init
+[boot-state]nlp-training
+[boot-state]ready

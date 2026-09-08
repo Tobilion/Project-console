@@ -73,6 +73,12 @@ export interface TerminalMessage {
   /** Set on the "session is locked to a different project" error — lets the UI offer a direct
    *  one-click switch instead of just telling the user what went wrong. */
   switchProjectAction?: { projectId: string; projectName: string };
+  /** Origin of a user message. Panel-originated sends (tool buttons, toggles) render as
+   *  collapsed tool-activity rows instead of full chat bubbles, so routine tool use stops
+   *  clustering the conversation. Persisted alongside the record so reloads agree. */
+  source?: 'chat' | 'panel';
+  /** Which tool panel sent a panel-originated message (e.g. 'reminders', 'notes'). */
+  tool?: string;
 }
 
 export interface ChatSession {
@@ -98,7 +104,7 @@ export interface StoredSession {
   title: string;
   projectId?: string;
   projectName?: string;
-  messages: { id: string; role: string; content: string; timestamp: number; isMarkdown?: boolean }[];
+  messages: { id: string; role: string; content: string; timestamp: number; isMarkdown?: boolean; source?: 'chat' | 'panel'; tool?: string }[];
   createdAt: number;
   updatedAt: number;
 }

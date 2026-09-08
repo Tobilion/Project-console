@@ -55,11 +55,16 @@ export function createProjectIntentStore(owner) {
       for (const [intentName, group] of triggerGroups) {
         const vectors = [];
         for (const trigger of group.triggers) {
-          vectors.push(results[rIdx++].data);
-          owner.projectFuseItems.push({ intent: intentName, text: trigger, isProject: true });
+          const res = results[rIdx++];
+          if (res && res.data) {
+            vectors.push(res.data);
+            owner.projectFuseItems.push({ intent: intentName, text: trigger, isProject: true });
+          }
         }
-        owner.projectIntentVectors[intentName] = { vectors, projectIndex: group.pIdx, entryIndex: group.eIdx };
-        count++;
+        if (vectors.length > 0) {
+          owner.projectIntentVectors[intentName] = { vectors, projectIndex: group.pIdx, entryIndex: group.eIdx };
+          count++;
+        }
       }
       owner._rebuildFuseIndex();
       log.info(`[SemanticMatcher] ${count} project intents added`);
@@ -109,10 +114,15 @@ export function createProjectIntentStore(owner) {
 
       const vectors = [];
       for (const trigger of triggers) {
-        vectors.push(changedResults[cIdx++].data);
-        owner.projectFuseItems.push({ intent: intentName, text: trigger, isProject: true });
+        const res = changedResults[cIdx++];
+        if (res && res.data) {
+          vectors.push(res.data);
+          owner.projectFuseItems.push({ intent: intentName, text: trigger, isProject: true });
+        }
       }
-      owner.projectIntentVectors[intentName] = { vectors, projectIndex: pIdx, entryIndex: eIdx };
+      if (vectors.length > 0) {
+        owner.projectIntentVectors[intentName] = { vectors, projectIndex: pIdx, entryIndex: eIdx };
+      }
     }
     owner._rebuildFuseIndex();
     log.info(`[SemanticMatcher] Incremental update complete — ${diff.changed.length} intents rebuilt`);

@@ -79,10 +79,18 @@ export async function handleExecute(ws, parsed, sessionContext) {
     return;
   }
   sessionContext.executeInFlight = true;
+  const t0 = Date.now();
   try {
     await handleExecuteBody(ws, parsed, sessionContext);
   } finally {
     sessionContext.executeInFlight = false;
+    // Slow-turn observability (2026-09-07): trigger-mode turns should answer in well under
+    // a second for pinned builtins — when one doesn't, log which input was slow so the cause
+    // (cold model, blocked loop, disk stall) can be traced instead of guessed from the client.
+    const dt = Date.now() - t0;
+    if (dt > 2500) {
+      logger.warn(`slow turn (${dt}ms): ${(parsed.payload?.input || '').slice(0, 80)}`);
+    }
   }
 }
 
@@ -152,7 +160,14 @@ async function handleExecuteBody(ws, parsed, sessionContext) {
     // under 50ms while the serialized append (index read + NDJSON append + atomic meta +
     // chat-log entry) takes longer — a fire-and-forget .then lost the race and the transcript
     // never patched (observed live).
-    const appended = await appendMessage(sessionContext.currentSessionId, { role: 'user', content: input });
+    // Panel-originated sends carry their origin so reloaded sessions keep the collapsed
+    // tool-activity rendering the live chat uses.
+    const appended = await appendMessage(sessionContext.currentSessionId, {
+      role: 'user',
+      content: input,
+      ...(parsed.payload?.source ? { source: parsed.payload.source } : {}),
+      ...(parsed.payload?.tool ? { tool: parsed.payload.tool } : {}),
+    });
     sessionContext.lastUserMessageId = appended?.messages?.[0]?.id || null;
   }
 

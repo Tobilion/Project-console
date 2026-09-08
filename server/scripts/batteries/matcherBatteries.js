@@ -584,6 +584,11 @@ const BATTERIES = [
       ['cancel reminder s1', 'BUILTIN=system.reminders.cancel'],
       ['delete reminder s3', 'BUILTIN=system.reminders.cancel'],
       ['remove reminder s2', 'BUILTIN=system.reminders.cancel'],
+      ['mark reminder s1 as done', 'BUILTIN=system.reminders.cancel'],
+      ['mark all reminders as done', 'BUILTIN=system.reminders.cancel'],
+      ['set alarm for 9am tomorrow', 'BUILTIN=system.reminders.create'],
+      ['alarm', 'BUILTIN=system.reminders.create'],
+      ['set an alarm at 7pm', 'BUILTIN=system.reminders.create'],
       // Phase 4 panel opener: these phrases must route to the opener so the web client
       // opens the Reminders panel (carried via openPanel on the answer, not tested here).
       ['open reminders', 'BUILTIN=system.tools.open_reminders'],
@@ -612,6 +617,9 @@ const BATTERIES = [
       ['find my notes about the trip', 'BUILTIN=system.notes.search'],
       ['open notes', 'BUILTIN=system.tools.open_notes'],
       ['open the notes panel', 'BUILTIN=system.tools.open_notes'],
+      ['delete note: buy milk', 'BUILTIN=system.notes.delete'],
+      ['remove the note about the trip', 'BUILTIN=system.notes.delete'],
+      ['delete my note about wifi', 'BUILTIN=system.notes.delete'],
     ],
   },
   {
@@ -762,6 +770,25 @@ const BATTERIES = [
     ],
   },
   {
+    // 2026-09-08 live report: absolute extensionless paths (e.g. "open C:\...\TEXTBOOK in
+    // the folder") fell through to the embedding stage and landed on structure (crash).
+    // New pre-semantic pins route absolute-path reveal/file shapes before embedding gets a
+    // vote. Guards: VS Code/Cursor/browser mentions keep their owners; bare
+    // "open the folder" keeps open_in_explorer; relative names with extensions stay on the
+    // existing reveal_file pin; "open C:\Temp in vscode" routes to the editor owner.
+    name: 'ABS-REVEAL (2026-09-08 absolute-path in-folder)',
+    items: [
+      ['open C:\\Users\\tobil\\Documents\\School (CU)\\Random Notes\\300l alpha 25-26\\COS331 - Artificial Intelligence (AI)\\TEXTBOOK in the folder', 'BUILTIN=project.action.reveal_file'],
+      ['show C:\\Temp\\a.txt in explorer', 'BUILTIN=project.action.reveal_file'],
+      ['reveal /home/u/notes in the folder', 'BUILTIN=project.action.reveal_file'],
+      // Guards: editor mentions stay with their owners.
+      ['open C:\\Temp in vscode', 'BUILTIN=project.action.open_in_vscode'],
+      ['open the folder', 'BUILTIN=project.action.open_in_explorer'],
+      // Relative name stays on the existing reveal_file pin.
+      ['open main.py in the folder', 'BUILTIN=project.action.reveal_file'],
+    ],
+  },
+  {
     // Audit 2026-08-17: NLP-stage dispatch gate (isNlpBuiltinEligible). Unit rows — the full
     // pipeline rarely reaches the NLP stage (semantic wins first), so the gate is asserted
     // directly: registered canned intents pass unless the input looks like a real request;
@@ -778,6 +805,29 @@ const BATTERIES = [
       ['project.knowledge.overview', 'what is the overview', true],
       ['project.knowledge.overview', 'what about main.py', false],
       ['project.action.0.1', 'run the dev script', false],
+    ],
+  },
+  {
+    // 2026-09-03 live CLI report: "Ugh I am tired" answered with the Tech Preview — the tired/
+    // exhausted family is pinned to the new empathy intent (interjection + family, bare family,
+    // i-am-family). Guards: the unspecified-frustration and server-down shapes keep their routes
+    // (the empathy pin sits AFTER the frustration pin in preSemanticOverrides.js).
+    name: 'EMPATHY (2026-09-03 tired/exhausted small talk)',
+    items: [
+      ['Ugh I am tired', 'BUILTIN=system.chit_chat.empathy'],
+      ['ugh i am tired', 'BUILTIN=system.chit_chat.empathy'],
+      ['i am tired', 'BUILTIN=system.chit_chat.empathy'],
+      ['im so tired', 'BUILTIN=system.chit_chat.empathy'],
+      ['im exhausted', 'BUILTIN=system.chit_chat.empathy'],
+      ['so tired', 'BUILTIN=system.chit_chat.empathy'],
+      ['long day', 'BUILTIN=system.chit_chat.empathy'],
+      ['i need a break', 'BUILTIN=system.chit_chat.empathy'],
+      ['ugh', 'BUILTIN=system.chit_chat.empathy'],
+      ['oh man im tired', 'BUILTIN=system.chit_chat.empathy'],
+      ['tired of the build failing', 'BUILTIN=system.chit_chat.empathy'],
+      // Guards: question/frustration shapes keep their pinned routes.
+      ['why isnt this working', 'BUILTIN=system.chit_chat.how_do_i'],
+      ['why is the server down', 'BUILTIN=project.context.dev_server_status'],
     ],
   },
 ];

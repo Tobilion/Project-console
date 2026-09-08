@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { X } from 'lucide-react';
 import { GlowOrbs } from './components/GlowOrbs';
 import { AppHeader } from './components/AppHeader';
@@ -11,6 +11,7 @@ import { useAppGlobalListeners } from './hooks/useAppGlobalListeners';
 import { useAppViewState } from './hooks/useAppViewState';
 import { getRandomGreeting } from './utils/greetings';
 import { readWorkspaceTabs, readToolPanels, WORKSPACE_TAB_KEY, TOOL_PANEL_KEY } from './utils/appStorage';
+import { apiFetchJson } from './utils/apiFetch';
 import type { TourSection } from './tours';
 import { getTourSection } from './tours';
 import { AppFooter } from './components/AppFooter';
@@ -44,6 +45,9 @@ function App() {
   // "?" keyboard-shortcuts overlay (2026-08-24) — shortcuts should be discoverable, not memory.
   const [shortcutsOpen, setShortcutsOpen] = React.useState(false);
   const [profileOpen, setProfileOpen] = React.useState(false);
+  // Phase 4.1: settings navigation state — when set, the settings modal opens at a specific
+  // category and scrolls to the target field (e.g. "reminders" category, "reminderToastDurationMs").
+  const [settingsNavigation, setSettingsNavigation] = React.useState<{ category?: string; field?: string } | null>(null);
   // Feature B (2026-08-14): the full Chat History overlay (General/Projects tabs), opened
   // from the sidebar's Chats header or the chat's top bar.
   const [chatHistoryOpen, setChatHistoryOpen] = React.useState(false);
@@ -112,6 +116,52 @@ function App() {
     tabs, activeTabId, activateTab, duplicateTab, closeTab,
     registerViewSync, isTabSwitchingRef,
   } = useConsole();
+
+  // Phase 5.1: header bell icon — unread notification count polled from the server's
+  // notification history. The count is non-dismissed items. Clicking the bell opens
+  // the Notifications panel via the Tools surface and resets the count.
+  const [unreadNotificationsCount, setUnreadNotificationsCount] = useState(0);
+  useEffect(() => {
+    let mounted = true;
+    const poll = async () => {
+      const data = await apiFetchJson<{ history?: { dismissed: boolean }[] }>('/api/notifications');
+      if (mounted && data?.history) {
+        setUnreadNotificationsCount(data.history.filter((h) => !h.dismissed).length);
+      }
+    };
+    poll();
+    const t = setInterval(poll, 15000);
+    return () => { mounted = false; clearInterval(t); };
+  }, []);
+  const handleOpenNotifications = useCallback(() => {
+    // Prefetch the registry so the panel shell has names/icons on first paint — the panel
+    // itself renders from the static view map regardless (see ToolsPanel).
+    fetchToolPanels();
+    setActiveToolPanel('notifications');
+    setToolsOpen(true);
+    setUnreadNotificationsCount(0);
+  }, [fetchToolPanels, setActiveToolPanel, setToolsOpen]);
+
+  // Phase 4.1: open Settings at a specific category + field. Consumed by chat/navigation
+  // hooks that dispatch 'lpc:open-settings' with {category, field}.
+  const handleOpenSettings = useCallback((category?: string, field?: string) => {
+    setSettingsNavigation({ category, field });
+    setProfileOpen(true);
+  }, []);
+
+  // Listen for 'lpc:open-settings' so the trigger-mode/settings-chat flow can request
+  // the settings modal pointed at a category (e.g. "reminders" -> reminderToastDurationMs).
+  useEffect(() => {
+    const onOpenSettings = (e: Event) => {
+      const detail = (e as CustomEvent).detail || {};
+      handleOpenSettings(
+        typeof detail.category === 'string' ? detail.category : undefined,
+        typeof detail.field === 'string' ? detail.field : undefined,
+      );
+    };
+    window.addEventListener('lpc:open-settings', onOpenSettings);
+    return () => window.removeEventListener('lpc:open-settings', onOpenSettings);
+  }, [handleOpenSettings]);
 
   // Phase 9 (2026-08-24 split): global keyboard + tour CustomEvent listeners.
   useAppGlobalListeners({ setDeckOpen, setShortcutsOpen, setShowDashboard, setShowCommandRef, setToolsOpen, setTourPickerOpen, setTourSection });
@@ -306,11 +356,13 @@ function App() {
           showCommandRef={showCommandRef}
           toolsOpen={toolsOpen}
           showDashboard={showDashboard}
+          unreadNotificationsCount={unreadNotificationsCount}
           onHome={() => { setShowDashboard(false); setToolsOpen(false); setChatFullscreen(false); setShowCommandRef(false); setShowWelcome(true); }}
           onToggleDeck={() => setDeckOpen(v => !v)}
           onToggleCommandRef={() => { setShowDashboard(false); setToolsOpen(false); setShowCommandRef(v => !v); }}
           onToggleDashboard={() => { setToolsOpen(false); setShowDashboard(v => !v); }}
           onToggleTools={() => { setShowDashboard(false); setShowCommandRef(false); setToolsOpen(v => !v); }}
+          onOpenNotifications={handleOpenNotifications}
           onOpenProfile={() => setProfileOpen(true)}
           onOpenTourPicker={() => setTourPickerOpen(true)}
           folderInputRef={folderInputRef}
@@ -533,6 +585,8 @@ function App() {
         setProfileOpen={setProfileOpen}
         profile={profile}
         updateProfile={updateProfile}
+        profileSettingsCategory={settingsNavigation?.category}
+        profileScrollToField={settingsNavigation?.field}
         firstRun={{
           open: showFirstRunSetup,
           scanPath,

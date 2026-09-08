@@ -40,6 +40,13 @@ export function createCliRenderer({ ws, sessionId, state }) {
   // can never fire a stale pick.
   let pendingOptions = [];
 
+  // 2026-09-03: AI-mode state for this terminal session. The web UI's AI switch is a
+  // frontend control with no terminal equivalent, so `ai on` / `ai off` are client-side
+  // commands that send the same ai_toggle message the web sends; the server echoes the
+  // resulting state via ai_status (also pushed once on connect). aiEnabled mirrors it for
+  // the banner text.
+  let aiEnabled = false;
+
   // stdout.write() calls below don't reliably end in '\n' — some WS message types (start/output/
   // token) are meant to run together mid-stream. But 'answer' is always a discrete reply, and the
   // server can send more than one in a single turn (e.g. an "answer" from npm_run immediately
@@ -156,6 +163,19 @@ export function createCliRenderer({ ws, sessionId, state }) {
         waitingForInput = false;
         rl.pause();
         switchProject().then(() => { waitingForInput = true; rl.prompt(true); });
+        return;
+      }
+      // AI-mode toggle (2026-09-03): the terminal has no header switch, so `ai on` / `ai off`
+      // (and the turn-on/off-ai-mode spellings) are handled entirely client-side — the server's
+      // needs_ai_mode answer points here when AI is off. Same ai_toggle message the web sends.
+      if (/^(?:ai\s+(?:on|off)|(?:turn\s+)?(?:on|off|enable|disable)\s+ai(?:\s*mode)?)$/i.test(trimmed)) {
+        const enable = /^(?:ai\s+on|(?:turn\s+)?(?:on|enable))/i.test(trimmed);
+        ws.send(JSON.stringify({ type: 'ai_toggle', payload: { enabled: enable } }));
+        process.stdout.write(
+          `\n${enable ? `${C.green}AI mode: ON${C.reset} — open-ended requests now go to the model with project-scoped tools. Repeat your request.` : `${C.yellow}AI mode: OFF${C.reset} — trigger mode handles the fixed built-in commands.`}\n`
+          + `${C.dim}(type ${'`ai ' + (enable ? 'off' : 'on') + '`'} to switch back)${C.reset}\n`
+        );
+        rl.prompt(true);
         return;
       }
       // Normal message
@@ -311,7 +331,14 @@ export function createCliRenderer({ ws, sessionId, state }) {
       // OR this kind of explicit no-op) fails the harness.
       case 'projects_updated': // project-list refresh — the CLI refetches on demand via 'projects'
       case 'project_updated': break; // single-project update — same
-      case 'ai_status': break; // AI toggle state — a UI switch, not terminal info
+      case 'ai_status': {
+        // 2026-09-03: was an explicit no-op ("a UI switch, not terminal info") — but the CLI
+        // now HAS the switch (`ai on`/`ai off` below), and the server pushes ai_status on
+        // connect + after every toggle, so render the state instead of dropping it.
+        aiEnabled = Boolean(msg.data && msg.data.enabled);
+        writeLine(`${aiEnabled ? C.green : C.yellow}AI mode: ${aiEnabled ? 'ON' : 'OFF'}${C.reset}${aiEnabled ? ' — open-ended requests go to the model with project-scoped tools.' : ' — trigger mode handles the fixed built-in commands (type "ai on" to switch).'}\n`);
+        break;
+      }
       case 'thinking': break; // reasoning-model trace — an italic panel in the web UI
       case 'task_granted': break; // "approved" acknowledgement — the CLI already saw the y/N prompt
       case 'workspace_updated': break; // workspace-project set — UI-only (SidebarDrawer)
@@ -320,6 +347,10 @@ export function createCliRenderer({ ws, sessionId, state }) {
       case 'processes_update': break; // dock refresh signal — no dock in the CLI
       case 'semantic_matcher_progress': break; // boot-time embedding progress — the CLI connects after boot
       case 'display_name_set': break; // name-claim ack — the CLI already knows the name it sent
+      case 'notification_fired':
+        if (msg.data?.title) writeLine(`${C.yellow}🔔 [${msg.data.projectName || 'Notification'}] ${msg.data.title}${msg.data.body ? `: ${msg.data.body}` : ''}${C.reset}\n`);
+        break;
+      case 'notification_dismiss': break; // notification dismiss state — UI only
       default:
         break;
     }

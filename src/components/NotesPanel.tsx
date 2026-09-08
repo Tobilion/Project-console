@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { StickyNote, RefreshCw, Send, Search, FileText } from 'lucide-react';
+import { StickyNote, RefreshCw, Send, Search, FileText, Trash2, Bold, Italic, List, Code } from 'lucide-react';
 import { apiFetchJson } from '../utils/apiFetch';
 import { projectApi } from '../utils/projectApi';
 import { cn } from '../lib/utils';
 import { EmptyState } from './ui/EmptyState';
+import { ReminderComposer } from './ReminderComposer';
 import type { Project } from '../types';
 import './NotesPanel.css';
 
@@ -24,7 +25,7 @@ interface NoteInfo {
 
 interface NotesPanelProps {
   project: Project | null;
-  onSendMessage: (text: string) => void;
+  onSendMessage: (text: string, opts?: { source?: string; tool?: string }) => void;
   /** Phase T (2026-08-14): the tab whose workspace this panel's REST calls address. */
   tabId?: string | null;
 }
@@ -46,6 +47,9 @@ export function NotesPanel({ project, onSendMessage, tabId = null }: NotesPanelP
   // (append path — the store's exact-dedupe makes an unchanged re-save a no-op, and an
   // edited text lands as a fresh note line, oldest copy kept).
   const [editDraft, setEditDraft] = useState<string | null>(null);
+  // Reminder composer popup — opened from the "Set reminder" button with the note's first
+  // line prefilled, so the date/time can be set before anything hits chat.
+  const [composerOpen, setComposerOpen] = useState(false);
   const lastSentTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Clear the pending "last sent" timer on unmount so its delayed setState can't fire on a
   // dead panel (and hold the panel's closure alive after it unmounted).
@@ -99,7 +103,7 @@ export function NotesPanel({ project, onSendMessage, tabId = null }: NotesPanelP
   }, [project?.id, fetchNotes]);
 
   const send = (text: string) => {
-    onSendMessage(text);
+    onSendMessage(text, { source: 'panel', tool: 'notes' });
     setLastSent(text);
     if (lastSentTimer.current) clearTimeout(lastSentTimer.current);
     lastSentTimer.current = setTimeout(() => setLastSent(null), 8000);
@@ -111,6 +115,28 @@ export function NotesPanel({ project, onSendMessage, tabId = null }: NotesPanelP
     if (!trimmed) return;
     send(/^note\s*:/i.test(trimmed) ? trimmed : `note: ${trimmed}`);
     setNewInput('');
+  };
+
+  const handleDelete = () => {
+    if (!selected) return;
+    send(`delete note: ${selected.text.split('\n')[0]}`);
+    setSelectedText(null);
+  };
+
+  // Phase 4: rich text toolbar — inserts markdown syntax at cursor position in the editor.
+  const insertMarkdown = (prefix: string, suffix: string) => {
+    const textarea = document.querySelector('.notes-panel textarea') as HTMLTextAreaElement | null;
+    if (!textarea) return;
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const text = editDraft ?? selected?.text ?? '';
+    const highlighted = text.slice(start, end);
+    const newText = text.slice(0, start) + prefix + (highlighted || 'text') + suffix + text.slice(end);
+    setEditDraft(newText);
+    setTimeout(() => {
+      textarea.focus();
+      textarea.setSelectionRange(start + prefix.length, start + prefix.length + (highlighted || 'text').length);
+    }, 10);
   };
 
   // Phase 5: save the edited note (blur or Cmd/Ctrl+Enter) through the same trigger path —
@@ -248,9 +274,34 @@ export function NotesPanel({ project, onSendMessage, tabId = null }: NotesPanelP
             <>
               <div className="px-5 pt-4 shrink-0 flex items-start justify-between gap-3">
                 <div className="text-[18px] font-bold text-fg-strong break-words min-w-0">{titleOf(selected)}</div>
-                {selected.date && (
-                  <span className="text-[11px] text-fg-muted shrink-0 mt-1.5">{selected.date}</span>
-                )}
+                <div className="flex items-center gap-1.5 shrink-0">
+                  {selected.date && (
+                    <span className="text-[11px] text-fg-muted mt-1.5">{selected.date}</span>
+                  )}
+                  <button
+                    onClick={handleDelete}
+                    className="p-1.5 rounded-lg text-fg-dim hover:text-accent-red hover:bg-accent-red/10 transition-colors"
+                    title="Delete this note"
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </div>
+              </div>
+              {/* Rich text toolbar — markdown formatting buttons */}
+              <div className="px-5 py-1.5 shrink-0 flex items-center gap-1 border-b border-border-faint">
+                <button onClick={() => insertMarkdown('**', '**')} className="p-1.5 rounded text-fg-dim hover:text-fg-strong hover:bg-scrim-faint transition-colors" title="Bold (Ctrl+B)">
+                  <Bold size={13} />
+                </button>
+                <button onClick={() => insertMarkdown('_', '_')} className="p-1.5 rounded text-fg-dim hover:text-fg-strong hover:bg-scrim-faint transition-colors" title="Italic (Ctrl+I)">
+                  <Italic size={13} />
+                </button>
+                <button onClick={() => insertMarkdown('\n- ', '')} className="p-1.5 rounded text-fg-dim hover:text-fg-strong hover:bg-scrim-faint transition-colors" title="List">
+                  <List size={13} />
+                </button>
+                <button onClick={() => insertMarkdown('`', '`')} className="p-1.5 rounded text-fg-dim hover:text-fg-strong hover:bg-scrim-faint transition-colors" title="Code">
+                  <Code size={13} />
+                </button>
+                <span className="text-[9px] text-fg-dim ml-2">Markdown formatting</span>
               </div>
               <textarea
                 value={editDraft ?? selected.text}
@@ -261,13 +312,35 @@ export function NotesPanel({ project, onSendMessage, tabId = null }: NotesPanelP
                     e.preventDefault();
                     saveEdit();
                   }
+                  // Keyboard shortcuts for bold/italic
+                  if ((e.metaKey || e.ctrlKey) && e.key === 'b') {
+                    e.preventDefault();
+                    insertMarkdown('**', '**');
+                  }
+                  if ((e.metaKey || e.ctrlKey) && e.key === 'i') {
+                    e.preventDefault();
+                    insertMarkdown('_', '_');
+                  }
                 }}
                 className="flex-1 w-full bg-transparent border-none outline-none resize-none px-5 py-3 text-[13px] leading-[18px] text-fg-subtle"
                 spellCheck={false}
               />
-              <div className="px-5 pb-3 shrink-0 text-[10px] text-fg-dim">
-                Editable — changes save on blur (or Cmd/Ctrl+Enter) through the chat trigger; new notes go through the terminal (single source of truth).
+              <div className="px-5 pb-3 shrink-0 flex items-center justify-between text-[10px] text-fg-dim">
+                <span>Editable — changes save on blur (or Cmd/Ctrl+Enter). Use the toolbar for formatting.</span>
+                <button
+                  onClick={() => setComposerOpen(true)}
+                  className="text-accent-blue hover:text-fg-strong transition-colors px-2 py-1 rounded hover:bg-accent-blue/10"
+                  title="Create a reminder linked to this note"
+                >
+                  Set reminder
+                </button>
               </div>
+              <ReminderComposer
+                open={composerOpen}
+                initialText={`see the note: ${selected.text.split('\n')[0].slice(0, 60)}`}
+                onClose={() => setComposerOpen(false)}
+                onSave={(phrase) => { setComposerOpen(false); send(phrase); }}
+              />
             </>
           ) : (
             <div className="flex-1 flex flex-col items-center justify-center gap-2 text-fg-muted">

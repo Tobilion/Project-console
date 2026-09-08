@@ -50,6 +50,9 @@ export interface WsCtx {
   commandPending: {
     setCommandPending: React.Dispatch<React.SetStateAction<boolean>>;
   };
+  /** Drain the outgoing FIFO after a turn ends — lets panel clicks made during a slow turn
+   *  run back-to-back instead of tripping the server's single-flight busy rejection. */
+  flushSendQueue: () => void;
   setDashboardUpdateSignal: React.Dispatch<React.SetStateAction<number>>;
   /** Grows with every server_url event and every processes poll that returns a URL — the
    *  only URLs that qualify for the "Click here to open the site" chip (a real NetPulse
@@ -72,8 +75,10 @@ export interface WsCtx {
   };
   /** Trigger-mode message send (the same path the input box uses). 2026-08-24: lets the
    *  answer case's undo toast fire `revert action <id>` through the normal chat flow —
-   *  confirm cards and journaling stay in the terminal, the single source of truth. */
-  sendMessage: (text: string) => void;
+   *  confirm cards and journaling stay in the terminal, the single source of truth.
+   *  2026-09-07: panel actions pass { source: 'panel', tool } so they queue like any other
+   *  send and render collapsed (see TerminalMessages). */
+  sendMessage: (text: string, opts?: { source?: string; tool?: string }) => void;
 }
 
 export type WsCaseHandler = (ctx: WsCtx, payload: any) => void;

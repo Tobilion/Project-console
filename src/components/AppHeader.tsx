@@ -4,7 +4,7 @@
 // state lives here.
 
 import React from 'react';
-import { Home, LayoutDashboard, LayoutGrid, Search, Settings, Loader2, BookOpen, HelpCircle } from 'lucide-react';
+import { Home, LayoutDashboard, LayoutGrid, Search, Settings, Loader2, BookOpen, HelpCircle, Bell } from 'lucide-react';
 import { TextScramble } from './TextScramble';
 import { ThemeToggle } from './ui/ThemeToggle';
 
@@ -16,11 +16,13 @@ export interface AppHeaderProps {
   showCommandRef: boolean;
   toolsOpen: boolean;
   showDashboard: boolean;
+  unreadNotificationsCount?: number;
   onHome: () => void;
   onToggleDeck: () => void;
   onToggleCommandRef: () => void;
   onToggleDashboard: () => void;
   onToggleTools: () => void;
+  onOpenNotifications?: () => void;
   onOpenProfile: () => void;
   onOpenTourPicker: () => void;
   folderInputRef: React.RefObject<HTMLInputElement | null>;
@@ -30,9 +32,9 @@ export interface AppHeaderProps {
 export function AppHeader(props: AppHeaderProps) {
   const {
     workspaceTab, onWorkspaceTabChange, activeServersCount, indexingProjectId,
-    showCommandRef, toolsOpen, showDashboard,
+    showCommandRef, toolsOpen, showDashboard, unreadNotificationsCount = 0,
     onHome, onToggleDeck, onToggleCommandRef, onToggleDashboard, onToggleTools,
-    onOpenProfile, onOpenTourPicker, folderInputRef, onFolderPick,
+    onOpenNotifications, onOpenProfile, onOpenTourPicker, folderInputRef, onFolderPick,
   } = props;
 
   return (
@@ -95,6 +97,16 @@ export function AppHeader(props: AppHeaderProps) {
         <button data-tour="tools-button" onClick={onToggleTools} className={`p-3 transition-colors ${toolsOpen ? 'text-accent-blue' : 'text-fg-dim hover:text-fg-strong'}`} title="Interactive tools">
           <LayoutGrid size={18} />
         </button>
+        {onOpenNotifications && (
+          <button onClick={onOpenNotifications} className="relative p-3 text-fg-dim hover:text-fg-strong transition-colors" title="Notifications & Reminders">
+            <Bell size={18} />
+            {unreadNotificationsCount > 0 && (
+              <span className="absolute top-2 right-2 flex items-center justify-center min-w-[14px] h-[14px] px-1 text-[9px] font-bold text-white bg-accent-orange rounded-full leading-none">
+                {unreadNotificationsCount > 9 ? '9+' : unreadNotificationsCount}
+              </span>
+            )}
+          </button>
+        )}
         <button data-tour="settings-button" onClick={onOpenProfile} className="p-3 text-fg-dim hover:text-fg-strong transition-colors" title="User profile">
           <Settings size={18} />
         </button>

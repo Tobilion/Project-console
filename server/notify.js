@@ -7,8 +7,11 @@
 import { state } from './state.js';
 import { loadNotifyRules, getRules, getWebhooks, isEventEnabled } from './notify/notifyStore.js';
 import { sendDesktopNotification, sendWebhook } from './notify/notifyChannels.js';
+import { recordNotificationItem } from './notify/notificationHistoryStore.js';
 import { setTaskCompletionListener } from './taskQueue.js';
+import { broadcast } from './wsServer.js';
 import { log } from './logger.js';
+import { readProfile } from './routes/profileRoutes.js';
 
 function projectNameOf(projectId) {
   return state.activeProjectsCache.find((p) => p.id === projectId)?.name || projectId;
@@ -18,11 +21,15 @@ function projectNameOf(projectId) {
  * Deliver `event` for `projectId` to every configured channel. Returns per-channel results
  * ({ channel, url?, ok, status?/reason? }) for `test notification` reporting; other callers
  * ignore the return. A disabled event is a no-op, so default-off rules cost nothing.
+ * Phase 3.2: `toast` opts (durationMs/position) ride through to the desktop channel so
+ * reminder toasts honor the user's profile customization.
  */
-export async function notify(projectId, event, { title, body }) {
+export async function notify(projectId, event, { title, body }, toastOpts = {}) {
   const results = [];
   try {
     if (!isEventEnabled(event)) return results;
+    const item = recordNotificationItem(projectId, projectNameOf(projectId), event, title, body);
+    broadcast({ type: 'notification_fired', data: item });
     const payload = {
       event,
       projectName: projectNameOf(projectId),
@@ -32,7 +39,16 @@ export async function notify(projectId, event, { title, body }) {
       app: 'local-project-console',
     };
     if (getRules().desktop) {
-      results.push({ channel: 'desktop', ...(await sendDesktopNotification(title, body)) });
+      // Reminders apply the user's toast-duration/position profile settings (only when the
+      // caller didn't already override them, which keeps other events byte-identical).
+      let durationMs = toastOpts.durationMs;
+      let position = toastOpts.position;
+      if (event === 'reminder-fired') {
+        const profile = readProfile();
+        if (durationMs === undefined) durationMs = profile.reminderToastDurationMs;
+        if (position === undefined) position = profile.reminderToastPosition;
+      }
+      results.push({ channel: 'desktop', ...(await sendDesktopNotification(title, body, { durationMs, position })) });
     }
     for (const url of getWebhooks()) {
       results.push({ channel: 'webhook', url, ...(await sendWebhook(url, payload)) });

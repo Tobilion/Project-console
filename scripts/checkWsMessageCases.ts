@@ -97,6 +97,7 @@ function makeFakeCtx() {
     commandPending: {
       setCommandPending: (v: any) => { state.commandPending = typeof v === 'function' ? v(state.commandPending) : v; },
     },
+    flushSendQueue: () => { state.flushSendQueueCalls = (state.flushSendQueueCalls || 0) + 1; },
     setDashboardUpdateSignal: (u: any) => { state.dashboardSignals = u(state.dashboardSignals); },
     setKnownDevUrls: (u: any) => { state.knownDevUrls = typeof u === 'function' ? u(state.knownDevUrls) : u; },
     appendProcessOutput: (text: string) => { state.appendedOutput.push(text); },
@@ -155,7 +156,9 @@ async function main() {
   // required; the fix is a text-pattern contract).
   const openAttachGuards = (cliSource.match(/readyState === 1/g) || []).length;
   check('CLI guards every open-attach with readyState (already-open race)', openAttachGuards >= 3);
-  check('CLI setupReadline attach is readyState-guarded', /if \(ws\.readyState === 1\) setupReadline\(\)/.test(cliSource));
+  // The interactive attach also announces the client identity (client_info) since 2026-09-03 —
+  // the guarded shape gained a brace + sendClientInfo call; both forms must stay readyState-guarded.
+  check('CLI setupReadline attach is readyState-guarded', /if \(ws\.readyState === 1\) \{? sendClientInfo\(ws\); setupReadline\(\)/.test(cliSource) || /if \(ws\.readyState === 1\) setupReadline\(\)/.test(cliSource));
   check('CLI scripted attach is readyState-guarded', /if \(ws\.readyState === 1\) startScripted\(\)/.test(cliSource));
   check('CLI LAN-name attach is readyState-guarded', /if \(ws\.readyState === 1\) sendName\(\)/.test(cliSource));
 
@@ -285,6 +288,14 @@ async function main() {
   dispatch(c.ctx, 'thinking', { data: ' hmm' });
   dispatch(c.ctx, 'end', {});
   check('final end clears reasoning trace', c.state.aiThinkingText === '');
+
+  // --- notification_fired / notification_dismiss ---
+  c = makeFakeCtx();
+  dispatch(c.ctx, 'notification_fired', { data: { title: 'Test Alert', body: 'Test Body' } });
+  check('notification_fired -> fires toast', getToasts().at(-1)?.title === 'Test Alert');
+  for (const t of getToasts()) dismissToast(t.id);
+  dispatch(c.ctx, 'notification_dismiss', { data: { id: 's1' } });
+  check('notification_dismiss -> no-op in dispatch map', c.state.msgs.length === 0);
 
   // --- server_url feeds knownDevUrls (the chip gate) ---
   c = makeFakeCtx();

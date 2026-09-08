@@ -76,9 +76,8 @@ export async function initializeMatcher(owner) {
     log.info(`[SemanticMatcher] Ready -- ${Object.keys(INTENTS).length} base intents, ${Object.values(INTENTS).reduce((s, c) => s + c.examples.length, 0)} phrases`);
     // First-message warm-up (Phase 6): the phrase batch above warms the model runtime, but
     // the first INPUT embed still pays one-off tokenizer/thread-pool setup inside the model.
-    // Fire one throwaway embed (cached under 'warm-up check', harmless) so the first real
-    // user message doesn't pay it. Fire-and-forget — never blocks ready.
-    owner.embedInput('warm-up check').catch(() => {});
+    // Await warm-up check to avoid race conditions with subsequent project intent embedding.
+    await owner.embedInput('warm-up check').catch(() => {});
   } catch (err) {
     owner.initError = err;
     log.error('[SemanticMatcher] Failed:', err.message);

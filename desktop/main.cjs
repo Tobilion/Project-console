@@ -54,6 +54,11 @@ let tray = null;
 let serverChild = null;
 let mainWindow = null;
 let autoUpdater = null;
+// Tail of the server child's stderr (piped, not inherited), shown verbatim on startup
+// failures. Module scope so every fatal path (GUI wait timeout + --cli mode) can read it —
+// it was previously a startServer() local referenced from whenReady, which would have
+// thrown ReferenceError on the rare fatal paths that actually reach it (2026-09-03).
+let serverStderrTail = '';
 
 // Splash shown while the server child cold-boots (scan + NLP + embeddings can take 40-90s on
 // a fresh install). A data: URL keeps this dependency-free — no extra asset to package.
@@ -76,6 +81,8 @@ function buildSplashHtml() {
       '.fill{height:100%;width:38%;background:linear-gradient(90deg,#0071E3,#64D2FF);border-radius:999px;animation:load 1.1s ease-in-out infinite}' +
       '@keyframes load{0%{transform:translateX(-60%)}50%{transform:translateX(70%)}100%{transform:translateX(160%)}}' +
       '.hint{font-size:12px;color:#A1A1AA;line-height:1.5;margin:0}' +
+      '#boot-state{font-size:12px;color:#64D2FF;margin:8px 0 0;min-height:18px;transition:opacity 0.3s}' +
+      '#boot-time{font-size:11px;color:#48484A;margin:6px 0 0;min-height:16px}' +
       '.ver{margin-top:16px;font-size:10px;letter-spacing:0.14em;text-transform:uppercase;color:#48484A}' +
       '@keyframes p{50%{transform:scale(.6);opacity:.4}}' +
       '</style></head><body><div class="card">' +
@@ -83,7 +90,9 @@ function buildSplashHtml() {
       '<h1 class="title">Project Console</h1>' +
       '<p class="subtitle">Local Project Engine &middot; v' + appVersion + '</p>' +
       '<div class="bar"><div class="fill"></div></div>' +
-      '<p class="hint">Starting the local server…<br><span style="color:#86868B">First boot can take up to 40s while the workspace is indexed.</span></p>' +
+      '<p class="hint">Starting the local server…</p>' +
+      '<p id="boot-state"></p>' +
+      '<p id="boot-time"></p>' +
       '<p class="ver">Made by Tobiloba Jagun &middot; github.com/Tobilion</p>' +
       '</div></body></html>'
     )
@@ -116,6 +125,7 @@ function errorPageHtml(message, detail) {
 
 let quitting = false; // set in before-quit so the child-exit handler doesn't fire error UI on shutdown
 let serverReady = false; // true once the port answered — later child exits are normal stops
+let bootStartTime = Date.now(); // tracks elapsed boot time for splash progress display
 
 /** The app's own window, pointed at the console. Created once; later calls focus it. */
 function createWindow(url) {
@@ -347,9 +357,30 @@ function startServer() {
     stdio: ['ignore', 'inherit', 'pipe'],
     windowsHide: true,
   });
-  let serverStderrTail = '';
   serverChild.stderr && serverChild.stderr.on('data', (d) => {
     serverStderrTail = (serverStderrTail + String(d)).slice(-4000);
+    // Update the splash screen's boot-state element with live loading progress.
+    // Server logs state markers like [boot-state]model-loading — we extract and display
+    // them so the user knows what's happening during the 40-90s cold boot.
+    const lines = String(d).split('\n');
+    for (const line of lines) {
+      const m = line.match(/\[boot-state\](\S+)/);
+      if (m && mainWindow && !mainWindow.isDestroyed()) {
+        const STATE_LABELS = {
+          'starting': 'Initializing server…',
+          'model-loading': 'Downloading embedding model…',
+          'model-ready': 'Embedding model ready',
+          'scanning': 'Scanning projects…',
+          'matcher-init': 'Loading match engine…',
+          'nlp-training': 'Training NLP classifier…',
+          'ready': 'Server ready',
+        };
+        const label = STATE_LABELS[m[1]] || m[1];
+        const elapsed = ((Date.now() - bootStartTime) / 1000).toFixed(0);
+        const js = `document.getElementById('boot-state').textContent='${label.replace(/'/g, "\\'")}';document.getElementById('boot-time').textContent='Elapsed: ${elapsed}s';`;
+        try { mainWindow.webContents.executeJavaScript(js); } catch {}
+      }
+    }
   });
   serverChild.on('error', (err) => {
     console.error('Server failed to start:', err.message);
@@ -406,7 +437,70 @@ function openConsole(port) {
   }
 }
 
+/**
+ * Standalone CLI mode — `Project Console.exe --cli [extra args...]` (cli.cmd passes --cli,
+ * 2026-09-03). The terminal chat client must work even when the app is NOT running: attach to
+ * an already-running console or start the server child ourselves (same rules as the GUI path —
+ * never a duplicate instance), wait for the bound port, then spawn server/cli-client.js with
+ * this same executable as plain Node (ELECTRON_RUN_AS_NODE). No window, no tray, no updater.
+ * Extra args after --cli forward to the client (e.g. --project "Name").
+ */
+async function runCliMode(extraArgs) {
+  const rootDir = app.isPackaged ? process.resourcesPath : path.resolve(__dirname, '..');
+  const persistentDataDir = getPersistentDataDir();
+  const existing = await findRunningConsole();
+  if (!existing) startServer();
+  let port = null;
+  if (await waitForServer(existing || BASE_PORT)) {
+    port = existing || BASE_PORT;
+  } else {
+    for (let p = BASE_PORT + 1; p < BASE_PORT + MAX_PORT_ATTEMPTS; p++) {
+      if (await probePort(p)) { port = p; break; }
+    }
+  }
+  if (!port) {
+    console.error(
+      'Project Console server did not become reachable on ports ' +
+      `${BASE_PORT}-${BASE_PORT + MAX_PORT_ATTEMPTS - 1}.` +
+      (serverStderrTail ? `\n\nServer output:\n${serverStderrTail}` : '')
+    );
+    app.exit(1);
+    return;
+  }
+  const cliClientPath = path.join(rootDir, 'server', 'cli-client.js');
+  const child = spawn(process.execPath, [cliClientPath, ...extraArgs], {
+    env: {
+      ...process.env,
+      ELECTRON_RUN_AS_NODE: '1',
+      ...(persistentDataDir ? { CONSOLE_DATA_DIR: persistentDataDir } : {}),
+    },
+    stdio: 'inherit',
+    windowsHide: true,
+  });
+  const cleanup = () => {
+    quitting = true; // the server child's exit handler must not show error UI on shutdown
+    if (serverChild && !serverChild.killed) serverChild.kill();
+  };
+  child.on('exit', (code) => { cleanup(); app.exit(code ?? 0); });
+  child.on('error', (err) => {
+    console.error('Could not start the CLI chat:', err.message);
+    cleanup();
+    app.exit(1);
+  });
+}
+
 app.whenReady().then(async () => {
+  // Phase 1.1: Register AppUserModelID so Windows WinRT toast notifications work
+  // Without this, PowerShell's ToastNotificationManager silently fails to find the app
+  if (process.platform === 'win32') {
+    try { app.setAppUserModelId('local-project-console'); } catch {}
+  }
+
+  const cliArgIndex = process.argv.indexOf('--cli');
+  if (cliArgIndex !== -1) {
+    await runCliMode(process.argv.slice(cliArgIndex + 1));
+    return;
+  }
   // If a console is already running, just attach — never start a second instance.
   const existing = await findRunningConsole();
   if (existing) {

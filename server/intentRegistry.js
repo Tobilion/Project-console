@@ -66,7 +66,7 @@ export const BUILTIN_INTENTS = new Set([
   'system.chit_chat.clear', 'system.chit_chat.help', 'system.chit_chat.list_commands', 'system.chit_chat.git_status',
   'system.chit_chat.explain_followup', 'system.chit_chat.undo', 'system.chit_chat.deploy',
   'system.chit_chat.yes_no', 'system.chit_chat.farewell', 'system.chit_chat.identity',
-  'system.chit_chat.needs_ai_mode', 'system.chit_chat.ack', 'system.chit_chat.joke',
+  'system.chit_chat.needs_ai_mode', 'system.chit_chat.ack', 'system.chit_chat.empathy', 'system.chit_chat.joke',
   'project.knowledge.overview', 'project.knowledge.stack', 'project.knowledge.commands',
   'project.knowledge.gotchas', 'project.knowledge.architecture',
   'project.context.structure', 'project.context.languages', 'project.context.file_count',
@@ -136,7 +136,7 @@ export const BUILTIN_INTENTS = new Set([
   'system.reminders.create', 'system.reminders.list', 'system.reminders.cancel',
   // Phase 5 (UPGRADE-ROADMAP.md, 2026-08-12): user-authored scratch notes (builtinNotes.js +
   // notesStore.js — .console/notes.md). Personal, not project assets, so NOT dev-only.
-  'system.notes.create', 'system.notes.list', 'system.notes.search',
+  'system.notes.create', 'system.notes.list', 'system.notes.search', 'system.notes.delete',
   // Phase 7 (UPGRADE-ROADMAP.md, 2026-08-12): deterministic CSV queries (builtinCsvTools.js +
   // csvTools.js) — read-only sum/average/count/filter over project CSV files. General-mode
   // by design, usable anywhere (a dev project can have data files too).

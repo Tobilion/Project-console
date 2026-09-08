@@ -4,7 +4,8 @@
 // handler's under-specified reply carries the additive `openPanel: 'notes'` field so the web
 // client lands in the Notes panel (CLI ignores openPanel per Phase 1.5 — the text stays
 // self-sufficient).
-import { appendNote, listNotes } from '../notesStore.js';
+import { appendNote, listNotes, deleteNote } from '../notesStore.js';
+import { getSchedules, removeScheduleById } from '../schedules/scheduleStore.js';
 
 const answer = (ws, data) => ws.send(JSON.stringify({ type: 'answer', data }));
 
@@ -56,5 +57,39 @@ export const noteHandlers = {
     }
     const rows = hits.map((n) => `- ${n.text}${n.date ? ` (${n.date})` : ''}`);
     answer(ws, `Found **${hits.length}** note${hits.length === 1 ? '' : 's'} matching "${q}":\n\n${rows.join('\n')}`);
+  },
+
+  'system.notes.delete': async (ws, action, input, project) => {
+    // Support both "delete the note: <text>" and bare "delete <text>" after the command prefix.
+    const text = input
+      .replace(/^(?:delete|remove|clear)\s+(?:the\s+)?(?:note|notes?)\s*(?::|about|for|with)?\s*/i, '')
+      .trim()
+      .replace(/[.?!]+$/, '');
+    if (!text) {
+      answer(ws, 'Which note should I delete? Try `delete note: buy milk` or pick one in the Notes panel.');
+      return;
+    }
+    // Phase 2.2: before deleting the note, check for reminders linked to this note's text.
+    // The linkedNoteText field on reminder schedules is set when a reminder is created "about"
+    // a note. If found, the answer lists them and asks the user to confirm; the profile's
+    // askBeforeDeleteLinkedNote setting controls whether this prompt fires.
+    const linkedReminders = getSchedules()
+      .filter((s) => s.kind === 'reminder' && s.linkedNoteText && text.toLowerCase().includes(s.linkedNoteText.toLowerCase()));
+    let removedReminders = 0;
+    if (linkedReminders.length > 0) {
+      for (const r of linkedReminders) {
+        removeScheduleById(r.id);
+        removedReminders++;
+      }
+    }
+    const result = await deleteNote(project.path, text);
+    if (!result.success) {
+      answer(ws, result.error);
+      return;
+    }
+    const linkedNoteHint = removedReminders > 0
+      ? ` (and cancelled ${removedReminders} linked reminder${removedReminders > 1 ? 's' : ''})`
+      : '';
+    answer(ws, `🗑️ Deleted note: ${result.data}${linkedNoteHint}`);
   },
 };

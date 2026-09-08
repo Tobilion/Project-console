@@ -17,12 +17,16 @@ const NOTIFY_FILE = resolveData('notifications.json');
 // file-watch set, reminder-fired) was invisible to `list notifications` and — worse — was
 // DROPPED on reload, because loadNotifyRules only copied keys already present in the seed.
 // Building it from NOTIFY_EVENT_KEYS keeps rules and catalog drift-free by construction.
-const allEventsDisabled = () => Object.fromEntries(NOTIFY_EVENT_KEYS.map((k) => [k, false]));
+const allEventsDisabled = () => {
+  const map = Object.fromEntries(NOTIFY_EVENT_KEYS.map((k) => [k, false]));
+  map['reminder-fired'] = true;
+  return map;
+};
 
 let rules = {
   events: allEventsDisabled(),
   webhookUrls: [],
-  desktop: false,
+  desktop: true,
 };
 let saveTimer = null;
 

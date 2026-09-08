@@ -5,7 +5,7 @@ import { state } from '../state.js';
 import { isGitRepo } from '../gitSafety.js';
 import { resolveEditor, defaultEditorFor, getEditorsState } from '../editorsStore.js';
 import { parseFileNameOnly } from './builtinHelpers.js';
-import { spawnDetached, openInBrowser, resolveFileForOpen, revealInExplorer } from './projectFileOpen.js';
+import { spawnDetached, openInBrowser, resolveFileForOpen, revealInExplorer, tryRevealAbsolutePath } from './projectFileOpen.js';
 import { log as logger } from '../logger.js';
 
 /**
@@ -341,6 +341,11 @@ export const projectActionHandlers = {
     // the file-level counterpart of open_in_explorer. Uses the same reveal spawn pattern
     // as pdfRoutes' /api/projects/:id/reveal.
     const send = (data) => ws.send(JSON.stringify({ type: 'answer', data }));
+    // 2026-09-08: an explicit ABSOLUTE path (any drive/folder on disk, e.g. the extensionless
+    // TEXTBOOK folder that crashed structure via misroute) bypasses the project-sandboxed
+    // resolution below — it names its target unambiguously, and the sandbox could only ever
+    // answer "Which file?" for it.
+    if (await tryRevealAbsolutePath({ send, input })) return true;
     const resolved = await resolveFileForOpen({
       send,
       project,

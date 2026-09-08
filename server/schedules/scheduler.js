@@ -5,7 +5,7 @@
 // broken schedule can never kill the loop; cadence is lastFiredAt-based, so a restart mid-
 // interval never double-fires and a freshly created schedule waits a full period.
 
-import { loadSchedules, getSchedules, markFired, markFiredBatch, removeScheduleById } from './scheduleStore.js';
+import { loadSchedules, getSchedules, markFired, markFiredBatch, removeScheduleById, clearReminders } from './scheduleStore.js';
 import { fireSchedule } from './scheduleFire.js';
 import { checkStaleFolders } from '../watchEngine.js';
 import { watchProjectChanges } from '../fileWatcher.js';
@@ -136,6 +136,22 @@ export function syncEventTriggerWatchers() {
  *  Called once from server/index.js after project discovery. */
 export function initScheduler() {
   loadSchedules();
+  // Phase 5.2: honor persistRemindersAcrossRestart — when the user chose not to keep
+  // reminders across restarts, drop any reminder that survived a previous session here at
+  // boot (before the first tick, so they never fire). Lazy-import to avoid circular deps
+  // (this file is imported before profileRoutes registers).
+  (async () => {
+    try {
+      const { readProfile } = await import('../routes/profileRoutes.js');
+      const profile = readProfile();
+      if (profile && profile.persistRemindersAcrossRestart === false) {
+        const removed = clearReminders();
+        if (removed > 0) log.info(`[scheduler] cleared ${removed} non-persistent reminder(s) at boot`);
+      }
+    } catch {
+      // best-effort — default behavior keeps reminders
+    }
+  })();
   syncEventTriggerWatchers();
   setInterval(tick, TICK_MS).unref();
 }

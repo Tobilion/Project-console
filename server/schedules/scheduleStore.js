@@ -74,7 +74,7 @@ export function getSchedules(projectId) {
  * exactly on firstFireAt for aligned intervals, else on the creation time so interval
  * schedules wait a full period and daily/weekly schedules fire at the NEXT occurrence.
  */
-export function addSchedule({ projectId, projectName, spec, command, text, kind = 'command', fireAt = null, weekday = null, firstFireAt = null, intentId = null, createdAt = Date.now(), createdBy = 'local' }) {
+export function addSchedule({ projectId, projectName, spec, command, text, kind = 'command', fireAt = null, weekday = null, firstFireAt = null, intentId = null, createdAt = Date.now(), createdBy = 'local', linkedNoteText = null }) {
   const id = `s${++idCounter}`;
   const schedule = {
     id,
@@ -95,6 +95,9 @@ export function addSchedule({ projectId, projectName, spec, command, text, kind 
     // Phase 19: attribution label ("local" default — single-user schedules unchanged).
     createdBy,
     lastFiredAt: firstFireAt ? firstFireAt - spec.everyMs : createdAt,
+    // Phase 2.2: when a reminder is created "about" a specific note, the note's first
+    // line is stored here so deleting the note can also cancel linked reminders.
+    linkedNoteText: linkedNoteText || null,
   };
   schedules.push(schedule);
   schedulePersist();
@@ -154,4 +157,15 @@ export function removeScheduleById(id) {
 
 export function getScheduleById(id) {
   return schedules.find((s) => s.id === id) || null;
+}
+
+/** Phase 5.2: remove every reminder-kind schedule (command schedules are untouched).
+ *  Used at boot when the profile's persistRemindersAcrossRestart is off, so reminders
+ *  from a previous session never fire against a fresh session the user configured as
+ *  non-persistent. Persists immediately. */
+export function clearReminders() {
+  const before = schedules.length;
+  schedules = schedules.filter((s) => s.kind !== 'reminder');
+  if (schedules.length !== before) persistNow();
+  return before - schedules.length;
 }

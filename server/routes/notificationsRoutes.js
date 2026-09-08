@@ -4,7 +4,14 @@
 import { getWatchRules } from '../watchRules.js';
 import { getRules, getWebhooks } from '../notify/notifyStore.js';
 import { testWebhookUrl } from '../notify/notifyChannels.js';
+import {
+  getNotificationHistory,
+  dismissNotificationItem,
+  dismissAllNotificationItems,
+  clearNotificationHistoryItems,
+} from '../notify/notificationHistoryStore.js';
 import { asyncHandler } from '../asyncHandler.js';
+import { broadcast } from '../wsServer.js';
 
 // Webhook URLs are bearer secrets (notifications.json is gitignored for exactly that reason),
 // and this GET is unauthenticated — in LAN mode (HOST=0.0.0.0) any caller could read them.
@@ -28,7 +35,30 @@ export function registerNotificationsRoutes(app) {
       events: getRules().events,
       desktop: getRules().desktop,
       webhooks: getWebhooks().map(maskWebhookUrl),
+      history: getNotificationHistory(),
     });
+  });
+
+  app.get('/api/notifications/history', (req, res) => {
+    res.json({ history: getNotificationHistory() });
+  });
+
+  app.post('/api/notifications/dismiss', (req, res) => {
+    const { id } = req.body || {};
+    if (id && id !== 'all') {
+      dismissNotificationItem(id);
+      broadcast({ type: 'notification_dismiss', data: { id } });
+    } else {
+      dismissAllNotificationItems();
+      broadcast({ type: 'notification_dismiss', data: { id: 'all' } });
+    }
+    res.json({ success: true, history: getNotificationHistory() });
+  });
+
+  app.post('/api/notifications/clear-history', (req, res) => {
+    clearNotificationHistoryItems();
+    broadcast({ type: 'notification_dismiss', data: { id: 'clear_all' } });
+    res.json({ success: true, history: [] });
   });
 
   // Round-6 audit (2026-08-24): Postman-style webhook tester — POSTs one test payload to a

@@ -32,6 +32,8 @@ export function storedToTerminalMessages(messages: StoredSession['messages']): T
       content: m.content,
       isMarkdown,
       timestamp: m.timestamp,
+      ...(m.source ? { source: m.source } : {}),
+      ...(m.tool ? { tool: m.tool } : {}),
     };
   });
 }

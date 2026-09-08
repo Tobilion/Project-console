@@ -1,0 +1,32 @@
+[
+  {
+    "id": "4562590f",
+    "projectId": "__general__",
+    "projectName": "__general__",
+    "event": "dev-server-crash",
+    "title": "Project Console test — General",
+    "body": "This is a test notification. If you can read this (desktop or webhook), notifications are working.",
+    "timestamp": 1788862711378,
+    "dismissed": true
+  },
+  {
+    "id": "bd7d3df5",
+    "projectId": "__general__",
+    "projectName": "__general__",
+    "event": "reminder-fired",
+    "title": "Reminder: cook rice",
+    "body": "Tue, Sep 8, 11:18 AM",
+    "timestamp": 1788862685335,
+    "dismissed": true
+  },
+  {
+    "id": "b8a346ad",
+    "projectId": "console-reminders-live",
+    "projectName": "console-reminders-live",
+    "event": "reminder-fired",
+    "title": "Reminder: do standup",
+    "body": "daily at 9:00 AM",
+    "timestamp": 1788862367745,
+    "dismissed": true
+  }
+]

@@ -4,10 +4,10 @@
 // short-circuits on stable refs (markdownComponents, handlers) so an AI-mode stream only
 // touches the live row.
 
-import React from 'react';
+import React, { useState } from 'react';
 import type { TerminalMessage } from '../../types';
 import ReactMarkdown from 'react-markdown';
-import { AlertTriangle, ExternalLink } from 'lucide-react';
+import { AlertTriangle, ExternalLink, ChevronDown, ChevronRight, Wrench } from 'lucide-react';
 import { OutputBlock } from '../TerminalOutputBlock';
 
 /** The server appends a performance note to the end of streamed AI replies (see
@@ -31,6 +31,33 @@ export function extractUrl(text: string): string | null {
   return m[0].replace(/[*_.,;:!?]+$/, '');
 }
 
+/** Collapsed one-line rendering for tool-panel sends (see the source==='panel' branch
+ *  in MessageRowContent). Keeps routine tool use out of the conversation's way. */
+function PanelActivityRow({ msg }: { msg: TerminalMessage }) {
+  const [expanded, setExpanded] = useState(false);
+  const tool = (msg as any).tool || 'tool';
+  const preview = msg.content.length > 80 ? `${msg.content.slice(0, 80)}…` : msg.content;
+  return (
+    <div className="max-w-[85%] rounded-full border border-border-faint bg-scrim-faint text-fg-dim">
+      <button
+        onClick={() => setExpanded(v => !v)}
+        className="flex items-center gap-1.5 pl-3 pr-2.5 py-1 text-[11px] hover:text-fg-strong transition-colors"
+        title={expanded ? 'Collapse' : msg.content}
+      >
+        <Wrench size={11} className="shrink-0 opacity-70" />
+        <span className="font-semibold">{tool}</span>
+        <span className="truncate opacity-70 font-mono">{preview}</span>
+        {expanded
+          ? <ChevronDown size={12} className="shrink-0" />
+          : <ChevronRight size={12} className="shrink-0" />}
+      </button>
+      {expanded && (
+        <div className="px-3 pb-2 text-[11px] font-mono whitespace-pre-wrap opacity-80">{msg.content}</div>
+      )}
+    </div>
+  );
+}
+
 export const MessageRowContent = React.memo(function MessageRowContent({
   msg, isBlocked, onSendMessage, onDirectCommand, onSwitchToProject, aiMode,
   knownDevUrls, markdownComponents, onDidYouMeanPick,
@@ -47,6 +74,12 @@ export const MessageRowContent = React.memo(function MessageRowContent({
 }) {
   if (msg.type === 'output') {
     return <OutputBlock content={msg.content} autoExpand={msg.autoExpand} />;
+  }
+  // Panel-originated sends (tool buttons, toggles, quick-add) collapse into a one-line
+  // expandable activity row — routine tool use used to bury the conversation in full-size
+  // user bubbles (one per toggle click). The full command is one tap away when needed.
+  if (msg.type === 'user' && (msg as any).source === 'panel') {
+    return <PanelActivityRow msg={msg} />;
   }
   const tel = splitTelemetry(msg.content);
   const linkUrl = msg.type !== 'user' ? extractUrl(tel.body) : null;

@@ -21,7 +21,7 @@ import {
   WANT_LAST,
   generalPseudoProject,
 } from './cliOptions.js';
-import { stripMarkdown, discoverServer, pickResumeSession } from './cliDiscovery.js';
+import { stripMarkdown, discoverServer, pickResumeSession, readBootLogTail } from './cliDiscovery.js';
 import { selectProject, findProjectFromArgs } from './cliProjectPicker.js';
 import { renderMascot } from './cliMascot.js';
 import { createCliRenderer } from './cliRenderer.js';
@@ -50,6 +50,13 @@ process.on('unhandledRejection', (reason) => {
 // second Ctrl+C force-exits without waiting. `activeWs` is set by main() once connected.
 let activeWs = null;
 let sigintCount = 0;
+
+// 2026-09-03: announce the client identity once on connect so client-aware server answers
+// (needs_ai_mode's guidance — the web-only header AI toggle doesn't exist in the terminal)
+// can phrase themselves for the CLI. Additive; the web client never sends this message.
+function sendClientInfo(ws) {
+  try { ws.send(JSON.stringify({ type: 'client_info', payload: { client: 'cli' } })); } catch {}
+}
 process.on('SIGINT', () => {
   sigintCount++;
   if (sigintCount > 1) process.exit(130);
@@ -108,6 +115,7 @@ function runScriptedMode(ws, project, sessionId) {
   });
   ws.on('close', () => process.exit(sawError ? 1 : 0));
   const startScripted = () => {
+    sendClientInfo(ws);
     if (QUERY_INPUT || DRY_RUN_INPUT) {
       // --dry-run / --explain send the same execute message with the additive dryRun flag —
       // the server resolves + reports, never executes (see explainInput in connectionMatching.js).
@@ -214,6 +222,13 @@ async function main() {
     if (spinner) try { spinner.stop(chalk.red(`✖ Could not connect to a server on ports ${BASE_PORT}-${BASE_PORT + MAX_PORT_ATTEMPTS - 1}`)); } catch {}
     else process.stderr.write(`${C.red}✖ Could not connect to a server on ports ${BASE_PORT}-${BASE_PORT + MAX_PORT_ATTEMPTS - 1}${C.reset}\n`);
     process.stderr.write(`${C.yellow}  Make sure the console is running (start the Project Console app, or "npm run dev"), then try again.${C.reset}\n`);
+    // 2026-09-03: a hidden start.bat server that died during boot leaves its evidence only in
+    // the boot logs (its stderr never reaches this terminal) — surface the tail so the failure
+    // is self-diagnosing instead of an unexplained timeout.
+    const bootTail = readBootLogTail();
+    if (bootTail.length) {
+      process.stderr.write(`\n${C.yellow}Server boot log tail (the console server may have failed during startup):${C.reset}\n${bootTail.join('\n')}\n`);
+    }
     process.exit(1);
   }
 
@@ -391,8 +406,8 @@ async function main() {
   // Same already-open guard as the scripted path (2026-08-24): the LAN-display-name fetch
   // above yields the event loop, and a fast localhost handshake can complete before this
   // attaches — an 'open'-only listener would never fire and the CLI would sit with no prompt.
-  if (ws.readyState === 1) setupReadline();
-  else ws.on('open', setupReadline);
+  if (ws.readyState === 1) { sendClientInfo(ws); setupReadline(); }
+  else ws.on('open', () => { sendClientInfo(ws); setupReadline(); });
 
   ws.on('message', (raw) => {
     let msg;

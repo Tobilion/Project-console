@@ -24,6 +24,7 @@ export function registerReminderRoutes(app) {
         lastFiredAt: s.lastFiredAt ?? null,
         createdAt: s.createdAt ?? null,
         createdBy: s.createdBy ?? 'local',
+        linkedNoteText: s.linkedNoteText ?? null,
       }));
     res.json({ reminders });
   });

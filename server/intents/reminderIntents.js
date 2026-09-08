@@ -17,6 +17,9 @@ export const REMINDER_INTENTS = {
       'set a reminder for friday at 5pm to pay rent',
       'set a reminder to call the dentist tomorrow at 10am',
       'remind me to stretch every friday at 6pm',
+      'set alarm for 9am tomorrow',
+      'set an alarm at 7pm',
+      'alarm',
     ],
   },
   'system.reminders.list': {
@@ -29,6 +32,8 @@ export const REMINDER_INTENTS = {
     examples: [
       'cancel reminder s1', 'cancel my reminder s2', 'delete reminder s3', 'remove reminder s2',
       'cancel the reminder', 'cancel my reminder',
+      'mark reminder s1 as done', 'mark my reminder as done', 'mark all reminders as done',
+      'complete reminder s1', 'finish reminder s1',
     ],
   },
 };

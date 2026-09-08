@@ -126,6 +126,16 @@ export const chitChatHandlers = {
     // it must NOT try to flip the toggle itself (no such server-side path exists by design).
     // Phase 7 (2026-08-11): the guidance now names the AI dock and gives a concrete phrasing
     // to use there (see aiDockHints.js) instead of stopping at "flip the toggle".
+    // 2026-09-03: the CLI has no header toggle or AI dock — its `ai on`/`ai off` commands (and
+    // the ai_status echo) make AI mode work in the terminal, so the guidance must say that
+    // when this connection is the CLI (client_info marker), not point at web-only UI.
+    if (sessionContext && sessionContext.client === 'cli') {
+      ws.send(JSON.stringify({
+        type: 'answer',
+        data: `That one needs AI mode, and this terminal is in trigger mode. Type \`ai on\` to switch this session to AI mode (type \`ai off\` to switch back), then repeat your request. With AI mode on I can read and edit files in [${project.name}] and handle open-ended requests.`,
+      }));
+      return;
+    }
     const instruction = aiDockInstruction(input);
     ws.send(JSON.stringify({
       type: 'answer',
@@ -149,6 +159,24 @@ export const chitChatHandlers = {
         `Good stuff. Ready for the next one.`,
         `Awesome. What are we doing next?`,
         `Cool. Let me know what you need.`,
+      ])),
+    }));
+  },
+
+  'system.chit_chat.empathy': async (ws, action, input, project, sessionContext) => {
+    // New intent (2026-09-03, live CLI report): tired/exhausted/frustrated small talk ("Ugh I
+    // am tired") previously drifted onto tech_preview/overview. Zero-argument canned sympathy
+    // with a soft nudge — never a troubleshooting text (nothing is necessarily broken), never
+    // an action. Customizable per project via chatReplies like every other chit-chat pool.
+    ws.send(JSON.stringify({
+      type: 'answer',
+      data: pickRandom(chatReplyPool('empathy', project, [
+        `Take a break — [${project.name}] will be right here when you're back.`,
+        `Long days happen. I'm standing by on [${project.name}] whenever you're ready.`,
+        `No rush at all. [${project.name}] isn't going anywhere.`,
+        `That's fair. Rest up a bit — just say the word when you want to pick [${project.name}] back up.`,
+        `I hear you. If it helps, I can run a quick "git status" to catch you up when you're back.`,
+        `Hydrate and take a breather. [${project.name}] will be waiting.`,
       ])),
     }));
   },

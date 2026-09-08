@@ -2,9 +2,11 @@
 // builtinProjectActions.js — every "open X in the OS" handler used the same platform-branched
 // spawn and the same findFiles-resolve flow, duplicated five times).
 
+import fs from 'node:fs';
 import path from 'node:path';
 import { parseFileNameOnly } from './builtinHelpers.js';
 import { createProjectTools } from '../tools.js';
+import { log as logger } from '../logger.js';
 
 /**
  * Spawns a detached OS-open command (browser / explorer / terminal / editor launcher) with
@@ -42,6 +44,75 @@ export async function revealInExplorer(absPath, onError) {
   } else {
     await spawnDetached('xdg-open', [path.dirname(absPath)], { onError });
   }
+}
+
+/** OS "open this folder" branch: the folder itself is the target (explorer/open/xdg-open
+ *  with the path) — the directory counterpart to revealInExplorer's file-/select form. */
+export async function openFolderInExplorer(absDir, onError) {
+  if (process.platform === 'win32') {
+    await spawnDetached('explorer.exe', [absDir], { onError });
+  } else if (process.platform === 'darwin') {
+    await spawnDetached('open', [absDir], { onError });
+  } else {
+    await spawnDetached('xdg-open', [absDir], { onError });
+  }
+}
+
+const LEAD_VERB_RE = /^(?:open|open\s+up|open\s+me|show|reveal|locate)\s+/i;
+const REVEAL_SUFFIX_RE = /\s+(?:in\s+the\s+folder|in\s+(?:file\s+)?explorer)\s*$/i;
+const ABS_SHAPE_RE = /^(?:[a-zA-Z]:[\\/]|\\\\|\/)/;
+
+/**
+ * Pulls an absolute filesystem path out of a reveal/open request ("open C:\Docs\Manual
+ * in the folder" / "show /home/you/notes in explorer"). Strips the leading chat verb and
+ * the trailing reveal suffix, then accepts only drive-letter, UNC, or leading-slash
+ * shapes — anything else (project-relative names like "main.py") returns null so the
+ * caller runs the normal sandboxed resolution. Pure — covered by unit rows.
+ */
+export function extractAbsolutePath(input) {
+  if (!input || typeof input !== 'string') return null;
+  let rest = input.trim().replace(LEAD_VERB_RE, '').replace(REVEAL_SUFFIX_RE, '').trim();
+  rest = rest.replace(/^["'`]+|["'`]+$/g, '').trim();
+  if (!rest || !ABS_SHAPE_RE.test(rest)) return null;
+  return rest;
+}
+
+/**
+ * Absolute-path fast path for the reveal_file handler (2026-09-08): an explicit absolute
+ * path names its target unambiguously, so it bypasses the project-sandboxed findFiles()
+ * resolution (which only sees project-relative names and would just ask "Which file?").
+ * Existing folders open in the OS explorer, existing files are revealed with /select, and
+ * a missing path answers honestly instead of falling through to a confusing ask. Opening
+ * is read-only OS navigation — the same trust level as GET /api/browse, which already
+ * serves any absolute path. Returns true when it answered (handled), false when the input
+ * carries no absolute path and the caller should run the normal resolve flow.
+ */
+export async function tryRevealAbsolutePath({ send, input }) {
+  const candidate = extractAbsolutePath(input);
+  if (!candidate) return false;
+  let st = null;
+  try {
+    st = fs.statSync(candidate);
+  } catch {
+    st = null;
+  }
+  if (!st) {
+    send(`I couldn't find \`${candidate}\` on disk — check the path and try again. (Chat file commands otherwise work on project-relative names like \`main.py\`; the Folder Explorer panel browses any absolute path.)`);
+    return true;
+  }
+  const onError = (err) => {
+    // Best-effort OS handoff: a missing explorer/open/xdg-open must log, never crash the
+    // server or double-answer (the success line below already sent).
+    logger.error(`[reveal_absolute] Failed to open ${candidate}: ${err.message}`);
+  };
+  if (st.isDirectory()) {
+    await openFolderInExplorer(candidate, onError);
+    send(`Opened \`${candidate}\` in your file explorer...`);
+  } else {
+    await revealInExplorer(candidate, onError);
+    send(`Revealed \`${candidate}\` in your file explorer...`);
+  }
+  return true;
 }
 
 /**

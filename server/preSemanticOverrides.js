@@ -226,6 +226,16 @@ export const PRE_SEMANTIC_OVERRIDES = [
   // vs-code/cursor/editor mentions, and the browser shapes (open_html rules above already
   // won those). The editor-name capture is deliberately loose (a-z0-9 spaces +._-).
   { intent: 'project.action.open_with', pattern: /^(?:open|open\s+up|open\s+me|launch)\b(?!(?:.*\b(?:explorer|folder|directory|site|website|url|link|github|vs\s*c?ode|vscode|cursor|browser|preview)\b))(?=[\s\S]*\b[\w./-]+\.[a-zA-Z0-9]{1,10}\b)(?=[\s\S]*\b(?:with|in)\s+(?:the\s+)?(?:default\s+)?[a-z][a-z0-9 .+_-]*\s*$)/i },
+  // 2026-09-08 live report: "open C:\...\TEXTBOOK in the folder" (an ABSOLUTE folder path,
+  // extensionless, so neither the ext-based reveal rule below nor open_file's filename rule
+  // can claim it) fell through to the embedding stage and landed on project.context.structure
+  // (which then crashed on the General workspace's partial index). An open/show/reveal verb +
+  // an absolute path + an in-folder/explorer mention is unambiguous — it always wants the OS
+  // file explorer, never a project listing. Deliberately requires the absolute shape
+  // (drive-letter / UNC / leading-slash) so extensionless RELATIVE names ("show report in
+  // explorer") keep their current routes; a false pin still degrades to the "Which file?"
+  // ask via the handler's normal resolve path, never a crash.
+  { intent: 'project.action.reveal_file', pattern: /^(?:open|open\s+up|open\s+me|show|reveal|locate)\b(?!(?:.*\b(?:github|vs\s*c?ode|vscode|cursor|browser|editor)\b))(?=[\s\S]*(?:[a-zA-Z]:[\\/]|\\\\|(?:^|\s)\/(?=[\w.~])))(?=[\s\S]*\b(?:in\s+the\s+folder|in\s+file\s+explorer|in\s+explorer)\b)/i },
   { intent: 'project.action.reveal_file', pattern: /^(?:open|open\s+up|open\s+me|show|reveal|locate)\b(?!(?:.*\b(?:github|vs\s*c?ode|vscode|cursor|browser|editor)\b))(?=[\s\S]*\b[\w./-]+\.[a-zA-Z0-9]{1,10}\b)(?=[\s\S]*\b(?:in\s+the\s+folder|in\s+file\s+explorer|in\s+explorer)\b)/i },
   { intent: 'backup.create', pattern: /^backup\s+(?:this\s+|the\s+|my\s+)?(?:project|folder)\b/i },
   { intent: 'backup.create', pattern: /^create\s+a\s+backup\b/i },
@@ -291,6 +301,12 @@ export const PRE_SEMANTIC_OVERRIDES = [
   // tech_preview — the "set a reminder" + time-word prefix is the same unambiguous class.
   { intent: 'system.reminders.create', pattern: /^remind\s+me\b/i },
   { intent: 'system.reminders.create', pattern: /^set\s+a\s+reminder\b/i },
+  // "alarm" / "set alarm" / "set an alarm" — these are alternative spellings for reminder create
+  // and can drift to chit-chat (alarm → time/date) or dead-end without a pin.
+  { intent: 'system.reminders.create', pattern: /^(?:set\s+(?:an?\s+)?alarm|alarm)\b/i },
+  // "mark reminder as done" / "mark all reminders as done" — these are cancel-path phrases
+  // that can drift to chit-chat or dead-end without a pin.
+  { intent: 'system.reminders.cancel', pattern: /^(?:mark|complete|finish)\s+(?:my\s+|all\s+)?(?:the\s+)?reminders?\b/i },
   // Phase 2 catch-up (2026-08-12, probe-verified): "open file tools" / "open the file
   // tools" is unambiguous in this app's domain — it opens the File Tools panel. Without
   // this override the open_file literal rule below catches "file" and routes to
@@ -327,6 +343,10 @@ export const PRE_SEMANTIC_OVERRIDES = [
   // Same class of trap for note SEARCH: "search my notes for <free text>" — the query
   // terms after "for/about/with" dominate the vector. The prefix is unambiguous.
   { intent: 'system.notes.search', pattern: /^(?:search|find)\s+(?:my\s+)?notes?\s+(?:for|about|with)\s+\S/i },
+  // Note DELETE (Phase 3.1): "delete note: <text>" / "delete my note about <text>". The
+  // deletes-with-no-noun phrases ("delete the note") stay with general.files* / file_delete;
+  // only the explicit note nouns route here so we never steal bare delete commands.
+  { intent: 'system.notes.delete', pattern: /^(?:delete|remove|erase|clear)\s+(?:the\s+)?(?:my\s+)?notes?\s*:|^(?:delete|remove|erase)\s+(?:the\s+)?(?:my\s+)?note\s+(?:about|on|for)\s+\S/i },
   // Typo tolerance (2026-08-28 audit): the most common typo/mangled forms of high-traffic
   // intents that repeatedly drifted onto the wrong cluster in the live audit. The embedding
   // stage treats a 1-2 char typo as a different token and the fuzzy stage's floor (0.55) is
@@ -363,6 +383,20 @@ export const PRE_SEMANTIC_OVERRIDES = [
   { intent: 'system.chit_chat.how_do_i', pattern: /\bwhy\s+can'?t\s+this\s+just\s+work\b/i },
   { intent: 'system.chit_chat.how_do_i', pattern: /\bim\s+stuck\b/i },
   { intent: 'system.chit_chat.how_do_i', pattern: /\bim\s+annoyed\b/i },
+  // 2026-09-03 live CLI report: "Ugh I am tired" answered with the Tech Preview — the trailing
+  // "tired" noun carries no embedding weight toward any cluster, so the semantic stage landed
+  // on project.context.tech_preview. Same trailing-noun trap class as the remind-me/notes
+  // pins: an interjection + the tired/exhausted family, or the bare family alone, is
+  // unambiguous small talk, never a project question or an action. Must sit AFTER the
+  // unspecified-frustration pin above ("ugh why isnt this working" keeps its how_do_i route).
+  // Deliberately anchored to the START and family-listed so "why is the server down"-shaped
+  // shapes and "tired of the build failing" (an emotion statement — empathy is the right
+  // answer, better than the tech preview) stay coherent.
+  { intent: 'system.chit_chat.empathy', pattern: /^(?:ugh|oh|ooh|sigh|oof|uff|whew|phew|aww|aw|ahh|man|boy|well)[,\s]*(?:i\s+(?:am|'m|m)\s+)?(?:so\s+|really\s+|just\s+|very\s+)?(?:tired|exhausted|sleepy|worn\s+out|burned\s+out|drained|overwhelmed)\b/i },
+  { intent: 'system.chit_chat.empathy', pattern: /^i\s+(?:am|'m|m)\s+(?:so\s+|really\s+|just\s+|very\s+)?(?:tired|exhausted|sleepy|worn\s+out|burned\s+out|drained|overwhelmed)\b/i },
+  { intent: 'system.chit_chat.empathy', pattern: /^(?:so|really|just|very)\s+tired\b/i },
+  { intent: 'system.chit_chat.empathy', pattern: /^(?:tired|exhausted|sleepy)\b/i },
+  { intent: 'system.chit_chat.empathy', pattern: /^(?:long\s+day|what\s+a\s+day|i\s+need\s+a\s+break|ugh|sigh|oof|uff|whew|phew|aww|aw)\s*$/i },
   // Offline / data privacy — "am i offline", "does this work offline", "is my data private",
   // "where is my data stored" all drifted to tech_preview/identity/file_find.
   { intent: 'system.chit_chat.how_do_i', pattern: /^\s*am\s+i\s+offline\b/i },

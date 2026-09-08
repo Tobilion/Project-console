@@ -128,6 +128,10 @@ function onConnection(ws) {
     aiEnabled: false,
     aiModel: null,
     aiMode: 'default',
+    // 2026-09-03: client identity for client-aware answers — 'web' by default; the CLI sends
+    // a one-time client_info message on connect to mark itself 'cli' (needs_ai_mode's
+    // guidance phrases differently for the terminal, which has no header toggle).
+    client: 'web',
     conversationHistory: [],
     // Set by aiQuery.js while an AI query is in flight; read by the 'cancel' handler above.
     aiAbortController: null,

@@ -177,15 +177,20 @@ async function init() {
   // in parallel with the two heavy boot steps below.
   loadDevUrls();
 
+  // Boot-state markers: printed to stderr so the Electron desktop shell can show live loading
+  // progress on the splash screen instead of a static "Starting..." message (Phase 1.3).
+  const emitBootState = (state) => process.stderr.write(`[boot-state]${state}\n`);
+
   // Phase 6 (2026-08-17): the project scan and the embedding-model load are the two slowest
   // boot steps and touch disjoint state (the scan writes the project cache under the projects
   // mutex; initialize() builds intent vectors + the Fuse index from INTENTS/learned intents).
   // Running them serially made every cold boot pay both back to back; run them concurrently.
+  emitBootState('scanning');
   await Promise.all([
     projectsMutex.runExclusive(async () => {
       state.activeProjectsCache = dedupeProjectIds(await discoverProjects(dirToScan, { includeAll: readProfile().scanAllFolders }));
     }),
-    semanticMatcher.initialize().catch((err) => log.error('SemanticMatcher init failed:', err.message)),
+    semanticMatcher.initialize().then(() => emitBootState('matcher-init')).catch((err) => log.error('SemanticMatcher init failed:', err.message)),
   ]);
   // Prime the whole-scan cache with the boot scan so the first GET /api/projects (web
   // load) hits instead of re-walking the container (scanCache.js, Phase 6).
@@ -194,6 +199,7 @@ async function init() {
   // other (nlpEngine trains from NLP_SEED_INTENTS + project config entries; addProjectIntents
   // embeds the same entries through the matcher). Both need the scan result above, so they
   // join after the Promise.all instead of delaying it.
+  emitBootState('nlp-training');
   await Promise.all([
     nlpEngine.train(state.activeProjectsCache),
     semanticMatcher.addProjectIntents(state.activeProjectsCache).catch((err) =>
@@ -330,6 +336,7 @@ async function init() {
           httpServer.removeListener('error', onError);
           state.serverPort = tryPort;
           globalThis.__consoleServerPort = tryPort;
+          emitBootState('ready');
           log.info(`Console Server running on http://${HOST}:${tryPort}`);
           log.info(`Default scan path: ${state.currentScanDirectory}`);
           if (HOST === '0.0.0.0') {

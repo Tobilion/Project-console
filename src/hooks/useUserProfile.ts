@@ -31,6 +31,19 @@ export interface UserProfile {
   // Round-6 audit (2026-08-24): permission mode — 'default' or 'ask' (read-only AI tool
   // paths; mutating tools are blocked with an explanation instead of prompting/approving).
   permissionMode: 'default' | 'ask';
+  // Phase 5.2: persistRemindersAcrossRestart — when true (default), reminders survive app
+  // restarts. When false, all reminders are cleared on shutdown.
+  persistRemindersAcrossRestart: boolean;
+  // Phase 3.2: reminderToastDurationMs — how long reminder toasts display (2000-30000).
+  reminderToastDurationMs: number;
+  // Phase 3.2: reminderToastPosition — where toasts appear on screen.
+  reminderToastPosition: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right' | 'center';
+  // Phase 2.2: askBeforeDeleteLinkedNote — when true, deleting a note with a linked
+  // reminder asks the user whether to delete the reminder too.
+  askBeforeDeleteLinkedNote: boolean;
+  // Phase 4.2: aiRedirectDelayMs — pause before auto-opening a panel/tab after an AI
+  // trigger command (0 = instant, default 2000ms).
+  aiRedirectDelayMs: number;
 }
 
 // Neutral defaults, not a hardcoded person's name/title — matches server/routes/profileRoutes.js's
@@ -53,6 +66,11 @@ const DEFAULT_PROFILE: UserProfile = {
   scanAllFolders: false,
   explorerViewMode: 'list',
   permissionMode: 'default',
+  persistRemindersAcrossRestart: true,
+  reminderToastDurationMs: 8000,
+  reminderToastPosition: 'bottom-right',
+  askBeforeDeleteLinkedNote: true,
+  aiRedirectDelayMs: 2000,
 };
 
 /** Client state for the user profile persisted to the server (GET/POST /api/profile).

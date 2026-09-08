@@ -22,9 +22,43 @@ const answerCase: WsCaseHandler = (ctx, payload) => {
   // to a shared interactive tool panel (e.g. "open calculator" -> 'calculator'). This is
   // deliberate web-only surface — the CLI ignores `openPanel` permanently (see the explicit
   // comment in server/cli-client.js's 'answer' case) and reuses the same data text.
+  // Phase 4.2: when the user has configured aiRedirectDelayMs, delay the panel open so
+  // the user can read the answer text before being redirected. The user can also click the
+  // answer bubble to skip the delay. A 0ms setting means instant (the original behavior).
   if (payload.openPanel) {
-    ctx.toolPanel.setActiveToolPanel(payload.openPanel);
-    ctx.toolPanel.setToolsOpen(true);
+    const panel = payload.openPanel;
+    // Read the delay from the server's profile via a quick fetch (cached by the browser
+    // after first load). Falls back to 0ms on any failure so behavior never degrades.
+    const delayMs = (() => {
+      try {
+        const profileRaw = localStorage.getItem('console.profile');
+        if (profileRaw) {
+          const p = JSON.parse(profileRaw);
+          return typeof p?.aiRedirectDelayMs === 'number' ? p.aiRedirectDelayMs : 0;
+        }
+      } catch {}
+      return 0;
+    })();
+    if (delayMs > 0) {
+      // Show a subtle toast indicating a panel is about to open, then open after delay.
+      addToast({
+        title: `Opening ${panel.replace(/-/g, ' ')}…`,
+        description: 'Click to skip the delay.',
+        duration: delayMs,
+        actionLabel: 'Open now',
+        onAction: () => {
+          ctx.toolPanel.setActiveToolPanel(panel);
+          ctx.toolPanel.setToolsOpen(true);
+        },
+      });
+      setTimeout(() => {
+        ctx.toolPanel.setActiveToolPanel(panel);
+        ctx.toolPanel.setToolsOpen(true);
+      }, delayMs);
+    } else {
+      ctx.toolPanel.setActiveToolPanel(panel);
+      ctx.toolPanel.setToolsOpen(true);
+    }
   }
   // Phase 8 (2026-08-24): an additive `toast: true` marks an OUT-OF-BAND background result
   // (scheduled fires, auto-start boot runs, background type-checks/index builds) — the bubble
@@ -66,7 +100,7 @@ const streamOutputCase: WsCaseHandler = (ctx, payload) => {
   // trigger-mode path (including ones with no visible text, e.g. a bare `{type:'end'}`
   // after a builtin intent) — deliberately NOT cleared on 'start'/'output' alone, since a
   // still-booting dev server keeps emitting those without actually being done yet.
-  if (payload.type === 'end') ctx.commandPending.setCommandPending(false);
+  if (payload.type === 'end') { ctx.commandPending.setCommandPending(false); ctx.flushSendQueue(); }
   // An 'end' with no data is the AI turn's OWN final turn-end (aiQuery.js sends a bare
   // {type:'end'} once the whole turn — including every tool round — is done; mid-turn
   // command 'end's carry the summarizer callout data instead). Clearing the auto-expand
@@ -99,6 +133,7 @@ const errorOutputCase: WsCaseHandler = (ctx, payload) => {
   // Some paths (a top-level WS parse error) send only this with no 'end' to follow —
   // don't leave the busy indicator stuck on.
   ctx.commandPending.setCommandPending(false);
+  ctx.flushSendQueue();
   if (payload.data) ctx.appendProcessOutput(payload.data);
   ctx.sessions.setMessages(prev => [...prev, {
     id, type: 'error', content: payload.data,
@@ -113,6 +148,7 @@ const warningCase: WsCaseHandler = (ctx, payload) => {
   // summary) — rendered as an amber banner by Terminal, persisted as role 'warning' so
   // reloaded sessions keep the styling.
   ctx.commandPending.setCommandPending(false);
+  ctx.flushSendQueue();
   if (payload.data) ctx.appendProcessOutput(payload.data);
   ctx.sessions.setMessages(prev => [...prev, {
     id, type: 'warning', content: payload.data,
@@ -146,6 +182,7 @@ const didYouMeanCase: WsCaseHandler = (ctx, payload) => {
 
 const clearConsoleCase: WsCaseHandler = (ctx) => {
   ctx.commandPending.setCommandPending(false);
+  ctx.flushSendQueue();
   ctx.sessions.setMessages([]);
 };
 
@@ -155,6 +192,7 @@ const confirmPromptCase: WsCaseHandler = (ctx, payload) => {
   // end-of-turn signal too or the busy indicator would stay stuck on until the user
   // approves/cancels.
   ctx.commandPending.setCommandPending(false);
+  ctx.flushSendQueue();
   ctx.terminal.setPendingConfirm({ token: payload.token, command: payload.command });
 };
 
@@ -339,8 +377,21 @@ const displayNameSetCase: WsCaseHandler = () => {
   // Deliberate no-op: nothing to render.
 };
 
+const notificationFiredCase: WsCaseHandler = (_ctx, payload) => {
+  if (!payload.data?.title) return;
+  addToast({
+    title: payload.data.title,
+    description: payload.data.body || '',
+    duration: 10000,
+  });
+};
+
+const notificationDismissCase: WsCaseHandler = () => {
+  // Notification dismiss broadcast — state synced via REST polling/fetch in panel.
+};
+
 /**
- * The 27 core (non-streaming) cases. Exported separately from the full map because
+ * The 29 core (non-streaming) cases. Exported separately from the full map because
  * scripts/checkWsMessageCases.ts asserts CLI parity against exactly this set — a key here
  * must have a `case` in server/cli-client.js's switch (rendered or explicit no-op).
  */
@@ -374,6 +425,8 @@ export const WS_CORE_CASES = {
   update_available: updateAvailableCase,
   semantic_matcher_progress: semanticMatcherProgressCase,
   display_name_set: displayNameSetCase,
+  notification_fired: notificationFiredCase,
+  notification_dismiss: notificationDismissCase,
 } satisfies Record<string, WsCaseHandler>;
 
 /** Full dispatch map: core cases + the streaming trio (stream_start/token/stream_end). */

@@ -65,6 +65,19 @@ const DEFAULT_PROFILE = {
   // or auto-running anything). Default 'default' — an opt-in that only ever strengthens, and
   // the confirm gate itself is untouched (trigger-mode typed commands keep their cards).
   permissionMode: 'default',
+  // Phase 5.2: persistRemindersAcrossRestart — when true (default), reminders survive app
+  // restarts (persisted to schedules.json). When false, all reminders are cleared on shutdown.
+  persistRemindersAcrossRestart: true,
+  // Phase 3.2: reminderToastDurationMs — how long desktop notification toasts display (ms).
+  reminderToastDurationMs: 8000,
+  // Phase 3.2: reminderToastPosition — where reminder toasts appear on screen.
+  reminderToastPosition: 'bottom-right',
+  // Phase 3.2: askBeforeDeleteLinkedNote — when true (default), deleting a note that has a
+  // linked reminder asks the user whether to delete the reminder too.
+  askBeforeDeleteLinkedNote: true,
+  // Phase 4.2: aiRedirectDelayMs — pause before the UI auto-opens a panel/tab after an AI
+  // trigger command (0 = instant, default 2000ms).
+  aiRedirectDelayMs: 2000,
 };
 
 // Only plain, trimmed strings up to a sane length — mirrors the conservative
@@ -111,6 +124,11 @@ function readProfile() {
       scanAllFolders: sanitizeBool(p.scanAllFolders, DEFAULT_PROFILE.scanAllFolders),
       explorerViewMode: p.explorerViewMode === 'grid' ? 'grid' : 'list',
       permissionMode: p.permissionMode === 'ask' ? 'ask' : 'default',
+      persistRemindersAcrossRestart: sanitizeBool(p.persistRemindersAcrossRestart, DEFAULT_PROFILE.persistRemindersAcrossRestart),
+      reminderToastDurationMs: typeof p.reminderToastDurationMs === 'number' ? Math.max(2000, Math.min(30000, p.reminderToastDurationMs)) : DEFAULT_PROFILE.reminderToastDurationMs,
+      reminderToastPosition: ['top-left', 'top-right', 'bottom-left', 'bottom-right', 'center'].includes(p.reminderToastPosition) ? p.reminderToastPosition : DEFAULT_PROFILE.reminderToastPosition,
+      askBeforeDeleteLinkedNote: sanitizeBool(p.askBeforeDeleteLinkedNote, DEFAULT_PROFILE.askBeforeDeleteLinkedNote),
+      aiRedirectDelayMs: typeof p.aiRedirectDelayMs === 'number' ? Math.max(0, Math.min(10000, p.aiRedirectDelayMs)) : DEFAULT_PROFILE.aiRedirectDelayMs,
     };
   } catch {
     // Missing or corrupt file — serve defaults without touching disk.
@@ -153,6 +171,11 @@ export function sanitizeProfile(body, current) {
     scanAllFolders: sanitizeBool(body.scanAllFolders, current.scanAllFolders),
     explorerViewMode: body.explorerViewMode === 'grid' ? 'grid' : 'list',
     permissionMode: body.permissionMode === 'ask' ? 'ask' : 'default',
+    persistRemindersAcrossRestart: sanitizeBool(body.persistRemindersAcrossRestart, current.persistRemindersAcrossRestart),
+    reminderToastDurationMs: typeof body.reminderToastDurationMs === 'number' ? Math.max(2000, Math.min(30000, body.reminderToastDurationMs)) : current.reminderToastDurationMs,
+    reminderToastPosition: ['top-left', 'top-right', 'bottom-left', 'bottom-right', 'center'].includes(body.reminderToastPosition) ? body.reminderToastPosition : current.reminderToastPosition,
+    askBeforeDeleteLinkedNote: sanitizeBool(body.askBeforeDeleteLinkedNote, current.askBeforeDeleteLinkedNote),
+    aiRedirectDelayMs: typeof body.aiRedirectDelayMs === 'number' ? Math.max(0, Math.min(10000, body.aiRedirectDelayMs)) : current.aiRedirectDelayMs,
   };
 }
 

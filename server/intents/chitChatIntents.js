@@ -376,6 +376,21 @@ export const CHIT_CHAT_INTENTS = {
       'try again', 'once more',
     ],
   },
+  'system.chit_chat.empathy': {
+    // New intent (2026-09-03, live CLI report): tired/exhausted/frustrated small talk had no
+    // route and drifted onto project.context.tech_preview ("Ugh I am tired" answered with the
+    // project file counts). Zero-argument canned sympathy — the pre-semantic pin owns the
+    // trailing-noun trap shapes; these examples keep the embedding/fuzzy tiers aligned.
+    examples: [
+      'i am tired', 'im tired', 'i am so tired', 'im so tired',
+      'i am exhausted', 'im exhausted', 'i am sleepy', 'im sleepy',
+      'i am worn out', 'im worn out', 'i am burned out', 'im burned out',
+      'i am overwhelmed', 'im overwhelmed', 'i am drained', 'im drained',
+      'so tired', 'really tired', 'just tired', 'very tired', 'tired',
+      'exhausted', 'sleepy', 'long day', 'what a day', 'i need a break',
+      'ugh', 'sigh', 'ugh i am tired', 'oh man im tired',
+    ],
+  },
   'system.chit_chat.joke': {
     examples: [
       'tell me a joke', 'make me laugh', 'give me a joke',

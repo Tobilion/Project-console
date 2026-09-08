@@ -53,6 +53,7 @@ export function useConsole() {
     ctx.ai.setAiThinkingText('');
     ctx.ai.setAiQueryInFlight(false);
     ctx.commandPending.setCommandPending(false);
+    ctx.flushSendQueue();
   }, []);
 
   // Wire up wsRef from useWebSocket first so terminal shares the real socket ref —
@@ -137,6 +138,18 @@ export function useConsole() {
 
   const tokenBuffer = useRef('');
   const flushTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Outgoing trigger-mode FIFO (2026-09-07): the server rejects any 'execute' that arrives
+  // while a previous turn is still in flight, and every tool panel sends through the same
+  // chat path — so a panel click (or a fast second message) during a slow turn used to come
+  // back as a "Still working on your previous message" error bubble. Queuing here means
+  // panel actions and typed messages run back-to-back with no error spam; the Running…
+  // indicator covers the wait. Capped so a runaway panel can never pile up unbounded work.
+  const sendQueueRef = useRef<{ content: string; source?: string; tool?: string }[]>([]);
+  const sendingRef = useRef(false);
+  // Ref mirror of commandPending for the queue gate — state updates only land on re-render,
+  // so two rapid sends could both pass a state read; the ref is set synchronously instead.
+  const commandPendingRef = useRef(false);
+  const SEND_QUEUE_CAP = 5;
   // True once any token event has arrived for the current stream — lets stream_end tell
   // a genuinely empty AI completion (zero content, seen in real exported chats) apart from
   // one whose tokens were merely flushed by the 16ms timer already.
@@ -174,7 +187,9 @@ export function useConsole() {
   // '__general__' pseudo-workspace so a user can chat (and use personal tools) before picking
   // a project. The session lock is unaffected: a General-workspace session is created with
   // projectId '__general__' and locks to that id exactly like any other session.
-  const handleSendMessage = useCallback(async (content: string) => {
+  // Sends one queued message immediately. Sets the pending ref synchronously so a second
+  // pump in the same tick can't slip through before React re-renders.
+  const sendExecuteNow = useCallback(async (content: string, source?: string, tool?: string) => {
     if (!wsHandler.wsRef.current) return;
     const open = await waitForSocketOpen(() => wsHandler.wsRef.current);
     // M19: the input was already cleared by the time this runs, so a dropped message used to
@@ -186,11 +201,15 @@ export function useConsole() {
       )]);
       return;
     }
-    sessions.setMessages(prev => [...prev, makeMessage('user', content)]);
+    sessions.setMessages(prev => [...prev, makeMessage('user', content,
+      source ? { source: source as 'panel', tool } : undefined)]);
     // Only trigger mode needs this — AI mode already gets its own busy indicator from the
     // server's 'ai_start' event (see ai.setAiThinking below), and showing both at once would be
     // redundant/confusing.
-    if (!ai.aiEnabled) setCommandPending(true);
+    if (!ai.aiEnabled) {
+      commandPendingRef.current = true;
+      setCommandPending(true);
+    }
     wsHandler.wsRef.current.send(JSON.stringify({
       type: 'execute',
       payload: {
@@ -200,9 +219,52 @@ export function useConsole() {
         // Phase T: the tab whose workspace this message belongs to (server resolves the
         // project inside that tab's cache — two tabs with same-named folders stay separate).
         tabId: tabs.activeTabId,
+        // Panel-originated sends persist their origin so reloaded sessions keep the
+        // collapsed tool-activity rendering (see TerminalMessages).
+        ...(source ? { source } : {}),
+        ...(tool ? { tool } : {}),
       }
     }));
   }, [projects.activeProject, wsHandler.wsRef, sessions.setMessages, sessions.activeSessionId, ai.aiEnabled, setCommandPending, tabs.activeTabId]);
+
+  // Drains the FIFO one message at a time. Called on enqueue and on every turn end
+  // (flushSendQueue in the WS ctx). The commandPendingRef gate is what keeps panel clicks
+  // during a slow turn queued instead of rejected by the server.
+  const pumpSendQueue = useCallback(async () => {
+    if (sendingRef.current) return;
+    if (commandPendingRef.current) return;
+    const next = sendQueueRef.current[0];
+    if (!next) return;
+    sendingRef.current = true;
+    sendQueueRef.current.shift();
+    try {
+      await sendExecuteNow(next.content, next.source, next.tool);
+    } finally {
+      sendingRef.current = false;
+      if (sendQueueRef.current.length > 0 && !commandPendingRef.current) pumpSendQueue();
+    }
+  }, [sendExecuteNow]);
+
+  // Clears the pending gate when a turn ends (wired into the WS 'end'/error/warning cases
+  // via ctx.flushSendQueue) and drains whatever queued behind it.
+  const flushSendQueue = useCallback(() => {
+    commandPendingRef.current = false;
+    pumpSendQueue();
+  }, [pumpSendQueue]);
+
+  const handleSendMessage = useCallback(async (content: string, opts?: { source?: string; tool?: string }) => {
+    // Enqueue behind any in-flight turn instead of firing into the server's single-flight
+    // gate (see sendQueueRef). Overflow is a local error bubble, never a send.
+    if (sendQueueRef.current.length >= SEND_QUEUE_CAP) {
+      sessions.setMessages(prev => [...prev, makeMessage(
+        'error',
+        'Too many queued actions — wait for the current one to finish.'
+      )]);
+      return;
+    }
+    sendQueueRef.current.push({ content, source: opts?.source, tool: opts?.tool });
+    pumpSendQueue();
+  }, [sessions.setMessages, pumpSendQueue]);
 
   // Phase 13: rebuild the WS-case ctx bag every render and store it on the ref — the stable
   // router reads it fresh per event. Every setter/ref member is stable across renders (React
@@ -232,8 +294,9 @@ export function useConsole() {
     },
     workspace: { setWorkspaceProjects: workspace.setWorkspaceProjects },
     stream: { tokenBuffer, flushTimer, streamHadTokenRef },
-    commandPending: { setCommandPending },
-    setDashboardUpdateSignal,
+  commandPending: { setCommandPending },
+  flushSendQueue,
+  setDashboardUpdateSignal,
     setKnownDevUrls,
     appendProcessOutput: dock.appendProcessOutput,
     addToolCall: toolHistory.addToolCall,

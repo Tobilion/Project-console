@@ -139,15 +139,16 @@ function deliverReminder(schedule) {
       }
     }
   }
+
+  // Always invoke notify() so desktop toasts, webhooks, and in-console notification history
+  // record the fired reminder regardless of session connectivity or app window state.
+  notify(schedule.projectId, 'reminder-fired', {
+    title: `Reminder: ${schedule.text}`,
+    body: `${schedule.label}`,
+  });
+
   if (target) {
     target.send(JSON.stringify({ type: 'answer', data: text, toast: true }));
-    // Phase 15: fired reminders are ALSO eligible for desktop/webhook notification (a user
-    // who isn't watching the console still gets buzzed). Delivery to the live session is
-    // unaffected — the notification is additive.
-    notify(schedule.projectId, 'reminder-fired', {
-      title: `Reminder: ${schedule.text}`,
-      body: `${schedule.label}`,
-    });
     return 'connected session';
   }
   appendScheduleLog(`🔔 Reminder (${schedule.projectName || schedule.projectId}): "${schedule.text}" — ${schedule.label}`);

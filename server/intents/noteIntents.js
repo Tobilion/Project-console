@@ -24,4 +24,10 @@ export const NOTE_INTENTS = {
       'search my notes for wifi', 'find my notes about the trip', 'search my notes for meeting',
     ],
   },
+  'system.notes.delete': {
+    examples: [
+      'delete note: buy milk', 'remove the note about the trip', 'delete my note about wifi',
+      'delete note: remember the wifi password',
+    ],
+  },
 };

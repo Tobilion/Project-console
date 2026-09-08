@@ -281,9 +281,12 @@ export function useConsoleNavigation({
     handleAbortTurn();
     clearPendingCards();
     sessions.setShowWelcome(false);
-    // Phase T fix: clear the shared conversation buffer before resolving the target session so
-    // a failed load/create below can never leave the previous tab's chat visible here.
-    sessions.resetConversation();
+    // The shared conversation buffer is replaced by the load paths below (switchSession
+    // sets it on success and swaps in an error row on failure; createSession clears it for
+    // a genuinely new chat) — clearing it up front made every tab switch flash an empty
+    // chat while the load was in flight, which read as "history wiped then came back".
+    // Keeping the previous tab's messages until the arriving tab's load lands is strictly
+    // better: a brief stale view instead of a blank one.
     if (target.activeSessionId) {
       const s = await sessions.switchSession(target.activeSessionId);
       if (s?.projectId) {

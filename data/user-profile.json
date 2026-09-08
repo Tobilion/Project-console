@@ -9,9 +9,14 @@
     "clipboardPersist": true,
     "defaultWorkspaceType": "dev",
     "locale": "en",
-    "accentColor": "auto",
+    "accentColor": "#FF375F",
     "scanAllFolders": false,
     "explorerViewMode": "list",
-    "permissionMode": "default"
+    "permissionMode": "default",
+    "persistRemindersAcrossRestart": true,
+    "reminderToastDurationMs": 8000,
+    "reminderToastPosition": "bottom-right",
+    "askBeforeDeleteLinkedNote": true,
+    "aiRedirectDelayMs": 2000
   }
 }

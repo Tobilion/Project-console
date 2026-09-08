@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ListChecks, RefreshCw, Plus, Check, Send, Clock } from 'lucide-react';
+import { ListChecks, RefreshCw, Plus, Check, Send, Clock, SlidersHorizontal, Pencil } from 'lucide-react';
 import { apiFetchJson } from '../utils/apiFetch';
 import { cn } from '../lib/utils';
 import { EmptyState } from './ui/EmptyState';
 import { addToast } from './ui/toastStore';
+import { ReminderComposer } from './ReminderComposer';
 import type { Project } from '../types';
 import './RemindersPanel.css';
 
@@ -31,11 +32,12 @@ interface ReminderInfo {
   projectId: string;
   lastFiredAt: number | null;
   createdAt: number | null;
+  linkedNoteText: string | null;
 }
 
 interface RemindersPanelProps {
   project: Project | null;
-  onSendMessage: (text: string) => void;
+  onSendMessage: (text: string, opts?: { source?: string; tool?: string }) => void;
 }
 
 const POLL_MS = 15000;
@@ -111,7 +113,7 @@ function undoSpec(r: ReminderInfo): string {
   return `remind me ${r.text}`;
 }
 
-type View = 'today' | 'upcoming' | 'all' | 'nodate';
+type View = 'today' | 'upcoming' | 'all' | 'nodate' | 'completed';
 
 export function RemindersPanel({ project, onSendMessage }: RemindersPanelProps) {
   const [reminders, setReminders] = useState<ReminderInfo[]>([]);
@@ -121,6 +123,10 @@ export function RemindersPanel({ project, onSendMessage }: RemindersPanelProps) 
   const [view, setView] = useState<View>('all');
   const [lastSent, setLastSent] = useState<string | null>(null);
   const [completing, setCompleting] = useState<Set<string>>(new Set());
+  // Reminder composer popup state — prefilled text + the id being edited (null = new).
+  const [composerOpen, setComposerOpen] = useState(false);
+  const [composerText, setComposerText] = useState('');
+  const [composerEditingId, setComposerEditingId] = useState<string | null>(null);
   const lastSentTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Phase 5: completing a reminder is destructive — the shared toast store's 8s Undo re-creates
   // it (see handleComplete). The old bespoke snackbar was consolidated into the Toaster 2026-08-24.
@@ -160,7 +166,8 @@ export function RemindersPanel({ project, onSendMessage }: RemindersPanelProps) 
   }, [fetchReminders]);
 
   const send = (text: string) => {
-    onSendMessage(text);
+    // Panel-originated: queues like any other send but renders collapsed in chat.
+    onSendMessage(text, { source: 'panel', tool: 'reminders' });
     setLastSent(text);
     if (lastSentTimer.current) clearTimeout(lastSentTimer.current);
     lastSentTimer.current = setTimeout(() => setLastSent(null), 8000);
@@ -202,22 +209,27 @@ export function RemindersPanel({ project, onSendMessage }: RemindersPanelProps) 
     if (e.key === 'Enter') handleAdd();
   };
 
-  const { today, upcoming, all, nodate } = useMemo(() => {
+  const { today, upcoming, all, nodate, completed } = useMemo(() => {
     const t: ReminderInfo[] = [];
     const u: ReminderInfo[] = [];
     const n: ReminderInfo[] = [];
     const a: ReminderInfo[] = [];
+    const c: ReminderInfo[] = [];
     const todayEnd = END_OF_TODAY();
     for (const r of reminders) {
+      // Phase 5.2: reminders that have already fired (oneshot with fireAt in the past) go
+      // into the Completed section — they're still listed for reference until the user
+      // cancels them (they auto-remove on next scheduler tick, but remain visible until then).
+      if (r.type === 'oneshot' && r.fireAt !== null && r.fireAt < Date.now()) {
+        c.push(r);
+        continue;
+      }
       if (r.type === 'todo' || r.fireAt === null) {
         n.push(r);
         continue;
       }
       const next = nextFireAt(r);
       if (next !== null && next <= todayEnd) {
-        // Phase 5: recurring reminders (daily/weekly/interval) now land in Today/Upcoming
-        // by their next fire instead of being reachable only via All. Each item lives in
-        // exactly ONE view (the sort key rides the fireAt override).
         t.push({ ...r, fireAt: next });
       } else if (next !== null) {
         u.push({ ...r, fireAt: next });
@@ -228,11 +240,12 @@ export function RemindersPanel({ project, onSendMessage }: RemindersPanelProps) 
     u.sort((x, y) => (x.fireAt || 0) - (y.fireAt || 0));
     a.sort((x, y) => (x.fireAt || 0) - (y.fireAt || 0));
     n.sort((x, y) => (x.createdAt || 0) - (y.createdAt || 0));
-    return { today: t, upcoming: u, all: a, nodate: n };
+    c.sort((x, y) => (y.fireAt || 0) - (x.fireAt || 0));
+    return { today: t, upcoming: u, all: a, nodate: n, completed: c };
   }, [reminders]);
 
   const viewItems: Record<View, ReminderInfo[]> = {
-    today, upcoming, all, nodate,
+    today, upcoming, all, nodate, completed,
   };
   const shown = viewItems[view];
 
@@ -251,7 +264,7 @@ export function RemindersPanel({ project, onSendMessage }: RemindersPanelProps) 
     return (
       <div
         className={cn(
-          'flex items-center gap-3 px-2 py-2 min-h-[44px] transition-colors',
+          'group flex items-center gap-3 px-2 py-2 min-h-[44px] transition-colors',
           completingThis ? 'opacity-50' : '',
         )}
       >
@@ -281,8 +294,26 @@ export function RemindersPanel({ project, onSendMessage }: RemindersPanelProps) 
             {reminder.projectId !== project?.id && reminder.projectName && (
               <span className="opacity-70"> · {reminder.projectName}</span>
             )}
+            {reminder.linkedNoteText && (
+              <button
+                onClick={() => onSendMessage(`show my notes`)}
+                className="ml-1.5 text-accent-blue hover:text-fg-strong transition-colors inline-flex items-center gap-0.5"
+                title={`Linked note: ${reminder.linkedNoteText.split('\n')[0]}`}
+              >
+                📝 {reminder.linkedNoteText.split('\n')[0].slice(0, 30)}{reminder.linkedNoteText.length > 30 ? '…' : ''}
+              </button>
+            )}
           </div>
         </div>
+        <button
+          onClick={() => openComposer(reminder.text, reminder.id)}
+          disabled={completingThis}
+          className="shrink-0 p-1.5 rounded-lg opacity-0 group-hover:opacity-70 hover:!opacity-100 hover:bg-scrim-faint transition-all disabled:opacity-0"
+          style={{ color: 'var(--rm-label2)' }}
+          title="Edit details (date, time, repeat)"
+        >
+          <Pencil size={13} />
+        </button>
       </div>
     );
   };
@@ -298,6 +329,21 @@ export function RemindersPanel({ project, onSendMessage }: RemindersPanelProps) 
       <Send size={16} />
     </button>
   );
+
+  // Composer popup: opens with the quick-add draft (or a row's text when editing) so the
+  // date/time/repeat can be set before anything hits chat. Saving sends the composed
+  // trigger phrase; editing additionally cancels the old reminder (both queue cleanly).
+  const openComposer = (text: string, editingId: string | null = null) => {
+    setComposerText(text);
+    setComposerEditingId(editingId);
+    setComposerOpen(true);
+  };
+  const handleComposerSave = (phrase: string) => {
+    setComposerOpen(false);
+    if (composerEditingId) send(`cancel reminder ${composerEditingId}`);
+    send(phrase);
+    if (!composerEditingId) setNewInput('');
+  };
 
   const inputCls = 'flex-1 bg-transparent text-[17px] outline-none placeholder:opacity-40';
   const sectionSep = (style: React.CSSProperties = {}) => (
@@ -355,6 +401,14 @@ export function RemindersPanel({ project, onSendMessage }: RemindersPanelProps) 
             style={{ color: 'var(--rm-label)' }}
           />
           {newInput.trim() && <SendButton />}
+          <button
+            onClick={() => openComposer(newInput.trim())}
+            className="shrink-0 p-2 rounded-lg opacity-60 hover:opacity-100 transition-opacity"
+            style={{ color: 'var(--rm-blue)' }}
+            title="Set details (date, time, repeat) before adding"
+          >
+            <SlidersHorizontal size={15} />
+          </button>
         </div>
 
         {lastSent && (
@@ -364,10 +418,11 @@ export function RemindersPanel({ project, onSendMessage }: RemindersPanelProps) 
         )}
 
         {/* Summary cards — each is a real switchable view; no item repeats across views */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-4">
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 mb-4">
           {tabBtn('today', 'Today', today.length)}
           {tabBtn('upcoming', 'Upcoming', upcoming.length)}
           {tabBtn('all', 'All', all.length)}
+          {tabBtn('completed', 'Completed', completed.length)}
           {tabBtn('nodate', 'No Date', nodate.length)}
         </div>
 
@@ -400,6 +455,14 @@ export function RemindersPanel({ project, onSendMessage }: RemindersPanelProps) 
             <Clock size={14} className="animate-spin" /> Loading…
           </div>
         )}
+
+        <ReminderComposer
+          open={composerOpen}
+          initialText={composerText}
+          editingId={composerEditingId}
+          onClose={() => setComposerOpen(false)}
+          onSave={handleComposerSave}
+        />
       </div>
     </div>
   );

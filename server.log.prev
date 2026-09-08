@@ -1,0 +1,101 @@
+{"level":30,"time":1788863035085,"msg":"[SemanticMatcher] Loading embedding model (first load downloads ~23MB)..."}
+{"level":30,"time":1788863038640,"msg":"[SemanticMatcher] Model loaded, computing intent embeddings..."}
+{"level":30,"time":1788863054208,"msg":"[SemanticMatcher] Ready -- 153 base intents, 3040 phrases"}
+{"level":30,"time":1788863055081,"msg":"[SemanticMatcher] Adding 100 project-specific intents (full recompute)..."}
+{"level":30,"time":1788863056639,"msg":"[SemanticMatcher] 100 project intents added"}
+{"level":30,"time":1788863056664,"msg":"NLP training complete. 15 project(s) loaded."}
+{"level":30,"time":1788863056821,"msg":"File watcher active for console.config.json changes."}
+{"level":30,"time":1788863057319,"msg":"Auto-applied threshold adjustments for 1 project(s):"}
+{"level":30,"time":1788863057330,"msg":"  netpulse: 1 adjustment(s)"}
+{"level":30,"time":1788863057356,"msg":"Console Server running on http://127.0.0.1:3000"}
+{"level":30,"time":1788863057357,"msg":"Default scan path: C:\\Users\\tobil\\Desktop\\Projects"}
+{"level":30,"time":1788868861559,"msg":"[SemanticMatcher] Adding 100 project-specific intents (full recompute)..."}
+{"level":30,"time":1788868862602,"msg":"[SemanticMatcher] 100 project intents added"}
+{"level":30,"time":1788868868058,"msg":"[SemanticMatcher] Adding 100 project-specific intents (full recompute)..."}
+{"level":30,"time":1788868869596,"msg":"[SemanticMatcher] 100 project intents added"}
+{"level":30,"time":1788868869653,"msg":"[SemanticMatcher] Adding 100 project-specific intents (full recompute)..."}
+{"level":30,"time":1788868871193,"msg":"[SemanticMatcher] 100 project intents added"}
+{"level":30,"time":1788868930912,"msg":"[SemanticMatcher] Adding 100 project-specific intents (full recompute)..."}
+{"level":30,"time":1788868932132,"msg":"[SemanticMatcher] 100 project intents added"}
+{"level":30,"time":1788868933548,"msg":"[SemanticMatcher] Adding 100 project-specific intents (full recompute)..."}
+{"level":30,"time":1788868934859,"msg":"[SemanticMatcher] 100 project intents added"}
+{"level":30,"time":1788868935808,"msg":"[SemanticMatcher] Adding 100 project-specific intents (full recompute)..."}
+{"level":30,"time":1788868937364,"msg":"[SemanticMatcher] 100 project intents added"}
+{"level":50,"time":1788869138672,"msg":"WS error:"}
+{"level":50,"time":1788869140408,"msg":"WS error:"}
+{"level":30,"time":1788869190296,"msg":"[SemanticMatcher] Adding 100 project-specific intents (full recompute)..."}
+{"level":30,"time":1788869192060,"msg":"[SemanticMatcher] 100 project intents added"}
+{"level":30,"time":1788869194617,"msg":"[SemanticMatcher] Adding 100 project-specific intents (full recompute)..."}
+{"level":30,"time":1788869196952,"msg":"[SemanticMatcher] 100 project intents added"}
+{"level":30,"time":1788869197835,"msg":"[SemanticMatcher] Adding 100 project-specific intents (full recompute)..."}
+{"level":30,"time":1788869199494,"msg":"[SemanticMatcher] 100 project intents added"}
+{"level":40,"time":1788869199640,"msg":"slow turn (2663ms): Open folder explorer"}
+{"level":50,"time":1788869540155,"msg":"WS error:"}
+[2m1:21:11 PM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2mserver/wsHandlers/builtinContextIndex.js[22m
+{"level":30,"time":1788870074844,"msg":"[SemanticMatcher] Adding 100 project-specific intents (full recompute)..."}
+{"level":30,"time":1788870075853,"msg":"[SemanticMatcher] 100 project intents added"}
+{"level":30,"time":1788870077199,"msg":"[SemanticMatcher] Adding 100 project-specific intents (full recompute)..."}
+{"level":30,"time":1788870078333,"msg":"[SemanticMatcher] 100 project intents added"}
+{"level":30,"time":1788870078869,"msg":"[SemanticMatcher] Adding 100 project-specific intents (full recompute)..."}
+{"level":30,"time":1788870080033,"msg":"[SemanticMatcher] 100 project intents added"}
+[2m1:21:40 PM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2mserver/wsHandlers/projectFileOpen.js[22m
+{"level":30,"time":1788870102937,"msg":"[SemanticMatcher] Adding 100 project-specific intents (full recompute)..."}
+{"level":30,"time":1788870103776,"msg":"[SemanticMatcher] 100 project intents added"}
+{"level":30,"time":1788870104732,"msg":"[SemanticMatcher] Adding 100 project-specific intents (full recompute)..."}
+{"level":30,"time":1788870105686,"msg":"[SemanticMatcher] 100 project intents added"}
+{"level":30,"time":1788870106222,"msg":"[SemanticMatcher] Adding 100 project-specific intents (full recompute)..."}
+{"level":30,"time":1788870107089,"msg":"[SemanticMatcher] 100 project intents added"}
+[2m1:22:07 PM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2mserver/wsHandlers/projectFileOpen.js[22m
+{"level":30,"time":1788870129941,"msg":"[SemanticMatcher] Adding 100 project-specific intents (full recompute)..."}
+{"level":30,"time":1788870130744,"msg":"[SemanticMatcher] 100 project intents added"}
+[2m1:22:11 PM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2mserver/wsHandlers/builtinProjectActions.js[22m
+{"level":30,"time":1788870131711,"msg":"[SemanticMatcher] Adding 100 project-specific intents (full recompute)..."}
+{"level":30,"time":1788870132765,"msg":"[SemanticMatcher] 100 project intents added"}
+{"level":30,"time":1788870134008,"msg":"[SemanticMatcher] Adding 100 project-specific intents (full recompute)..."}
+{"level":30,"time":1788870134907,"msg":"[SemanticMatcher] 100 project intents added"}
+[2m1:22:16 PM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2mserver/wsHandlers/builtinProjectActions.js[22m
+{"level":30,"time":1788870137088,"msg":"[SemanticMatcher] Adding 100 project-specific intents (full recompute)..."}
+{"level":30,"time":1788870138277,"msg":"[SemanticMatcher] 100 project intents added"}
+{"level":30,"time":1788870140035,"msg":"[SemanticMatcher] Adding 100 project-specific intents (full recompute)..."}
+{"level":30,"time":1788870141396,"msg":"[SemanticMatcher] 100 project intents added"}
+{"level":30,"time":1788870143005,"msg":"[SemanticMatcher] Adding 100 project-specific intents (full recompute)..."}
+{"level":30,"time":1788870144132,"msg":"[SemanticMatcher] 100 project intents added"}
+{"level":30,"time":1788870145770,"msg":"[SemanticMatcher] Adding 100 project-specific intents (full recompute)..."}
+{"level":30,"time":1788870147029,"msg":"[SemanticMatcher] 100 project intents added"}
+{"level":30,"time":1788870147265,"msg":"[SemanticMatcher] Adding 100 project-specific intents (full recompute)..."}
+{"level":30,"time":1788870148620,"msg":"[SemanticMatcher] 100 project intents added"}
+[2m1:22:54 PM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2mserver/preSemanticOverrides.js[22m
+{"level":30,"time":1788870177951,"msg":"[SemanticMatcher] Adding 100 project-specific intents (full recompute)..."}
+{"level":30,"time":1788870178966,"msg":"[SemanticMatcher] 100 project intents added"}
+{"level":30,"time":1788870180270,"msg":"[SemanticMatcher] Adding 100 project-specific intents (full recompute)..."}
+{"level":30,"time":1788870181398,"msg":"[SemanticMatcher] 100 project intents added"}
+{"level":30,"time":1788870182036,"msg":"[SemanticMatcher] Adding 100 project-specific intents (full recompute)..."}
+{"level":30,"time":1788870183183,"msg":"[SemanticMatcher] 100 project intents added"}
+[2m1:23:38 PM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2mserver/preSemanticOverrides.js[22m
+{"level":30,"time":1788870220841,"msg":"[SemanticMatcher] Adding 100 project-specific intents (full recompute)..."}
+{"level":30,"time":1788870221719,"msg":"[SemanticMatcher] 100 project intents added"}
+{"level":30,"time":1788870223156,"msg":"[SemanticMatcher] Adding 100 project-specific intents (full recompute)..."}
+{"level":30,"time":1788870224205,"msg":"[SemanticMatcher] 100 project intents added"}
+{"level":30,"time":1788870224277,"msg":"[SemanticMatcher] Adding 100 project-specific intents (full recompute)..."}
+{"level":30,"time":1788870225219,"msg":"[SemanticMatcher] 100 project intents added"}
+[2m1:31:13 PM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2mserver/wsHandlers/projectFileOpen.js[22m
+{"level":30,"time":1788870677238,"msg":"[SemanticMatcher] Adding 100 project-specific intents (full recompute)..."}
+{"level":30,"time":1788870678365,"msg":"[SemanticMatcher] 100 project intents added"}
+{"level":30,"time":1788870679729,"msg":"[SemanticMatcher] Adding 100 project-specific intents (full recompute)..."}
+{"level":30,"time":1788870680833,"msg":"[SemanticMatcher] 100 project intents added"}
+{"level":30,"time":1788870680870,"msg":"[SemanticMatcher] Adding 100 project-specific intents (full recompute)..."}
+{"level":30,"time":1788870681684,"msg":"[SemanticMatcher] 100 project intents added"}
+[2m1:31:48 PM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2mtest-abspath.mjs[22m
+{"level":30,"time":1788870711374,"msg":"[SemanticMatcher] Adding 100 project-specific intents (full recompute)..."}
+{"level":30,"time":1788870712234,"msg":"[SemanticMatcher] 100 project intents added"}
+{"level":30,"time":1788870713475,"msg":"[SemanticMatcher] Adding 100 project-specific intents (full recompute)..."}
+{"level":30,"time":1788870714419,"msg":"[SemanticMatcher] 100 project intents added"}
+{"level":30,"time":1788870714578,"msg":"[SemanticMatcher] Adding 100 project-specific intents (full recompute)..."}
+{"level":30,"time":1788870715439,"msg":"[SemanticMatcher] 100 project intents added"}
+[2m1:32:44 PM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2mserver/wsHandlers/projectFileOpen.js[22m
+{"level":30,"time":1788870768315,"msg":"[SemanticMatcher] Adding 100 project-specific intents (full recompute)..."}
+{"level":30,"time":1788870769266,"msg":"[SemanticMatcher] 100 project intents added"}
+{"level":30,"time":1788870770970,"msg":"[SemanticMatcher] Adding 100 project-specific intents (full recompute)..."}
+{"level":30,"time":1788870772100,"msg":"[SemanticMatcher] 100 project intents added"}
+{"level":30,"time":1788870772246,"msg":"[SemanticMatcher] Adding 100 project-specific intents (full recompute)..."}
+{"level":30,"time":1788870773498,"msg":"[SemanticMatcher] 100 project intents added"}

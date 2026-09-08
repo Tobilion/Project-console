@@ -7,15 +7,22 @@ import { injectContext } from '../contextInjector.js';
 export const contextIndexHandlers = {
   'project.context.structure'(ws, _action, _input, project) {
     const idx = project.codebaseIndex;
-    if (!idx) {
+    // The General pseudo-workspace (and any re-scan gap) carries a PARTIAL index object
+    // ({ languages, keyFiles, entryPoints } — truthy but with no tree/sample/counts), so a
+    // bare truthiness check is not enough: reading .length off the missing arrays threw
+    // "Cannot read properties of undefined" live (2026-09-08, absolute-path reveal input
+    // misrouted here). Guard each field like the sibling handlers do.
+    const tree = idx?.directoryTree;
+    const sample = idx?.fileSample;
+    if (!idx || (!tree && !sample && idx.totalFiles === undefined && idx.totalDirs === undefined)) {
       ws.send(JSON.stringify({ type: 'answer', data: `No indexed structure available for **[${project.name}]**. Run a re-index first.` }));
     } else {
-      let msg = `### Directory Structure [${project.name}]\n\n**${idx.totalDirs} directories, ${idx.totalFiles} files**\n`;
-      if (idx.directoryTree.length) {
-        msg += '\n```\n' + idx.directoryTree.join('\n') + '\n```';
+      let msg = `### Directory Structure [${project.name}]\n\n**${idx.totalDirs ?? 0} directories, ${idx.totalFiles ?? 0} files**\n`;
+      if (tree?.length) {
+        msg += '\n```\n' + tree.join('\n') + '\n```';
       }
-      if (idx.fileSample.length) {
-        msg += `\n\n**Sample files (${idx.fileSample.length} shown):**\n` + idx.fileSample.map((f) => `- ${f}`).join('\n');
+      if (sample?.length) {
+        msg += `\n\n**Sample files (${sample.length} shown):**\n` + sample.map((f) => `- ${f}`).join('\n');
       }
       ws.send(JSON.stringify({ type: 'answer', data: msg }));
     }

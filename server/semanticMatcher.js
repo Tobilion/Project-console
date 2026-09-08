@@ -1,4 +1,5 @@
 import Fuse from 'fuse.js';
+import { Mutex } from 'async-mutex';
 import { INTENTS } from './intentsData.js';
 import { bestProjectActionVector } from './intentVectorScan.js';
 import { runMatchPipeline } from './matcherMatch.js';
@@ -60,28 +61,56 @@ class SemanticMatcher {
     // embedInput below). Never invalidated mid-process: an input maps to the same vector for
     // the lifetime of the loaded model, so eviction is size-only (Phase 6).
     this._inputEmbedCache = new Map();
+    // Serializes calls to this.extractor across batch and single inputs so ONNX Runtime 1.14
+    // WASM sessions never execute concurrent run() calls, preventing deadlocks and crashes.
+    this.extractorMutex = new Mutex();
   }
 
   /**
-   * Embeds many phrases with bounded concurrency instead of the serial per-phrase loop that
-   * used to dominate boot (initialize) and project-intent builds (addProjectIntents). Results
-   * are identical per phrase — only the wall-clock differs. Strict: any phrase failure
-   * rejects, matching the pre-batch behavior (initialize/addProjectIntents propagated
-   * extractor errors; only addLearnedExamples swallows them, see its method doc).
+   * Safely calls extractor under a mutex so concurrent ONNX Runtime WASM calls can never race
+   * or deadlock inside the native runtime. Sanitizes input string to prevent null/empty errors.
+   */
+  async safeExtract(text) {
+    if (!this.extractor || typeof text !== 'string') return null;
+    const str = text.trim();
+    if (!str) return null;
+    return this.extractorMutex.runExclusive(async () => {
+      try {
+        return await this.extractor(str, { pooling: 'mean', normalize: true });
+      } catch {
+        return null;
+      }
+    });
+  }
+
+  /**
+   * Embeds many phrases with bounded concurrency under extractorMutex. Holding the mutex
+   * for the duration of the batch prevents external embedInput calls from racing the batch.
    */
   async _embedBatch(texts) {
-    if (!texts || texts.length === 0) return [];
-    const results = new Array(texts.length);
-    let next = 0;
-    const worker = async () => {
-      while (next < texts.length) {
-        const i = next++;
-        results[i] = await this.extractor(texts[i], { pooling: 'mean', normalize: true });
-      }
-    };
-    const poolSize = Math.min(EMBED_BATCH_CONCURRENCY, texts.length);
-    await Promise.all(Array.from({ length: poolSize }, () => worker()));
-    return results;
+    if (!texts || texts.length === 0 || !this.extractor) return [];
+    const sanitized = texts.map((t) => (typeof t === 'string' ? t.trim() : ''));
+    const results = new Array(sanitized.length);
+    return this.extractorMutex.runExclusive(async () => {
+      let next = 0;
+      const worker = async () => {
+        while (next < sanitized.length) {
+          const i = next++;
+          if (!sanitized[i]) {
+            results[i] = null;
+            continue;
+          }
+          try {
+            results[i] = await this.extractor(sanitized[i], { pooling: 'mean', normalize: true });
+          } catch {
+            results[i] = null;
+          }
+        }
+      };
+      const poolSize = Math.min(EMBED_BATCH_CONCURRENCY, sanitized.length);
+      await Promise.all(Array.from({ length: poolSize }, () => worker()));
+      return results;
+    });
   }
 
   /**
@@ -102,7 +131,8 @@ class SemanticMatcher {
       this._inputEmbedCache.set(key, hit);
       return hit;
     }
-    const result = await this.extractor(key, { pooling: 'mean', normalize: true });
+    const result = await this.safeExtract(key);
+    if (!result || !result.data) return null;
     if (this._inputEmbedCache.size >= INPUT_EMBED_CACHE_CAP) {
       this._inputEmbedCache.delete(this._inputEmbedCache.keys().next().value);
     }
@@ -163,7 +193,9 @@ class SemanticMatcher {
     try {
       const results = await this._embedBatch(phrases);
       for (const result of results) {
-        vectors.push(result.data);
+        if (result && result.data) {
+          vectors.push(result.data);
+        }
       }
       this.intentVectors[intent] = vectors;
     } catch {

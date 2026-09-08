@@ -1,8 +1,19 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Bell, RefreshCw, Plus, Trash2, CheckCircle2, Globe, MonitorSmartphone, Zap, Pause, Play, Rows3, Settings2, Send, Clock, Ruler, XCircle, ChevronsLeft, ChevronsRight, ShieldAlert } from 'lucide-react';
+import { Bell, RefreshCw, Plus, Trash2, CheckCircle2, Globe, MonitorSmartphone, Zap, Pause, Play, Rows3, Settings2, Send, Clock, Ruler, XCircle, ChevronsLeft, ChevronsRight, ShieldAlert, History, Check, X } from 'lucide-react';
 import { apiFetchJson } from '../utils/apiFetch';
 import { cn } from '../lib/utils';
 import type { Project } from '../types';
+
+interface NotificationHistoryItem {
+  id: string;
+  projectId: string;
+  projectName: string;
+  event: string;
+  title: string;
+  body: string;
+  timestamp: number;
+  dismissed: boolean;
+}
 
 // Phase 15 (UPGRADE-ROADMAP.md, 2026-08-12): the Notifications panel — IFTTT/Zapier-style
 // rule cards ("When <event> in <folder>, notify me"): colored icon circle per event type,
@@ -35,7 +46,7 @@ interface TestResult {
 
 interface NotificationsPanelProps {
   project: Project | null;
-  onSendMessage: (text: string) => void;
+  onSendMessage: (text: string, opts?: { source?: string; tool?: string }) => void;
 }
 
 const POLL_MS = 10000;
@@ -78,8 +89,9 @@ export function NotificationsPanel({ project, onSendMessage }: NotificationsPane
   const [lastSent, setLastSent] = useState<string | null>(null);
   const lastSentTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Round-6: the Postman-style section state — sidebar selection + sidebar collapsed.
-  const [section, setSection] = useState<'rules' | 'channels' | 'webhooks'>('rules');
+  const [section, setSection] = useState<'rules' | 'channels' | 'webhooks' | 'history'>('history');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [history, setHistory] = useState<NotificationHistoryItem[]>([]);
   // Webhook tester state.
   const [testUrl, setTestUrl] = useState('');
   const [testing, setTesting] = useState(false);
@@ -89,13 +101,39 @@ export function NotificationsPanel({ project, onSendMessage }: NotificationsPane
   useEffect(() => () => { if (lastSentTimer.current) clearTimeout(lastSentTimer.current); }, []);
 
   const fetchState = useCallback(async () => {
-    const data = await apiFetchJson<{ rules: WatchRule[]; events: Record<string, boolean>; desktop: boolean; webhooks: string[] }>('/api/notifications');
+    const data = await apiFetchJson<{ rules: WatchRule[]; events: Record<string, boolean>; desktop: boolean; webhooks: string[]; history?: NotificationHistoryItem[] }>('/api/notifications');
     if (!data) return;
     setRules(data.rules || []);
     setEvents(data.events || {});
     setDesktop(data.desktop);
     setWebhooks(data.webhooks || []);
+    if (data.history) setHistory(data.history);
   }, []);
+
+  const dismissOne = async (id: string) => {
+    await apiFetchJson('/api/notifications/dismiss', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id }),
+    });
+    fetchState();
+  };
+
+  const dismissAll = async () => {
+    await apiFetchJson('/api/notifications/dismiss', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: 'all' }),
+    });
+    fetchState();
+  };
+
+  const clearHistory = async () => {
+    await apiFetchJson('/api/notifications/clear-history', { method: 'POST' });
+    fetchState();
+  };
+
+  const unreadCount = history.filter((h) => !h.dismissed).length;
 
   useEffect(() => {
     fetchState();
@@ -104,11 +142,15 @@ export function NotificationsPanel({ project, onSendMessage }: NotificationsPane
   }, [fetchState]);
 
   const send = (text: string) => {
-    onSendMessage(text);
+    onSendMessage(text, { source: 'panel', tool: 'notifications' });
     setLastSent(text);
     if (lastSentTimer.current) clearTimeout(lastSentTimer.current);
     lastSentTimer.current = setTimeout(() => setLastSent(null), 8000);
-    setTimeout(fetchState, 1200);
+    // The chat turn behind this toggle can take seconds (a slow prior turn queues ahead
+    // of it), while the old single 1200ms refetch usually landed BEFORE the server had
+    // applied anything — leaving the switch visibly stale after the answer arrived.
+    // Re-poll a few times so the row converges on the applied state either way.
+    [1200, 3500, 7000].forEach((ms) => setTimeout(fetchState, ms));
   };
 
   const addRule = () => {
@@ -122,6 +164,9 @@ export function NotificationsPanel({ project, onSendMessage }: NotificationsPane
   };
 
   const toggleEvent = (event: string, on: boolean) => {
+    // Optimistic: flip the switch immediately so the tap feels instant; the staggered
+    // refetch in send() corrects it if the command ever fails server-side.
+    setEvents((prev) => ({ ...prev, [event]: on }));
     send(on ? `notify me when ${event}` : `stop notifying me about ${event}`);
   };
 
@@ -145,6 +190,7 @@ export function NotificationsPanel({ project, onSendMessage }: NotificationsPane
   };
 
   const navItems: { key: typeof section; label: string; icon: React.ReactNode; badge?: number }[] = [
+    { key: 'history', label: 'History', icon: <History size={14} />, badge: unreadCount },
     { key: 'rules', label: 'Watch Rules', icon: <Rows3 size={14} />, badge: rules.length },
     { key: 'channels', label: 'Events & Channels', icon: <Settings2 size={14} />, badge: Object.values(events).filter(Boolean).length },
     { key: 'webhooks', label: 'Webhooks', icon: <Globe size={14} />, badge: webhooks.length },
@@ -204,6 +250,79 @@ export function NotificationsPanel({ project, onSendMessage }: NotificationsPane
             <div className="mb-3 flex items-start gap-2 text-[11px] text-fg-muted bg-scrim-faint border border-border-soft rounded-lg p-2.5">
               <CheckCircle2 size={13} className="text-accent-teal mt-0.5 shrink-0" />
               <span>Sent <code className="font-mono text-accent-teal">{lastSent}</code> — follow the result in the chat below.</span>
+            </div>
+          )}
+
+          {section === 'history' && (
+            <div className={cn(cardCls, 'mb-4')}>
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-xs font-semibold text-fg-strong flex items-center gap-1.5">
+                  <History size={13} /> Past & Active Notifications ({history.length})
+                </h3>
+                <div className="flex items-center gap-2 text-[11px]">
+                  {unreadCount > 0 && (
+                    <button
+                      onClick={dismissAll}
+                      className="flex items-center gap-1 text-accent-blue hover:text-fg-strong transition-colors"
+                      title="Dismiss all active notifications"
+                    >
+                      <Check size={12} /> Dismiss All ({unreadCount})
+                    </button>
+                  )}
+                  {history.length > 0 && (
+                    <button
+                      onClick={clearHistory}
+                      className="flex items-center gap-1 text-fg-dim hover:text-accent-red transition-colors ml-2"
+                      title="Clear history"
+                    >
+                      <Trash2 size={12} /> Clear
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {history.length === 0 ? (
+                <p className="text-xs text-fg-dim italic py-3">
+                  No notifications recorded yet. Fired reminders, alarms, watch alerts, and background task updates will appear here.
+                </p>
+              ) : (
+                <div className="space-y-2 max-h-[480px] overflow-y-auto pr-1">
+                  {history.map((item) => (
+                    <div
+                      key={item.id}
+                      className={cn(
+                        'bg-panel-strong rounded-lg border p-3 flex items-start justify-between gap-3 transition-colors',
+                        item.dismissed ? 'border-border-faint opacity-70' : 'border-accent-blue/40 bg-accent-blue/5'
+                      )}
+                    >
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className={cn('text-[9px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wider', item.event === 'reminder-fired' ? 'bg-accent-orange/20 text-accent-orange' : 'bg-accent-blue/20 text-accent-blue')}>
+                            {item.event}
+                          </span>
+                          {item.projectName && (
+                            <span className="text-[10px] text-fg-dim font-mono">{item.projectName}</span>
+                          )}
+                          <span className="text-[10px] text-fg-faint ml-auto">
+                            {new Date(item.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          </span>
+                        </div>
+                        <h4 className="text-xs font-semibold text-fg-strong leading-snug">{item.title}</h4>
+                        <p className="text-[11px] text-fg-muted mt-0.5 whitespace-pre-wrap">{item.body}</p>
+                      </div>
+                      {!item.dismissed && (
+                        <button
+                          onClick={() => dismissOne(item.id)}
+                          className="p-1 text-fg-dim hover:text-accent-blue rounded transition-colors shrink-0"
+                          title="Dismiss notification"
+                        >
+                          <X size={14} />
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 
