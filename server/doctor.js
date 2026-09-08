@@ -17,6 +17,7 @@ import { promisify } from 'util';
 import { fileURLToPath, pathToFileURL } from 'url';
 import { getDataDir } from './dataPath.js';
 import { BASE_PORT, MAX_PORT_ATTEMPTS, OLLAMA_DEFAULT_HOST } from './portConfig.js';
+import { npmRegistryLatestUrl } from './apiEndpoints.js';
 
 const execFileAsync = promisify(execFile);
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -171,7 +172,7 @@ async function checkOllama() {
 async function checkUpdate() {
   const pkg = JSON.parse(fs.readFileSync(path.join(rootDir, 'package.json'), 'utf8'));
   try {
-    const res = await fetch(`https://registry.npmjs.org/${pkg.name}/latest`, { signal: AbortSignal.timeout(4000) });
+    const res = await fetch(npmRegistryLatestUrl(pkg.name), { signal: AbortSignal.timeout(4000) });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const latest = (await res.json()).version;
     const current = pkg.version.split('.').map(Number);

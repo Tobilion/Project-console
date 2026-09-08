@@ -82,7 +82,17 @@ re-reading from scratch or re-deriving the plan.
   they still need the B.1 split pass separately), the rest of B.2 (the `answer`-helper dedup
   across 60+ wsHandlers files), the rest of B.3, and B.4's naming/comment-length audit. This
   is the largest remaining phase — chunk it across many commits, one dedup/split target per
-  commit, not one giant pass.
+  commit, not one giant pass. B.3's external-endpoints row is also done: new
+  `server/apiEndpoints.js` centralizes `npmRegistryLatestUrl(pkgName)` (env-overridable via
+  `NPM_REGISTRY_URL`) and `duckDuckGoSearchUrl(query)` (env-overridable via
+  `DUCKDUCKGO_SEARCH_URL`) — `server/updateChecker.js` and `server/doctor.js` had each built
+  the npm-registry URL independently (confirmed duplicated, not just documented as such), and
+  `server/webSearch.js` had the DuckDuckGo endpoint as a bare literal with no override. Ollama's
+  host was verified NOT to need this fix — `OLLAMA_HOST` env override already exists in
+  `server/ollama.js` and `OLLAMA_DEFAULT_HOST` in `server/portConfig.js`; the master prompt's
+  B.3 row citing `ollama.js:5` as hardcoded was stale. Live-verified: `npm run doctor` prints
+  "Update: 1.0.11 is the latest" — the new URL builder round-tripped against the real npm
+  registry.
 - **Phase D: complete** (D-1 through D-8 all done; D-7 deliberately excludes Dashboard's
   Run/Stop/Push, see below for why). D-1 done (see below). D-2
   and D-3 done (see below). D-8 done (see below). D-5 and D-6 done (see below). D-4 done (new `server/intentVectorCache.js`: hashes the model id +

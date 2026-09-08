@@ -1,4 +1,5 @@
 import { isSafeExternalUrl } from './urlSafety';
+import { duckDuckGoSearchUrl } from './apiEndpoints.js';
 
 const SEARCH_CACHE = new Map();
 
@@ -30,7 +31,7 @@ export async function webSearch(query) {
   if (SEARCH_CACHE.has(cacheKey)) return SEARCH_CACHE.get(cacheKey);
 
   try {
-    const url = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
+    const url = duckDuckGoSearchUrl(query);
     const res = await fetch(url, {
       headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
       signal: AbortSignal.timeout(8000),

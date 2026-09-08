@@ -6,6 +6,7 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { npmRegistryLatestUrl } from './apiEndpoints.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -76,7 +77,7 @@ export async function checkForUpdates(force = false) {
     const timer = setTimeout(() => controller.abort(), CHECK_TIMEOUT_MS);
     let res;
     try {
-      res = await fetch(`https://registry.npmjs.org/${pkg.name}/latest`, { signal: controller.signal });
+      res = await fetch(npmRegistryLatestUrl(pkg.name), { signal: controller.signal });
     } finally {
       clearTimeout(timer);
     }
