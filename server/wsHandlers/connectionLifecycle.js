@@ -46,10 +46,20 @@ function onConnection(ws) {
   // line in chat-log.md) that gets read fully into memory on every session reload (audit
   // 2026-08-06, Phase 2).
   const COMMAND_BUFFER_CAP = 200_000;
+  let commandBufferTruncated = false;
   const flushCommandBuffer = () => {
-    if (!sessionContext.currentSessionId || !commandOutputBuffer.trim()) return;
-    const content = commandOutputBuffer.trim();
+    if (!sessionContext.currentSessionId || !commandOutputBuffer.trim()) {
+      commandBufferTruncated = false;
+      return;
+    }
+    let content = commandOutputBuffer.trim();
+    if (commandBufferTruncated) {
+      // A-5: the buffer tail-sliced, so the user saw live output get cut — the persisted
+      // record must say so, otherwise a reloaded chat looks like the data was lost to a bug.
+      content += `\n\n_(Output truncated at ${COMMAND_BUFFER_CAP} characters.)_`;
+    }
     commandOutputBuffer = '';
+    commandBufferTruncated = false;
     appendMessage(sessionContext.currentSessionId, {
       role: 'output',
       content,
@@ -81,9 +91,16 @@ function onConnection(ws) {
         commandOutputBuffer += parsed.data;
         if (commandOutputBuffer.length > COMMAND_BUFFER_CAP) {
           commandOutputBuffer = commandOutputBuffer.slice(-COMMAND_BUFFER_CAP);
+          commandBufferTruncated = true;
         }
       } else if (sessionContext.currentSessionId && parsed.type === 'end') {
-        if (parsed.data) commandOutputBuffer += parsed.data;
+        if (parsed.data) {
+          commandOutputBuffer += parsed.data;
+          if (commandOutputBuffer.length > COMMAND_BUFFER_CAP) {
+            commandOutputBuffer = commandOutputBuffer.slice(-COMMAND_BUFFER_CAP);
+            commandBufferTruncated = true;
+          }
+        }
         // Raw command output — explicitly NOT markdown, so the renderer keeps the mono/plain
         // treatment it had live in the output block. Phase 14: persisted as its own
         // role-'output' record instead of a role-'bot' message, so a reloaded chat maps back

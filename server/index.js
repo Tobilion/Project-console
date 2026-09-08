@@ -26,6 +26,7 @@ import { checkCollisionBaseline } from './collisions.js';
 import { checkForUpdates } from './updateChecker.js';
 import { wss, broadcast } from './wsServer.js';
 import { initWebSocketServer } from './wsHandlers/connection.js';
+import { sweepOrphanedTmpFiles } from './sessionIndex.js';
 import { registerProjectRoutes } from './routes/projectRoutes.js';
 import { registerSessionRoutes } from './routes/sessionRoutes.js';
 import { registerSearchRoutes } from './routes/searchRoutes.js';
@@ -176,6 +177,10 @@ async function init() {
   // started outside the console or before this restart. Independent of scan + matcher, loaded
   // in parallel with the two heavy boot steps below.
   loadDevUrls();
+
+  // A-6 (2026-09-08): sweep orphaned *.tmp files from interrupted atomic writes. Fire-and-forget
+  // — runs after scan so we know which project roots to check, never blocks boot.
+  sweepOrphanedTmpFiles(state.activeProjectsCache.map(p => p.path)).catch(() => {});
 
   // Boot-state markers: printed to stderr so the Electron desktop shell can show live loading
   // progress on the splash screen instead of a static "Starting..." message (Phase 1.3).

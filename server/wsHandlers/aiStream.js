@@ -75,13 +75,25 @@ export async function streamWithToolDetection(model, messages, ws, signal) {
     }
   };
 
-  for await (const chunk of chatStream(model, messages, signal)) {
-    if (chunk.type === 'thinking') {
-      if (ws.readyState === 1) ws.send(JSON.stringify({ type: 'thinking', data: chunk.text }));
-      continue;
+  let truncated = false;
+  try {
+    for await (const chunk of chatStream(model, messages, signal)) {
+      if (chunk.type === 'thinking') {
+        if (ws.readyState === 1) ws.send(JSON.stringify({ type: 'thinking', data: chunk.text }));
+        continue;
+      }
+      buffer += chunk.text;
+      processBuffer();
     }
-    buffer += chunk.text;
-    processBuffer();
+  } catch (err) {
+    // A truncated NDJSON tail (daemon closed mid-line) is a genuine stream failure, not a user
+    // abort. Keep the partial text so the caller can auto-retry and persist a combined message.
+    truncated = err?.message?.includes('truncated') || err?.message?.includes('mid-line');
+    if (truncated) {
+      log.warn('[aiStream] truncated response tail detected, partial text length:', visible.length);
+    } else {
+      throw err;
+    }
   }
 
   // Flush whatever safe text remains. If the model cut off mid-tool-call, the fragment is
@@ -95,5 +107,5 @@ export async function streamWithToolDetection(model, messages, ws, signal) {
     flushText(buffer);
   }
 
-  return { visibleText: visible, toolCalls };
+  return { visibleText: visible, toolCalls, truncated };
 }

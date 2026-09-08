@@ -46,6 +46,8 @@ export async function handleAIQuery(ws, project, input, sessionContext, workspac
   }
   let finalText = '';
   const toolHistory = [];
+  // A-7: Track partial streamed text so stall/abort paths can persist a record of the turn.
+  let streamedText = '';
 
   // Requested directly (2026-07-29) after a query with no bound at all — CPU-only Ollama
   // inference can genuinely take minutes with no GPU, and there was previously no way to
@@ -68,9 +70,26 @@ export async function handleAIQuery(ws, project, input, sessionContext, workspac
   try {
     ws.send(JSON.stringify({ type: 'ai_start', data: `Thinking... (${model})` }));
     ws.send(JSON.stringify({ type: 'stream_start' }));
-    let { visibleText, toolCalls } = await streamWithToolDetection(model, messages, ws, abortController.signal);
+    let { visibleText, toolCalls, truncated } = await streamWithToolDetection(model, messages, ws, abortController.signal);
     ws.send(JSON.stringify({ type: 'stream_end' }));
     finalText = visibleText;
+
+    // A-2 (2026-09-08): a truncated NDJSON tail means the daemon closed mid-line. We may
+    // already have streamed partial visible text to the user, so rather than leaving a
+    // half-answer plus a separate error bubble (two contradictory sources of truth), do one
+    // bounded corrective retry and, if that also fails, persist a single combined message
+    // that explicitly marks the cut-off.
+    if (truncated && !abortController.signal.aborted) {
+      ws.send(JSON.stringify({ type: 'answer', data: '\n\n_(Response was cut off — retrying automatically.)_\n' }));
+      let retryText;
+      try {
+        ({ visibleText: retryText } = await streamWithToolDetection(model, messages, ws, abortController.signal));
+      } catch (retryErr) {
+        truncated = true;
+        log.warn('[aiQuery] retry after truncation also failed:', retryErr.message);
+      }
+      finalText = retryText?.trim() ? retryText : (finalText?.trim() ? `${finalText}\n\n_(Response was cut off and retry failed — showing partial content.)_` : '(Response was cut off and retry failed.)');
+    }
 
     // One bounded corrective retry: if the model announced a tool call but never actually
     // produced one, tell it explicitly and give it a single extra chance before accepting
@@ -180,6 +199,15 @@ export async function handleAIQuery(ws, project, input, sessionContext, workspac
         metrics.inc('ai_query.error');
         metrics.event({ type: 'ai_query_error', error: timeoutMsg });
         ws.send(JSON.stringify({ type: 'error_output', data: `AI error: ${timeoutMsg}\n` }));
+        // A-7: persist whatever partial text exists so the turn isn't silently missing from
+        // conversation history — the user needs to see that a request was made and what
+        // happened, even if the response was empty or partial.
+        if (sessionContext.currentSessionId) {
+          const stallMsg = finalText.trim()
+            ? `${finalText.trim()}\n\n_(Response stalled and was aborted after 120s.)_`
+            : '_(AI response stalled and was aborted after 120s — no text was generated. Try again with a shorter or simpler question.)_';
+          appendMessage(sessionContext.currentSessionId, { role: 'bot', content: stallMsg, isMarkdown: true }).catch(() => {});
+        }
       }
     } else {
       metrics.inc('ai_query.error');

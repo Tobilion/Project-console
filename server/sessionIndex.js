@@ -49,6 +49,30 @@ export async function ensureLegacyDir() {
   await fs.mkdir(LEGACY_STORE_DIR, { recursive: true });
 }
 
+// A-6 (2026-09-08): boot-time sweep of orphaned *.tmp files from the atomic-write pattern
+// (writeIndex, appendMessage). Crashed sessions or interrupted renames leave these behind;
+// they're never cleaned up otherwise and accumulate over time. Threshold: 1 hour — recent
+// tmp files from a concurrent writer are still in use; older ones are abandoned.
+const TMP_SWEEP_MAX_AGE_MS = 60 * 60 * 1000;
+export async function sweepOrphanedTmpFiles(projectRoots = []) {
+  const dirs = [LEGACY_STORE_DIR, ...projectRoots.filter(Boolean).map(r => path.join(r, '.console', 'sessions'))];
+  for (const dir of dirs) {
+    try {
+      const files = await fs.readdir(dir);
+      const now = Date.now();
+      for (const f of files) {
+        if (!f.endsWith('.tmp')) continue;
+        try {
+          const stat = await fs.stat(path.join(dir, f));
+          if (now - stat.mtimeMs > TMP_SWEEP_MAX_AGE_MS) {
+            await fs.unlink(path.join(dir, f)).catch(() => {});
+          }
+        } catch {}
+      }
+    } catch {}
+  }
+}
+
 export async function readIndex() {
   await ensureLegacyDir();
   try {

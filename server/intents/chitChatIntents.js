@@ -181,9 +181,9 @@ export const CHIT_CHAT_INTENTS = {
   },
   'system.chit_chat.deploy': {
     examples: [
-      'deploy', 'deploy the site', 'deploy this', 'deploy to production',
+      'deploy', 'deploy this', 'deploy to production',
       'push live', 'ship it', 'push to git', 'push my changes',
-      'deploy to vercel', 'publish the site', 'go live',
+      'deploy to vercel', 'go live',
       'push this live', 'deploy my changes', 'send it live', 'get this pushed',
       'push this to github', 'deploy the project',
       'deploy to server', 'push to github', 'ship this',
@@ -192,7 +192,7 @@ export const CHIT_CHAT_INTENTS = {
       'send to production', 'upload to production', 'release this',
       'go to production', 'deploy to the server', 'ship to production',
       'push it', 'push these changes', 'deploy this to vercel',
-      'deploy to hosting', 'launch the site', 'put this live',
+      'deploy to hosting', 'put this live',
       'time to deploy', 'lets deploy this', 'get this out the door',
       'ship the code', 'let the world see this', 'send this out',
       'roll this out', 'roll out to production', 'kick off a deploy',
