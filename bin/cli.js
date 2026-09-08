@@ -5,6 +5,8 @@ import { spawn } from 'child_process';
 import { fileURLToPath, pathToFileURL } from 'url';
 import fs from 'fs';
 import readline from 'readline';
+import { BASE_PORT, MAX_PORT_ATTEMPTS } from '../server/portConfig.js';
+import { findRunningConsole } from '../server/portProbe.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -67,27 +69,17 @@ async function startServer() {
 // cross-platform browser open. All three mirror the batch launcher's behavior exactly so
 // `npm run launcher` is a terminal-native replacement for the .bat file.
 
+// A running console server answers /api/projects on one of BASE_PORT..BASE_PORT+MAX_PORT_
+// ATTEMPTS-1. When one is found the launcher hands off to it instead of starting a duplicate
+// instance (which would only bind a fallback port and leave a second server behind).
+// probeConsolePort/findRunningConsole are the shared implementation (server/portProbe.js) —
+// also used by scripts/daemon.mjs. This used to be a hand-rolled loop here that additionally
+// required `data.projects.length > 0`, so a freshly-scanned console with zero discovered
+// projects was invisible to this probe and a second server would start alongside it
+// (Phase B.2 fix, 2026-09-08) — the shared implementation treats an empty projects array as
+// a valid "yes, a console is running here" answer, matching desktop/main.cjs and daemon.mjs.
 async function probeRunningPort() {
-  // A running console server answers /api/projects on one of 3000-3019. When one is found
-  // the launcher hands off to it instead of starting a duplicate instance (which would only
-  // bind a fallback port and leave a second server behind). Range mirrors server/portConfig.js.
-  const base = parseInt(process.env.PORT, 10) || 3000;
-  for (let i = base; i < base + 20; i++) {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 5000);
-    try {
-      const res = await fetch(`http://127.0.0.1:${i}/api/projects`, { signal: controller.signal });
-      if (res.ok) {
-        const data = await res.json();
-        if (Array.isArray(data.projects) && data.projects.length > 0) return i;
-      }
-    } catch {
-      // Port not answering (or probe aborted) - keep scanning.
-    } finally {
-      clearTimeout(timer);
-    }
-  }
-  return null;
+  return findRunningConsole(BASE_PORT, MAX_PORT_ATTEMPTS);
 }
 
 function askChoice() {

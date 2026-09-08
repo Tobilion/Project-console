@@ -45,7 +45,10 @@ const PID_FILE = path.join(logDir, 'daemon.pid');
 const LOG_FILE = path.join(logDir, 'daemon.log');
 const SERVER_ENTRY = path.join(rootDir, 'server', 'index.js');
 // Port range matches server/portConfig.js (daemon is .mjs, not .ts, and must run without
-// importing the server graph — keep in sync when portConfig.js changes).
+// importing the server graph — keep in sync when portConfig.js changes). probePort() below
+// mirrors server/portProbe.js's probeConsolePort() contract byte-for-byte (Phase B.2,
+// 2026-09-08: bin/cli.js and desktop/main.cjs's equivalents are documented against the same
+// contract) — keep the three in sync when the shape check changes.
 const BASE_PORT = parseInt(process.env.PORT, 10) || 3000;
 const MAX_PORT_ATTEMPTS = 20;
 const MAX_PORT = BASE_PORT + MAX_PORT_ATTEMPTS - 1; // 3000-3019 (widened 2026-08-26)

@@ -54,19 +54,35 @@ re-reading from scratch or re-deriving the plan.
   connection.js`'s shim already has a proper explanatory docblock; `server/mockProjects.js`
   is imported by `server/index.js` and `projectRoutes.js`, not dead; `server/asyncHandler.js`
   is still needed since `express` is pinned at `^4.21.2` (v5 would make it obsolete, this repo
-  is on v4). B.2's panel-polling-scaffold dedup is now done (commit pending: new
+  is on v4). B.2's panel-polling-scaffold dedup is done (commit a6e48d8: new
   `src/hooks/usePanelPolling.ts` exports `usePanelPolling(fetchFn, intervalMs, enabled?)` —
   fetch-on-mount + setInterval + cleanup — and `useFlashMessage(durationMs?)` — a
   self-clearing status string + its timer ref — replacing the hand-copied version of both in
   `BackupPanel`/`NotesPanel`/`NotificationsPanel`/`ClipboardPanel`/`PdfToolsPanel`/
   `RemindersPanel`/`FileToolsPanel`; `FileToolsPanel` also lost a dead, never-`setInterval`'d
-  `POLL_MS` constant it had declared but never used). **Still fully open**: B.1 (the ~15-file
-  oversized-file split list — note `NotificationsPanel.tsx`/`PdfToolsPanel.tsx`/
-  `RemindersPanel.tsx` are still over 400 lines after the dedup above, so they still need the
-  B.1 split pass separately), the rest of B.2 (the `answer`-helper dedup across 60+
-  wsHandlers files, the port-probing consolidation across desktop/CLI/daemon), the rest of
-  B.3, and B.4's naming/comment-length audit. This is the largest remaining phase — chunk it
-  across many commits, one dedup/split target per commit, not one giant pass.
+  `POLL_MS` constant it had declared but never used). B.2's port-probing consolidation is also
+  done: new `server/portProbe.js` (`probeConsolePort`/`findRunningConsole`, plain ESM, zero
+  further imports — safe for any entry point to import without pulling in the rest of the
+  server graph) is the canonical "does a console already answer on this port" check;
+  `bin/cli.js`'s `probeRunningPort()` now calls it directly (also imports `BASE_PORT`/
+  `MAX_PORT_ATTEMPTS` from `server/portConfig.js` instead of a third hardcoded copy). Real
+  bug fixed in the same change: `bin/cli.js`'s old hand-rolled probe additionally required
+  `data.projects.length > 0`, so a freshly-scanned console with zero discovered projects was
+  invisible to the CLI launcher's probe and it would start a duplicate server rather than
+  handing off — `desktop/main.cjs` and `scripts/daemon.mjs` already had the correct
+  `Array.isArray(data.projects)`-only check (D-5's timeout unification, 1500ms→5000ms, was
+  also already done — confirmed live in code, not just in this doc). `desktop/main.cjs`
+  (CommonJS, can't statically import the ESM `portProbe.js` on its boot hot path) and
+  `scripts/daemon.mjs` (deliberately avoids importing anything under `server/` at all, per
+  its own header comment) keep their own already-correct implementations, now with a comment
+  pointing at `portProbe.js` as the contract source of truth to keep in sync by eye — the
+  master prompt's own fallback for exactly this CJS/ESM-boundary case. **Still fully open**:
+  B.1 (the ~15-file oversized-file split list — note `NotificationsPanel.tsx`/
+  `PdfToolsPanel.tsx`/`RemindersPanel.tsx` are still over 400 lines after the dedup above, so
+  they still need the B.1 split pass separately), the rest of B.2 (the `answer`-helper dedup
+  across 60+ wsHandlers files), the rest of B.3, and B.4's naming/comment-length audit. This
+  is the largest remaining phase — chunk it across many commits, one dedup/split target per
+  commit, not one giant pass.
 - **Phase D: complete** (D-1 through D-8 all done; D-7 deliberately excludes Dashboard's
   Run/Stop/Push, see below for why). D-1 done (see below). D-2
   and D-3 done (see below). D-8 done (see below). D-5 and D-6 done (see below). D-4 done (new `server/intentVectorCache.js`: hashes the model id +

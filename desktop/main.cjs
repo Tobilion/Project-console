@@ -249,7 +249,9 @@ function checkForUpdates() {
 function probePort(port) {
   // D-5: match the CLI's/daemon's shape check (a bare 200 isn't enough — some other local
   // service could be answering on that port) by confirming the body actually looks like our
-  // own /api/projects response, not just a 200 status.
+  // own /api/projects response, not just a 200 status. Mirrors server/portProbe.js's
+  // probeConsolePort() byte-for-byte (Phase B.2, 2026-09-08) — this file is CommonJS and
+  // can't statically import that ESM module, so keep the two in sync by eye.
   return new Promise((resolve) => {
     const req = http.get(`http://127.0.0.1:${port}/api/projects`, { timeout: PORT_PROBE_TIMEOUT_MS }, (res) => {
       if (res.statusCode !== 200) { res.resume(); resolve(null); return; }
