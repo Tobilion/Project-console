@@ -589,6 +589,12 @@ const BATTERIES = [
       ['set alarm for 9am tomorrow', 'BUILTIN=system.reminders.create'],
       ['alarm', 'BUILTIN=system.reminders.create'],
       ['set an alarm at 7pm', 'BUILTIN=system.reminders.create'],
+      // D-8 (2026-09-08): the exact phrasing the user asked for by name — pinned the same
+      // way "remind me"/"set a reminder" already are, since the trailing task/time nouns
+      // hijack the vector the same way.
+      ['add reminder to renew my license tomorrow at 9am', 'BUILTIN=system.reminders.create'],
+      ['add a reminder to call the dentist tomorrow at 10am', 'BUILTIN=system.reminders.create'],
+      ['add reminder to water the plants at 8pm', 'BUILTIN=system.reminders.create'],
       // Phase 4 panel opener: these phrases must route to the opener so the web client
       // opens the Reminders panel (carried via openPanel on the answer, not tested here).
       ['open reminders', 'BUILTIN=system.tools.open_reminders'],

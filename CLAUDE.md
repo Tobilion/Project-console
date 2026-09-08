@@ -59,7 +59,7 @@ re-reading from scratch or re-deriving the plan.
   across 9 panels, the port-probing consolidation across desktop/CLI/daemon), the rest of B.3,
   and B.4's naming/comment-length audit. This is the largest remaining phase — chunk it across
   many commits, one dedup/split target per commit, not one giant pass.
-- **Phase D: started.** D-5 and D-6 done (see below). D-4 done (new `server/intentVectorCache.js`: hashes the model id +
+- **Phase D: started.** D-8 done (see below). D-5 and D-6 done (see below). D-4 done (new `server/intentVectorCache.js`: hashes the model id +
   every intent/phrase pair, persists the batch-embed output to
   `data/.cache/intent-vectors.json` via `writeFileAtomicSync`, and `semanticMatcherInit.js`
   now checks it before running the ~2500-phrase batch embed — a cache hit skips essentially
@@ -68,11 +68,9 @@ re-reading from scratch or re-deriving the plan.
   `data/.cache/` (the model download cache at `.cache/xenova` was already ignored via
   `.cache/`, but `data/.cache/` needed its own line since `data/` isn't blanket-ignored).
   **Still open**: D-1 (tab-switch loading indicator), D-2/D-3 (scan-cache pre-warm/reuse),
-  D-5 (port-binding timeout unification, overlaps B.2's port-probing dedup), D-6 (verify CLI
-  crash fixes still hold), D-7 ("the single most impactful latency fix" per the master
-  prompt — migrate mutating panel actions to direct REST+journal instead of round-tripping
-  through the chat/WS pipeline), D-8 (verify natural-language shorthand resolves via the fast
-  matcher path, not a slow fallback stage). D-6 verified: both historical CLI-crash root
+  D-7 ("the single most impactful latency fix" per the master prompt — migrate mutating
+  panel actions to direct REST+journal instead of round-tripping through the chat/WS
+  pipeline). D-6 verified: both historical CLI-crash root
   causes (`server/index.js`'s dynamic `import('vite')`, `server/pdfKit.js`'s lazy/guarded
   pdf-parse import) are still in place — no regression, and no fresh crash cause found by
   inspection (a live `Project Console.exe --cli` end-to-end run on Windows is still the
@@ -88,7 +86,17 @@ re-reading from scratch or re-deriving the plan.
   desktop/CLI/daemon (desktop was 1500ms — the odd one out; `PORT_PROBE_TIMEOUT_MS` is now a
   named constant). `bin/cli.js`'s in-process bind-wait raised from 30s to 120s (a legitimate
   ~90s cold boot was being reported as a failure at 30s). `scripts/daemon.mjs` was already
-  correct (full-range scan + shape check + 90s ceiling) — no change needed there.
+  correct (full-range scan + shape check + 90s ceiling) — no change needed there. D-8 done:
+  the user's exact ask ("I should be able to type add reminder to... and it works") wasn't
+  recognized at all — `reminderParser.js`'s `PREFIX_RE` had no "add reminder"/"add a
+  reminder" branch, so that phrasing would have left the literal words "add reminder to"
+  inside the stored reminder text instead of being stripped like every other prefix there.
+  Fixed in three places that all have to move together: `PREFIX_RE` now strips "add (a)
+  reminder (to/for)", a matching `system.reminders.create` pre-semantic-override pin was
+  added (same trap class as the existing "remind me"/"set a reminder" pins — trailing
+  task/time nouns hijack the embedding vector), and three "add reminder to ..." example
+  phrases were added to `reminderIntents.js` + the REMINDERS matcher battery. Notes
+  ("add a note: ...") already had this phrasing covered — verified, no change needed there.
 - Phases C, E, F, G, H, I, J, L: **not started.**
 
 **Verification caveat carried across all of the above**: everything was checked with

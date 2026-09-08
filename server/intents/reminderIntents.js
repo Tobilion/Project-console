@@ -20,6 +20,10 @@ export const REMINDER_INTENTS = {
       'set alarm for 9am tomorrow',
       'set an alarm at 7pm',
       'alarm',
+      // D-8 (2026-09-08): the phrasing the user asked for by name — "add reminder to..."
+      'add reminder to renew my license tomorrow at 9am',
+      'add a reminder to call the dentist tomorrow at 10am',
+      'add reminder to water the plants at 8pm',
     ],
   },
   'system.reminders.list': {

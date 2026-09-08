@@ -301,6 +301,10 @@ export const PRE_SEMANTIC_OVERRIDES = [
   // tech_preview — the "set a reminder" + time-word prefix is the same unambiguous class.
   { intent: 'system.reminders.create', pattern: /^remind\s+me\b/i },
   { intent: 'system.reminders.create', pattern: /^set\s+a\s+reminder\b/i },
+  // D-8 (2026-09-08): same class of trap as "remind me" above, for the phrasing the user
+  // asked for by name ("add reminder to..."). "add reminder to renew my license tomorrow"
+  // drifts the same way — the trailing task/time nouns dominate the vector.
+  { intent: 'system.reminders.create', pattern: /^add\s+(?:an?\s+)?reminder\b/i },
   // "alarm" / "set alarm" / "set an alarm" — these are alternative spellings for reminder create
   // and can drift to chit-chat (alarm → time/date) or dead-end without a pin.
   { intent: 'system.reminders.create', pattern: /^(?:set\s+(?:an?\s+)?alarm|alarm)\b/i },

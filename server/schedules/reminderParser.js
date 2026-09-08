@@ -12,7 +12,12 @@
 
 import * as chrono from 'chrono-node';
 
-const PREFIX_RE = /^(?:remind me to|remind me about|remind me|set a reminder to|set a reminder for|set a reminder|set an? alarm|alarm)\b/i;
+// D-8 (2026-09-08): "add reminder to X" / "add a reminder to X" is the exact phrasing
+// the user asked for by name ("I should be able to type add reminder to... and it
+// works") — previously unrecognized, so the literal words "add reminder to" would
+// have ended up INSIDE the stored reminder text instead of being stripped like every
+// other prefix here.
+const PREFIX_RE = /^(?:remind me to|remind me about|remind me|add an? reminder to|add an? reminder for|add an? reminder|set a reminder to|set a reminder for|set a reminder|set an? alarm|alarm)\b/i;
 
 const WEEKDAY_IDS = { sunday: 0, monday: 1, tuesday: 2, wednesday: 3, thursday: 4, friday: 5, saturday: 6 };
 
