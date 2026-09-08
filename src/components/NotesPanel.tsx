@@ -102,25 +102,59 @@ export function NotesPanel({ project, onSendMessage, tabId = null }: NotesPanelP
     }
   }, [project?.id, fetchNotes]);
 
-  const send = (text: string) => {
-    onSendMessage(text, { source: 'panel', tool: 'notes' });
-    setLastSent(text);
+  // D-7 (2026-09-08): create/delete now hit the direct REST endpoints in noteRoutes.js
+  // instead of composing a chat trigger phrase — the panel no longer round-trips through
+  // the WS/matcher pipeline or leaves a create/delete confirmation bubble in the chat
+  // transcript. `lastSent`/`lastSentTimer` are kept for the panel's own inline confirmation
+  // (a small "Saved"/"Deleted" flash), decoupled from onSendMessage.
+  const flashSent = (label: string) => {
+    setLastSent(label);
     if (lastSentTimer.current) clearTimeout(lastSentTimer.current);
     lastSentTimer.current = setTimeout(() => setLastSent(null), 8000);
+  };
+
+  // "Set reminder" (creating a schedule linked to this note) is not part of this pass —
+  // reminder creation still goes through the chat pipeline (its own direct-REST migration,
+  // if warranted, is separate scope from the notes create/delete work here).
+  const sendChatPhrase = (text: string) => {
+    onSendMessage(text, { source: 'panel', tool: 'notes' });
     setTimeout(fetchNotes, 1200);
+  };
+
+  const createNote = async (text: string) => {
+    if (!project?.id) return;
+    const result = await apiFetchJson<{ success: boolean; data?: string; error?: string }>(
+      projectApi(`/api/projects/${encodeURIComponent(project.id)}/notes`, tabId),
+      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text }) }
+    );
+    if (!result) { setError('Could not reach the server.'); return; }
+    if (!result.success) { setError(result.error || 'Could not save the note.'); return; }
+    setError(null);
+    flashSent(result.data || 'Note saved.');
+    fetchNotes();
   };
 
   const handleAdd = () => {
     const trimmed = newInput.trim();
     if (!trimmed) return;
-    send(/^note\s*:/i.test(trimmed) ? trimmed : `note: ${trimmed}`);
+    createNote(trimmed.replace(/^note\s*:\s*/i, ''));
     setNewInput('');
   };
 
-  const handleDelete = () => {
-    if (!selected) return;
-    send(`delete note: ${selected.text.split('\n')[0]}`);
+  const handleDelete = async () => {
+    if (!selected || !project?.id) return;
+    const noteText = selected.text.split('\n')[0];
+    const result = await apiFetchJson<{ success: boolean; data?: string; error?: string; removedReminders?: number }>(
+      projectApi(`/api/projects/${encodeURIComponent(project.id)}/notes`, tabId),
+      { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: noteText }) }
+    );
+    if (!result) { setError('Could not reach the server.'); return; }
+    if (!result.success) { setError(result.error || 'Could not delete the note.'); return; }
+    setError(null);
+    const linkedHint = result.removedReminders ? ` (and ${result.removedReminders} linked reminder${result.removedReminders > 1 ? 's' : ''})` : '';
+    flashSent(`Deleted: ${result.data}${linkedHint}`);
     setSelectedText(null);
+    fetchNotes();
   };
 
   // Phase 4: rich text toolbar — inserts markdown syntax at cursor position in the editor.
@@ -146,13 +180,14 @@ export function NotesPanel({ project, onSendMessage, tabId = null }: NotesPanelP
     const trimmed = editDraft.trim();
     setEditDraft(null);
     if (!trimmed || trimmed === selected?.text) return;
-    send(`note: ${trimmed}`);
+    createNote(trimmed);
   };
 
+  // Search is already a live client-side filter over the fetched list (see `filtered`
+  // below) — there is no server round-trip to make here at all, chat-routed or REST. Enter
+  // just blurs the input; the filter has already been applying as the user types.
   const handleSearch = () => {
-    const q = filter.trim();
-    if (!q) return;
-    send(`search my notes for ${q}`);
+    (document.activeElement as HTMLElement | null)?.blur();
   };
 
   const filtered = useMemo(() => {
@@ -189,6 +224,11 @@ export function NotesPanel({ project, onSendMessage, tabId = null }: NotesPanelP
       </div>
 
       {error && <p className="text-xs px-4 py-1.5 text-accent-red">{error}</p>}
+      {/* D-7: inline confirmation for a direct-REST create/delete — no chat bubble to check
+          instead, so the panel needs to say what happened itself. */}
+      {!error && lastSent && (
+        <p className="text-xs px-4 py-1.5 text-accent-green">{lastSent}</p>
+      )}
 
       <div className="flex-1 min-h-0 flex flex-col sm:flex-row">
         {/* Left list rail — 240px, --overlay, flat rows on --border-faint separators */}
@@ -339,7 +379,7 @@ export function NotesPanel({ project, onSendMessage, tabId = null }: NotesPanelP
                 open={composerOpen}
                 initialText={`see the note: ${selected.text.split('\n')[0].slice(0, 60)}`}
                 onClose={() => setComposerOpen(false)}
-                onSave={(phrase) => { setComposerOpen(false); send(phrase); }}
+                onSave={(phrase) => { setComposerOpen(false); sendChatPhrase(phrase); }}
               />
             </>
           ) : (

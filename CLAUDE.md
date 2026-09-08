@@ -59,8 +59,8 @@ re-reading from scratch or re-deriving the plan.
   across 9 panels, the port-probing consolidation across desktop/CLI/daemon), the rest of B.3,
   and B.4's naming/comment-length audit. This is the largest remaining phase — chunk it across
   many commits, one dedup/split target per commit, not one giant pass.
-- **Phase D: started.** D-1 done (see below). D-2 and D-3 done (see below). D-8 done (see
-  below). D-5 and D-6 done (see below). D-4 done (new `server/intentVectorCache.js`: hashes the model id +
+- **Phase D: started.** D-7 begun (notes slice done, see below). D-1 done (see below). D-2
+  and D-3 done (see below). D-8 done (see below). D-5 and D-6 done (see below). D-4 done (new `server/intentVectorCache.js`: hashes the model id +
   every intent/phrase pair, persists the batch-embed output to
   `data/.cache/intent-vectors.json` via `writeFileAtomicSync`, and `semanticMatcherInit.js`
   now checks it before running the ~2500-phrase batch embed — a cache hit skips essentially
@@ -68,7 +68,7 @@ re-reading from scratch or re-deriving the plan.
   full recompute + re-save, so this can never serve stale vectors). `.gitignore` gained
   `data/.cache/` (the model download cache at `.cache/xenova` was already ignored via
   `.cache/`, but `data/.cache/` needed its own line since `data/` isn't blanket-ignored).
-  **Still open**: D-7 ("the single most impactful latency fix" per the master prompt — migrate mutating
+  **Still open**: the rest of D-7 (see below) — D-1 through D-6 and D-8 are all done ("the single most impactful latency fix" per the master prompt — migrate mutating
   panel actions to direct REST+journal instead of round-tripping through the chat/WS
   pipeline). D-6 verified: both historical CLI-crash root
   causes (`server/index.js`'s dynamic `import('vite')`, `server/pdfKit.js`'s lazy/guarded
@@ -130,6 +130,33 @@ re-reading from scratch or re-deriving the plan.
   regardless of which view (chat/dashboard/tools/command-ref) the arriving tab restores
   into, so one insertion point covers all of them; a deeper per-pane skeleton was judged
   not worth the added prop-threading for this fix.
+  D-7 begun — notes slice done (`server/routes/noteRoutes.js`, `src/components/
+  NotesPanel.tsx`): create and delete now hit direct `POST`/`DELETE /api/projects/:id/notes`
+  endpoints calling the exact same `notesStore.js` functions (`appendNote`/`deleteNote`) the
+  chat handlers in `builtinNotes.js` already used, including the delete path's Phase 2.2
+  linked-reminder cleanup (a note's chat-path behavior and its REST-path behavior must never
+  diverge, and now share nothing but the entry point that reaches them). The panel's search
+  bar turned out to be an ALREADY-real client-side filter over the fetched list — its
+  `handleSearch` was needlessly also sending a redundant `search my notes for ...` chat
+  message on Enter for no functional reason; that round-trip is removed, Enter just blurs
+  the input now. Note create/delete no longer leave any chat-transcript bubble; the panel
+  shows its own inline "Note added"/"Deleted: ..." confirmation instead (`lastSent` state
+  existed before this change but was never actually rendered — a pre-existing dead-state gap
+  matching every sibling panel's real "Sent: ... — follow in chat" banner; now rendered).
+  Reminder creation from a note ("Set reminder" button) is UNCHANGED — still chat-routed —
+  since reminders' own direct-REST migration is separate scope from this notes-focused slice.
+  Incidental fix: `noteRoutes.js` had a stray non-UTF-8 byte in its header comment (the same
+  class of encoding drift `CLAUDE.md`'s "Encoding hygiene" section documents elsewhere) —
+  gone now that the file was rewritten as clean UTF-8.
+  **Still open in D-7**: the rest of the mutating panels named in the master prompt
+  (`PdfToolsPanel`, `FileToolsPanel`, `RemindersPanel`, `FolderExplorerPanel`, `Dashboard`,
+  and any other chat-routed panel action), and the Spreadsheet panel's dual-write
+  inconsistency (direct fetch for table data + a separate chat-phrase send purely to create a
+  journal entry) called out explicitly in the master prompt as needing to be resolved one way
+  or the other. Do these one panel per commit, same pattern as this one: read the chat
+  handler's exact behavior first (including any non-obvious side effects like the linked-
+  reminder cleanup found here), replicate it faithfully in a direct REST endpoint, then
+  update the panel to call it.
 - Phases C, E, F, G, H, I, J, L: **not started.**
 
 **Verification caveat carried across all of the above**: everything was checked with
@@ -148,12 +175,23 @@ before implementing a fix the doc describes — grep/read first, don't blind-pat
 doc's line numbers, which may already be stale.
 
 **Environment note for whoever runs this from a bridged/non-Windows shell**: this repo's
-`node_modules` is Windows-native (esbuild/tsc `.bin` shims point at `node.exe`), so `npm
-test`, `npm run lint`, and the `.husky/pre-commit` hook all fail in a Linux shell with an
-unrelated platform-mismatch error, not a real code problem. Verify edits with `node --check
-<file>` in that case and get a real signal by running `npm test`/`npm run lint` natively in
-Windows PowerShell before trusting further commits. Don't run `npm install` from a Linux
-shell against this tree — it will corrupt the Windows-native `node_modules`.
+`node_modules` is Windows-native, so the `.bin/tsc` and `.bin/vitest`/`tsx` SHELL SHIMS point
+at `node.exe` and fail immediately (`exec: node.exe: not found`) — this broke `npm run lint`
+and `.husky/pre-commit` for the whole session until 2026-09-08's Phase D work found the
+workaround below. **`npm run lint` (== `tsc --noEmit`) now actually works from this shell**:
+bypass the broken shim by invoking the real entry point with the Linux `node` binary
+directly — `node node_modules/typescript/lib/tsc.js --noEmit -p .` — since `tsc` itself is
+pure TypeScript with no native binary, only its `.bin` wrapper script is architecture-
+specific. Every commit from D-1 onward in this session was verified this way (exit code 0,
+no output). `npm test` is still genuinely blocked here (not just a shim issue): `tsx`'s
+transitive `esbuild` dependency ships a real platform-specific native binary
+(`@esbuild/win32-x64` present, `@esbuild/linux-x64` needed), so `node --import tsx --test
+...` fails for real regardless of how it's invoked — there is no equivalent workaround for
+this one, it needs to run on Windows. `npx vite build` is untested from this shell for the
+same native-binary reason (Vite's own esbuild/rollup native deps). Don't run `npm install`
+from a Linux shell against this tree — it will corrupt the Windows-native `node_modules`.
+For anything besides lint, still get a real signal by running `npm test`/`npx vite build`
+natively in Windows PowerShell before fully trusting further commits.
 
 **Git workflow**: work in small, frequent commits per Ground Rule #1 in the master prompt
 (several sessions may run against this over the same period). `git push` needs credentials
