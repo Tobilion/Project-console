@@ -8,6 +8,7 @@ import fs from 'fs/promises';
 import path from 'path';
 import { AsyncLocalStorage } from 'async_hooks';
 import { LEGACY_STORE_DIR, INDEX_PATH, projectSessionsDir } from './sessionPaths.js';
+import { log } from './logger.js';
 
 // Global persistence serialization chain: every read→mutate→write cycle over the index (and
 // the session meta files appended alongside it) runs through this so only one is in flight at
@@ -41,7 +42,14 @@ export function serializePersistence(fn) {
       persistenceHeld = false;
     }
   });
-  persistenceChain = next.catch(() => {});
+  persistenceChain = next.catch((err) => {
+    // K-2 (2026-09-08): this chain deliberately never rejects — one failed write must
+    // never wedge every later append behind it — but a silent catch previously hid
+    // real failures (disk full, read-only data/) even from the logs. Debug level only:
+    // this fires on every held-item failure, including ones already logged by the
+    // caller (writeIndex below logs its own failures at error level).
+    log.debug('[sessionIndex] a queued persistence operation failed:', err?.message);
+  });
   return next;
 }
 
@@ -96,7 +104,12 @@ export async function writeIndex(idx) {
   } catch {
     // Rename over an existing file can fail on some platforms if the target is briefly locked —
     // fall back to a direct write so the index is still persisted either way.
-    await fs.writeFile(INDEX_PATH, data).catch(() => {});
+    await fs.writeFile(INDEX_PATH, data).catch((err) => {
+      // K-2 (2026-09-08): both the rename and this fallback write failing means the index
+      // genuinely didn't persist (disk full, read-only data/) — the self-healing reconcile
+      // pass covers stale reads, but a silent double-failure here was invisible even in logs.
+      log.error('[sessionIndex] writeIndex: rename and fallback write both failed:', err?.message);
+    });
   }
 }
 

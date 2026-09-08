@@ -247,7 +247,7 @@ async function handleExecuteBody(ws, parsed, sessionContext) {
     if (trimmed.length <= 20 && AI_ACK_RE.test(trimmed)) {
       ws.send(JSON.stringify({ type: 'answer', data: 'Got it — anything else?' }));
       if (sessionContext.currentSessionId) {
-        appendMessage(sessionContext.currentSessionId, { role: 'bot', content: 'Got it — anything else?', isMarkdown: true }).catch(() => {});
+        appendMessage(sessionContext.currentSessionId, { role: 'bot', content: 'Got it — anything else?', isMarkdown: true }).catch((err) => logger.error('[connectionExecute] failed to persist ack reply:', err?.message));
       }
       return;
     }

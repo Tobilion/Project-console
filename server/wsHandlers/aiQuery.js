@@ -216,7 +216,7 @@ export async function handleAIQuery(ws, project, input, sessionContext, workspac
           const stallMsg = finalText.trim()
             ? `${finalText.trim()}\n\n_(Response stalled and was aborted after 120s.)_`
             : '_(AI response stalled and was aborted after 120s — no text was generated. Try again with a shorter or simpler question.)_';
-          appendMessage(sessionContext.currentSessionId, { role: 'bot', content: stallMsg, isMarkdown: true }).catch(() => {});
+          appendMessage(sessionContext.currentSessionId, { role: 'bot', content: stallMsg, isMarkdown: true }).catch((err) => log.error('[aiQuery] failed to persist stall marker:', err?.message));
         }
       }
     } else {
@@ -282,7 +282,7 @@ export async function handleAIQuery(ws, project, input, sessionContext, workspac
     // Persist the final assistant text explicitly — token/stream events aren't auto-saved
     // the way single 'answer' messages are (see the ws.send interceptor in wsHandlers/connection.js).
     if (sessionContext.currentSessionId && finalText.trim()) {
-      appendMessage(sessionContext.currentSessionId, { role: 'bot', content: finalText.trim(), isMarkdown: true }).catch(() => {});
+      appendMessage(sessionContext.currentSessionId, { role: 'bot', content: finalText.trim(), isMarkdown: true }).catch((err) => log.error('[aiQuery] failed to persist final answer:', err?.message));
     }
   } catch (err) {
     metrics.inc('ai_query.post_error');

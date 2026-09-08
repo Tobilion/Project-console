@@ -14,6 +14,7 @@ import path from 'path';
 import { writeFileAtomicSync } from '../atomicWrite.js';
 import { broadcast } from '../wsServer.js';
 import { ensureConsoleConfigGitignored } from '../sessionMigration.js';
+import { log as logger } from '../logger.js';
 
 export async function handleModeCommand(ws, project, lowerInput) {
   const switchMatch = lowerInput.match(/^switch\s+to\s+(developer|general)\s+mode$/);
@@ -62,7 +63,7 @@ function setWorkspaceType(project, mode) {
   // Keep the console's own bookkeeping out of the user's commits: gitignore the file unless
   // they already track it deliberately (see ensureConsoleConfigGitignored — Matchday-Exchange
   // live session 2026-08-14). Fire-and-forget; a gitignore failure must not fail the switch.
-  void ensureConsoleConfigGitignored(project.path).catch(() => {});
+  void ensureConsoleConfigGitignored(project.path).catch((err) => logger.error('[connectionModeAdmin] failed to gitignore console.config.json:', err?.message));
 
   // Update in-memory state immediately so this session's next suggestion/help call sees the
   // new mode; the config file watcher's rescan then re-derives the whole project object from
