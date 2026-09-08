@@ -41,7 +41,6 @@ interface RemindersPanelProps {
 }
 
 const POLL_MS = 15000;
-const REFETCH_AFTER_SEND_MS = 1400;
 const END_OF_TODAY = () => {
   const d = new Date();
   d.setHours(23, 59, 59, 999);
@@ -165,13 +164,44 @@ export function RemindersPanel({ project, onSendMessage }: RemindersPanelProps) 
     };
   }, [fetchReminders]);
 
-  const send = (text: string) => {
-    // Panel-originated: queues like any other send but renders collapsed in chat.
-    onSendMessage(text, { source: 'panel', tool: 'reminders' });
-    setLastSent(text);
+  // D-7 (2026-09-08): create/cancel now hit direct REST endpoints (reminderRoutes.js)
+  // instead of composing a chat trigger phrase. builtinReminders.js's handlers were never
+  // confirm-gated or journaled to begin with (plain scheduleStore.js calls), so there was
+  // no safety contract to preserve beyond calling the exact same parseReminderInput /
+  // addSchedule / removeScheduleById functions, which the REST endpoints do directly.
+  const flashSent = (label: string) => {
+    setLastSent(label);
     if (lastSentTimer.current) clearTimeout(lastSentTimer.current);
     lastSentTimer.current = setTimeout(() => setLastSent(null), 8000);
-    setTimeout(fetchReminders, REFETCH_AFTER_SEND_MS);
+  };
+
+  const createReminder = async (phrase: string): Promise<boolean> => {
+    const result = await apiFetchJson<{ ok: boolean; error?: string; schedule?: { id: string; text: string; label?: string; type: string } }>(
+      '/api/reminders',
+      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ phrase, projectId: project?.id }) }
+    );
+    if (!result) { setError('Could not reach the server.'); return false; }
+    if (!result.ok) { setError(result.error || 'Could not create the reminder.'); return false; }
+    setError(null);
+    const s = result.schedule;
+    flashSent(s?.type === 'todo'
+      ? `Added to your list \u{1F4CB} \u2014 ${s.id}: "${s.text}"`
+      : `Reminder set \u{1F514} \u2014 ${s?.id}: ${s?.label ?? ''} \u2192 "${s?.text}"`);
+    fetchReminders();
+    return true;
+  };
+
+  const cancelReminder = async (id: string): Promise<boolean> => {
+    const result = await apiFetchJson<{ ok: boolean; error?: string; removed?: { id: string; text: string } }>(
+      `/api/reminders/${encodeURIComponent(id)}`,
+      { method: 'DELETE' }
+    );
+    if (!result) { setError('Could not reach the server.'); return false; }
+    if (!result.ok) { setError(result.error || 'Could not cancel the reminder.'); return false; }
+    setError(null);
+    flashSent(`Cancelled ${result.removed?.id ?? id}.`);
+    fetchReminders();
+    return true;
   };
 
   // Quick-add supports both forms: a full trigger phrase ("remind me tomorrow at 9am to call
@@ -183,7 +213,7 @@ export function RemindersPanel({ project, onSendMessage }: RemindersPanelProps) 
     const phrase = /^(remind\s+me\b|set\s+a\s+reminder\b)/i.test(trimmed)
       ? trimmed
       : `remind me ${trimmed}`;
-    send(phrase);
+    createReminder(phrase);
     setNewInput('');
   };
 
@@ -192,17 +222,16 @@ export function RemindersPanel({ project, onSendMessage }: RemindersPanelProps) 
     if (!r) return;
     setCompleting((prev) => new Set(prev).add(id));
     // Undo-after-complete via the shared toast store (2026-08-24): cancel is destructive, so
-    // completing offers an 8s Undo that re-creates the same reminder ("cancel reminder <id>"
-    // restores it via the same chat path the row used).
+    // completing offers an 8s Undo that re-creates the same reminder.
     const spec = undoSpec(r);
     addToast({
       title: 'Reminder completed',
       description: r.text,
       actionLabel: 'Undo',
       duration: 8000,
-      onAction: () => send(spec),
+      onAction: () => createReminder(spec),
     });
-    send(`cancel reminder ${id}`);
+    cancelReminder(id);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -338,10 +367,10 @@ export function RemindersPanel({ project, onSendMessage }: RemindersPanelProps) 
     setComposerEditingId(editingId);
     setComposerOpen(true);
   };
-  const handleComposerSave = (phrase: string) => {
+  const handleComposerSave = async (phrase: string) => {
     setComposerOpen(false);
-    if (composerEditingId) send(`cancel reminder ${composerEditingId}`);
-    send(phrase);
+    if (composerEditingId) await cancelReminder(composerEditingId);
+    await createReminder(phrase);
     if (!composerEditingId) setNewInput('');
   };
 
@@ -412,8 +441,8 @@ export function RemindersPanel({ project, onSendMessage }: RemindersPanelProps) 
         </div>
 
         {lastSent && (
-          <div className="mb-3 text-[12px] px-2" style={{ color: 'var(--rm-blue)' }}>
-            Sent: <code className="font-mono text-[11px]">{lastSent}</code> — follow the result in chat below.
+          <div className="mb-3 text-[12px] px-2" style={{ color: 'var(--color-accent-green)' }}>
+            {lastSent}
           </div>
         )}
 

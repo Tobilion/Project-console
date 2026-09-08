@@ -68,7 +68,7 @@ re-reading from scratch or re-deriving the plan.
   full recompute + re-save, so this can never serve stale vectors). `.gitignore` gained
   `data/.cache/` (the model download cache at `.cache/xenova` was already ignored via
   `.cache/`, but `data/.cache/` needed its own line since `data/` isn't blanket-ignored).
-  **Still open**: RemindersPanel/FolderExplorerPanel/Dashboard of D-7 (see below) — D-1 through D-6 and D-8 are all done ("the single most impactful latency fix" per the master prompt — migrate mutating
+  **Still open**: FolderExplorerPanel/Dashboard of D-7 (see below) — D-1 through D-6 and D-8 are all done ("the single most impactful latency fix" per the master prompt — migrate mutating
   panel actions to direct REST+journal instead of round-tripping through the chat/WS
   pipeline). D-6 verified: both historical CLI-crash root
   causes (`server/index.js`'s dynamic `import('vite')`, `server/pdfKit.js`'s lazy/guarded
@@ -212,12 +212,33 @@ re-reading from scratch or re-deriving the plan.
   `onSendMessage` stays in the props contract, unused in the body now (same as
   `SpreadsheetPanel`'s already-established precedent) since `ToolsPanel.tsx`'s shared call
   site passes it uniformly to every panel.
-  **Still open in D-7**: `RemindersPanel`, `FolderExplorerPanel`, `Dashboard`. Same pattern
-  each time: read the chat handler's exact behavior first (including non-obvious side
-  effects), replicate faithfully in a direct REST endpoint preserving any confirm/checkpoint/
-  journal contract, then update the panel to call it — and double-check any new failure
-  response actually reaches the frontend's error branch through `apiFetchJson`'s null-on-
-  non-2xx behavior (the bug just found and fixed above).
+  RemindersPanel done next (`server/routes/reminderRoutes.js`, `src/components/
+  RemindersPanel.tsx`): the simplest D-7 case so far — `builtinReminders.js`'s create/cancel
+  handlers were never confirm-gated or journaled to begin with (plain `scheduleStore.js`
+  calls, no checkpoint, no `appendAction`), so there was no safety contract to replicate,
+  only the exact same functions to call directly. New `POST /api/reminders` `{ phrase,
+  projectId? }` runs the identical `parseReminderInput` + linked-note detection +
+  `addSchedule` sequence the chat handler runs (reusing the parser means a phrase can never
+  parse differently between the two paths — the panel's quick-add and its `ReminderComposer`
+  already produce the same chat-shaped phrases, e.g. "remind me tomorrow at 9am to call the
+  dentist", so no new parsing logic was needed anywhere); `DELETE /api/reminders/:id` mirrors
+  `system.reminders.cancel`'s id-resolution rules (bare numeric ids get the `s`-prefix
+  rewrite, a command-schedule id is refused with the same message). Both return
+  `{ ok: false, error }` on failure at HTTP 200 (not `res.status(400)`), applying the
+  `apiFetchJson` lesson from the PdfToolsPanel commit up front. The undo-after-complete
+  toast (`onAction`) and the composer's edit-as-cancel+recreate flow both now call
+  `createReminder`/`cancelReminder` directly instead of composing a phrase for
+  `onSendMessage`. One accepted regression, out of scope for this pass: LAN multi-user
+  attribution (`createdBy`) — the chat path reads `sessionContext.displayName`, which a
+  stateless REST call doesn't have, so REST-created reminders always attribute to `'local'`;
+  this only differs from the chat path on a `HOST=0.0.0.0` LAN setup with multiple named
+  users, which is itself a labeled non-goal in CLAUDE.md's identity/attribution section.
+  **Still open in D-7**: `FolderExplorerPanel`, `Dashboard`. Same pattern each time: read the
+  chat handler's exact behavior first (including non-obvious side effects), replicate
+  faithfully in a direct REST endpoint preserving any confirm/checkpoint/journal contract,
+  then update the panel to call it — and double-check any new failure response actually
+  reaches the frontend's error branch through `apiFetchJson`'s null-on-non-2xx behavior (the
+  bug found and fixed in the FileToolsPanel commit).
 - Phases C, E, F, G, H, I, J, L: **not started.**
 
 **Verification caveat carried across all of the above**: everything was checked with

@@ -1,9 +1,16 @@
 // Phase 4 (UPGRADE-ROADMAP.md, 2026-08-12): REST surface for the Reminders panel — the
 // read-only list endpoint the interactive panel uses for its Today/Upcoming/All sections.
-// Mutations (create/complete/cancel) go through the normal WS trigger-command path so
-// confirmation, journaling, and the terminal stay the single source of truth (same contract
-// as the PDF Tools panel's REST read-only endpoints).
-import { getSchedules } from '../schedules/scheduleStore.js';
+// D-7 (2026-09-08): reminders were never confirm-gated or journaled (unlike tidy/pdf ops) —
+// builtinReminders.js's create/cancel handlers are plain scheduleStore.js calls with no
+// checkpoint, no appendAction — so there is no safety contract to replicate here beyond
+// calling the exact same functions. POST/DELETE below do exactly that, skipping only the
+// WS/matcher round-trip; parseReminderInput still does all the natural-language parsing
+// (the panel's composer/quick-add already produce chat-shaped phrases, e.g. "remind me
+// tomorrow at 9am to call the dentist" — reusing the same parser means create behavior can
+// never diverge between the chat and panel paths).
+import { getSchedules, addSchedule, getScheduleById, removeScheduleById } from '../schedules/scheduleStore.js';
+import { parseReminderInput } from '../schedules/reminderParser.js';
+import { resolveProject } from '../state.js';
 
 export function registerReminderRoutes(app) {
   app.get('/api/reminders', (req, res) => {
@@ -27,5 +34,47 @@ export function registerReminderRoutes(app) {
         linkedNoteText: s.linkedNoteText ?? null,
       }));
     res.json({ reminders });
+  });
+
+  // Create — mirrors builtinReminders.js's system.reminders.create exactly (same
+  // parseReminderInput + linkedNoteText detection + addSchedule call), just reached directly
+  // instead of via the chat matcher. Body: { phrase, projectId? } — projectId lets a REST
+  // caller attribute the reminder to the active project the way the chat path's dispatched
+  // `project` argument does; falls back to the general workspace when omitted.
+  app.post('/api/reminders', (req, res) => {
+    const phrase = typeof req.body?.phrase === 'string' ? req.body.phrase : '';
+    if (!phrase.trim()) return res.json({ ok: false, error: 'Missing phrase.' });
+    const parsed = parseReminderInput(phrase);
+    if (!parsed.ok) return res.json({ ok: false, error: parsed.reason });
+    const project = resolveProject(req.body?.projectId, req.query.tab) || resolveProject('__general__');
+    const noteMatch = parsed.text.match(/^(?:see|check|read|open|review)\s+(?:the\s+)?(?:my\s+)?note\s*(?::|about|for)?\s*(.+)/i);
+    const linkedNoteText = noteMatch ? noteMatch[1].trim() : null;
+    const schedule = addSchedule({
+      projectId: project?.id ?? null,
+      projectName: project?.name ?? null,
+      spec: parsed,
+      kind: 'reminder',
+      text: parsed.text,
+      fireAt: parsed.fireAt ?? null,
+      weekday: parsed.weekday ?? null,
+      firstFireAt: parsed.firstFireAt ?? null,
+      createdBy: 'local',
+      linkedNoteText,
+    });
+    res.json({ ok: true, schedule });
+  });
+
+  // Cancel — mirrors system.reminders.cancel's id-resolution rules (bare numeric ids get the
+  // `s`-prefix rewrite, a command-schedule id is refused with the same message).
+  app.delete('/api/reminders/:id', (req, res) => {
+    let id = req.params.id;
+    if (/^\d+$/.test(id)) id = `s${id}`;
+    const existing = getScheduleById(id);
+    if (existing && existing.kind !== 'reminder') {
+      return res.json({ ok: false, error: `"${id}" is a command schedule, not a reminder.` });
+    }
+    const removed = removeScheduleById(id);
+    if (!removed) return res.json({ ok: false, error: `No reminder "${id}".` });
+    res.json({ ok: true, removed });
   });
 }
