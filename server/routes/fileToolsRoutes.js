@@ -8,7 +8,8 @@ import path from 'path';
 import { resolveProject } from '../state.js';
 import { walkDir, isTextFile } from '../toolScan.js';
 import { createResolveSafe } from '../toolSandbox.js';
-import { findDuplicates, planTidy } from '../wsHandlers/builtinGeneralFiles.js';
+import { findDuplicates, planTidy, performTidy, performDuplicateDeletes, planDuplicateDeletes } from '../wsHandlers/builtinGeneralFiles.js';
+import { createCheckpoint } from '../gitSafety.js';
 import { asyncHandler } from '../asyncHandler.js';
 
 const MAX_LIST_ENTRIES = 500;
@@ -185,5 +186,38 @@ export function registerFileToolsRoutes(app) {
       };
     });
     res.json({ groups, skippedBig: result.skippedBig, totalWasted: result.totalWasted });
+  }));
+
+  // Tidy execution — same checkpoint + performTidy + appendAction journal sequence as
+  // connectionConfirm.js's generalFileOp branch (kind: 'tidy'), so 'revert action <id>' and
+  // the undo toast behave identically to the old chat-confirm path. Body: { moves: [{from,to}] }
+  // — the panel always sends back exactly the (possibly filtered) plan it fetched from
+  // /tidy-plan, never a client-invented move list, but every from/to still passes through
+  // createResolveSafe inside performTidy regardless.
+  app.post('/api/projects/:id/tidy', asyncHandler(async (req, res) => {
+    const project = findProject(req);
+    if (!project) return res.status(404).json({ error: 'Project not found' });
+    const moves = Array.isArray(req.body?.moves) ? req.body.moves : null;
+    if (!moves || moves.length === 0) return res.status(400).json({ error: 'Missing moves[].' });
+    await createCheckpoint(project.path, 'tidy this folder');
+    const result = await performTidy(project.path, moves);
+    if (!result.ok) return res.status(400).json({ error: result.error, moved: result.moved, actionIds: result.actionIds });
+    res.json({ ok: true, moved: result.moved, actionIds: result.actionIds });
+  }));
+
+  // Duplicate deletion — same checkpoint + performDuplicateDeletes + appendAction journal
+  // sequence as connectionConfirm.js's generalFileOp branch (kind: 'duplicates_delete').
+  // Body: { files: ['relative/path', ...] } — when omitted, deletes the full keep-newest plan
+  // (planDuplicateDeletes), matching the chat handler's bare 'delete duplicates, keep newest'.
+  app.post('/api/projects/:id/duplicates', asyncHandler(async (req, res) => {
+    const project = findProject(req);
+    if (!project) return res.status(404).json({ error: 'Project not found' });
+    const requested = Array.isArray(req.body?.files) ? req.body.files : null;
+    const files = requested && requested.length > 0 ? requested : await planDuplicateDeletes(project.path);
+    if (!files || files.length === 0) return res.status(400).json({ error: 'No duplicate files to delete.' });
+    await createCheckpoint(project.path, 'delete duplicates, keep newest');
+    const result = await performDuplicateDeletes(project.path, files);
+    if (!result.ok) return res.status(400).json({ error: result.error, deleted: result.deleted, actionIds: result.actionIds });
+    res.json({ ok: true, deleted: result.deleted, skippedJournal: result.skippedJournal, actionIds: result.actionIds });
   }));
 }

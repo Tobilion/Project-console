@@ -68,7 +68,7 @@ re-reading from scratch or re-deriving the plan.
   full recompute + re-save, so this can never serve stale vectors). `.gitignore` gained
   `data/.cache/` (the model download cache at `.cache/xenova` was already ignored via
   `.cache/`, but `data/.cache/` needed its own line since `data/` isn't blanket-ignored).
-  **Still open**: the rest of D-7 (see below) — D-1 through D-6 and D-8 are all done ("the single most impactful latency fix" per the master prompt — migrate mutating
+  **Still open**: PdfToolsPanel/RemindersPanel/FolderExplorerPanel/Dashboard of D-7 (see below) — D-1 through D-6 and D-8 are all done ("the single most impactful latency fix" per the master prompt — migrate mutating
   panel actions to direct REST+journal instead of round-tripping through the chat/WS
   pipeline). D-6 verified: both historical CLI-crash root
   causes (`server/index.js`'s dynamic `import('vite')`, `server/pdfKit.js`'s lazy/guarded
@@ -159,12 +159,33 @@ re-reading from scratch or re-deriving the plan.
   in the props contract (ToolsPanel.tsx's shared call site needs no special case) but is no
   longer called from inside this panel. Bonus: dropped an already-unused `CheckCircle2` icon
   import found while editing this file (pre-existing, unrelated to this fix).
-  **Still open in D-7**: the rest of the mutating panels named in the master prompt
-  (`PdfToolsPanel`, `FileToolsPanel`, `RemindersPanel`, `FolderExplorerPanel`, `Dashboard`).
-  Do these one panel per commit, same pattern as the notes slice: read the chat handler's
-  exact behavior first (including any non-obvious side effects like the linked-reminder
-  cleanup found there), replicate it faithfully in a direct REST endpoint, then update the
-  panel to call it.
+  FileToolsPanel's tidy + duplicates-delete done next (`server/routes/fileToolsRoutes.js`,
+  `src/components/FileToolsPanel.tsx`): this was the harder case flagged when the slice
+  began — unlike notes/CSV, `general.files.tidy`/`general.files.duplicates_delete` ARE
+  confirm-gated and journaled (`connectionConfirm.js`'s `generalFileOp` branch: a git
+  checkpoint via `createCheckpoint` first, then `performTidy`/`performDuplicateDeletes` from
+  `builtinGeneralFiles.js`, both already exported for exactly this reuse). The new
+  `POST /api/projects/:id/tidy` and `POST /api/projects/:id/duplicates` endpoints replicate
+  that exact sequence inline (checkpoint → perform → same `actionIds` shape on the response)
+  so `revert action <id>` and the undo toast behave identically to the old chat-confirm path
+  — nothing about the safety contract changed, only the transport. `tidy` takes `{ moves }`
+  (the panel always sends back the filtered plan it already fetched from `/tidy-plan`, but
+  every `from`/`to` still passes through `createResolveSafe` inside `performTidy` regardless
+  of what the client claims); `duplicates` POST takes `{ files }` and falls back to the full
+  keep-newest plan (`planDuplicateDeletes`) when omitted, matching the chat handler's bare
+  "delete duplicates, keep newest". The panel's `runTidy`/`runDupDelete` were already
+  confirm-equivalent UI (a preview table + an explicit Run button), so — same as Notes/CSV —
+  the WS round-trip was pure overhead; `send()` is gone, replaced by `flashSent()` (kept from
+  the notes-slice pattern) driving the same inline banner every sibling panel already has,
+  now correctly re-styled as a success flash (`text-accent-green`) instead of the old
+  "Sent ... — confirm or follow the result in the chat below" wording, which stopped making
+  sense once nothing is actually sent to chat. `onSendMessage` stays in the props contract
+  (still used by the unrelated `PreviewOverlay`'s "open in browser" button, and by
+  `ToolsPanel.tsx`'s shared call site) but is no longer called from the tidy/dedupe paths.
+  **Still open in D-7**: `PdfToolsPanel`, `RemindersPanel`, `FolderExplorerPanel`,
+  `Dashboard`. Same pattern each time: read the chat handler's exact behavior first
+  (including non-obvious side effects), replicate faithfully in a direct REST endpoint
+  preserving any confirm/checkpoint/journal contract, then update the panel to call it.
 - Phases C, E, F, G, H, I, J, L: **not started.**
 
 **Verification caveat carried across all of the above**: everything was checked with

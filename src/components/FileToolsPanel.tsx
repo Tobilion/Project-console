@@ -127,24 +127,51 @@ export function FileToolsPanel({ project, onSendMessage, tabId = null }: FileToo
     if (view === 'tidy' && project?.id) fetchTidyPlan(false);
   }, [view, project?.id]);
 
-  const runTidy = () => {
-    const files = [...tidySelected];
-    if (files.length === 0) return;
-    const verb = tidyByDate ? 'tidy this folder by date' : 'tidy this folder';
-    send(files.length === tidyPlan.length ? verb : `${verb}: ${files.join(', ')}`);
-  };
-
-  const runDupDelete = () => {
-    const files = [...dupSelected];
-    if (files.length === 0) return;
-    send(`delete duplicates, keep newest: ${files.join(', ')}`);
-  };
-
-  const send = (text: string) => {
-    onSendMessage(text);
-    setLastSent(text);
+  // D-7 (2026-09-08): tidy/duplicates-delete now hit direct REST endpoints (fileToolsRoutes.js)
+  // instead of composing a chat trigger phrase. The panel already renders its own preview
+  // (tidy-plan / duplicates) and its own confirm step (the Run button itself), so the old WS
+  // round-trip only added chat noise. The REST endpoints replicate the exact checkpoint +
+  // perform + appendAction journal sequence from connectionConfirm.js's generalFileOp branch,
+  // so 'revert action <id>' and the undo toast keep working identically.
+  const flashSent = (label: string) => {
+    setLastSent(label);
     if (lastSentTimer.current) clearTimeout(lastSentTimer.current);
     lastSentTimer.current = setTimeout(() => setLastSent(null), 8000);
+  };
+
+  const runTidy = async () => {
+    if (!project?.id) return;
+    const files = [...tidySelected];
+    if (files.length === 0) return;
+    const moves = tidyPlan.filter((m) => files.includes(m.from));
+    setLoading(true);
+    const result = await apiFetchJson<{ ok: boolean; moved?: number; error?: string; actionIds?: string[] }>(
+      projectApi(`/api/projects/${encodeURIComponent(project.id)}/tidy`, tabId),
+      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ moves }) }
+    );
+    setLoading(false);
+    if (!result) { setError('Could not reach the server.'); return; }
+    if (!result.ok) { setError(result.error || 'Could not tidy the folder.'); return; }
+    setError(null);
+    flashSent(`Moved ${result.moved ?? moves.length} file(s). Undo with "revert action <id>" or "show history".`);
+    fetchTidyPlan(tidyByDate);
+  };
+
+  const runDupDelete = async () => {
+    if (!project?.id) return;
+    const files = [...dupSelected];
+    if (files.length === 0) return;
+    setLoading(true);
+    const result = await apiFetchJson<{ ok: boolean; deleted?: number; error?: string; actionIds?: string[] }>(
+      projectApi(`/api/projects/${encodeURIComponent(project.id)}/duplicates`, tabId),
+      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ files }) }
+    );
+    setLoading(false);
+    if (!result) { setError('Could not reach the server.'); return; }
+    if (!result.ok) { setError(result.error || 'Could not delete the duplicates.'); return; }
+    setError(null);
+    flashSent(`Deleted ${result.deleted ?? files.length} file(s). Undo with "revert action <id>" or "show history".`);
+    fetchDuplicates();
   };
 
   const runBtn = 'flex items-center justify-center gap-1.5 text-xs font-bold rounded-lg px-3 py-2 bg-accent-blue text-white hover:opacity-90 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed';
@@ -204,9 +231,9 @@ export function FileToolsPanel({ project, onSendMessage, tabId = null }: FileToo
         <div className="flex-1 min-w-0 bg-panel overflow-y-auto p-4">
           <div className="max-w-4xl mx-auto">
             {lastSent && (
-              <div className="mb-3 flex items-start gap-2 text-[11px] text-fg-muted bg-scrim-faint border border-border-soft rounded-lg p-2.5">
-                <CheckCircle2 size={13} className="text-accent-blue mt-0.5 shrink-0" />
-                <span>Sent <code className="font-mono text-accent-blue">{lastSent}</code> — confirm or follow the result in the chat below.</span>
+              <div className="mb-3 flex items-start gap-2 text-[11px] text-accent-green bg-scrim-faint border border-border-soft rounded-lg p-2.5">
+                <CheckCircle2 size={13} className="mt-0.5 shrink-0" />
+                <span>{lastSent}</span>
               </div>
             )}
 
