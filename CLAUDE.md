@@ -59,8 +59,8 @@ re-reading from scratch or re-deriving the plan.
   across 9 panels, the port-probing consolidation across desktop/CLI/daemon), the rest of B.3,
   and B.4's naming/comment-length audit. This is the largest remaining phase — chunk it across
   many commits, one dedup/split target per commit, not one giant pass.
-- **Phase D: started.** D-2 and D-3 done (see below). D-8 done (see below). D-5 and D-6
-  done (see below). D-4 done (new `server/intentVectorCache.js`: hashes the model id +
+- **Phase D: started.** D-1 done (see below). D-2 and D-3 done (see below). D-8 done (see
+  below). D-5 and D-6 done (see below). D-4 done (new `server/intentVectorCache.js`: hashes the model id +
   every intent/phrase pair, persists the batch-embed output to
   `data/.cache/intent-vectors.json` via `writeFileAtomicSync`, and `semanticMatcherInit.js`
   now checks it before running the ~2500-phrase batch embed — a cache hit skips essentially
@@ -68,7 +68,7 @@ re-reading from scratch or re-deriving the plan.
   full recompute + re-save, so this can never serve stale vectors). `.gitignore` gained
   `data/.cache/` (the model download cache at `.cache/xenova` was already ignored via
   `.cache/`, but `data/.cache/` needed its own line since `data/` isn't blanket-ignored).
-  **Still open**: D-1 (tab-switch loading indicator), D-7 ("the single most impactful latency fix" per the master prompt — migrate mutating
+  **Still open**: D-7 ("the single most impactful latency fix" per the master prompt — migrate mutating
   panel actions to direct REST+journal instead of round-tripping through the chat/WS
   pipeline). D-6 verified: both historical CLI-crash root
   causes (`server/index.js`'s dynamic `import('vite')`, `server/pdfKit.js`'s lazy/guarded
@@ -114,6 +114,22 @@ re-reading from scratch or re-deriving the plan.
   re-syncs the tab/global project cache and broadcasts `projects_updated` once the real scan
   lands, matching the existing config-watcher's own broadcast pattern so open clients pick
   up the refresh without polling harder.
+  D-1 done (`src/hooks/useConsoleTabs.ts`, `src/components/AppMainView.tsx`,
+  `src/index.css`): the tab-switch "keep the previous tab's content visible while the new
+  one loads" behavior was intentional and stays (avoids a blank-flash) — the actual bug was
+  zero visible indication that a load was in flight, which read as "the click didn't
+  register" per the master prompt's own framing. `isTabSwitchingRef` (a ref, so it never
+  drove a render) now has a render-driving twin, `isTabSwitching` state, set/cleared via new
+  `beginTabSwitch()`/`endTabSwitch()` helpers at all four sites that used to toggle the ref
+  directly (`restoreTabs`, `activateTab`, `duplicateTab`, `openWorkspaceTab`). Threaded
+  through `useConsole.ts` → `App.tsx` → `AppMainView`, which renders a thin indeterminate
+  progress bar between the tab strip and the (still-stale) content — same visual language
+  as the existing toast-progress bar pattern, new `@keyframes tab-switch-progress` +
+  `.animate-tab-switch-progress` in `index.css`. Deliberately did not touch `Terminal.tsx`
+  or thread this further into the chat pane itself — the tab strip's bar is visible
+  regardless of which view (chat/dashboard/tools/command-ref) the arriving tab restores
+  into, so one insertion point covers all of them; a deeper per-pane skeleton was judged
+  not worth the added prop-threading for this fix.
 - Phases C, E, F, G, H, I, J, L: **not started.**
 
 **Verification caveat carried across all of the above**: everything was checked with

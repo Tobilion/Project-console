@@ -12,6 +12,10 @@ export interface AppMainViewProps {
   chatFullscreen: boolean;
   tabs: React.ComponentProps<typeof ProjectTabs>['tabs'];
   activeTabId: string | null;
+  // D-1 (2026-09-08): true while a tab switch is in flight — the previous tab's content
+  // stays visible during this window (deliberate, avoids a blank-flash), but with no
+  // indicator at all it read as "the click didn't register" rather than "it's loading".
+  isTabSwitching?: boolean;
   activeProjectName: string | null;
   activateTab: (id: string | null, preferredSessionId?: string | null) => void;
   duplicateTab: () => void;
@@ -42,7 +46,7 @@ export interface AppMainViewProps {
 
 export function AppMainView(props: AppMainViewProps) {
   const {
-    chatFullscreen, tabs, activeTabId, activeProjectName, activateTab, duplicateTab, closeTab,
+    chatFullscreen, tabs, activeTabId, activeProjectName, activateTab, duplicateTab, closeTab, isTabSwitching,
     showCommandRef, setShowCommandRef, toolsOpen, toolPanels, toolPanelsError, fetchToolPanels,
     activeToolPanel, handleOpenToolPanel, handleCloseTools, activeProject, handleSendMessage,
     aiEnabled, showDashboard, setShowDashboard, dashboardUpdateSignal, projects, workspaceTab,
@@ -63,6 +67,14 @@ export function AppMainView(props: AppMainViewProps) {
           onDuplicate={duplicateTab}
           onClose={closeTab}
         />
+      )}
+      {/* D-1: a thin indeterminate bar during a tab switch — the content below it is
+          intentionally still the PREVIOUS tab's (no blank flash), so this is the only
+          signal that a fresh load is actually in flight rather than stalled. */}
+      {isTabSwitching && (
+        <div className="h-[2px] flex-shrink-0 bg-accent-blue/20 overflow-hidden" aria-hidden="true">
+          <div className="h-full w-1/3 bg-accent-blue animate-tab-switch-progress" />
+        </div>
       )}
       {showCommandRef ? (
         <div className="flex-1 min-h-0 p-6">

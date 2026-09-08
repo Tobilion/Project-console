@@ -114,7 +114,7 @@ function App() {
     toolsOpen, setToolsOpen, activeToolPanel, setActiveToolPanel,
     toolPanels, toolPanelsError, fetchToolPanels,
     tabs, activeTabId, activateTab, duplicateTab, closeTab,
-    registerViewSync, isTabSwitchingRef,
+    registerViewSync, isTabSwitchingRef, isTabSwitching,
   } = useConsole();
 
   // Phase 5.1: header bell icon — unread notification count polled from the server's
@@ -392,6 +392,7 @@ function App() {
           activateTab={activateTab}
           duplicateTab={duplicateTab}
           closeTab={closeTab}
+          isTabSwitching={isTabSwitching}
           showCommandRef={showCommandRef}
           setShowCommandRef={setShowCommandRef}
           toolsOpen={toolsOpen}

@@ -448,5 +448,6 @@ export function useConsole() {
     closeTab: tabs.closeTab,
     registerViewSync: tabs.registerViewSync,
     isTabSwitchingRef: tabs.isTabSwitchingRef,
+    isTabSwitching: tabs.isTabSwitching,
   };
 }

@@ -104,8 +104,22 @@ export function useConsoleTabs(projects: ReturnType<typeof useProjects>) {
     restore: () => {},
   });
   // True while a tab switch is in flight — App's "General is tools-first" and per-project
-  // tool-panel effects must not overwrite a restored tab's view during the switch.
+  // tool-panel effects must not overwrite a restored tab's view during the switch. The ref
+  // is what effect-guard checks read (synchronous, no re-render lag); `isTabSwitching`
+  // (D-1, 2026-09-08) is the render-driving twin of the same flag, so the UI can actually
+  // show a loading state during the window instead of silently showing stale content with
+  // zero indication a switch is in flight (the previous behavior, deliberately kept for its
+  // "no blank flash" instinct — this fix keeps that and adds visibility on top of it).
   const isTabSwitchingRef = useRef(false);
+  const [isTabSwitching, setIsTabSwitching] = useState(false);
+  const beginTabSwitch = useCallback(() => {
+    isTabSwitchingRef.current = true;
+    setIsTabSwitching(true);
+  }, []);
+  const endTabSwitch = useCallback(() => {
+    isTabSwitchingRef.current = false;
+    setIsTabSwitching(false);
+  }, []);
 
   // Persist tab metadata (not the full project lists — those live server-side per tab).
   useEffect(() => {
@@ -172,7 +186,7 @@ export function useConsoleTabs(projects: ReturnType<typeof useProjects>) {
       : persisted[0]?.id ?? null;
     setActiveTabId(targetId);
     restoredRef.current = true;
-    isTabSwitchingRef.current = true;
+    beginTabSwitch();
     try {
       // Phase 6 (2026-08-17): restore every persisted tab's workspace CONCURRENTLY — the
       // serial loop paid one full server scan per tab back to back (N tabs x heavy roots =
@@ -199,7 +213,7 @@ export function useConsoleTabs(projects: ReturnType<typeof useProjects>) {
         viewSyncRef.current.restore({ view: targetTab.view, activeToolPanel: targetTab.activeToolPanel });
       }
     } finally {
-      isTabSwitchingRef.current = false;
+      endTabSwitch();
     }
   }, [projects]);
 
@@ -223,7 +237,7 @@ export function useConsoleTabs(projects: ReturnType<typeof useProjects>) {
     const tab = tabs.find((t) => t.id === tabId);
     const target = tab || { id: tabId, scanPath: '', activeProjectId: null, activeSessionId: null, view: 'chat', activeToolPanel: null };
     setActiveTabId(tabId);
-    isTabSwitchingRef.current = true;
+    beginTabSwitch();
     try {
       const fetched = await projects.fetchProjects(tabId);
       if (target.scanPath) projects.setScanPath(target.scanPath);
@@ -238,7 +252,7 @@ export function useConsoleTabs(projects: ReturnType<typeof useProjects>) {
       viewSyncRef.current.restore({ view: target.view, activeToolPanel: target.activeToolPanel });
       await sessionSwitcherRef.current({ ...target, activeSessionId: preferredSessionId ?? target.activeSessionId });
     } finally {
-      isTabSwitchingRef.current = false;
+      endTabSwitch();
     }
   }, [tabs, projects, snapshotActiveTab]);
 
@@ -262,7 +276,7 @@ export function useConsoleTabs(projects: ReturnType<typeof useProjects>) {
     };
     setTabs((prev) => [...prev, tab]);
     setActiveTabId(id);
-    isTabSwitchingRef.current = true;
+    beginTabSwitch();
     try {
       if (tab.scanPath) {
         await projects.scanNewPath(tab.scanPath, id).catch(() => {});
@@ -271,7 +285,7 @@ export function useConsoleTabs(projects: ReturnType<typeof useProjects>) {
       viewSyncRef.current.restore({ view: tab.view, activeToolPanel: tab.activeToolPanel });
       await sessionSwitcherRef.current(tab);
     } finally {
-      isTabSwitchingRef.current = false;
+      endTabSwitch();
     }
   }, [projects, getActiveTab, snapshotActiveTab]);
 
@@ -294,7 +308,7 @@ export function useConsoleTabs(projects: ReturnType<typeof useProjects>) {
     };
     setTabs((prev) => [...prev, tab]);
     setActiveTabId(id);
-    isTabSwitchingRef.current = true;
+    beginTabSwitch();
     try {
       // A folder that no longer exists must not strand the user on a broken tab — the scan
       // error is swallowed (the chat still opens from its own session files either way).
@@ -303,7 +317,7 @@ export function useConsoleTabs(projects: ReturnType<typeof useProjects>) {
       viewSyncRef.current.restore({ view: tab.view, activeToolPanel: tab.activeToolPanel });
       await sessionSwitcherRef.current({ ...tab, activeSessionId: preferredSessionId ?? null });
     } finally {
-      isTabSwitchingRef.current = false;
+      endTabSwitch();
     }
   }, [projects, snapshotActiveTab]);
 
@@ -342,6 +356,6 @@ export function useConsoleTabs(projects: ReturnType<typeof useProjects>) {
 
   return {
     tabs, activeTabId, restoreTabs, activateTab, duplicateTab, closeTab, openWorkspaceTab,
-    setSessionSwitcher, registerViewSync, isTabSwitchingRef, setActiveTabSession, setActiveTabProject, snapshotActiveTab,
+    setSessionSwitcher, registerViewSync, isTabSwitchingRef, isTabSwitching, setActiveTabSession, setActiveTabProject, snapshotActiveTab,
   };
 }

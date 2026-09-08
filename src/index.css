@@ -263,3 +263,14 @@ html, body {
   animation-timing-function: linear;
   animation-fill-mode: forwards;
 }
+
+/* Tab-switch loading indicator (D-1, 2026-09-08): an indeterminate bar that sweeps left to
+   right, shown above the still-visible-but-stale content of the tab being left while the
+   arriving tab's data loads. */
+@keyframes tab-switch-progress {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(300%); }
+}
+.animate-tab-switch-progress {
+  animation: tab-switch-progress 1.1s ease-in-out infinite;
+}
