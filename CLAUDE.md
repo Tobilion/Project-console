@@ -148,15 +148,23 @@ re-reading from scratch or re-deriving the plan.
   Incidental fix: `noteRoutes.js` had a stray non-UTF-8 byte in its header comment (the same
   class of encoding drift `CLAUDE.md`'s "Encoding hygiene" section documents elsewhere) —
   gone now that the file was rewritten as clean UTF-8.
+  Spreadsheet panel's dual-write also resolved (`src/components/SpreadsheetPanel.tsx`):
+  Sum/Average/Count/Filter already fetched their real result directly (GET csv-aggregate/
+  csv-filter, read-only), but ALSO sent the equivalent chat trigger phrase afterward purely
+  to leave a transcript record — no journal entry was ever created either path (CSV is
+  read-only by design, nothing to undo), so the chat send served no functional purpose at
+  all, just the "confusing dual-write" the master prompt named by description. Removed the
+  `send()`/`lastSent` machinery entirely; the panel's own result card/table is now the sole
+  source of truth, same as the Calculator panel it was modeled after. `onSendMessage` stays
+  in the props contract (ToolsPanel.tsx's shared call site needs no special case) but is no
+  longer called from inside this panel. Bonus: dropped an already-unused `CheckCircle2` icon
+  import found while editing this file (pre-existing, unrelated to this fix).
   **Still open in D-7**: the rest of the mutating panels named in the master prompt
-  (`PdfToolsPanel`, `FileToolsPanel`, `RemindersPanel`, `FolderExplorerPanel`, `Dashboard`,
-  and any other chat-routed panel action), and the Spreadsheet panel's dual-write
-  inconsistency (direct fetch for table data + a separate chat-phrase send purely to create a
-  journal entry) called out explicitly in the master prompt as needing to be resolved one way
-  or the other. Do these one panel per commit, same pattern as this one: read the chat
-  handler's exact behavior first (including any non-obvious side effects like the linked-
-  reminder cleanup found here), replicate it faithfully in a direct REST endpoint, then
-  update the panel to call it.
+  (`PdfToolsPanel`, `FileToolsPanel`, `RemindersPanel`, `FolderExplorerPanel`, `Dashboard`).
+  Do these one panel per commit, same pattern as the notes slice: read the chat handler's
+  exact behavior first (including any non-obvious side effects like the linked-reminder
+  cleanup found there), replicate it faithfully in a direct REST endpoint, then update the
+  panel to call it.
 - Phases C, E, F, G, H, I, J, L: **not started.**
 
 **Verification caveat carried across all of the above**: everything was checked with

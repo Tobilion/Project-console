@@ -1,5 +1,5 @@
 ﻿import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Table, RefreshCw, Send, CheckCircle2 } from 'lucide-react';
+import { Table, RefreshCw, Send } from 'lucide-react';
 import { apiFetchJson } from '../utils/apiFetch';
 import { projectApi } from '../utils/projectApi';
 import { ResultTable } from './spreadsheet/resultTable';
@@ -8,11 +8,17 @@ import type { Project } from '../types';
 
 // Phase 7 (UPGRADE-ROADMAP.md, 2026-08-12): the Spreadsheet panel — Apple Numbers/Sheets
 // reference (toolbar row above a real table: sticky header, zebra striping, hover rows,
-// sortable columns). Sum/Average/Count Run buttons compose the exact chat trigger command;
-// Filter renders the result in-panel from the same read-only csvTools.js path the chat
-// answer uses (GET /api/projects/:id/csv-filter), so the table and the terminal can never
-// diverge. Every evaluation still goes through the server-side CSV engine — no client-side
-// reimplementation.
+// sortable columns). Sum/Average/Count/Filter all render their result directly in the panel
+// from the same read-only csvTools.js path the chat answer uses (GET
+// /api/projects/:id/csv-aggregate / csv-filter), so a panel result and a chat answer can
+// never diverge. Every evaluation still goes through the server-side CSV engine — no
+// client-side reimplementation.
+// D-7 (2026-09-08): this used to ALSO send the equivalent chat trigger phrase after every
+// run purely to leave a transcript record — the master prompt called this out by name as a
+// "confusing dual-write" (direct fetch for the real data, a chat send for no functional
+// reason, since CSV queries are read-only and create no journal entry either path). Removed;
+// the panel's own result card/table is the single source of truth now, exactly like the
+// Calculator panel it was modeled after.
 
 interface CsvFile {
   path: string;
@@ -22,6 +28,9 @@ interface CsvFile {
 
 interface SpreadsheetPanelProps {
   project: Project | null;
+  // D-7 (2026-09-08): no longer called internally — Sum/Average/Count/Filter are all direct
+  // REST now (see the header comment). Kept in the props contract so ToolsPanel.tsx's call
+  // site (shared across every tool panel) doesn't need a special case for this one panel.
   onSendMessage: (text: string) => void;
   /** Phase T (2026-08-14): the tab whose workspace this panel's REST calls address. */
   tabId?: string | null;
@@ -42,18 +51,12 @@ export function SpreadsheetPanel({ project, onSendMessage, tabId = null }: Sprea
   const [filterValue, setFilterValue] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [lastSent, setLastSent] = useState<string | null>(null);
   const [table, setTable] = useState<{ headers: string[]; rows: string[][] } | null>(null);
   // Phase 5: file preview — first N rows + total row count, so the panel shows the data
   // before any query runs (previously a dead zone until Sum/Average/Count/Filter).
   const [preview, setPreview] = useState<{ headers: string[]; rows: string[][]; total: number; truncated: boolean } | null>(null);
   const [sortCol, setSortCol] = useState<number | null>(null);
   const [sortAsc, setSortAsc] = useState(true);
-  const lastSentTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // Clear the pending "last sent" timer on unmount so its delayed setState can't fire on a
-  // dead panel (and hold the panel's closure alive after it unmounted).
-  useEffect(() => () => { if (lastSentTimer.current) clearTimeout(lastSentTimer.current); }, []);
-
   const fetchFiles = useCallback(async () => {
     if (!project?.id) return;
     setLoading(true);
@@ -97,13 +100,6 @@ export function SpreadsheetPanel({ project, onSendMessage, tabId = null }: Sprea
     }
   }, [project?.id, tabId]);
 
-  const send = (text: string) => {
-    onSendMessage(text);
-    setLastSent(text);
-    if (lastSentTimer.current) clearTimeout(lastSentTimer.current);
-    lastSentTimer.current = setTimeout(() => setLastSent(null), 8000);
-  };
-
   // Phase 7 audit: Sum/Average/Count render a result card IN the panel (same aggregateColumn
   // path as the chat answer) instead of only saying "check the chat below".
   const [aggregate, setAggregate] = useState<{ op: string; value: number; count: number; column: string; file: string } | null>(null);
@@ -122,9 +118,6 @@ export function SpreadsheetPanel({ project, onSendMessage, tabId = null }: Sprea
     setError(null);
     setAggregate(data);
     setTable(null);
-    send(isCount
-      ? `count rows in ${selectedFile} where ${column} ${op} ${filterValue.trim()}`
-      : `${mode} column ${column} in ${selectedFile}`);
   }, [project?.id, selectedFile, column, mode, op, filterValue, tabId]);
 
   const runFilter = useCallback(async () => {
@@ -143,7 +136,6 @@ export function SpreadsheetPanel({ project, onSendMessage, tabId = null }: Sprea
     setError(null);
     setTable(data);
     setAggregate(null);
-    send(`filter ${selectedFile} where ${column} ${op} ${filterValue.trim()}`);
   }, [project?.id, selectedFile, column, op, filterValue, tabId]);
 
   const run = () => {
@@ -314,9 +306,6 @@ export function SpreadsheetPanel({ project, onSendMessage, tabId = null }: Sprea
               <span className="text-[11px] text-fg-dim">
                 The picked file's preview renders below; Sum/Average/Count/Filter replace it with their result.
               </span>
-              {lastSent && (
-                <span className="ml-3 text-[11px] text-accent font-mono">sent: {lastSent}</span>
-              )}
             </div>
           </>
         )}
