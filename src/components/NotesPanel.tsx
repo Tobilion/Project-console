@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { StickyNote, RefreshCw, Send, Search, FileText, Trash2, Bold, Italic, List, Code } from 'lucide-react';
 import { apiFetchJson } from '../utils/apiFetch';
 import { projectApi } from '../utils/projectApi';
+import { usePanelPolling, useFlashMessage } from '../hooks/usePanelPolling';
 import { cn } from '../lib/utils';
 import { EmptyState } from './ui/EmptyState';
 import { ReminderComposer } from './ReminderComposer';
@@ -41,7 +42,7 @@ export function NotesPanel({ project, onSendMessage, tabId = null }: NotesPanelP
   const [newInput, setNewInput] = useState('');
   const [filter, setFilter] = useState('');
   const [selectedText, setSelectedText] = useState<string | null>(null);
-  const [lastSent, setLastSent] = useState<string | null>(null);
+  const [lastSent, flashSent] = useFlashMessage();
   // Phase 5: in-place edit draft — the right-pane textarea was read-only with no way to
   // change a note. null = not editing; saves go through the normal `note:` trigger
   // (append path — the store's exact-dedupe makes an unchanged re-save a no-op, and an
@@ -50,10 +51,6 @@ export function NotesPanel({ project, onSendMessage, tabId = null }: NotesPanelP
   // Reminder composer popup — opened from the "Set reminder" button with the note's first
   // line prefilled, so the date/time can be set before anything hits chat.
   const [composerOpen, setComposerOpen] = useState(false);
-  const lastSentTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // Clear the pending "last sent" timer on unmount so its delayed setState can't fire on a
-  // dead panel (and hold the panel's closure alive after it unmounted).
-  useEffect(() => () => { if (lastSentTimer.current) clearTimeout(lastSentTimer.current); }, []);
 
   // Switching the selected note resets the draft so it never shows another note's text.
   const selectedTextRef = useRef<string | null>(null);
@@ -94,24 +91,13 @@ export function NotesPanel({ project, onSendMessage, tabId = null }: NotesPanelP
     setNotes(data.notes || []);
   }, [project?.id, tabId]);
 
-  useEffect(() => {
-    if (project?.id) {
-      fetchNotes();
-      const t = setInterval(fetchNotes, POLL_MS);
-      return () => clearInterval(t);
-    }
-  }, [project?.id, fetchNotes]);
+  usePanelPolling(fetchNotes, POLL_MS, !!project?.id);
 
   // D-7 (2026-09-08): create/delete now hit the direct REST endpoints in noteRoutes.js
   // instead of composing a chat trigger phrase — the panel no longer round-trips through
   // the WS/matcher pipeline or leaves a create/delete confirmation bubble in the chat
-  // transcript. `lastSent`/`lastSentTimer` are kept for the panel's own inline confirmation
-  // (a small "Saved"/"Deleted" flash), decoupled from onSendMessage.
-  const flashSent = (label: string) => {
-    setLastSent(label);
-    if (lastSentTimer.current) clearTimeout(lastSentTimer.current);
-    lastSentTimer.current = setTimeout(() => setLastSent(null), 8000);
-  };
+  // transcript. `flashSent` (shared hook, Phase B.2) drives the panel's own inline
+  // confirmation (a small "Saved"/"Deleted" flash), decoupled from onSendMessage.
 
   // "Set reminder" (creating a schedule linked to this note) is not part of this pass —
   // reminder creation still goes through the chat pipeline (its own direct-REST migration,

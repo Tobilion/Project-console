@@ -2,6 +2,7 @@
 import { FileText, RefreshCw, Download, FolderOpen, Send, CheckCircle2, ChevronUp, ChevronDown } from 'lucide-react';
 import { apiFetchJson } from '../utils/apiFetch';
 import { projectApi } from '../utils/projectApi';
+import { usePanelPolling, useFlashMessage } from '../hooks/usePanelPolling';
 import { cn } from '../lib/utils';
 import { EmptyState } from './ui/EmptyState';
 import type { Project } from '../types';
@@ -31,11 +32,7 @@ export function PdfToolsPanel({ project, onSendMessage, tabId = null }: PdfTools
   const [files, setFiles] = useState<PdfFileInfo[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [lastSent, setLastSent] = useState<string | null>(null);
-  const lastSentTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // Clear the pending "last sent" timer on unmount so its delayed setState can't fire on a
-  // dead panel (and hold the panel's closure alive after it unmounted).
-  useEffect(() => () => { if (lastSentTimer.current) clearTimeout(lastSentTimer.current); }, []);
+  const [lastSent, flashSent] = useFlashMessage();
 
   // Single-file picker used by split / extract-text / extract-pages / watermark.
   const [selected, setSelected] = useState<string>('');
@@ -97,12 +94,9 @@ export function PdfToolsPanel({ project, onSendMessage, tabId = null }: PdfTools
     setFiles([]);
     setSelected('');
     setMergeOrder([]);
-    if (project?.id) {
-      fetchFiles();
-      const t = setInterval(fetchFiles, POLL_MS);
-      return () => clearInterval(t);
-    }
-  }, [project?.id, fetchFiles]);
+  }, [project?.id]);
+
+  usePanelPolling(fetchFiles, POLL_MS, !!project?.id);
 
   // Selection must never point at a file that vanished from the list (a deleted/renamed PDF
   // would compose a command against a name the server can't resolve — harmless, but stale UI).
@@ -121,11 +115,6 @@ export function PdfToolsPanel({ project, onSendMessage, tabId = null }: PdfTools
   // pdfKit.js-call + journal sequence from connectionConfirm.js's pdfOp branch, so
   // 'revert action <id>' and the undo toast keep working identically. extract_text stays
   // read-only (no checkpoint) and now renders its preview inline instead of in a chat bubble.
-  const flashSent = (label: string) => {
-    setLastSent(label);
-    if (lastSentTimer.current) clearTimeout(lastSentTimer.current);
-    lastSentTimer.current = setTimeout(() => setLastSent(null), 8000);
-  };
 
   const [extractedText, setExtractedText] = useState<{ file: string; preview: string; pages: number } | null>(null);
 

@@ -54,11 +54,19 @@ re-reading from scratch or re-deriving the plan.
   connection.js`'s shim already has a proper explanatory docblock; `server/mockProjects.js`
   is imported by `server/index.js` and `projectRoutes.js`, not dead; `server/asyncHandler.js`
   is still needed since `express` is pinned at `^4.21.2` (v5 would make it obsolete, this repo
-  is on v4). **Still fully open**: B.1 (the ~15-file oversized-file split list), the rest of
-  B.2 (the `answer`-helper dedup across 60+ wsHandlers files, the panel-polling-scaffold dedup
-  across 9 panels, the port-probing consolidation across desktop/CLI/daemon), the rest of B.3,
-  and B.4's naming/comment-length audit. This is the largest remaining phase — chunk it across
-  many commits, one dedup/split target per commit, not one giant pass.
+  is on v4). B.2's panel-polling-scaffold dedup is now done (commit pending: new
+  `src/hooks/usePanelPolling.ts` exports `usePanelPolling(fetchFn, intervalMs, enabled?)` —
+  fetch-on-mount + setInterval + cleanup — and `useFlashMessage(durationMs?)` — a
+  self-clearing status string + its timer ref — replacing the hand-copied version of both in
+  `BackupPanel`/`NotesPanel`/`NotificationsPanel`/`ClipboardPanel`/`PdfToolsPanel`/
+  `RemindersPanel`/`FileToolsPanel`; `FileToolsPanel` also lost a dead, never-`setInterval`'d
+  `POLL_MS` constant it had declared but never used). **Still fully open**: B.1 (the ~15-file
+  oversized-file split list — note `NotificationsPanel.tsx`/`PdfToolsPanel.tsx`/
+  `RemindersPanel.tsx` are still over 400 lines after the dedup above, so they still need the
+  B.1 split pass separately), the rest of B.2 (the `answer`-helper dedup across 60+
+  wsHandlers files, the port-probing consolidation across desktop/CLI/daemon), the rest of
+  B.3, and B.4's naming/comment-length audit. This is the largest remaining phase — chunk it
+  across many commits, one dedup/split target per commit, not one giant pass.
 - **Phase D: complete** (D-1 through D-8 all done; D-7 deliberately excludes Dashboard's
   Run/Stop/Push, see below for why). D-1 done (see below). D-2
   and D-3 done (see below). D-8 done (see below). D-5 and D-6 done (see below). D-4 done (new `server/intentVectorCache.js`: hashes the model id +

@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { ListChecks, RefreshCw, Plus, Check, Send, Clock, SlidersHorizontal, Pencil } from 'lucide-react';
 import { apiFetchJson } from '../utils/apiFetch';
+import { usePanelPolling, useFlashMessage } from '../hooks/usePanelPolling';
 import { cn } from '../lib/utils';
 import { EmptyState } from './ui/EmptyState';
 import { addToast } from './ui/toastStore';
@@ -120,21 +121,14 @@ export function RemindersPanel({ project, onSendMessage }: RemindersPanelProps) 
   const [error, setError] = useState<string | null>(null);
   const [newInput, setNewInput] = useState('');
   const [view, setView] = useState<View>('all');
-  const [lastSent, setLastSent] = useState<string | null>(null);
+  const [lastSent, flashSent] = useFlashMessage();
   const [completing, setCompleting] = useState<Set<string>>(new Set());
   // Reminder composer popup state — prefilled text + the id being edited (null = new).
   const [composerOpen, setComposerOpen] = useState(false);
   const [composerText, setComposerText] = useState('');
   const [composerEditingId, setComposerEditingId] = useState<string | null>(null);
-  const lastSentTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Phase 5: completing a reminder is destructive — the shared toast store's 8s Undo re-creates
   // it (see handleComplete). The old bespoke snackbar was consolidated into the Toaster 2026-08-24.
-  // Clear the pending "last sent" timer on unmount so its delayed setState can't fire on a
-  // dead panel (and hold the panel's closure alive after it unmounted).
-  useEffect(() => () => {
-    if (lastSentTimer.current) clearTimeout(lastSentTimer.current);
-  }, []);
-  const pollTimer = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const fetchReminders = useCallback(async () => {
     setLoading(true);
@@ -156,24 +150,13 @@ export function RemindersPanel({ project, onSendMessage }: RemindersPanelProps) 
     });
   }, []);
 
-  useEffect(() => {
-    fetchReminders();
-    pollTimer.current = setInterval(fetchReminders, POLL_MS);
-    return () => {
-      if (pollTimer.current) clearInterval(pollTimer.current);
-    };
-  }, [fetchReminders]);
+  usePanelPolling(fetchReminders, POLL_MS);
 
   // D-7 (2026-09-08): create/cancel now hit direct REST endpoints (reminderRoutes.js)
   // instead of composing a chat trigger phrase. builtinReminders.js's handlers were never
   // confirm-gated or journaled to begin with (plain scheduleStore.js calls), so there was
   // no safety contract to preserve beyond calling the exact same parseReminderInput /
   // addSchedule / removeScheduleById functions, which the REST endpoints do directly.
-  const flashSent = (label: string) => {
-    setLastSent(label);
-    if (lastSentTimer.current) clearTimeout(lastSentTimer.current);
-    lastSentTimer.current = setTimeout(() => setLastSent(null), 8000);
-  };
 
   const createReminder = async (phrase: string): Promise<boolean> => {
     const result = await apiFetchJson<{ ok: boolean; error?: string; schedule?: { id: string; text: string; label?: string; type: string } }>(

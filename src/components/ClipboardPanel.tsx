@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { ClipboardCopy, RefreshCw, Copy, Trash2, Pin, CheckCircle2 } from 'lucide-react';
 import { apiFetchJson } from '../utils/apiFetch';
+import { usePanelPolling, useFlashMessage } from '../hooks/usePanelPolling';
 import { cn } from '../lib/utils';
 
 // Phase 8 (UPGRADE-ROADMAP.md, 2026-08-12): the Clipboard panel — Windows Clipboard History
@@ -28,13 +29,9 @@ export function ClipboardPanel({ onSendMessage }: ClipboardPanelProps) {
   const [snippets, setSnippets] = useState<SnippetInfo[]>([]);
   const [enabled, setEnabled] = useState<boolean | null>(null);
   const [persist, setPersist] = useState(false);
-  const [lastSent, setLastSent] = useState<string | null>(null);
+  const [lastSent, flashSent] = useFlashMessage();
   const [saveName, setSaveName] = useState('');
   const [loading, setLoading] = useState(false);
-  const lastSentTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // Clear the pending "last sent" timer on unmount so its delayed setState can't fire on a
-  // dead panel (and hold the panel's closure alive after it unmounted).
-  useEffect(() => () => { if (lastSentTimer.current) clearTimeout(lastSentTimer.current); }, []);
 
   const fetchState = useCallback(async () => {
     setLoading(true);
@@ -50,17 +47,11 @@ export function ClipboardPanel({ onSendMessage }: ClipboardPanelProps) {
     setSnippets(snips?.snippets || []);
   }, []);
 
-  useEffect(() => {
-    fetchState();
-    const t = setInterval(fetchState, POLL_MS);
-    return () => clearInterval(t);
-  }, [fetchState]);
+  usePanelPolling(fetchState, POLL_MS);
 
   const send = (text: string) => {
     onSendMessage(text);
-    setLastSent(text);
-    if (lastSentTimer.current) clearTimeout(lastSentTimer.current);
-    lastSentTimer.current = setTimeout(() => setLastSent(null), 8000);
+    flashSent(text);
     setTimeout(fetchState, 1000);
   };
 

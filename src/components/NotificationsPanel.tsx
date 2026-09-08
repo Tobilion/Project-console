@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useState } from 'react';
 import { Bell, RefreshCw, Plus, Trash2, CheckCircle2, Globe, MonitorSmartphone, Zap, Pause, Play, Rows3, Settings2, Send, Clock, Ruler, XCircle, ChevronsLeft, ChevronsRight, ShieldAlert, History, Check, X } from 'lucide-react';
 import { apiFetchJson } from '../utils/apiFetch';
+import { usePanelPolling, useFlashMessage } from '../hooks/usePanelPolling';
 import { cn } from '../lib/utils';
 import type { Project } from '../types';
 
@@ -86,8 +87,7 @@ export function NotificationsPanel({ project, onSendMessage }: NotificationsPane
   const [folder, setFolder] = useState('');
   const [ruleType, setRuleType] = useState<'file-changed' | 'file-added' | 'folder-stale'>('file-changed');
   const [days, setDays] = useState('7');
-  const [lastSent, setLastSent] = useState<string | null>(null);
-  const lastSentTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [lastSent, flashSent] = useFlashMessage();
   // Round-6: the Postman-style section state — sidebar selection + sidebar collapsed.
   const [section, setSection] = useState<'rules' | 'channels' | 'webhooks' | 'history'>('history');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -96,9 +96,6 @@ export function NotificationsPanel({ project, onSendMessage }: NotificationsPane
   const [testUrl, setTestUrl] = useState('');
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<TestResult | null>(null);
-  // Clear the pending "last sent" timer on unmount so its delayed setState can't fire on a
-  // dead panel (and hold the panel's closure alive after it unmounted).
-  useEffect(() => () => { if (lastSentTimer.current) clearTimeout(lastSentTimer.current); }, []);
 
   const fetchState = useCallback(async () => {
     const data = await apiFetchJson<{ rules: WatchRule[]; events: Record<string, boolean>; desktop: boolean; webhooks: string[]; history?: NotificationHistoryItem[] }>('/api/notifications');
@@ -135,17 +132,11 @@ export function NotificationsPanel({ project, onSendMessage }: NotificationsPane
 
   const unreadCount = history.filter((h) => !h.dismissed).length;
 
-  useEffect(() => {
-    fetchState();
-    const t = setInterval(fetchState, POLL_MS);
-    return () => clearInterval(t);
-  }, [fetchState]);
+  usePanelPolling(fetchState, POLL_MS);
 
   const send = (text: string) => {
     onSendMessage(text, { source: 'panel', tool: 'notifications' });
-    setLastSent(text);
-    if (lastSentTimer.current) clearTimeout(lastSentTimer.current);
-    lastSentTimer.current = setTimeout(() => setLastSent(null), 8000);
+    flashSent(text);
     // The chat turn behind this toggle can take seconds (a slow prior turn queues ahead
     // of it), while the old single 1200ms refetch usually landed BEFORE the server had
     // applied anything — leaving the switch visibly stale after the answer arrived.

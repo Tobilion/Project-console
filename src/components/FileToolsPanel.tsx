@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { FolderSearch, RefreshCw, CheckCircle2 } from 'lucide-react';
 import { apiFetchJson } from '../utils/apiFetch';
 import { projectApi } from '../utils/projectApi';
+import { useFlashMessage } from '../hooks/usePanelPolling';
 import { cn } from '../lib/utils';
 import type { Project } from '../types';
 import { SearchView, TidyView, DuplicatesView, PreviewOverlay } from './fileTools/views';
@@ -13,8 +14,6 @@ interface FileToolsPanelProps {
   tabId?: string | null;
 }
 
-const POLL_MS = 15000;
-
 export function FileToolsPanel({ project, onSendMessage, tabId = null }: FileToolsPanelProps) {
   const [view, setView] = useState('search');
   const [currentPath, setCurrentPath] = useState('.');
@@ -24,16 +23,14 @@ export function FileToolsPanel({ project, onSendMessage, tabId = null }: FileToo
   const [dupeGroups, setDupeGroups] = useState<DuplicateGroup[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [lastSent, setLastSent] = useState<string | null>(null);
-  const lastSentTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [lastSent, flashSent] = useFlashMessage();
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [previewName, setPreviewName] = useState('');
 
-  // Clear the transient-state timers on unmount so their delayed setState can't fire on a
-  // dead panel (and hold their closures alive after it unmounted).
+  // Clear the search-debounce timer on unmount so its delayed setState can't fire on a dead
+  // panel (and hold its closure alive after it unmounted).
   useEffect(() => () => {
-    if (lastSentTimer.current) clearTimeout(lastSentTimer.current);
     if (searchTimer.current) clearTimeout(searchTimer.current);
   }, []);
 
@@ -133,12 +130,6 @@ export function FileToolsPanel({ project, onSendMessage, tabId = null }: FileToo
   // round-trip only added chat noise. The REST endpoints replicate the exact checkpoint +
   // perform + appendAction journal sequence from connectionConfirm.js's generalFileOp branch,
   // so 'revert action <id>' and the undo toast keep working identically.
-  const flashSent = (label: string) => {
-    setLastSent(label);
-    if (lastSentTimer.current) clearTimeout(lastSentTimer.current);
-    lastSentTimer.current = setTimeout(() => setLastSent(null), 8000);
-  };
-
   const runTidy = async () => {
     if (!project?.id) return;
     const files = [...tidySelected];

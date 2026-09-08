@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Archive, RefreshCw, Send, CheckCircle2, Download, FolderOpen } from 'lucide-react';
 import { apiFetchJson } from '../utils/apiFetch';
 import { projectApi } from '../utils/projectApi';
+import { usePanelPolling, useFlashMessage } from '../hooks/usePanelPolling';
 import { cn } from '../lib/utils';
 import { EmptyState } from './ui/EmptyState';
 import type { Project } from '../types';
@@ -39,11 +40,7 @@ export function BackupPanel({ project, onSendMessage, tabId = null }: BackupPane
   const [subFolder, setSubFolder] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [lastSent, setLastSent] = useState<string | null>(null);
-  const lastSentTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // Clear the pending "last sent" timer on unmount so its delayed setState can't fire on a
-  // dead panel (and hold the panel's closure alive after it unmounted).
-  useEffect(() => () => { if (lastSentTimer.current) clearTimeout(lastSentTimer.current); }, []);
+  const [lastSent, flashSent] = useFlashMessage();
 
   const fetchBackups = useCallback(async () => {
     if (!project?.id) return;
@@ -55,13 +52,7 @@ export function BackupPanel({ project, onSendMessage, tabId = null }: BackupPane
     setBackups(data.backups || []);
   }, [project?.id, tabId]);
 
-  useEffect(() => {
-    if (project?.id) {
-      fetchBackups();
-      const t = setInterval(fetchBackups, POLL_MS);
-      return () => clearInterval(t);
-    }
-  }, [project?.id, fetchBackups]);
+  usePanelPolling(fetchBackups, POLL_MS, !!project?.id);
 
   // Phase 9 audit: subfolder picker — backend backupStore.js already supports subPath, the
   // panel just never exposed it. Populate the picker from the project's one-level dirs.
@@ -80,9 +71,7 @@ export function BackupPanel({ project, onSendMessage, tabId = null }: BackupPane
 
   const send = (text: string) => {
     onSendMessage(text);
-    setLastSent(text);
-    if (lastSentTimer.current) clearTimeout(lastSentTimer.current);
-    lastSentTimer.current = setTimeout(() => setLastSent(null), 8000);
+    flashSent(text);
     setTimeout(fetchBackups, 2000);
   };
 
