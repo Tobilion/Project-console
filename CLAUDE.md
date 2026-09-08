@@ -26,6 +26,22 @@ findings/fixes, and two appendix components are all in there). This is a multi-s
 overnight-scale execution — pick up exactly where the last session left off rather than
 re-reading from scratch or re-deriving the plan.
 
+**2026-09-08 addendum — 5 new items added to the spec from live user feedback mid-execution**
+(none were in the original 3 research passes, so they carry an explicit `[ADDED 2026-09-08 ...]`
+tag inline in the spec — grep the spec file for that tag to find all five instantly): **A-15**
+(compound/multi-intent requests like "open the site and check network at 3" must render a chip/
+answer for EVERY recognized clause, not just the highest-confidence one — today the second clause
+is silently dropped); **D-9** (support multiple simultaneous scan roots per tab/workspace, not
+just one path at a time — additive to the existing per-tab single-root model); **F-11** (chat-
+native rich tool UI — e.g. reminders should render as an interactive Apple-Reminders-style card
+inline in the chat transcript, not a text block; extend the pattern to other tools once proven);
+**K-10** (upgrade `console doctor` with an auto-fix mode, JSON output, and a Settings-UI surface,
+not just a CLI/chat report); **K-11** (a "Troubleshoot this" flow wherever the app shows a raw
+error — fatal boot screen and failed chat tool calls both need a one-click path from "here's what
+broke" to "here's the fix," building on K-10's auto-fixes). These reopen Phases A, D, F, and K,
+which were previously marked done/complete further below — read K-10/K-11 and A-15/D-9/F-11 in
+the spec file directly before touching any of those phases again, the summaries below predate them.
+
 **Progress so far** (chronological, oldest first):
 - **Phase A: DONE.** A-1, A-2, A-3, A-5, A-6, A-7, A-9, A-11 (commit 98cd5c0, building on
   7e8b322). A-10 verified already covered by the 2026-08-26/08-28 audit passes (bare commit,
