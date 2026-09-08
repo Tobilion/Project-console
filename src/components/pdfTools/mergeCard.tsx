@@ -135,12 +135,9 @@ export function PdfFileList({ files, loading, error, lastSent, card, smallBtn, f
         </ul>
       )}
       {lastSent && (
-        <div className="mt-3 flex items-start gap-2 text-[11px] text-fg-muted bg-scrim-faint border border-border-soft rounded-lg p-2.5">
-          <CheckCircle2 size={13} className="text-accent mt-0.5 shrink-0" />
-          <span>
-            Sent <code className="font-mono text-accent">{lastSent}</code> — confirm or
-            follow the result in the chat below.
-          </span>
+        <div className="mt-3 flex items-start gap-2 text-[11px] text-accent-green bg-scrim-faint border border-border-soft rounded-lg p-2.5">
+          <CheckCircle2 size={13} className="mt-0.5 shrink-0" />
+          <span>{lastSent}</span>
         </div>
       )}
     </div>

@@ -68,7 +68,7 @@ re-reading from scratch or re-deriving the plan.
   full recompute + re-save, so this can never serve stale vectors). `.gitignore` gained
   `data/.cache/` (the model download cache at `.cache/xenova` was already ignored via
   `.cache/`, but `data/.cache/` needed its own line since `data/` isn't blanket-ignored).
-  **Still open**: PdfToolsPanel/RemindersPanel/FolderExplorerPanel/Dashboard of D-7 (see below) — D-1 through D-6 and D-8 are all done ("the single most impactful latency fix" per the master prompt — migrate mutating
+  **Still open**: RemindersPanel/FolderExplorerPanel/Dashboard of D-7 (see below) — D-1 through D-6 and D-8 are all done ("the single most impactful latency fix" per the master prompt — migrate mutating
   panel actions to direct REST+journal instead of round-tripping through the chat/WS
   pipeline). D-6 verified: both historical CLI-crash root
   causes (`server/index.js`'s dynamic `import('vite')`, `server/pdfKit.js`'s lazy/guarded
@@ -182,10 +182,42 @@ re-reading from scratch or re-deriving the plan.
   sense once nothing is actually sent to chat. `onSendMessage` stays in the props contract
   (still used by the unrelated `PreviewOverlay`'s "open in browser" button, and by
   `ToolsPanel.tsx`'s shared call site) but is no longer called from the tidy/dedupe paths.
-  **Still open in D-7**: `PdfToolsPanel`, `RemindersPanel`, `FolderExplorerPanel`,
-  `Dashboard`. Same pattern each time: read the chat handler's exact behavior first
-  (including non-obvious side effects), replicate faithfully in a direct REST endpoint
-  preserving any confirm/checkpoint/journal contract, then update the panel to call it.
+  **Found and fixed a latent bug while building the FileToolsPanel REST endpoints**:
+  `apiFetchJson` (`src/utils/apiFetch.ts`) returns `null` on ANY non-2xx response, so the
+  new `/tidy` and `/duplicates` POST endpoints' `res.status(400).json({ error, ... })`
+  failure responses were unreachable from the frontend's `if (!result.ok) { setError(...) }`
+  branch — a real business-logic failure (e.g. a move target already exists) would have
+  shown the generic "Could not reach the server." instead of the actual reason. Fixed by
+  changing those two failure branches to `res.json({ ok: false, error, ... })` (still 200),
+  matching the convention `noteRoutes.js` already used for exactly this reason. Kept the
+  pre-existing `tidy-plan`/`duplicates` GET routes' `res.status(400)` on read failure
+  as-is (a pre-existing, unrelated minor gap — their callers never read `data.error` either,
+  so nothing regressed by leaving them).
+  PdfToolsPanel done next (`server/routes/pdfRoutes.js`, `src/components/PdfToolsPanel.tsx`,
+  `src/components/pdfTools/mergeCard.tsx`): merge/split/extract-pages/watermark now hit new
+  `POST /api/projects/:id/pdf/{merge,split,extract-pages,watermark}` endpoints (structured
+  JSON bodies straight from the panel's own pickers — no chat-phrase composing OR parsing on
+  either side, unlike the chat handler which has to regex-parse free text). Each endpoint
+  replicates the exact `resolvePdfInput` + validation + `createCheckpoint` + `pdfKit.js`-call
+  sequence from `builtinPdfTools.js`/`connectionConfirm.js`'s `pdfOp` branch — `mergePdfs`/
+  `splitPdf`/`extractPages`/`watermarkPdf` already self-journal via `appendAction` and refuse
+  to overwrite an existing output, so nothing about the safety contract changed, applying the
+  `res.json({ ok: false, ... })` (not `res.status(400)`) lesson from the FileToolsPanel fix
+  above from the start. `extract_text` stays read-only (`GET .../pdf/extract-text`, no
+  checkpoint) and now renders its preview inline in the panel (new `extractedText` state)
+  instead of leaving a chat bubble — the "Extract text (preview in chat)" button label is
+  now just "Extract text" since there's no more chat involved. `lastSent`'s banner
+  (shared between the panel and `PdfFileList` in `mergeCard.tsx`) re-styled the same way as
+  every other D-7 slice: green success flash instead of "Sent ... — confirm in chat below."
+  `onSendMessage` stays in the props contract, unused in the body now (same as
+  `SpreadsheetPanel`'s already-established precedent) since `ToolsPanel.tsx`'s shared call
+  site passes it uniformly to every panel.
+  **Still open in D-7**: `RemindersPanel`, `FolderExplorerPanel`, `Dashboard`. Same pattern
+  each time: read the chat handler's exact behavior first (including non-obvious side
+  effects), replicate faithfully in a direct REST endpoint preserving any confirm/checkpoint/
+  journal contract, then update the panel to call it — and double-check any new failure
+  response actually reaches the frontend's error branch through `apiFetchJson`'s null-on-
+  non-2xx behavior (the bug just found and fixed above).
 - Phases C, E, F, G, H, I, J, L: **not started.**
 
 **Verification caveat carried across all of the above**: everything was checked with

@@ -112,12 +112,22 @@ export function PdfToolsPanel({ project, onSendMessage, tabId = null }: PdfTools
     setMergeOrder((prev) => prev.filter((n) => names.has(n)));
   }, [files, selected]);
 
-  const send = (text: string) => {
-    onSendMessage(text);
-    setLastSent(text);
+  // D-7 (2026-09-08): merge/split/extract-pages/watermark now hit direct REST endpoints
+  // (pdfRoutes.js) instead of composing a chat trigger phrase. The panel already has
+  // structured params from its own pickers (file dropdowns, page-range inputs) -- no
+  // chat-phrase composing/parsing needed on either side -- and the Run button was already
+  // the confirm step, so the WS round-trip was pure overhead (same reasoning as the notes/
+  // spreadsheet/file-tools slices). The REST endpoints replicate the exact checkpoint +
+  // pdfKit.js-call + journal sequence from connectionConfirm.js's pdfOp branch, so
+  // 'revert action <id>' and the undo toast keep working identically. extract_text stays
+  // read-only (no checkpoint) and now renders its preview inline instead of in a chat bubble.
+  const flashSent = (label: string) => {
+    setLastSent(label);
     if (lastSentTimer.current) clearTimeout(lastSentTimer.current);
     lastSentTimer.current = setTimeout(() => setLastSent(null), 8000);
   };
+
+  const [extractedText, setExtractedText] = useState<{ file: string; preview: string; pages: number } | null>(null);
 
   const fileUrl = (path: string) =>
     projectApi(`/api/projects/${encodeURIComponent(project?.id || '')}/file?path=${encodeURIComponent(path)}`, tabId);
@@ -151,40 +161,94 @@ export function PdfToolsPanel({ project, onSendMessage, tabId = null }: PdfTools
     });
   };
 
-  const sendMerge = () => {
-    if (mergeDisabled) return;
+  const sendMerge = async () => {
+    if (mergeDisabled || !project?.id) return;
     const out = sanitizeOutputName(mergeOutput);
-    send(`merge ${mergeList.join(' and ')} into ${out}`);
+    setLoading(true);
+    const result = await apiFetchJson<{ ok: boolean; output?: string; pages?: number; bytes?: number; error?: string }>(
+      projectApi(`/api/projects/${encodeURIComponent(project.id)}/pdf/merge`, tabId),
+      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ inputs: mergeList, output: out }) }
+    );
+    setLoading(false);
+    if (!result) { setError('Could not reach the server.'); return; }
+    if (!result.ok) { setError(result.error || 'Merge failed.'); return; }
+    setError(null);
+    flashSent(`Merged ${mergeList.length} PDF(s) into ${result.output} (${result.pages} page(s)). Undo with "revert action <id>".`);
+    fetchFiles();
   };
 
-  const sendSplit = () => {
-    if (!selected) return;
-    send(splitMode === 'perPage'
-      ? `split ${selected} into one file per page`
-      : `split ${selected} at page ${splitAt.trim() || '1'}`);
+  const sendSplit = async () => {
+    if (!selected || !project?.id) return;
+    setLoading(true);
+    const result = await apiFetchJson<{ ok: boolean; outputs?: { path: string; pages: number }[]; error?: string }>(
+      projectApi(`/api/projects/${encodeURIComponent(project.id)}/pdf/split`, tabId),
+      {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ input: selected, mode: splitMode, at: splitMode === 'at' ? Number(splitAt.trim() || '1') : undefined }),
+      }
+    );
+    setLoading(false);
+    if (!result) { setError('Could not reach the server.'); return; }
+    if (!result.ok) { setError(result.error || 'Split failed.'); return; }
+    setError(null);
+    flashSent(`Split into ${result.outputs?.length ?? 0} file(s). Undo with "revert action <id>".`);
+    fetchFiles();
   };
 
-  const sendExtractText = () => {
-    if (!selected) return;
-    send(`extract text from ${selected}`);
+  const sendExtractText = async () => {
+    if (!selected || !project?.id) return;
+    setLoading(true);
+    const result = await apiFetchJson<{ ok: boolean; text?: string; preview?: string; pages?: number; error?: string }>(
+      projectApi(`/api/projects/${encodeURIComponent(project.id)}/pdf/extract-text?input=${encodeURIComponent(selected)}`, tabId)
+    );
+    setLoading(false);
+    if (!result) { setError('Could not reach the server.'); return; }
+    if (!result.ok) { setError(result.error || 'Text extraction failed.'); setExtractedText(null); return; }
+    setError(null);
+    setExtractedText({ file: selected, preview: result.preview || '(no extractable text)', pages: result.pages ?? 0 });
   };
 
-  const sendExtractPages = () => {
-    if (!selected) return;
-    const out = sanitizeOutputName(extractOutput) || `${selected.replace(/\.pdf$/i, '')}-pages-${pageFrom.trim() || '1'}-${pageTo.trim() || '2'}.pdf`;
-    send(`extract pages ${pageFrom.trim() || '1'}-${pageTo.trim() || '2'} from ${selected} into ${out}`);
+  const sendExtractPages = async () => {
+    if (!selected || !project?.id) return;
+    const out = sanitizeOutputName(extractOutput) || undefined;
+    setLoading(true);
+    const result = await apiFetchJson<{ ok: boolean; output?: string; pages?: number; error?: string }>(
+      projectApi(`/api/projects/${encodeURIComponent(project.id)}/pdf/extract-pages`, tabId),
+      {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ input: selected, from: Number(pageFrom.trim() || '1'), to: Number(pageTo.trim() || '2'), output: out }),
+      }
+    );
+    setLoading(false);
+    if (!result) { setError('Could not reach the server.'); return; }
+    if (!result.ok) { setError(result.error || 'Extraction failed.'); return; }
+    setError(null);
+    flashSent(`Extracted ${result.pages} page(s) into ${result.output}. Undo with "revert action <id>".`);
+    fetchFiles();
   };
 
-  const sendWatermark = () => {
-    if (!selected || !watermarkText.trim()) return;
-    // No output name is sent — the handler composes "<stem>-watermarked.pdf" itself.
-    send(`watermark ${selected} with ${watermarkText.trim()}`);
+  const sendWatermark = async () => {
+    if (!selected || !watermarkText.trim() || !project?.id) return;
+    setLoading(true);
+    const result = await apiFetchJson<{ ok: boolean; output?: string; pages?: number; error?: string }>(
+      projectApi(`/api/projects/${encodeURIComponent(project.id)}/pdf/watermark`, tabId),
+      {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ input: selected, text: watermarkText.trim() }),
+      }
+    );
+    setLoading(false);
+    if (!result) { setError('Could not reach the server.'); return; }
+    if (!result.ok) { setError(result.error || 'Watermark failed.'); return; }
+    setError(null);
+    flashSent(`Watermarked into ${result.output}. Undo with "revert action <id>".`);
+    fetchFiles();
   };
 
   const FilePicker = (
     <select
       value={selected}
-      onChange={(e) => setSelected(e.target.value)}
+      onChange={(e) => { setSelected(e.target.value); setExtractedText(null); }}
       className="w-full text-xs bg-panel-strong border border-border-soft rounded-lg px-2.5 py-2 text-fg-strong focus:outline-none focus:border-accent/50"
     >
       <option value="">Pick a PDF…</option>
@@ -369,8 +433,16 @@ export function PdfToolsPanel({ project, onSendMessage, tabId = null }: PdfTools
                   disabled={!selected}
                   className={runBtn}
                 >
-                  <Send size={12} /> {extractMode === 'text' ? 'Extract text (preview in chat)' : 'Extract pages'}
+                  <Send size={12} /> {extractMode === 'text' ? 'Extract text' : 'Extract pages'}
                 </button>
+                {extractMode === 'text' && extractedText && (
+                  <div className="mt-2.5 text-[11px] bg-scrim-faint border border-border-soft rounded-lg p-2.5">
+                    <p className="text-fg-dim mb-1">
+                      {extractedText.file} ({extractedText.pages} page{extractedText.pages === 1 ? '' : 's'})
+                    </p>
+                    <pre className="whitespace-pre-wrap break-words text-fg-strong max-h-40 overflow-y-auto font-mono">{extractedText.preview}</pre>
+                  </div>
+                )}
               </div>
 
               {/* Watermark */}

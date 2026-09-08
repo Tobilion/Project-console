@@ -201,7 +201,7 @@ export function registerFileToolsRoutes(app) {
     if (!moves || moves.length === 0) return res.status(400).json({ error: 'Missing moves[].' });
     await createCheckpoint(project.path, 'tidy this folder');
     const result = await performTidy(project.path, moves);
-    if (!result.ok) return res.status(400).json({ error: result.error, moved: result.moved, actionIds: result.actionIds });
+    if (!result.ok) return res.json({ ok: false, error: result.error, moved: result.moved, actionIds: result.actionIds });
     res.json({ ok: true, moved: result.moved, actionIds: result.actionIds });
   }));
 
@@ -217,7 +217,7 @@ export function registerFileToolsRoutes(app) {
     if (!files || files.length === 0) return res.status(400).json({ error: 'No duplicate files to delete.' });
     await createCheckpoint(project.path, 'delete duplicates, keep newest');
     const result = await performDuplicateDeletes(project.path, files);
-    if (!result.ok) return res.status(400).json({ error: result.error, deleted: result.deleted, actionIds: result.actionIds });
+    if (!result.ok) return res.json({ ok: false, error: result.error, deleted: result.deleted, actionIds: result.actionIds });
     res.json({ ok: true, deleted: result.deleted, skippedJournal: result.skippedJournal, actionIds: result.actionIds });
   }));
 }
