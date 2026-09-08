@@ -339,7 +339,18 @@ export function createCliRenderer({ ws, sessionId, state }) {
         writeLine(`${aiEnabled ? C.green : C.yellow}AI mode: ${aiEnabled ? 'ON' : 'OFF'}${C.reset}${aiEnabled ? ' — open-ended requests go to the model with project-scoped tools.' : ' — trigger mode handles the fixed built-in commands (type "ai on" to switch).'}\n`);
         break;
       }
-      case 'thinking': break; // reasoning-model trace — an italic panel in the web UI
+      case 'thinking':
+        // Reasoning-model trace — the web UI renders an italic panel. The CLI shows a throttled
+        // status line so a 5-10s reasoning phase doesn't look like a hang (A-3). Updates at most
+        // every ~500ms so the terminal doesn't spam.
+        if (msg.data) {
+          const now = Date.now();
+          if (!state.lastThinkingUpdate || now - state.lastThinkingUpdate > 500) {
+            state.lastThinkingUpdate = now;
+            process.stdout.write(`${C.dim}· thinking…${C.reset}\r`);
+          }
+        }
+        break;
       case 'task_granted': break; // "approved" acknowledgement — the CLI already saw the y/N prompt
       case 'workspace_updated': break; // workspace-project set — UI-only (SidebarDrawer)
       case 'copy_to_clipboard': break; // display notice only since Phase 8 — the server-side OS clipboard write happens inside the intent handler, so the CLI copies for real without a browser

@@ -1,4 +1,5 @@
 import { chatStream } from '../ollama.js';
+import { log } from '../logger.js';
 
 const OPEN_TAG = '<tool_call>';
 const CLOSE_TAG = '</tool_call>';
@@ -83,9 +84,16 @@ export async function streamWithToolDetection(model, messages, ws, signal) {
     processBuffer();
   }
 
-  // Flush whatever safe text remains (won't include an unterminated tool call — if the
-  // model cut off mid tool-call, we simply drop that trailing fragment).
-  if (!inToolCall && buffer) flushText(buffer);
+  // Flush whatever safe text remains. If the model cut off mid-tool-call, the fragment is
+  // visible to the user as an interruption notice rather than silently vanishing — a truncated
+  // tool call means the model intended to do something but the stream ended before it could,
+  // and hiding that from the user causes confusion ("why didn't it do anything?").
+  if (inToolCall) {
+    log.warn('[aiStream] unterminated tool call fragment at end-of-stream, length:', toolCallBuffer.length);
+    flushText('\n\n*(Tool call was interrupted before it could complete — you can ask me to retry.)*');
+  } else if (buffer) {
+    flushText(buffer);
+  }
 
   return { visibleText: visible, toolCalls };
 }
