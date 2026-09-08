@@ -9,6 +9,7 @@ import path from 'path';
 import { AsyncLocalStorage } from 'async_hooks';
 import { LEGACY_STORE_DIR, INDEX_PATH, projectSessionsDir } from './sessionPaths.js';
 import { log } from './logger.js';
+import { sweepOrphanedTmpFiles } from './tmpFileSweep.js';
 
 // Global persistence serialization chain: every read→mutate→write cycle over the index (and
 // the session meta files appended alongside it) runs through this so only one is in flight at
@@ -59,27 +60,11 @@ export async function ensureLegacyDir() {
 
 // A-6 (2026-09-08): boot-time sweep of orphaned *.tmp files from the atomic-write pattern
 // (writeIndex, appendMessage). Crashed sessions or interrupted renames leave these behind;
-// they're never cleaned up otherwise and accumulate over time. Threshold: 1 hour — recent
-// tmp files from a concurrent writer are still in use; older ones are abandoned.
-const TMP_SWEEP_MAX_AGE_MS = 60 * 60 * 1000;
-export async function sweepOrphanedTmpFiles(projectRoots = []) {
-  const dirs = [LEGACY_STORE_DIR, ...projectRoots.filter(Boolean).map(r => path.join(r, '.console', 'sessions'))];
-  for (const dir of dirs) {
-    try {
-      const files = await fs.readdir(dir);
-      const now = Date.now();
-      for (const f of files) {
-        if (!f.endsWith('.tmp')) continue;
-        try {
-          const stat = await fs.stat(path.join(dir, f));
-          if (now - stat.mtimeMs > TMP_SWEEP_MAX_AGE_MS) {
-            await fs.unlink(path.join(dir, f)).catch(() => {});
-          }
-        } catch {}
-      }
-    } catch {}
-  }
-}
+// they're never cleaned up otherwise and accumulate over time. Implementation moved to
+// server/tmpFileSweep.js (Phase K-10, 2026-09-08) so server/doctor.js's "Orphaned temp
+// files" check and --fix auto-remediation share the exact same logic instead of doctor
+// re-implementing it or importing this heavier module (pino/logger.js) directly.
+export { sweepOrphanedTmpFiles } from './tmpFileSweep.js';
 
 export async function readIndex() {
   await ensureLegacyDir();

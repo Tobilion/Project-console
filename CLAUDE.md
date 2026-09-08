@@ -41,6 +41,24 @@ error — fatal boot screen and failed chat tool calls both need a one-click pat
 broke" to "here's the fix," building on K-10's auto-fixes). These reopen Phases A, D, F, and K,
 which were previously marked done/complete further below — read K-10/K-11 and A-15/D-9/F-11 in
 the spec file directly before touching any of those phases again, the summaries below predate them.
+**K-10 progress (2026-09-08)**: `autoFixDoctor()` and `--fix` in `bin/cli.js`'s `doctor`
+subcommand already existed from earlier work in this same session — the gap closed just now is
+(1) the orphaned-`.tmp`-file sweep (A-6) now runs as part of `autoFixDoctor()` too, via a new
+shared `server/tmpFileSweep.js` leaf (`countOrphanedTmpFiles`/`sweepOrphanedTmpFiles`, zero
+further imports — extracted out of `sessionIndex.js` specifically so `doctor.js` doesn't have to
+import `logger.js`/pino to reuse the logic, preserving doctor's "must work when the server can't
+boot" contract), surfaced as a new "Temp files" check in `runDoctorChecks()`; (2) `--json` output
+mode on both `node --import tsx server/doctor.js --json` and `node bin/cli.js doctor --json`; (3)
+new `GET /api/doctor` + `POST /api/doctor/fix` REST routes (`server/routes/doctorRoutes.js`,
+mounted in `server/index.js`) so a future Settings Diagnostics panel has something to call — the
+panel UI itself is NOT built yet, that's the remaining part of K-10. Live-verified in this
+environment: a real run of `node --import tsx server/doctor.js` found 30 genuinely orphaned
+`.tmp` files in this repo's own `data/conversations/` (left over from this session's bridged-shell
+work), `node bin/cli.js doctor --fix` removed exactly those 30 and reported the count, and a
+follow-up doctor run confirmed "no orphaned .tmp files" — this is a real, working fix verified
+end-to-end, not just a code read. `--json` mode's output was also visually confirmed well-formed.
+K-11 (troubleshoot-flow-on-error) is still fully unstarted, as is the Settings Diagnostics panel
+half of K-10.
 
 **Progress so far** (chronological, oldest first):
 - **Phase A: DONE.** A-1, A-2, A-3, A-5, A-6, A-7, A-9, A-11 (commit 98cd5c0, building on

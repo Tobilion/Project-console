@@ -18,6 +18,7 @@ import { fileURLToPath, pathToFileURL } from 'url';
 import { getDataDir } from './dataPath.js';
 import { BASE_PORT, MAX_PORT_ATTEMPTS, OLLAMA_DEFAULT_HOST } from './portConfig.js';
 import { npmRegistryLatestUrl } from './apiEndpoints.js';
+import { countOrphanedTmpFiles, sweepOrphanedTmpFiles } from './tmpFileSweep.js';
 
 const execFileAsync = promisify(execFile);
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -266,6 +267,12 @@ export async function autoFixDoctor() {
       try { fs.rmSync(portFile, { force: true }); fixes.push('removed unreadable daemon.port (corrupt)'); } catch {}
     }
   }
+  // Orphaned .tmp files (K-10, 2026-09-08) — same threshold/logic as the A-6 boot sweep,
+  // scoped to data/conversations for the reason noted in checkTmpFiles() above.
+  try {
+    const removed = await sweepOrphanedTmpFiles();
+    if (removed > 0) fixes.push(`removed ${removed} orphaned .tmp file(s) from data/conversations`);
+  } catch (e) { fixes.push(`failed to sweep orphaned temp files: ${e.message}`); }
   // Corrupted/unreadable data/dev-urls.json is handled at read time (skipped), but a
   // zero-byte file can be removed safely so the next write recreates it clean.
   for (const fname of ['dev-urls.json']) {
@@ -315,6 +322,17 @@ export async function autoFixDoctor() {
   return fixes;
 }
 
+// --- orphaned temp files ---------------------------------------------------------
+
+async function checkTmpFiles() {
+  // K-10 (2026-09-08): doctor has no server-graph access to the live scanned-project list, so
+  // this only covers data/conversations (LEGACY_STORE_DIR) — the per-project .console/sessions
+  // sweep still runs at server boot (A-6, server/index.js) where the project list IS known.
+  const count = await countOrphanedTmpFiles();
+  if (count === 0) return { name: 'Temp files', status: 'ok', detail: 'no orphaned .tmp files in data/conversations' };
+  return { name: 'Temp files', status: 'warn', detail: `${count} orphaned .tmp file(s) in data/conversations older than 1h — run \`console doctor --fix\` to remove them` };
+}
+
 // --- tooling + disk --------------------------------------------------------------
 
 async function checkTooling() {
@@ -361,6 +379,7 @@ export async function runDoctorChecks() {
     checkTTY(),
     checkDataDir(),
     checkLogWritability(),
+    checkTmpFiles(),
     checkOllama(),
     checkUpdate(),
     checkTooling(),
@@ -396,6 +415,12 @@ export function printDoctorReport(checks) {
 // only a direct `doctor.js` invocation triggers it.
 if (import.meta.url.endsWith('/doctor.js') && import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
   const checks = await runDoctorChecks();
-  process.stdout.write(printDoctorReport(checks).replace(/\*\*/g, '') + '\n');
+  if (process.argv.includes('--json')) {
+    // K-10 (2026-09-08): structured output for scripting/automation and for a future
+    // Settings Diagnostics panel to render without scraping the plain-text report.
+    process.stdout.write(JSON.stringify({ checks, exitCode: doctorExitCode(checks) }, null, 2) + '\n');
+  } else {
+    process.stdout.write(printDoctorReport(checks).replace(/\*\*/g, '') + '\n');
+  }
   process.exitCode = doctorExitCode(checks);
 }

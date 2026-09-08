@@ -224,7 +224,11 @@ async function main() {
       process.exit(0);
     }
     const checks = await runDoctorChecks();
-    process.stdout.write(printDoctorReport(checks).replace(/\*\*/g, '') + '\n');
+    if (process.argv.includes('--json')) {
+      console.log(JSON.stringify({ checks, exitCode: doctorExitCode(checks) }, null, 2));
+    } else {
+      process.stdout.write(printDoctorReport(checks).replace(/\*\*/g, '') + '\n');
+    }
     process.exit(doctorExitCode(checks));
   }
 
