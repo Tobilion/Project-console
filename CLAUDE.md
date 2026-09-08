@@ -92,7 +92,13 @@ re-reading from scratch or re-deriving the plan.
   `server/ollama.js` and `OLLAMA_DEFAULT_HOST` in `server/portConfig.js`; the master prompt's
   B.3 row citing `ollama.js:5` as hardcoded was stale. Live-verified: `npm run doctor` prints
   "Update: 1.0.11 is the latest" — the new URL builder round-tripped against the real npm
-  registry.
+  registry. B.4's first over-explained-comment item is also done: the 12-line `CLOUD_MODELS`
+  preamble in `server/ollama.js` was narrating the same "why" three different ways (what
+  Ollama Cloud is, why no separate API client, why the list drifts, a dated confirmed-live
+  incident, what to do on a future 404) — tightened to 5 lines that keep every actionable
+  fact (check ollama.com/search?c=cloud on a 404, don't assume auth is broken) and drop the
+  narrated walkthrough. `server/matcher.js`'s stage/pass/floor/margin naming audit and the
+  rest of B.4 are still open.
 - **Phase D: complete** (D-1 through D-8 all done; D-7 deliberately excludes Dashboard's
   Run/Stop/Push, see below for why). D-1 done (see below). D-2
   and D-3 done (see below). D-8 done (see below). D-5 and D-6 done (see below). D-4 done (new `server/intentVectorCache.js`: hashes the model id +
