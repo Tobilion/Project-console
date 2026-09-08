@@ -150,13 +150,16 @@ the spec fresh. Full detail is in the spec itself; short version:
   complete) rather than plain text, wired to the same D-7 REST endpoints so the card
   and the Reminders panel stay in sync. Once proven, extend the same card pattern to
   at least one more tool (notes is the natural second candidate).
-- **K-10** — upgrade `console doctor`: an auto-fix mode (`--fix` / a Settings "Fix"
-  button per failing check) for the specific failures it already knows how to
-  detect and can safely remediate (stale daemon lock files, orphaned `*.tmp` files —
-  this should also finally implement the still-open A-6 tmp-sweep as doctor's first
-  auto-fix rather than a separate mechanism — and a corrupted embedding-model cache),
-  a `--json` output mode, and a Settings-reachable Diagnostics panel so a non-technical
-  user never needs a terminal.
+- **K-10** — upgrade `console doctor`. **Partially done as of commit `65e3a0d`**
+  (after this handoff doc was first written): `--fix` auto-fix mode, a `checkTmpFiles()`
+  check, the A-6 tmp-sweep now wired into `autoFixDoctor()` via a shared
+  `server/tmpFileSweep.js` module, `--json` output on both the standalone entry and
+  `bin/cli.js`'s `doctor` subcommand, and new `GET /api/doctor` / `POST /api/doctor/fix`
+  REST routes — all live-verified (found and removed 30 real orphaned `.tmp` files in
+  this repo). **Still open:** the Settings-reachable Diagnostics panel UI itself (no
+  frontend code exists yet — follow `server/toolPanelRegistry.js`'s pattern and consume
+  the new REST routes) and stale-daemon-lock-file / corrupted-embedding-cache auto-fixes
+  (only the tmp-file one is implemented so far).
 - **K-11** — a "Troubleshoot this" flow wherever the app currently shows a raw error:
   the fatal boot-error screen and failed chat tool calls both need a one-click path
   from "here's what broke" to "here's the fix," building directly on K-10's auto-fixes.
