@@ -18,6 +18,51 @@ releases (Keep-a-Changelog + semver), `.github/dependabot.yml` opens routine dep
 PRs (pinned deps ignored — see the Known gotchas), and `.husky/pre-commit` +
 `scripts/guard-staged.mjs` gate commits locally.
 
+## Master execution in progress (started 2026-09-08 — READ THIS BEFORE STARTING WORK)
+
+The full task spec is `docs/PROJECT_CONSOLE_MASTER_EXECUTION_PROMPT.md` (12 phases, A
+through L, merged from 3 research passes + the raw request — ground rules, per-item
+findings/fixes, and two appendix components are all in there). This is a multi-session,
+overnight-scale execution — pick up exactly where the last session left off rather than
+re-reading from scratch or re-deriving the plan.
+
+**Progress so far** (chronological, oldest first):
+- Phase A (AI streaming quality): A-1, A-2, A-3, A-5, A-6, A-7, A-9, A-11 done (commit
+  98cd5c0, building on 7e8b322). A-14/F-2 done (commit 9143e41: reason mode now actually
+  raises `num_predict` via a new `REASON_MODE_NUM_PREDICT` tuning knob, not just a prompt
+  nudge). **Still open**: A-10 (add missing regex pins to `preSemanticOverrides.js` — check
+  current state first, several traps this item names may already be pinned), A-12 (verify
+  against current `consoleCommandDocs.js` — version/ai-mode-vs-trigger/data-safe entries
+  already exist; only the empty gap, if any, needs filling), A-13 (memory vs notes nudge —
+  not started), remainder of A-14 (chit-chat response variation pass + live test transcript
+  — the ack/empathy intents already use `pickRandom`/`chatReplyPool`, so check what's
+  actually still static before adding more).
+- Phase K (error sweep): K-1, K-4 (partial — projectMemory only), K-9 (chatLog only) done
+  (commit 74fd7e9). **Still open**: K-2, K-3, K-5, K-6, K-7 (verify-only), remaining K-4/K-9
+  sub-items the commit didn't cover (see docs file for the full location list per item).
+- Phases B through L: **not started**.
+
+**Before trusting any research-doc finding as still-accurate**: this codebase moves fast
+and several "confirmed" findings in the master prompt turned out to already be fixed by the
+time of the first execution session (e.g. A-12's "lol"/"haha" ack gap, and A-12's
+version/ai-mode/data-safe catalog entries — all already present in `consoleCommandDocs.js`
+and `chitChatIntents.js` before this execution pass started). Re-verify the current file
+before implementing a fix the doc describes — grep/read first, don't blind-patch from the
+doc's line numbers, which may already be stale.
+
+**Environment note for whoever runs this from a bridged/non-Windows shell**: this repo's
+`node_modules` is Windows-native (esbuild/tsc `.bin` shims point at `node.exe`), so `npm
+test`, `npm run lint`, and the `.husky/pre-commit` hook all fail in a Linux shell with an
+unrelated platform-mismatch error, not a real code problem. Verify edits with `node --check
+<file>` in that case and get a real signal by running `npm test`/`npm run lint` natively in
+Windows PowerShell before trusting further commits. Don't run `npm install` from a Linux
+shell against this tree — it will corrupt the Windows-native `node_modules`.
+
+**Git workflow**: work in small, frequent commits per Ground Rule #1 in the master prompt
+(several sessions may run against this over the same period). `git push` needs credentials
+that may not be present in every environment this runs from — if push fails, keep committing
+locally and let the user push, or configure credentials for that environment specifically.
+
 ## Run it
 
 ```powershell
@@ -2278,7 +2323,8 @@ ode <entry> from inside the asar � plain
   desktop/stage/ (server source + bin/ + an EMPTY data/ dir (fresh installs start like a new user) + the vite-built frontend INSIDE
   server/ � production mode serves static from __dirname � plus 
 pm ci --omit=dev
-  node_modules); electron-builder extraResources copies it into esources/ and an
+  node_modules); electron-builder extraResources copies it into 
+esources/ and an
   fterPack hook (desktop/scripts/after-pack.cjs) adds node_modules (electron-builder
   excludes node_modules from extraResources by default). main.cjs resolves the server
   root as process.resourcesPath when packaged and spawns with **ELECTRON_RUN_AS_NODE=1**
@@ -2309,19 +2355,23 @@ pm run dist /
 ## Undo-toast plumbing (chat-driven destructive actions)
 
 - Journaled destructive answers now carry an additive ctionIds array (web answer case ?
-  8s Undo toast ? sends evert action <id1>,<id2> through the normal chat flow; CLI ignores
+  8s Undo toast ? sends 
+evert action <id1>,<id2> through the normal chat flow; CLI ignores
   the field). Sites: confirm-branch fileOps (via tools.js's wrapMutatingTool, which now
   attaches the journal id to successful results), generalFileOp (tidy/dedupe/rename/move �
   the perform* functions return their journal ids), pdfOps (pdfKit writeOutput returns the
-  id), backup.create. Batch revert: evert action <id1>,<id2> confirms into ONE card and
-  the confirm branch loops evertAction per id (mixed git/command batches refused � those
+  id), backup.create. Batch revert: 
+evert action <id1>,<id2> confirms into ONE card and
+  the confirm branch loops 
+evertAction per id (mixed git/command batches refused � those
   are answer-only by design). Frontend: WsCtx.sendMessage (ctxRef built after
   handleSendMessage), answerCase fires the toast.
 
 ## Differentiation items (trigger-mode-first thesis)
 
 1. **Matcher-stage transcript logging**: every trigger-mode user message now persists
-   meta.match = { stage, intent, confidence, ... } � ecordMatchInfo/uildMatchInfo
+   meta.match = { stage, intent, confidence, ... } � 
+ecordMatchInfo/uildMatchInfo
    in connectionMatching.js, patchMessageMeta in conversationStore.js (NDJSON line patch
    under serializePersistence). Stages: presemantic shows as its semantic source,
    semantic/fuzzy/keyword, nlp, router, config-entry, multi, disambiguate, context, guess,
@@ -2332,7 +2382,8 @@ pm run dist /
    admin-command-gated, localhost probing, or the boot-time embedding download (cached,
    graceful degradation to fuzzy/NLP). Trigger-mode chat makes zero outbound calls.
 3. **Capability probe**: server/capabilityProbe.js (boot-cached where/which presence of
-   npm/yarn/pnpm/bun/python/python3/node/git/docker/flutter/dart/cargo/go); un suggestions
+   npm/yarn/pnpm/bun/python/python3/node/git/docker/flutter/dart/cargo/go); 
+un suggestions
    mention yarn when both it and a scripts-bearing project are present.
 4. **CLI --dry-run / --explain**: both flags send the execute payload with additive
    dryRun: true; explainInput (connectionMatching.js) resolves what WOULD happen
@@ -2340,7 +2391,8 @@ pm run dist /
 5. **Planned (not built)**: scoped permission modes ("Code"/"Ask"/"Debug" � any variant that
    auto-approves mutations weakens the confirm-gate invariant; the read-only 'Ask' variant is
    additive but touches handleExecute + the tool gate + UI = a real phase); repo-map
-   visibility panel (codebaseIndexer's epoMap/symbolIndex feed only the AI prompt today �
+   visibility panel (codebaseIndexer's 
+epoMap/symbolIndex feed only the AI prompt today �
    a viewable artifact needs a new panel + REST surface).
 
 ## File splits (>400-line convention, all verified by lint + vite build + full suite)
