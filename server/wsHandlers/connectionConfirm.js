@@ -19,7 +19,9 @@ export async function handleConfirmResponse(ws, parsed) {
   const { token, confirmed } = parsed.payload || {};
 
   if (!token) {
-    ws.send(JSON.stringify({ type: 'error_output', data: 'Confirmation token is invalid or expired.\n' }));
+    // K-5 (2026-09-08): distinct from the two cases below — this is a malformed client
+    // message (no token attached at all), not a stale/expired confirmation card.
+    ws.send(JSON.stringify({ type: 'error_output', data: 'No confirmation token was provided with that response.\n' }));
     ws.send(JSON.stringify({ type: 'end' }));
     return;
   }
@@ -34,7 +36,12 @@ export async function handleConfirmResponse(ws, parsed) {
     // rejects the pending promise so the calling turn sees a clean rejection.
     if (Date.now() - pending.createdAt > 5 * 60 * 1000 || (pending.owner && pending.owner !== ws)) {
       try { pending.resolve(false); } catch {}
-      ws.send(JSON.stringify({ type: 'error_output', data: 'Confirmation token is invalid or expired.\n' }));
+      // K-5 (2026-09-08): two genuinely different situations previously shared one message.
+      const expired = Date.now() - pending.createdAt > 5 * 60 * 1000;
+      const msg = expired
+        ? 'That confirmation card expired (cards are valid for 5 minutes) — ask again if you still want to do this.\n'
+        : 'That confirmation card belongs to a different session — ask again from this one if you still want to do this.\n';
+      ws.send(JSON.stringify({ type: 'error_output', data: msg }));
       ws.send(JSON.stringify({ type: 'end' }));
       return;
     }
@@ -44,7 +51,10 @@ export async function handleConfirmResponse(ws, parsed) {
 
   // Manual project-trigger risky-command confirmations
   if (!pendingConfirmations.has(token)) {
-    ws.send(JSON.stringify({ type: 'error_output', data: 'Confirmation token is invalid or expired.\n' }));
+    // K-5 (2026-09-08): distinct from the two cases above — this token was never issued, or
+    // was already resolved by an earlier reply (a double-click, or a stale card from before
+    // a server restart wiped in-memory pendingConfirmations).
+    ws.send(JSON.stringify({ type: 'error_output', data: 'That confirmation has already been answered or the console restarted since it was shown — ask again if you still want to do this.\n' }));
     ws.send(JSON.stringify({ type: 'end' }));
     return;
   }

@@ -105,7 +105,11 @@ async function handleExecuteBody(ws, parsed, sessionContext) {
 
   const project = resolveProject(projectId, sessionContext.tabId);
   if (!project) {
-    ws.send(JSON.stringify({ type: 'error_output', data: 'Project not found. Scan directory again.\n' }));
+    // K-5 (2026-09-08): name the project id that failed to resolve — with several tabs/
+    // projects open, a bare "Project not found" gave no way to tell which one dropped out
+    // of the scan cache (a rescan of a different folder, a closed tab, a stale id from
+    // before a server restart).
+    ws.send(JSON.stringify({ type: 'error_output', data: `Project "${projectId || '(none)'}" not found — it may have dropped out of the scan cache. Rescan the folder and try again.\n` }));
     ws.send(JSON.stringify({ type: 'end' }));
     return;
   }
