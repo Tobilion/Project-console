@@ -39,6 +39,15 @@ const TUNING_GROUPS: { label: string; keys: { name: string; hint: string; descri
     label: 'Type check',
     keys: [{ name: 'DEBOUNCE_MS', hint: 'verification debounce after file edits, ms', describe: 'How long the console waits after a file edit before running a background type check.' }],
   },
+  {
+    label: 'AI',
+    keys: [
+      { name: 'NUM_CTX', hint: 'context window, tokens', describe: 'How much conversation + project context the model can see at once. Higher uses more memory per request; was previously OLLAMA_NUM_CTX-env-only.' },
+      { name: 'STREAM_IDLE_TIMEOUT_MS', hint: 'stalled-response timeout, ms', describe: 'How long the console waits for the next chunk of a response before giving up on a hung model call.' },
+      { name: 'MAX_TOOL_ROUNDS', hint: 'max tool calls per AI turn', describe: 'How many tool-call rounds a single AI-mode exchange can make before the console stops it and asks for a more specific follow-up.' },
+      { name: 'REASON_MODE_NUM_PREDICT', hint: 'reason-mode token budget', describe: 'How many tokens the model is allowed for a "Reason" toggle response, above the normal chat ceiling.' },
+    ],
+  },
 ];
 
 export function TuningSection() {

@@ -12,11 +12,15 @@ import { computeFileEditPreview } from '../diffPreview.js';
 import { validateToolCall, withFileLock, FILE_MUTATING_TOOLS } from '../aiGuardrails.js';
 import { scheduleVerification } from '../verifyHarness.js';
 import { appendAction } from '../actionHistory.js';
+import { getTuning } from '../tuningStore.js';
 
 // Phase 5 (PASS 5.4): the tool-call cap is env-overridable so heavy multi-step workflows don't
 // hit an artificial wall — defaults to 6, the original constant. Owned here since it bounds the
-// tool loop in aiQuery.js.
-export const MAX_TOOL_ROUNDS = Number.parseInt(process.env.MAX_TOOL_ROUNDS ?? '', 10) || 6;
+// tool loop in aiQuery.js. Phase B.3 (2026-09-08): promoted to a tuningStore knob so it can be
+// raised live from Settings, not just at boot via MAX_TOOL_ROUNDS env var (still the initial
+// default — see the fallback argument below).
+const MAX_TOOL_ROUNDS_ENV_DEFAULT = Number.parseInt(process.env.MAX_TOOL_ROUNDS ?? '', 10) || 6;
+export const getMaxToolRounds = () => getTuning('MAX_TOOL_ROUNDS', MAX_TOOL_ROUNDS_ENV_DEFAULT);
 
 /** Waits for the user to approve/reject a gated tool call, driven by an incoming confirm_response. */
 export function requestToolConfirmation(ws, tool, args, preview) {

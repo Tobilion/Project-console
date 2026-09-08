@@ -33,6 +33,14 @@ export const TUNING_DEFAULTS = {
   // Ollama's own default; reason mode raises the cap so a "think it through" answer isn't cut
   // short by a low token budget the way a normal chat turn is.
   REASON_MODE_NUM_PREDICT: 1200,
+  // ollama / aiQueryToolRun (Phase B.3, 2026-09-08): previously env-var-only overrides
+  // (OLLAMA_NUM_CTX / MAX_TOOL_ROUNDS) — env vars need a restart and technical know-how,
+  // tuningStore knobs take effect live from Settings. The env vars still set the INITIAL
+  // default at boot (see each consumer's own fallback argument to getTuning); a tuning.json
+  // override always wins once one exists.
+  NUM_CTX: 16384,
+  STREAM_IDLE_TIMEOUT_MS: 120000,
+  MAX_TOOL_ROUNDS: 6,
 };
 
 // Per-key numeric bounds; anything outside [min, max] (or non-finite) is rejected rather than
@@ -52,6 +60,9 @@ const BOUNDS = {
   DEBOUNCE_MS: { min: 100, max: 60000 },
   CLIPBOARD_POLL_MS: { min: 500, max: 60000 },
   REASON_MODE_NUM_PREDICT: { min: 200, max: 8000 },
+  NUM_CTX: { min: 2048, max: 131072 },
+  STREAM_IDLE_TIMEOUT_MS: { min: 10000, max: 600000 },
+  MAX_TOOL_ROUNDS: { min: 1, max: 30 },
 };
 
 let overrides = {};

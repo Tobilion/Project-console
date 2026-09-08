@@ -1,5 +1,6 @@
 import { spawn, execSync } from 'child_process';
 import fs from 'fs';
+import { getTuning } from './tuningStore.js';
 
 // Allow user to point at a remote Ollama server via env var
 const OLLAMA_HOST = process.env.OLLAMA_HOST || 'http://localhost:11434';
@@ -11,7 +12,12 @@ export function getOllamaHost() {
 }
 
 // Context window sent to Ollama per request.
-const NUM_CTX = parseInt(process.env.OLLAMA_NUM_CTX, 10) || 16384;
+const NUM_CTX_ENV_DEFAULT = parseInt(process.env.OLLAMA_NUM_CTX, 10) || 16384;
+// Phase B.3 (2026-09-08): OLLAMA_NUM_CTX still sets the boot-time default (unchanged for
+// anyone already using it); a tuningStore override — settable live from Settings, no
+// restart — wins once one exists. Read at call time, not module load, so a live change
+// applies to the next request immediately.
+const currentNumCtx = () => getTuning('NUM_CTX', NUM_CTX_ENV_DEFAULT);
 
 export function findOllamaBinary() {
   const candidates = [
@@ -196,7 +202,7 @@ export async function chatOnce(model, messages, options = {}, signal, hostOverri
       // into the one short response this call parses.
       think: true,
       options: {
-        num_ctx: NUM_CTX,
+        num_ctx: currentNumCtx(),
         temperature: options.temperature ?? 0,
         num_predict: options.num_predict ?? 200,
       },
@@ -215,7 +221,8 @@ export async function chatOnce(model, messages, options = {}, signal, hostOverri
 // spinner stuck until the user happened to hit Cancel (audit 2026-08-06, Phase 2). Idle-based
 // rather than a total cap, because long CPU generations are legitimate; the external signal
 // (user cancel) still wins because the abort handler checks it independently.
-const STREAM_IDLE_TIMEOUT_MS = 120_000;
+const STREAM_IDLE_TIMEOUT_ENV_DEFAULT = 120_000;
+const currentStreamIdleTimeoutMs = () => getTuning('STREAM_IDLE_TIMEOUT_MS', STREAM_IDLE_TIMEOUT_ENV_DEFAULT);
 
 /**
  * Streams a chat completion, yielding `{ type: 'content' | 'thinking', text }` chunks.
@@ -243,9 +250,10 @@ export async function* chatStream(model, messages, signal, hostOverride, extraOp
   let idleTimer = null;
   const resetIdle = () => {
     if (idleTimer) clearTimeout(idleTimer);
+    const idleMs = currentStreamIdleTimeoutMs();
     idleTimer = setTimeout(
-      () => controller.abort(new Error(`Ollama stream stalled (no chunks for ${STREAM_IDLE_TIMEOUT_MS / 1000}s)`)),
-      STREAM_IDLE_TIMEOUT_MS
+      () => controller.abort(new Error(`Ollama stream stalled (no chunks for ${idleMs / 1000}s)`)),
+      idleMs
     );
   };
   if (signal) {
@@ -257,7 +265,7 @@ export async function* chatStream(model, messages, signal, hostOverride, extraOp
     const res = await fetch(`${host}/api/chat`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model, messages, stream: true, think: true, options: { num_ctx: NUM_CTX, ...extraOptions } }),
+      body: JSON.stringify({ model, messages, stream: true, think: true, options: { num_ctx: currentNumCtx(), ...extraOptions } }),
       signal: controller.signal
     });
 

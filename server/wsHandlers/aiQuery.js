@@ -5,7 +5,7 @@ import { streamWithToolDetection } from './aiStream.js';
 import { analyzeAIExchange } from '../distillation.js';
 import { trackFileEdit, trackQuestion, addCandidateAddition } from '../projectMemory.js';
 import { metrics } from '../metrics.js';
-import { MAX_TOOL_ROUNDS, runToolCall } from './aiQueryToolRun.js';
+import { getMaxToolRounds, runToolCall } from './aiQueryToolRun.js';
 import { readProfile } from '../routes/profileRoutes.js';
 import { buildAIQueryContext } from './aiQueryContext.js';
 import { looksLikeUnexecutedToolIntent, looksLikeFabricatedActionClaim } from './aiQueryDetectors.js';
@@ -119,7 +119,8 @@ export async function handleAIQuery(ws, project, input, sessionContext, workspac
     }
 
     let round = 0;
-    while (toolCalls.length > 0 && round < MAX_TOOL_ROUNDS) {
+    const maxToolRounds = getMaxToolRounds();
+    while (toolCalls.length > 0 && round < maxToolRounds) {
       round++;
       messages.push({ role: 'assistant', content: visibleText || '(tool call)' });
 
@@ -164,7 +165,7 @@ export async function handleAIQuery(ws, project, input, sessionContext, workspac
       finalText = finalText ? `${finalText}\n\n${visibleText}` : visibleText;
     }
 
-    if (round >= MAX_TOOL_ROUNDS && toolCalls.length > 0) {
+    if (round >= maxToolRounds && toolCalls.length > 0) {
       ws.send(JSON.stringify({ type: 'error_output', data: 'Stopped after too many tool-call rounds — ask a more specific follow-up.\n' }));
     }
 
