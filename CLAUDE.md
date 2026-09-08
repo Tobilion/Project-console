@@ -46,9 +46,20 @@ re-reading from scratch or re-deriving the plan.
   silently swallowing). K-5 — commit f0a0f11 (three confirmation-token error cases
   differentiated; project-not-found now names the id). K-6, K-7 verified already correct,
   no change needed (see f0a0f11's message for why).
-- Phases B through L: **not started**. Phase B is next — it's the largest phase (oversized-
-  file splits across ~15 files, several dedup passes, a hardcoded-value sweep) and worth
-  chunking across multiple commits rather than one pass.
+- **Phase B: started.** B.3 done for four knobs (commit 8267ad2: `NUM_CTX`,
+  `STREAM_IDLE_TIMEOUT_MS`, `MAX_TOOL_ROUNDS` promoted from env-var-only to live tuningStore
+  knobs + a new "AI" group in `TuningSection.tsx`; the rest of B.3's table — poll intervals,
+  external endpoints, MAX_ENTRIES caps, etc. — still open). Three B.2/B.4 items verified as
+  NOT actual issues (research doc was stale) — don't redo this: `server/wsHandlers/
+  connection.js`'s shim already has a proper explanatory docblock; `server/mockProjects.js`
+  is imported by `server/index.js` and `projectRoutes.js`, not dead; `server/asyncHandler.js`
+  is still needed since `express` is pinned at `^4.21.2` (v5 would make it obsolete, this repo
+  is on v4). **Still fully open**: B.1 (the ~15-file oversized-file split list), the rest of
+  B.2 (the `answer`-helper dedup across 60+ wsHandlers files, the panel-polling-scaffold dedup
+  across 9 panels, the port-probing consolidation across desktop/CLI/daemon), the rest of B.3,
+  and B.4's naming/comment-length audit. This is the largest remaining phase — chunk it across
+  many commits, one dedup/split target per commit, not one giant pass.
+- Phases C through L: **not started.**
 
 **Verification caveat carried across all of the above**: everything was checked with
 `node --check` on this bridged Linux shell (see the environment note below) — nobody has yet
