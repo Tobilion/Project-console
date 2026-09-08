@@ -68,7 +68,7 @@ re-reading from scratch or re-deriving the plan.
   full recompute + re-save, so this can never serve stale vectors). `.gitignore` gained
   `data/.cache/` (the model download cache at `.cache/xenova` was already ignored via
   `.cache/`, but `data/.cache/` needed its own line since `data/` isn't blanket-ignored).
-  **Still open**: FolderExplorerPanel/Dashboard of D-7 (see below) — D-1 through D-6 and D-8 are all done ("the single most impactful latency fix" per the master prompt — migrate mutating
+  **Still open**: Dashboard of D-7 (see below) — D-1 through D-6 and D-8 are all done ("the single most impactful latency fix" per the master prompt — migrate mutating
   panel actions to direct REST+journal instead of round-tripping through the chat/WS
   pipeline). D-6 verified: both historical CLI-crash root
   causes (`server/index.js`'s dynamic `import('vite')`, `server/pdfKit.js`'s lazy/guarded
@@ -233,12 +233,26 @@ re-reading from scratch or re-deriving the plan.
   stateless REST call doesn't have, so REST-created reminders always attribute to `'local'`;
   this only differs from the chat path on a `HOST=0.0.0.0` LAN setup with multiple named
   users, which is itself a labeled non-goal in CLAUDE.md's identity/attribution section.
-  **Still open in D-7**: `FolderExplorerPanel`, `Dashboard`. Same pattern each time: read the
-  chat handler's exact behavior first (including non-obvious side effects), replicate
-  faithfully in a direct REST endpoint preserving any confirm/checkpoint/journal contract,
-  then update the panel to call it — and double-check any new failure response actually
-  reaches the frontend's error branch through `apiFetchJson`'s null-on-non-2xx behavior (the
-  bug found and fixed in the FileToolsPanel commit).
+  FolderExplorerPanel done next (`server/routes/fileToolsRoutes.js` — two more endpoints
+  alongside tidy/duplicates, `src/components/FolderExplorerPanel.tsx`): inline-rename (Enter/
+  blur on a row) and drag-and-drop move now hit `POST /api/projects/:id/files/rename` and
+  `POST /api/projects/:id/files/move`. The panel is NOT project-scoped in general (it browses
+  any absolute path on disk), but rename/move are always chat-routed `general.files.rename`/
+  `general.files.move` mutations that only ever fire when the panel's `relOf()` containment
+  check confirms the entry lives inside the currently active project — the panel already
+  computes both exact relative paths itself before composing the phrase, so (same as every
+  other D-7 slice) there was no free-text parsing to preserve, just `performRename`/
+  `performMove` (already exported from `builtinGeneralFiles.js`, reused by the tidy/
+  duplicates endpoints too) to call directly behind the same checkpoint. Opening a file in an
+  editor/browser, revealing it, and copying its path all stay chat-routed on purpose (they're
+  read-only convenience actions the master prompt's D-7 slice never targeted — only
+  mutations were in scope).
+  **Still open in D-7**: `Dashboard` (Run/Stop/Push actions). Same pattern: read the chat
+  handler's exact behavior first, replicate faithfully in a direct REST endpoint preserving
+  any confirm/checkpoint/journal contract, then update the panel — and respond
+  `{ ok: false, error }` at 200, not `res.status(400)`, so `apiFetchJson`'s null-on-non-2xx
+  behavior doesn't swallow the message (the bug found and fixed in the FileToolsPanel
+  commit).
 - Phases C, E, F, G, H, I, J, L: **not started.**
 
 **Verification caveat carried across all of the above**: everything was checked with

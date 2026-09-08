@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Folder, List, LayoutGrid, Lock, Code } from 'lucide-react';
 import { apiFetchJson } from '../utils/apiFetch';
+import { projectApi } from '../utils/projectApi';
 import { cn } from '../lib/utils';
 import type { Project } from '../types';
 import { formatSize, formatDate, fileIcon, extOf } from './folderExplorer/utils';
@@ -97,16 +98,31 @@ export function FolderExplorerPanel({ onSendMessage, tabId = null, project = nul
     setTimeout(() => renameInputRef.current?.select(), 0);
   };
 
-  const commitRename = (entry: BrowseEntry) => {
+  // D-7 (2026-09-08): rename/move now hit direct REST endpoints (fileToolsRoutes.js)
+  // instead of composing a `rename <from> to <to>` / `move <file> into <dir>` chat phrase --
+  // this panel already computes the exact relative paths itself (relOf()'s containment
+  // check), so there was never any free-text parsing to preserve. The endpoints replicate
+  // the exact checkpoint + performRename/performMove + appendAction journal sequence
+  // connectionConfirm.js's generalFileOp branch runs for these two kinds, so 'revert
+  // action <id>' keeps working identically. Opening/revealing/copying a path stays
+  // chat-routed on purpose (read-only convenience actions, not mutations).
+  const commitRename = async (entry: BrowseEntry) => {
     const rel = relOf(entry.path);
     setRenamingPath(null);
-    if (!rel) return;
+    if (!rel || !project?.id) return;
     const name = renameValue.trim();
     if (!name || name === entry.name) return;
     const slash = rel.lastIndexOf('/');
     const toRel = slash === -1 ? name : `${rel.slice(0, slash)}/${name}`;
     renameCommittedRef.current = true;
-    onSendMessage(`rename ${rel} to ${toRel}`);
+    const result = await apiFetchJson<{ ok: boolean; error?: string }>(
+      projectApi(`/api/projects/${encodeURIComponent(project.id)}/files/rename`, tabId),
+      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ from: rel, to: toRel }) }
+    );
+    if (!result) { setError('Could not reach the server.'); return; }
+    if (!result.ok) { setError(result.error || 'Rename failed.'); return; }
+    setError(null);
+    browse(path, false);
   };
 
   const commitRenameFromBlur = (entry: BrowseEntry) => {
@@ -130,8 +146,16 @@ export function FolderExplorerPanel({ onSendMessage, tabId = null, project = nul
     if (!filePath || filePath === target.path) return;
     const relFile = relOf(filePath);
     const relDir = relOf(target.path);
-    if (!relFile || !relDir) return;
-    onSendMessage(`move ${relFile} into ${relDir}`);
+    if (!relFile || !relDir || !project?.id) return;
+    apiFetchJson<{ ok: boolean; error?: string }>(
+      projectApi(`/api/projects/${encodeURIComponent(project.id)}/files/move`, tabId),
+      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ file: relFile, targetDir: relDir }) }
+    ).then((result) => {
+      if (!result) { setError('Could not reach the server.'); return; }
+      if (!result.ok) { setError(result.error || 'Move failed.'); return; }
+      setError(null);
+      browse(path, false);
+    });
   };
   // Browser-style back/forward history over visited folders (Windows Explorer-like).
   const historyRef = useRef<string[]>([]);

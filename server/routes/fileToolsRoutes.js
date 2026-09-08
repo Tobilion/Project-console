@@ -8,7 +8,7 @@ import path from 'path';
 import { resolveProject } from '../state.js';
 import { walkDir, isTextFile } from '../toolScan.js';
 import { createResolveSafe } from '../toolSandbox.js';
-import { findDuplicates, planTidy, performTidy, performDuplicateDeletes, planDuplicateDeletes } from '../wsHandlers/builtinGeneralFiles.js';
+import { findDuplicates, planTidy, performTidy, performDuplicateDeletes, planDuplicateDeletes, performRename, performMove } from '../wsHandlers/builtinGeneralFiles.js';
 import { createCheckpoint } from '../gitSafety.js';
 import { asyncHandler } from '../asyncHandler.js';
 
@@ -219,5 +219,35 @@ export function registerFileToolsRoutes(app) {
     const result = await performDuplicateDeletes(project.path, files);
     if (!result.ok) return res.json({ ok: false, error: result.error, deleted: result.deleted, actionIds: result.actionIds });
     res.json({ ok: true, deleted: result.deleted, skippedJournal: result.skippedJournal, actionIds: result.actionIds });
+  }));
+
+  // D-7 (2026-09-08): direct-REST equivalents of the general.files.rename/move chat intents
+  // (builtinGeneralFiles.js) -- the FolderExplorerPanel's inline-rename and drag-and-drop-move
+  // gestures composed `rename <from> to <to>` / `move <file> into <dir>` chat phrases purely to
+  // reach these two operations; the panel already computed the exact from/to relative paths
+  // itself (via its own relOf() containment check), so there was never any free-text parsing
+  // to preserve. Same checkpoint + perform + appendAction journal sequence as the tidy/
+  // duplicates endpoints above (and as connectionConfirm.js's generalFileOp branch for these
+  // two kinds), so 'revert action <id>' keeps working identically.
+  app.post('/api/projects/:id/files/rename', asyncHandler(async (req, res) => {
+    const project = findProject(req);
+    if (!project) return res.status(404).json({ error: 'Project not found' });
+    const from = typeof req.body?.from === 'string' ? req.body.from : '';
+    const to = typeof req.body?.to === 'string' ? req.body.to : '';
+    if (!from || !to) return res.status(400).json({ error: 'Missing from/to.' });
+    await createCheckpoint(project.path, `rename ${from} to ${to}`);
+    const result = await performRename(project.path, from, to);
+    res.json(result);
+  }));
+
+  app.post('/api/projects/:id/files/move', asyncHandler(async (req, res) => {
+    const project = findProject(req);
+    if (!project) return res.status(404).json({ error: 'Project not found' });
+    const file = typeof req.body?.file === 'string' ? req.body.file : '';
+    const targetDir = typeof req.body?.targetDir === 'string' ? req.body.targetDir : '';
+    if (!file || !targetDir) return res.status(400).json({ error: 'Missing file/targetDir.' });
+    await createCheckpoint(project.path, `move ${file} into ${targetDir}`);
+    const result = await performMove(project.path, file, targetDir);
+    res.json(result);
   }));
 }
