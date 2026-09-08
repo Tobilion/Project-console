@@ -42,8 +42,12 @@ async function startServer() {
   // The server will set globalThis.__consoleServerPort once the port fallback loop binds.
   await import(pathToFileURL(entry).href);
 
-  // Poll for the global signal set in index.js's onListening handler
-  const MAX_WAIT = 30000;
+  // Poll for the global signal set in index.js's onListening handler. D-5 (2026-09-08):
+  // was 30s, but a cold boot (embedding-model download/batch-embed + NLP training +
+  // discovery) can legitimately take up to ~90s the first time — 30s failed correctly-
+  // booting servers, not just genuinely stuck ones. Matches the desktop shell's and the
+  // daemon's own 90s boot ceiling.
+  const MAX_WAIT = 120000;
   const POLL = 200;
   let waited = 0;
   while (typeof globalThis.__consoleServerPort !== 'number' && waited < MAX_WAIT) {
@@ -53,7 +57,7 @@ async function startServer() {
 
   const port = globalThis.__consoleServerPort;
   if (!port) {
-    console.error('\nServer failed to bind to a port within 30s. Check for port conflicts or startup errors above.');
+    console.error(`\nServer failed to bind to a port within ${MAX_WAIT / 1000}s. Check for port conflicts or startup errors above.`);
     process.exit(1);
   }
   return port;

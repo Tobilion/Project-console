@@ -49,6 +49,11 @@ process.on('unhandledRejection', (reason) => {
 
 const BASE_PORT = parseInt(process.env.PORT, 10) || 3000;
 const MAX_PORT_ATTEMPTS = 20; // 3000-3019, same rule as server/portConfig.js (widened 2026-08-26)
+// D-5 (2026-09-08): unified with the CLI's and the daemon's per-port probe timeout — this
+// used to be 1500ms here vs 5000ms in bin/cli.js and scripts/daemon.mjs, an unexplained
+// three-way mismatch. Kept as one named constant so future changes stay in sync by
+// construction instead of by memory.
+const PORT_PROBE_TIMEOUT_MS = 5000;
 
 let tray = null;
 let serverChild = null;
@@ -242,10 +247,22 @@ function checkForUpdates() {
 }
 
 function probePort(port) {
+  // D-5: match the CLI's/daemon's shape check (a bare 200 isn't enough — some other local
+  // service could be answering on that port) by confirming the body actually looks like our
+  // own /api/projects response, not just a 200 status.
   return new Promise((resolve) => {
-    const req = http.get(`http://127.0.0.1:${port}/api/projects`, { timeout: 1500 }, (res) => {
-      res.resume();
-      resolve(res.statusCode === 200 ? port : null);
+    const req = http.get(`http://127.0.0.1:${port}/api/projects`, { timeout: PORT_PROBE_TIMEOUT_MS }, (res) => {
+      if (res.statusCode !== 200) { res.resume(); resolve(null); return; }
+      let body = '';
+      res.on('data', (chunk) => { body += chunk; });
+      res.on('end', () => {
+        try {
+          const data = JSON.parse(body);
+          resolve(Array.isArray(data.projects) ? port : null);
+        } catch {
+          resolve(null);
+        }
+      });
     });
     req.on('error', () => resolve(null));
     req.on('timeout', () => { req.destroy(); resolve(null); });
@@ -399,13 +416,22 @@ function startServer() {
 }
 
 /** Poll the bound port until /api/projects answers (cold boot ~30-45s). */
-async function waitForServer(port, timeoutMs = 90000) {
+// D-5 (2026-09-08): previously probed ONLY `port` (almost always BASE_PORT) for the full
+// timeout before ever falling back to a range scan — if the server's own fallback loop had
+// actually bound a higher port (BASE_PORT already in use by something else), the entire
+// wait was spent asking the wrong question. Now scans the whole configured range on every
+// poll cycle from the start, and returns the actual bound port (or null) instead of a
+// boolean, so callers never have to assume BASE_PORT.
+async function waitForServer(timeoutMs = 90000) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
-    if (await probePort(port)) return true;
+    for (let p = BASE_PORT; p < BASE_PORT + MAX_PORT_ATTEMPTS; p++) {
+      const found = await probePort(p);
+      if (found) return found;
+    }
     await new Promise((r) => setTimeout(r, 1000));
   }
-  return false;
+  return null;
 }
 
 function openConsole(port) {
@@ -450,14 +476,9 @@ async function runCliMode(extraArgs) {
   const persistentDataDir = getPersistentDataDir();
   const existing = await findRunningConsole();
   if (!existing) startServer();
-  let port = null;
-  if (await waitForServer(existing || BASE_PORT)) {
-    port = existing || BASE_PORT;
-  } else {
-    for (let p = BASE_PORT + 1; p < BASE_PORT + MAX_PORT_ATTEMPTS; p++) {
-      if (await probePort(p)) { port = p; break; }
-    }
-  }
+  // D-5: waitForServer now scans the full range itself and hands back the real port — no
+  // second fallback loop needed here (existing already covers the "attach, don't scan" case).
+  const port = existing || (await waitForServer());
   if (!port) {
     console.error(
       'Project Console server did not become reachable on ports ' +
@@ -515,13 +536,11 @@ app.whenReady().then(async () => {
   // runs the server is usually up so a "Restart & install" loses as little work as possible.
   initAutoUpdater();
   setTimeout(() => checkForUpdates(), 30000);
-  // The server binds 3000-3019 via its own fallback loop; find whichever port it landed on.
-  const bound = await waitForServer(BASE_PORT);
+  // D-5: waitForServer now scans 3000-3019 on every poll cycle and returns the actual bound
+  // port itself — no separate fallback scan needed, and openConsole gets the real port
+  // instead of an assumed BASE_PORT.
+  const bound = await waitForServer();
   if (!bound) {
-    // The fallback loop may have bound a higher port — probe the full range.
-    for (let p = BASE_PORT + 1; p < BASE_PORT + MAX_PORT_ATTEMPTS; p++) {
-      if (await probePort(p)) { openConsole(p); return; }
-    }
     // No port answered within the deadline — tell the user exactly that instead of quitting
     // with no message (2026-08-26). The stderr tail (if the child died) is shown as detail.
     showFatalError(
@@ -534,8 +553,7 @@ app.whenReady().then(async () => {
   }
   serverReady = true;
   // Re-point the splash window at the real console (no flash of a second window) + tray.
-  // waitForServer returns a BOOLEAN and only ever probes BASE_PORT — the port is the constant.
-  openConsole(BASE_PORT);
+  openConsole(bound);
 });
 
 // A desktop app with a real window: closing the window quits (before-quit stops the server

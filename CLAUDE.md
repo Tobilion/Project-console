@@ -59,7 +59,7 @@ re-reading from scratch or re-deriving the plan.
   across 9 panels, the port-probing consolidation across desktop/CLI/daemon), the rest of B.3,
   and B.4's naming/comment-length audit. This is the largest remaining phase — chunk it across
   many commits, one dedup/split target per commit, not one giant pass.
-- **Phase D: started.** D-4 done (new `server/intentVectorCache.js`: hashes the model id +
+- **Phase D: started.** D-5 and D-6 done (see below). D-4 done (new `server/intentVectorCache.js`: hashes the model id +
   every intent/phrase pair, persists the batch-embed output to
   `data/.cache/intent-vectors.json` via `writeFileAtomicSync`, and `semanticMatcherInit.js`
   now checks it before running the ~2500-phrase batch embed — a cache hit skips essentially
@@ -72,7 +72,23 @@ re-reading from scratch or re-deriving the plan.
   crash fixes still hold), D-7 ("the single most impactful latency fix" per the master
   prompt — migrate mutating panel actions to direct REST+journal instead of round-tripping
   through the chat/WS pipeline), D-8 (verify natural-language shorthand resolves via the fast
-  matcher path, not a slow fallback stage).
+  matcher path, not a slow fallback stage). D-6 verified: both historical CLI-crash root
+  causes (`server/index.js`'s dynamic `import('vite')`, `server/pdfKit.js`'s lazy/guarded
+  pdf-parse import) are still in place — no regression, and no fresh crash cause found by
+  inspection (a live `Project Console.exe --cli` end-to-end run on Windows is still the
+  stronger check and hasn't been done from this session). D-5 done: `desktop/main.cjs`'s
+  `waitForServer()` used to probe ONLY the port it was given (almost always `BASE_PORT`) for
+  the full 90s timeout before ever falling back to a full-range scan — if the server actually
+  bound a higher port, the whole wait was spent asking the wrong question. It now scans
+  `BASE_PORT..BASE_PORT+MAX_PORT_ATTEMPTS` on every poll cycle and returns the actual bound
+  port (or null) instead of a boolean; both call sites (`runCliMode`, the `app.whenReady()`
+  boot path) use the returned port instead of assuming `BASE_PORT`. `probePort` also gained
+  the same body-shape check (`Array.isArray(data.projects)`) the CLI/daemon probes already
+  had, not just a bare 200 status. Per-port probe timeout unified to 5000ms across
+  desktop/CLI/daemon (desktop was 1500ms — the odd one out; `PORT_PROBE_TIMEOUT_MS` is now a
+  named constant). `bin/cli.js`'s in-process bind-wait raised from 30s to 120s (a legitimate
+  ~90s cold boot was being reported as a failure at 30s). `scripts/daemon.mjs` was already
+  correct (full-range scan + shape check + 90s ceiling) — no change needed there.
 - Phases C, E, F, G, H, I, J, L: **not started.**
 
 **Verification caveat carried across all of the above**: everything was checked with
