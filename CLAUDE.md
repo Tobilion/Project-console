@@ -27,20 +27,35 @@ overnight-scale execution — pick up exactly where the last session left off ra
 re-reading from scratch or re-deriving the plan.
 
 **Progress so far** (chronological, oldest first):
-- Phase A (AI streaming quality): A-1, A-2, A-3, A-5, A-6, A-7, A-9, A-11 done (commit
-  98cd5c0, building on 7e8b322). A-14/F-2 done (commit 9143e41: reason mode now actually
-  raises `num_predict` via a new `REASON_MODE_NUM_PREDICT` tuning knob, not just a prompt
-  nudge). **Still open**: A-10 (add missing regex pins to `preSemanticOverrides.js` — check
-  current state first, several traps this item names may already be pinned), A-12 (verify
-  against current `consoleCommandDocs.js` — version/ai-mode-vs-trigger/data-safe entries
-  already exist; only the empty gap, if any, needs filling), A-13 (memory vs notes nudge —
-  not started), remainder of A-14 (chit-chat response variation pass + live test transcript
-  — the ack/empathy intents already use `pickRandom`/`chatReplyPool`, so check what's
-  actually still static before adding more).
-- Phase K (error sweep): K-1, K-4 (partial — projectMemory only), K-9 (chatLog only) done
-  (commit 74fd7e9). **Still open**: K-2, K-3, K-5, K-6, K-7 (verify-only), remaining K-4/K-9
-  sub-items the commit didn't cover (see docs file for the full location list per item).
-- Phases B through L: **not started**.
+- **Phase A: DONE.** A-1, A-2, A-3, A-5, A-6, A-7, A-9, A-11 (commit 98cd5c0, building on
+  7e8b322). A-10 verified already covered by the 2026-08-26/08-28 audit passes (bare commit,
+  typo'd time, frustration pins all present in `preSemanticOverrides.js`) — no change needed.
+  A-12 verified already covered (version/ai-mode-vs-trigger/data-safe catalog entries, and
+  the "what's up"/"what's your name" phrase gaps, all present) — no change needed. A-13 done
+  (commit a0e2cc9: `saveMemory`'s tool description now tells the model to say which store —
+  durable memory vs a plain note — it used, when the "remember that ..." phrasing is
+  ambiguous). A-14/F-2 done (commit 9143e41: reason mode now actually raises `num_predict`
+  via a new `REASON_MODE_NUM_PREDICT` tuning knob, not just a prompt nudge; the response-
+  variation half of A-14 was already covered by the existing `pickRandom`/`chatReplyPool`
+  pattern on ack/empathy). Live test transcript (the last sub-item of A-14) still outstanding
+  — needs a running server + real conversation, not just a code read.
+- **Phase K: DONE** (error sweep). K-1, K-4 (partial), K-9 (partial) — commit 74fd7e9. K-2,
+  K-3 — commit ad1ec0d (sessionIndex.js persistence-chain + writeIndex fallback now log;
+  six appendMessage/ensureConsoleConfigGitignored call sites across
+  connectionLifecycle/aiQuery/connectionExecute/connectionModeAdmin now log instead of
+  silently swallowing). K-5 — commit f0a0f11 (three confirmation-token error cases
+  differentiated; project-not-found now names the id). K-6, K-7 verified already correct,
+  no change needed (see f0a0f11's message for why).
+- Phases B through L: **not started**. Phase B is next — it's the largest phase (oversized-
+  file splits across ~15 files, several dedup passes, a hardcoded-value sweep) and worth
+  chunking across multiple commits rather than one pass.
+
+**Verification caveat carried across all of the above**: everything was checked with
+`node --check` on this bridged Linux shell (see the environment note below) — nobody has yet
+run the real `npm test`/`npm run lint` on Windows against this branch. Do that before
+assuming any of A/K is bulletproof, especially the matcher-adjacent K-5 changes (error text
+changes don't usually break check-matcher, but confirm — grep the batteries for the old
+"Confirmation token is invalid or expired" string in case a row asserts on it verbatim).
 
 **Before trusting any research-doc finding as still-accurate**: this codebase moves fast
 and several "confirmed" findings in the master prompt turned out to already be fixed by the
