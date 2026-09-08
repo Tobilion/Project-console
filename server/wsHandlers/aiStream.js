@@ -22,7 +22,7 @@ const MARKER_MARGIN = OPEN_TAG.length - 1;
  * instead of silently discarded, so the frontend has the option to surface it later (e.g. a
  * "thinking…" indicator) without that ever being possible to confuse with real answer text.
  */
-export async function streamWithToolDetection(model, messages, ws, signal) {
+export async function streamWithToolDetection(model, messages, ws, signal, extraOptions) {
   let buffer = '';
   let visible = '';
   let inToolCall = false;
@@ -77,7 +77,7 @@ export async function streamWithToolDetection(model, messages, ws, signal) {
 
   let truncated = false;
   try {
-    for await (const chunk of chatStream(model, messages, signal)) {
+    for await (const chunk of chatStream(model, messages, signal, undefined, extraOptions)) {
       if (chunk.type === 'thinking') {
         if (ws.readyState === 1) ws.send(JSON.stringify({ type: 'thinking', data: chunk.text }));
         continue;

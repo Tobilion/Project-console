@@ -10,6 +10,7 @@ import { readProfile } from '../routes/profileRoutes.js';
 import { buildAIQueryContext } from './aiQueryContext.js';
 import { looksLikeUnexecutedToolIntent, looksLikeFabricatedActionClaim } from './aiQueryDetectors.js';
 import { log } from '../logger.js';
+import { getTuning, TUNING_DEFAULTS } from '../tuningStore.js';
 
 /**
  * AI-mode query orchestrator (Phase 14 split, 2026-08-05 — bodies moved verbatim). The tool
@@ -30,9 +31,9 @@ export async function handleAIQuery(ws, project, input, sessionContext, workspac
     return;
   }
 
-  let messages, cleanInput, model, tools, workspaceTools;
+  let messages, cleanInput, model, tools, workspaceTools, reasoningMode;
   try {
-    ({ messages, cleanInput, model, tools, workspaceTools } =
+    ({ messages, cleanInput, model, tools, workspaceTools, reasoningMode } =
       await buildAIQueryContext(project, input, sessionContext, workspaceProjects));
   } catch (err) {
     // buildAIQueryContext runs before the AbortController exists — a throw here used to reject
@@ -67,10 +68,19 @@ export async function handleAIQuery(ws, project, input, sessionContext, workspac
   // runToolCall, which blocks mutating tools with a plain error (no prompts, no checkpoint).
   const askMode = readProfile().permissionMode === 'ask';
 
+  // A-14/F-2 (2026-09-08): reason mode used to only prepend a "think step by step" instruction
+  // to the prompt — the model still had the same num_predict ceiling as a plain chat turn, so a
+  // genuinely longer, more deliberate answer could still get cut short. Raise the token budget
+  // for every streamWithToolDetection call this turn makes when reason mode is on; plain turns
+  // pass undefined and keep Ollama's own default, unchanged.
+  const streamOptions = reasoningMode
+    ? { num_predict: getTuning('REASON_MODE_NUM_PREDICT', TUNING_DEFAULTS.REASON_MODE_NUM_PREDICT) }
+    : undefined;
+
   try {
     ws.send(JSON.stringify({ type: 'ai_start', data: `Thinking... (${model})` }));
     ws.send(JSON.stringify({ type: 'stream_start' }));
-    let { visibleText, toolCalls, truncated } = await streamWithToolDetection(model, messages, ws, abortController.signal);
+    let { visibleText, toolCalls, truncated } = await streamWithToolDetection(model, messages, ws, abortController.signal, streamOptions);
     ws.send(JSON.stringify({ type: 'stream_end' }));
     finalText = visibleText;
 
@@ -83,7 +93,7 @@ export async function handleAIQuery(ws, project, input, sessionContext, workspac
       ws.send(JSON.stringify({ type: 'answer', data: '\n\n_(Response was cut off — retrying automatically.)_\n' }));
       let retryText;
       try {
-        ({ visibleText: retryText } = await streamWithToolDetection(model, messages, ws, abortController.signal));
+        ({ visibleText: retryText } = await streamWithToolDetection(model, messages, ws, abortController.signal, streamOptions));
       } catch (retryErr) {
         truncated = true;
         log.warn('[aiQuery] retry after truncation also failed:', retryErr.message);
@@ -101,7 +111,7 @@ export async function handleAIQuery(ws, project, input, sessionContext, workspac
         content: 'You said you would call a tool, but no <tool_call>{"tool": "...", "args": {...}}</tool_call> block was found in your response. If you still need to call a tool, emit it now wrapped in exactly those tags. Otherwise, answer directly without mentioning a tool call.',
       });
       ws.send(JSON.stringify({ type: 'stream_start' }));
-      const retry = await streamWithToolDetection(model, messages, ws, abortController.signal);
+      const retry = await streamWithToolDetection(model, messages, ws, abortController.signal, streamOptions);
       ws.send(JSON.stringify({ type: 'stream_end' }));
       visibleText = retry.visibleText;
       toolCalls = retry.toolCalls;
@@ -147,7 +157,7 @@ export async function handleAIQuery(ws, project, input, sessionContext, workspac
       });
 
       ws.send(JSON.stringify({ type: 'stream_start' }));
-      const next = await streamWithToolDetection(model, messages, ws, abortController.signal);
+      const next = await streamWithToolDetection(model, messages, ws, abortController.signal, streamOptions);
       ws.send(JSON.stringify({ type: 'stream_end' }));
       visibleText = next.visibleText;
       toolCalls = next.toolCalls;

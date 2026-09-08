@@ -233,7 +233,7 @@ const STREAM_IDLE_TIMEOUT_MS = 120_000;
  * real answer / scanning them for `<tool_call>` blocks; `thinking` chunks are reasoning-only and
  * must never be mistaken for a finished response.
  */
-export async function* chatStream(model, messages, signal, hostOverride) {
+export async function* chatStream(model, messages, signal, hostOverride, extraOptions) {
   const host = hostOverride || OLLAMA_HOST;
   // Internal controller: the external signal (user cancel) forwards into it, and the idle
   // watchdog aborts it with a distinguishing reason. Callers can tell the two apart via the
@@ -257,7 +257,7 @@ export async function* chatStream(model, messages, signal, hostOverride) {
     const res = await fetch(`${host}/api/chat`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model, messages, stream: true, think: true, options: { num_ctx: NUM_CTX } }),
+      body: JSON.stringify({ model, messages, stream: true, think: true, options: { num_ctx: NUM_CTX, ...extraOptions } }),
       signal: controller.signal
     });
 

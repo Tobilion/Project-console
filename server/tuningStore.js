@@ -29,6 +29,10 @@ export const TUNING_DEFAULTS = {
   DEBOUNCE_MS: 2000,
   // clipboardHistory (Phase 8): OS clipboard poll interval
   CLIPBOARD_POLL_MS: 2500,
+  // ollama (A-14/F-2, 2026-09-08): Reason-mode's num_predict ceiling — plain chat requests get
+  // Ollama's own default; reason mode raises the cap so a "think it through" answer isn't cut
+  // short by a low token budget the way a normal chat turn is.
+  REASON_MODE_NUM_PREDICT: 1200,
 };
 
 // Per-key numeric bounds; anything outside [min, max] (or non-finite) is rejected rather than
@@ -47,6 +51,7 @@ const BOUNDS = {
   STDERR_SUMMARY_CAP: { min: 200, max: 100000 },
   DEBOUNCE_MS: { min: 100, max: 60000 },
   CLIPBOARD_POLL_MS: { min: 500, max: 60000 },
+  REASON_MODE_NUM_PREDICT: { min: 200, max: 8000 },
 };
 
 let overrides = {};
