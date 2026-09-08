@@ -80,6 +80,9 @@ data/collisions.json
 data/editors.json
 data/snippets.json
 data/learned-intents.json
+# Persisted intent-embedding cache (Phase D-4, 2026-09-08) — recomputed automatically
+# whenever the intent corpus or embedding model changes; see intentVectorCache.js.
+data/.cache/
 data/registry-config.json
 data/backups/
 data/workspace-exports/

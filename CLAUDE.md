@@ -59,7 +59,21 @@ re-reading from scratch or re-deriving the plan.
   across 9 panels, the port-probing consolidation across desktop/CLI/daemon), the rest of B.3,
   and B.4's naming/comment-length audit. This is the largest remaining phase — chunk it across
   many commits, one dedup/split target per commit, not one giant pass.
-- Phases C through L: **not started.**
+- **Phase D: started.** D-4 done (new `server/intentVectorCache.js`: hashes the model id +
+  every intent/phrase pair, persists the batch-embed output to
+  `data/.cache/intent-vectors.json` via `writeFileAtomicSync`, and `semanticMatcherInit.js`
+  now checks it before running the ~2500-phrase batch embed — a cache hit skips essentially
+  all of the ~35s boot cost; any corpus/model change invalidates the hash and falls back to a
+  full recompute + re-save, so this can never serve stale vectors). `.gitignore` gained
+  `data/.cache/` (the model download cache at `.cache/xenova` was already ignored via
+  `.cache/`, but `data/.cache/` needed its own line since `data/` isn't blanket-ignored).
+  **Still open**: D-1 (tab-switch loading indicator), D-2/D-3 (scan-cache pre-warm/reuse),
+  D-5 (port-binding timeout unification, overlaps B.2's port-probing dedup), D-6 (verify CLI
+  crash fixes still hold), D-7 ("the single most impactful latency fix" per the master
+  prompt — migrate mutating panel actions to direct REST+journal instead of round-tripping
+  through the chat/WS pipeline), D-8 (verify natural-language shorthand resolves via the fast
+  matcher path, not a slow fallback stage).
+- Phases C, E, F, G, H, I, J, L: **not started.**
 
 **Verification caveat carried across all of the above**: everything was checked with
 `node --check` on this bridged Linux shell (see the environment note below) — nobody has yet

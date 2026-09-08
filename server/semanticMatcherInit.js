@@ -7,6 +7,7 @@ import { broadcast } from './wsServer.js';
 import { INTENTS } from './intentsData.js';
 import { getTuning } from './tuningStore.js';
 import { INIT_WAIT_POLL_MS, INIT_DOWNLOAD_TIMEOUT_MS } from './semanticMatcher.js';
+import { loadIntentVectorCache, saveIntentVectorCache } from './intentVectorCache.js';
 import { log } from './logger.js';
 
 /** Boot sequence; see SemanticMatcher.initialize()'s old doc comment for the failure story. */
@@ -53,20 +54,33 @@ export async function initializeMatcher(owner) {
     broadcast({ type: 'semantic_matcher_progress', data: { stage: 'embedding', percent: 50 } });
     log.info('[SemanticMatcher] Model loaded, computing intent embeddings...');
 
-    owner.intentVectors = {};
-    // Phase 6: embed the whole phrase corpus in one bounded-concurrency batch instead of
-    // serially — ~2500 phrases at 8 in flight is the single largest boot-time reduction.
-    const phraseTasks = [];
-    for (const [intent, config] of Object.entries(INTENTS)) {
-      for (const example of config.examples) {
-        phraseTasks.push({ intent, example });
+    // Phase D-4 (2026-09-08): a persisted cache of the batch-embed output below skips the
+    // whole ~2500-phrase recompute on every boot when the corpus + model haven't changed —
+    // see intentVectorCache.js for the validity-hash and corruption-recovery details.
+    const cached = loadIntentVectorCache(INTENTS);
+    if (cached) {
+      owner.intentVectors = cached.intentVectors;
+      log.info('[SemanticMatcher] Loaded intent embeddings from cache (skipped batch recompute).');
+    } else {
+      owner.intentVectors = {};
+      // Phase 6: embed the whole phrase corpus in one bounded-concurrency batch instead of
+      // serially — ~2500 phrases at 8 in flight is the single largest boot-time reduction.
+      const phraseTasks = [];
+      for (const [intent, config] of Object.entries(INTENTS)) {
+        for (const example of config.examples) {
+          phraseTasks.push({ intent, example });
+        }
       }
-    }
-    const phraseResults = await owner._embedBatch(phraseTasks.map((t) => t.example));
-    for (let i = 0; i < phraseTasks.length; i++) {
-      const { intent } = phraseTasks[i];
-      if (!owner.intentVectors[intent]) owner.intentVectors[intent] = [];
-      owner.intentVectors[intent].push(phraseResults[i].data);
+      const phraseResults = await owner._embedBatch(phraseTasks.map((t) => t.example));
+      for (let i = 0; i < phraseTasks.length; i++) {
+        const { intent } = phraseTasks[i];
+        if (!owner.intentVectors[intent]) owner.intentVectors[intent] = [];
+        // .data is the model's typed-array output — Array.from() here (not at save time)
+        // keeps every consumer of owner.intentVectors working with plain arrays uniformly,
+        // whether this boot recomputed them or a later boot loads them straight from JSON.
+        owner.intentVectors[intent].push(Array.from(phraseResults[i].data));
+      }
+      saveIntentVectorCache(INTENTS, owner.intentVectors);
     }
 
     owner._rebuildFuseIndex();
