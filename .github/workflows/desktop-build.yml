@@ -60,6 +60,10 @@ jobs:
         run: npm ci
         working-directory: desktop
 
+      - name: Install Linux build dependencies (libarchive-tools, fuse)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libarchive-tools fuse
+
       - name: Stage the server runtime (source + built frontend + prod node_modules)
         run: npm run stage
         working-directory: desktop
