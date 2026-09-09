@@ -1096,6 +1096,16 @@ sent.length = 0;
 const w2 = await handleNotifyCommand(ws, proj, "notify me if C:/tmp/watch-b hasn't changed in 7 days", "notify me if C:/tmp/watch-b hasn't changed in 7 days");
 eq('watch admin: folder-stale rule consumed + answers + opens panel', w2 === true && ws.sent.length === 2 && ws.sent[0].type === 'answer' && ws.sent[1].type === 'end' && ws.sent[0].openPanel === 'notifications' && /Stale-check/.test(ws.sent[0].data), true);
 eq('watch admin: stale answer surfaces the event opt-in (E-3 parity)', /when the event is enabled/.test(ws.sent[0].data), true);
+
+// E-4 (2026-09-09): quiet-hours predicate matrix — pure window logic, no stores involved.
+const { isQuietHours } = await import(pathToFileURL(base + 'notify.js').href);
+const at = (h) => new Date(2026, 0, 1, h, 0, 0);
+eq('notify quiet: nulls mean off', isQuietHours(at(3), null, null) === false, true);
+eq('notify quiet: equal bounds mean off', isQuietHours(at(3), 5, 5) === false, true);
+eq('notify quiet: inside day window', isQuietHours(at(14), 9, 17) === true, true);
+eq('notify quiet: outside day window', isQuietHours(at(8), 9, 17) === false && isQuietHours(at(17), 9, 17) === false, true);
+eq('notify quiet: overnight wraps past midnight', isQuietHours(at(23), 22, 7) === true && isQuietHours(at(3), 22, 7) === true && isQuietHours(at(12), 22, 7) === false, true);
+eq('notify quiet: junk bounds are off', isQuietHours(at(3), 'x', 7) === false && isQuietHours(at(3), 1.5, 7) === false, true);
 sent.length = 0;
 const w3 = await handleNotifyCommand(ws, proj, 'list watched folders', 'list watched folders');
 eq('watch admin: list shows both rules', w3 === true && ws.sent.length === 2 && ws.sent[0].type === 'answer' && ws.sent[1].type === 'end' && ws.sent[0].data.includes('watch-a') && ws.sent[0].data.includes('watch-b'), true);

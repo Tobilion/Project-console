@@ -77,6 +77,8 @@ export function UserProfileModal({ open, profile, onClose, onSave, initialCatego
   const [reminderToastPosition, setReminderToastPosition] = useState(profile.reminderToastPosition);
   const [askBeforeDeleteLinkedNote, setAskBeforeDeleteLinkedNote] = useState(profile.askBeforeDeleteLinkedNote);
   const [aiRedirectDelayMs, setAiRedirectDelayMs] = useState(profile.aiRedirectDelayMs);
+  const [quietStart, setQuietStart] = useState(profile.quietHoursStart === null ? 'off' : String(profile.quietHoursStart));
+  const [quietEnd, setQuietEnd] = useState(profile.quietHoursEnd === null ? 'off' : String(profile.quietHoursEnd));
   const [generalToolsFirst, setGeneralToolsFirst] = useState(profile.generalToolsFirst);
   const [category, setCategory] = useState<CategoryId>((initialCategory as CategoryId) || 'identity');
 
@@ -102,6 +104,8 @@ export function UserProfileModal({ open, profile, onClose, onSave, initialCatego
       setReminderToastPosition(profile.reminderToastPosition);
       setAskBeforeDeleteLinkedNote(profile.askBeforeDeleteLinkedNote);
       setAiRedirectDelayMs(profile.aiRedirectDelayMs);
+      setQuietStart(profile.quietHoursStart === null ? 'off' : String(profile.quietHoursStart));
+      setQuietEnd(profile.quietHoursEnd === null ? 'off' : String(profile.quietHoursEnd));
       setGeneralToolsFirst(profile.generalToolsFirst);
       if (initialCategory) setCategory(initialCategory as CategoryId);
     }
@@ -131,6 +135,8 @@ export function UserProfileModal({ open, profile, onClose, onSave, initialCatego
       explorerViewMode, permissionMode, persistRemindersAcrossRestart,
       reminderToastDurationMs, reminderToastPosition, askBeforeDeleteLinkedNote,
       aiRedirectDelayMs, generalToolsFirst,
+      quietHoursStart: quietStart === 'off' ? null : Number(quietStart),
+      quietHoursEnd: quietEnd === 'off' ? null : Number(quietEnd),
     });
     onClose();
   };
@@ -345,6 +351,29 @@ export function UserProfileModal({ open, profile, onClose, onSave, initialCatego
                       </button>
                     ))}
                     <div />
+                  </div>
+                </FieldLabel>
+              </div>
+
+              <div className={sectionCls} data-setting="quietHours">
+                <FieldLabel label="Quiet hours" hint="Hold desktop and webhook pushes during these local hours (history and in-app toasts continue). Overnight wraps — 22 to 7 sleeps through midnight. Off by default.">
+                  <div className="flex items-center gap-2 text-xs text-fg">
+                    <span className="text-fg-dim">From</span>
+                    <select value={quietStart} onChange={(e) => setQuietStart(e.target.value)}
+                      className="bg-surface border border-border-soft rounded-lg px-2 py-1.5 text-fg focus:outline-none focus:border-accent-blue transition-colors">
+                      <option value="off">Off</option>
+                      {Array.from({ length: 24 }, (_, h) => (
+                        <option key={h} value={h}>{String(h).padStart(2, '0')}:00</option>
+                      ))}
+                    </select>
+                    <span className="text-fg-dim">to</span>
+                    <select value={quietEnd} onChange={(e) => setQuietEnd(e.target.value)}
+                      className="bg-surface border border-border-soft rounded-lg px-2 py-1.5 text-fg focus:outline-none focus:border-accent-blue transition-colors">
+                      <option value="off">Off</option>
+                      {Array.from({ length: 24 }, (_, h) => (
+                        <option key={h} value={h}>{String(h).padStart(2, '0')}:00</option>
+                      ))}
+                    </select>
                   </div>
                 </FieldLabel>
               </div>

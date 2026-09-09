@@ -10,7 +10,8 @@
 
 import { resolveEventName, eventListText } from '../notify/notifyEvents.js';
 import { getRules, setEventEnabled, getWebhooks, addWebhook, removeWebhook } from '../notify/notifyStore.js';
-import { notify } from '../notify.js';
+import { notify, isQuietHours } from '../notify.js';
+import { readProfile } from '../routes/profileRoutes.js';
 import { isSafeExternalUrl } from '../urlSafety';
 import { addWatchRule, removeWatchRule, getWatchRules, setWatchRuleEnabled } from '../watchRules.js';
 import { syncWatchRules } from '../watchEngine.js';
@@ -210,10 +211,15 @@ async function runTestNotification(ws, project) {
     end(ws);
     return;
   }
+  // E-4: an explicit test bypasses quiet hours (it is a deliberate delivery check, not
+  // a background event) — and says so when they are on, so a passing test at 3am doesn't
+  // read as "quiet hours are broken".
+  const profile = readProfile();
+  const quietNow = isQuietHours(new Date(), profile.quietHoursStart, profile.quietHoursEnd);
   const results = await notify(project.id, 'dev-server-crash', {
     title: `Project Console test — ${project.name}`,
     body: 'This is a test notification. If you can read this (desktop or webhook), notifications are working.',
-  });
+  }, { bypassQuietHours: true });
   const lines = results.map((r) => {
     const target = r.channel === 'webhook' ? ` (\`${r.url}\`)` : '';
     return r.ok
@@ -222,7 +228,7 @@ async function runTestNotification(ws, project) {
   });
   ws.send(JSON.stringify({
     type: 'answer',
-    data: `**Test notification** for **[${project.name}]**:\n\n${lines.join('\n')}\n\n(Desktop toasts may silently no-op on Windows 11 without a registered app id — the webhook is the verifiable channel.)`,
+    data: `**Test notification** for **[${project.name}]**:\n\n${lines.join('\n')}\n\n(Desktop toasts may silently no-op on Windows 11 without a registered app id — the webhook is the verifiable channel.)${quietNow ? '\n\nNote: quiet hours are currently on — this test bypassed them, but real events are being held until they end.' : ''}`,
   }));
   end(ws);
 }

@@ -18,6 +18,19 @@ function projectNameOf(projectId) {
 }
 
 /**
+ * E-4 (2026-09-09): quiet-hours predicate — pure (unit-tested, no stores). `start`/`end`
+ * are local hours 0–23 (server-local clock, same clock the scheduler's daily logic uses);
+ * nulls or start === end mean "off". Overnight windows wrap (22 → 7 covers midnight).
+ * Exported for the test-notification path, which bypasses the gate deliberately.
+ */
+export function isQuietHours(now, start, end) {
+  if (!Number.isInteger(start) || !Number.isInteger(end) || start === end) return false;
+  const h = now instanceof Date ? now.getHours() : now;
+  if (start < end) return h >= start && h < end;
+  return h >= start || h < end;
+}
+
+/**
  * Deliver `event` for `projectId` to every configured channel. Returns per-channel results
  * ({ channel, url?, ok, status?/reason? }) for `test notification` reporting; other callers
  * ignore the return. A disabled event is a no-op, so default-off rules cost nothing.
@@ -28,6 +41,13 @@ export async function notify(projectId, event, { title, body, refId = null }, to
   const results = [];
   try {
     if (!isEventEnabled(event)) return results;
+    const profile = readProfile();
+    // E-4 quiet hours: hold the PUSH channels (desktop + webhook) — history, the WS
+    // broadcast, and in-app toasts continue so nothing is lost, just not pushed. An
+    // explicit `test notification` bypasses via bypassQuietHours (a deliberate user
+    // gesture to verify delivery, and its answer says so).
+    const quiet = !toastOpts.bypassQuietHours
+      && isQuietHours(new Date(), profile.quietHoursStart, profile.quietHoursEnd);
     const item = recordNotificationItem(projectId, projectNameOf(projectId), event, title, body, refId ? { refId } : null);
     broadcast({ type: 'notification_fired', data: item });
     const payload = {
@@ -39,13 +59,16 @@ export async function notify(projectId, event, { title, body, refId = null }, to
       app: 'local-project-console',
       ...(refId ? { refId } : null),
     };
+    if (quiet) {
+      results.push({ channel: 'desktop', ok: false, reason: 'quiet hours' });
+      return results;
+    }
     if (getRules().desktop) {
       // Reminders apply the user's toast-duration/position profile settings (only when the
       // caller didn't already override them, which keeps other events byte-identical).
       let durationMs = toastOpts.durationMs;
       let position = toastOpts.position;
       if (event === 'reminder-fired') {
-        const profile = readProfile();
         if (durationMs === undefined) durationMs = profile.reminderToastDurationMs;
         if (position === undefined) position = profile.reminderToastPosition;
       }

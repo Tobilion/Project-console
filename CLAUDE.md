@@ -687,8 +687,17 @@ Verified: check-handlers 287/287, check-ws-cases clean, npm test 602/602, tsc cl
   pointer exactly when that event is off (single hint line, never a chip/question, never
   repeated once enabled; tour coverage of the panel itself landed via the C-3 Schedules
   retarget). 2 new check-handlers rows — the schedule one asserts whichever branch the
-  machine's real notify store selects (315/315). Verified: lint clean, npm test 602/602.
-  Still open: E-4's anchored popup + verbosity/quiet-hours (see E-4 sentence above).
+   machine's real notify store selects (315/315). Verified: lint clean, npm test 602/602.
+   E-4 quiet hours done (2026-09-09, opencode): new `quietHoursStart`/`quietHoursEnd`
+   profile fields (null = off, 0–23, overnight wraps, explicit null turns off — verified
+   round-trip) with From/to selects in Settings → Reminders & Notifications; `notify()`
+   holds desktop + webhook pushes inside the window (history + WS broadcast + in-app
+   toasts continue — silence, not loss) via an exported pure `isQuietHours()`;
+   `test notification` bypasses with a note saying so. 6 new check-handlers rows
+   (328/328). Verbosity stays binary toggles (the spec's sanctioned minimum). tsc + vite
+   build clean; browser confirmation of the selects still outstanding.
+   Still open: E-4's anchored popup (needs a real browser — replacing the Tools-grid
+   entry with a popover is a layout change, not attempted headless).
 - **Phase F: started.** F-5(3) done (2026-09-09, opencode): `system.notes.delete` now
   actually reads `askBeforeDeleteLinkedNote` (default true) — with linked reminders present
   it deletes the note first, then stages a `pendingNoteDelete` yes/no question (new

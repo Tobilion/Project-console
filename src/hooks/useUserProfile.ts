@@ -50,6 +50,10 @@ export interface UserProfile {
   // B.3 (2026-09-09): default AI model name — the picker's last explicit choice, reselected
   // on boot when still installed. Empty means "auto" (cloud-first, else first local).
   defaultAiModel: string;
+  // E-4 (2026-09-09): quiet hours — local hour pushing stops/starts (desktop + webhook
+  // held; history + in-app toasts continue). Null = off; overnight wraps; equal = off.
+  quietHoursStart: number | null;
+  quietHoursEnd: number | null;
 }
 
 // Neutral defaults, not a hardcoded person's name/title — matches server/routes/profileRoutes.js's
@@ -79,6 +83,8 @@ const DEFAULT_PROFILE: UserProfile = {
   aiRedirectDelayMs: 2000,
   generalToolsFirst: true,
   defaultAiModel: '',
+  quietHoursStart: null,
+  quietHoursEnd: null,
 };
 
 /** Client state for the user profile persisted to the server (GET/POST /api/profile).

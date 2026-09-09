@@ -87,6 +87,12 @@ const DEFAULT_PROFILE = {
   // reselected on boot when still installed. Empty means "auto" (cloud-first, else
   // first local); the toggle's validity check falls back the same way for junk.
   defaultAiModel: '',
+  // E-4 (2026-09-09): quiet hours — local hour to stop pushing (desktop + webhook) and
+  // hour to resume. Both null (default) means off. Overnight wraps (22 → 7 sleeps through
+  // midnight); start === end also means off. History + in-app toasts are unaffected —
+  // quiet hours silence interruptions, not the record.
+  quietHoursStart: null,
+  quietHoursEnd: null,
 };
 
 // Only plain, trimmed strings up to a sane length — mirrors the conservative
@@ -100,6 +106,12 @@ function sanitizeField(value, fallback) {
 
 function sanitizeBool(value, fallback) {
   return typeof value === 'boolean' ? value : fallback;
+}
+
+// E-4 (2026-09-09): quiet-hours bound — an integer local hour 0–23, or null for "off".
+// Anything else (strings, out-of-range, NaN) is off, never a guess.
+function sanitizeQuietHour(value) {
+  return Number.isInteger(value) && value >= 0 && value <= 23 ? value : null;
 }
 
 // Stage H: accent override — only 'auto' or an exact #RRGGBB hex is accepted; anything else
@@ -140,6 +152,8 @@ function readProfile() {
       aiRedirectDelayMs: typeof p.aiRedirectDelayMs === 'number' ? Math.max(0, Math.min(10000, p.aiRedirectDelayMs)) : DEFAULT_PROFILE.aiRedirectDelayMs,
       generalToolsFirst: sanitizeBool(p.generalToolsFirst, DEFAULT_PROFILE.generalToolsFirst),
       defaultAiModel: sanitizeField(p.defaultAiModel, DEFAULT_PROFILE.defaultAiModel),
+      quietHoursStart: sanitizeQuietHour(p.quietHoursStart),
+      quietHoursEnd: sanitizeQuietHour(p.quietHoursEnd),
     };
   } catch {
     // Missing or corrupt file — serve defaults without touching disk.
@@ -189,6 +203,10 @@ export function sanitizeProfile(body, current) {
     aiRedirectDelayMs: typeof body.aiRedirectDelayMs === 'number' ? Math.max(0, Math.min(10000, body.aiRedirectDelayMs)) : current.aiRedirectDelayMs,
     generalToolsFirst: sanitizeBool(body.generalToolsFirst, current.generalToolsFirst),
     defaultAiModel: sanitizeField(body.defaultAiModel, current.defaultAiModel),
+    // Explicit null turns quiet hours OFF — so presence (not nullishness) decides, or an
+    // "off" save would silently keep the old window.
+    quietHoursStart: 'quietHoursStart' in body ? sanitizeQuietHour(body.quietHoursStart) : current.quietHoursStart,
+    quietHoursEnd: 'quietHoursEnd' in body ? sanitizeQuietHour(body.quietHoursEnd) : current.quietHoursEnd,
   };
 }
 
