@@ -290,13 +290,23 @@ Retry flow still works exactly as before.
   find/tidy/duplicates/rename/move plus shared `constants.js` and `queue.js`; the public
   export surface (`generalFileHandlers`, all `perform*`/`plan*`, `extractFindQuery`) is
   re-exported unchanged, so `connectionConfirm.js`/`fileToolsRoutes.js`/`checkHandlerCoverage.js`
-  needed zero edits. Verified: check-handlers 287/287, check-tools 182/182, check-ws-cases
-  137/137, npm test 602/602, tsc clean). B.3 frontend poll cadences consolidated (commit
-  2cf94d6: new `src/constants.ts` with `PANEL_POLL_CLIPBOARD/DASHBOARD/PDF/NOTIFICATIONS/
+needed zero edits. Verified: check-handlers 287/287, check-tools 182/182, check-ws-cases
+   137/137, npm test 602/602, tsc clean). Second split target done (commit 4b59168:
+   `builtinChitChat.js` — 556 lines — is now a 23-line dispatcher over
+   `server/wsHandlers/chitChat/` domain leaves basic.js (canned chat: greeting/status/
+   gratitude/farewell/identity/ack/empathy/joke/clear/yes_no/port/time/date/needs_ai_mode),
+   howDoI.js (help/explain_followup/how_do_i/list_commands + the shared `answerDocMatches`/
+   `pushTargetQuestion` helpers, which connectionInterceptors.js still imports from the
+   barrel), tools.js (undo/git_status/deploy), support.js (troubleshoot/where_are_logs/
+   export_logs), calculate.js (math). Every handler body was diff-verified byte-identical to
+   the pre-split file modulo the `../`→`../../` path depth the new subdirectory requires —
+   this passed a real `handler.toString()` comparison harness, not just code-reading.
+Verified: check-handlers 287/287, check-ws-cases clean, npm test 602/602, tsc clean).
+   B.3 frontend poll cadences consolidated (commit 2cf94d6: new `src/constants.ts` with `PANEL_POLL_CLIPBOARD/DASHBOARD/PDF/NOTIFICATIONS/
   SLOW_MS`; every cadence is byte-identical to the old literal, only the duplication is gone
   — deliberately left out of tuningStore, which stays backend-numbers-with-bounds-only). The
-  rest of B.1 (the remaining oversized files — `builtinChitChat.js` 523,
-  `preSemanticOverrides.js` 471, `matcher.js` 429, `server/index.js` 443, plus
+  rest of B.1 (the remaining oversized files — `preSemanticOverrides.js` 471,
+  `matcher.js` 429, `server/index.js` 443, plus
   `NotificationsPanel.tsx`/`PdfToolsPanel.tsx`/`RemindersPanel.tsx` and the rest of the
   frontend panel list — see the spec's per-file notes), the rest of B.2 (the `answer`-helper dedup
   across 60+ wsHandlers files), the rest of B.3, and B.4's naming/comment-length audit. This
