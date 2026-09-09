@@ -19,6 +19,7 @@ import { walkDir, isTextFile } from '../toolScan.js';
 import { createResolveSafe } from '../toolSandbox.js';
 import { pendingConfirmations } from '../state.js';
 import { appendAction } from '../actionHistory.js';
+import { answer } from '../wsReply.js';
 
 const MAX_RESULTS = 20;          // find/duplicates answer cap (matches big-list intent conventions)
 const MAX_CONTENT_FILE_BYTES = 20000; // don't substring-scan huge files (codebaseData.MAX_FILE_READ_BYTES)
@@ -48,7 +49,7 @@ const CATEGORY_LABEL = {
   presentations: 'Presentations', archives: 'Archives', audio: 'Audio', video: 'Video',
 };
 
-const answer = (ws, data) => ws.send(JSON.stringify({ type: 'answer', data }));
+
 
 /**
  * Extracts the search query from "find files matching X" / "search my files for X" /

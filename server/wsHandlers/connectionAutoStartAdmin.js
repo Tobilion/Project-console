@@ -12,8 +12,7 @@
 import { setAutoStart, removeAutoStart, getAutoStart, appendAutoStartLog, readAutoStartLog, runAutoStart } from '../autoStartProjects.js';
 import { state } from '../state.js';
 import { enqueueTask } from '../taskQueue.js';
-
-const end = (ws) => ws.send(JSON.stringify({ type: 'end' }));
+import { end } from '../wsReply.js';
 
 /** Case-insensitive project lookup by name/folder: exact first, then unique contains. */
 function findProjectByName(name) {

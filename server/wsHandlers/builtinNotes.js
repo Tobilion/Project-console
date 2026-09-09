@@ -6,8 +6,7 @@
 // self-sufficient).
 import { appendNote, listNotes, deleteNote } from '../notesStore.js';
 import { getSchedules, removeScheduleById } from '../schedules/scheduleStore.js';
-
-const answer = (ws, data) => ws.send(JSON.stringify({ type: 'answer', data }));
+import { answer } from '../wsReply.js';
 
 const CREATE_PREFIX_RE = /^(?:note|add\s+a\s+note|write\s+a\s+note|jot\s+down)\s*:\s*(.+)$/is;
 

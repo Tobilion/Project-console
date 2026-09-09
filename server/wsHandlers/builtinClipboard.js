@@ -7,8 +7,7 @@ import {
   getClipboardHistory, clearClipboardHistory, removeClipboardItem, copyToOsClipboard,
 } from '../clipboardHistory.js';
 import { listSnippets, saveSnippet, getSnippet, deleteSnippet } from '../snippetStore.js';
-
-const answer = (ws, data) => ws.send(JSON.stringify({ type: 'answer', data }));
+import { answer } from '../wsReply.js';
 
 const TRUNCATE = 120;
 

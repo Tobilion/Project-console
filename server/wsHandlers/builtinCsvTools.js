@@ -6,6 +6,7 @@ import fs from 'fs';
 import path from 'path';
 import { isSafeParamValue } from '../paramCommand';
 import { loadCsv, findColumn, matchOp, aggregateColumn } from '../csvTools.js';
+import { answer } from '../wsReply.js';
 
 function csvNotFoundHint(projectPath) {
   try {
@@ -28,8 +29,6 @@ function csvNotFoundHint(projectPath) {
     return ` Available CSVs: ${out.slice(0,5).join(', ')}. Use one of those, or upload via the Spreadsheet panel.`;
   } catch { return ''; }
 }
-
-const answer = (ws, data) => ws.send(JSON.stringify({ type: 'answer', data }));
 
 const MAX_FILTER_ROWS = 25;
 

@@ -17,8 +17,8 @@ import { addSchedule, getSchedules, removeSchedule } from '../schedules/schedule
 import { isReadOnlyIntent, readOnlySummary } from '../schedules/scheduleIntents.js';
 import { syncEventTriggerWatchers } from '../schedules/scheduler.js';
 import { readScheduleLog } from '../schedules/scheduleFire.js';
+import { end } from '../wsReply.js';
 
-const end = (ws) => ws.send(JSON.stringify({ type: 'end' }));
 
 // The interval phrase can span several words ("every 5 minutes"), so capture the longest
 // recognized prefix and treat the rest as the trigger command. The optional "schedule "

@@ -8,6 +8,7 @@
 import crypto from 'crypto';
 import { pendingConfirmations } from '../state.js';
 import { getAction, listActions, revertAction } from '../actionHistory.js';
+import { answer, end } from '../wsReply.js';
 
 const TYPE_LABELS = {
   file_write: 'WRITE',
@@ -19,9 +20,6 @@ const TYPE_LABELS = {
   git: 'GIT',
   revert: 'REVERT',
 };
-
-const answer = (ws, data) => ws.send(JSON.stringify({ type: 'answer', data }));
-const end = (ws) => ws.send(JSON.stringify({ type: 'end' }));
 
 function formatList(project, actions) {
   if (actions.length === 0) {

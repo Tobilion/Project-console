@@ -5,8 +5,7 @@
 import path from 'path';
 import { createBackup, listBackups } from '../backupStore.js';
 import { appendAction } from '../actionHistory.js';
-
-const answer = (ws, data) => ws.send(JSON.stringify({ type: 'answer', data }));
+import { answer } from '../wsReply.js';
 
 function downloadLink(projectId, fileName) {
   return `/api/projects/${encodeURIComponent(projectId)}/backup-file?name=${encodeURIComponent(fileName)}`;

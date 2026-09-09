@@ -14,8 +14,8 @@ import { notify } from '../notify.js';
 import { isSafeExternalUrl } from '../urlSafety';
 import { addWatchRule, removeWatchRule, getWatchRules, setWatchRuleEnabled } from '../watchRules.js';
 import { syncWatchRules } from '../watchEngine.js';
+import { end } from '../wsReply.js';
 
-const end = (ws) => ws.send(JSON.stringify({ type: 'end' }));
 
 export async function handleNotifyCommand(ws, project, lowerInput, input) {
   if (/^test\s+notification$/.test(lowerInput)) {

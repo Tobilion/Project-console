@@ -12,10 +12,10 @@
 import crypto from 'crypto';
 import { state, pendingConfirmations } from '../state.js';
 import { checkForUpdates } from '../updateChecker.js';
+import { end } from '../wsReply.js';
 
 const UPDATE_COMMAND = 'npm install -g local-project-console@latest';
 
-const end = (ws) => ws.send(JSON.stringify({ type: 'end' }));
 
 /** "check for updates" / "update console" — returns true when the input matched. */
 export async function handleUpdateCommand(ws, project, lowerInput) {

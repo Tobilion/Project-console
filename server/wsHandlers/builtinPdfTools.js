@@ -14,6 +14,7 @@ import {
   MAX_MERGE_INPUTS, resolvePdfInput, parsePdfNames, parsePdfOutput,
   parsePageSpec, extractWatermarkText, extractText,
 } from '../pdfKit.js';
+import { answer, answerWithPanel } from '../wsReply.js';
 
 const PANEL_ID = 'pdf-tools';
 
@@ -24,9 +25,6 @@ const GUIDE =
   '- `extract text from report.pdf`\n' +
   '- `extract pages 2-5 from report.pdf into excerpt.pdf`\n' +
   '- `watermark report.pdf with confidential`';
-
-const answer = (ws, data) => ws.send(JSON.stringify({ type: 'answer', data }));
-const answerWithPanel = (ws, data) => ws.send(JSON.stringify({ type: 'answer', data, openPanel: PANEL_ID }));
 
 /** Writes go through the standard confirm flow with a pdfOp pending record (consumed by the
  *  pdfOp branch in connectionConfirm.js — checkpoint first, then the pdfKit.js op, which
@@ -52,7 +50,7 @@ function askConfirm(ws, project, input, commandText, trigger, pdfOp) {
 async function handleMerge(ws, action, input, project, sessionContext) {
   const names = parsePdfNames(input);
   const output = parsePdfOutput(input);
-  if (names.length === 0 || !output) return answerWithPanel(ws, GUIDE);
+  if (names.length === 0 || !output) return answerWithPanel(ws, GUIDE, PANEL_ID);
   const inputs = [];
   const missing = [];
   for (const n of names) {
@@ -84,7 +82,7 @@ async function handleMerge(ws, action, input, project, sessionContext) {
 async function handleSplit(ws, action, input, project, sessionContext) {
   const names = parsePdfNames(input);
   const spec = parsePageSpec(input);
-  if (names.length === 0 || !spec) return answerWithPanel(ws, GUIDE);
+  if (names.length === 0 || !spec) return answerWithPanel(ws, GUIDE, PANEL_ID);
   const hit = resolvePdfInput(project.path, names[0]);
   if (!hit) return answer(ws, `Could not find "${names[0]}" in **[${project.name}]**.`);
   const mode = spec.kind === 'perPage'
@@ -98,7 +96,7 @@ async function handleSplit(ws, action, input, project, sessionContext) {
 
 async function handleExtractText(ws, action, input, project, sessionContext) {
   const names = parsePdfNames(input);
-  if (names.length === 0) return answerWithPanel(ws, GUIDE);
+  if (names.length === 0) return answerWithPanel(ws, GUIDE, PANEL_ID);
   const hit = resolvePdfInput(project.path, names[0]);
   if (!hit) return answer(ws, `Could not find "${names[0]}" in **[${project.name}]**.`);
   const result = await extractText(project.path, hit.path);
@@ -117,7 +115,7 @@ async function handleExtractPages(ws, action, input, project, sessionContext) {
   const names = parsePdfNames(input);
   const spec = parsePageSpec(input);
   const output = parsePdfOutput(input);
-  if (names.length === 0 || !spec || spec.kind !== 'range') return answerWithPanel(ws, GUIDE);
+  if (names.length === 0 || !spec || spec.kind !== 'range') return answerWithPanel(ws, GUIDE, PANEL_ID);
   const hit = resolvePdfInput(project.path, names[0]);
   if (!hit) return answer(ws, `Could not find "${names[0]}" in **[${project.name}]**.`);
   const outName = output || `${hit.path.replace(/\.pdf$/i, '')}-pages-${spec.from}-${spec.to}.pdf`;
@@ -131,7 +129,7 @@ async function handleWatermark(ws, action, input, project, sessionContext) {
   const names = parsePdfNames(input);
   const text = extractWatermarkText(input);
   const output = parsePdfOutput(input);
-  if (names.length === 0 || !text) return answerWithPanel(ws, GUIDE);
+  if (names.length === 0 || !text) return answerWithPanel(ws, GUIDE, PANEL_ID);
   const hit = resolvePdfInput(project.path, names[0]);
   if (!hit) return answer(ws, `Could not find "${names[0]}" in **[${project.name}]**.`);
   const outName = output || `${hit.path.replace(/\.pdf$/i, '')}-watermarked.pdf`;
