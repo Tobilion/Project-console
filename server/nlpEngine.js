@@ -4,6 +4,7 @@ import { LangEn } from '@nlpjs/lang-en';
 import { BuiltinMicrosoft } from '@nlpjs/builtin-microsoft';
 import { Mutex } from 'async-mutex';
 import { NLP_SEED_INTENTS } from './nlpSeedIntents.js';
+import { FALLBACK_SCORE_FLOOR } from './intentRegistry.js';
 
 class IntentClassifier {
   constructor() {
@@ -121,7 +122,7 @@ class IntentClassifier {
     }
     const response = await this.manager.process('en', input);
     
-    if (response.intent !== 'None' && response.score > 0.45) {
+    if (response.intent !== 'None' && response.score >= FALLBACK_SCORE_FLOOR) {
       return {
         intent: response.intent,
         score: response.score,

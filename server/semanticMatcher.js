@@ -263,7 +263,7 @@ class SemanticMatcher {
    * Raw best-scoring intent with NO floor or margin gating — used by matcher.js's no-match
    * path to offer a non-blocking "did you mean" chip when nothing cleared the normal gates but
    * the embedding still strongly favors one intent (callers gate on the returned confidence
-   * themselves; this app's threshold is 0.45). Returns { intent, confidence, meta } or null.
+   * themselves; this app's threshold is FALLBACK_SCORE_FLOOR (0.45)). Returns { intent, confidence, meta } or null.
    */
   async nearestIntent(inputStr) {
     return computeNearestIntent((t) => this.embedInput(t), inputStr, this.projectIntentVectors, this.intentVectors);

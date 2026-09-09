@@ -5,7 +5,7 @@
  */
 import { semanticMatcher } from './semanticMatcher.js';
 import { logMatch } from './intentTelemetry.js';
-import { BUILTIN_INTENTS, intentWorkspaceEligible } from './intentRegistry.js';
+import { BUILTIN_INTENTS, FALLBACK_SCORE_FLOOR, intentWorkspaceEligible } from './intentRegistry.js';
 import { PURE_CHITCHAT_INTENTS, looksLikeRealRequest } from './intentTrust.js';
 
 export function tryLookupEntry(projects, projectIndex, entryIndex, input) {
@@ -50,7 +50,8 @@ export function getFallbackSuggestions(input, project = null) {
 
 /**
  * Requested directly (2026-08-04): on total no-match, offer the single nearest intent as a
- * non-blocking "did you mean" chip when the embedding still strongly favors it (>= 0.45),
+ * non-blocking "did you mean" chip when the embedding still strongly favors it
+ * (>= FALLBACK_SCORE_FLOOR),
  * alongside the canned fallback chips. Never a blocking question, and never a
  * pure-chitchat intent for an input that looks like a real request (same trap as the
  * PURE_CHITCHAT_INTENTS guard above). Returns { intent, confidence } or null.
@@ -61,7 +62,7 @@ export async function computeDidYouMean(input, project = null) {
     const nearest = await semanticMatcher.nearestIntent(input);
     if (
       nearest &&
-      nearest.confidence >= 0.45 &&
+      nearest.confidence >= FALLBACK_SCORE_FLOOR &&
       BUILTIN_INTENTS.has(nearest.intent) &&
       intentWorkspaceEligible(nearest.intent, project?.workspaceType) &&
       !(looksLikeRealRequest(input) && PURE_CHITCHAT_INTENTS.has(nearest.intent))

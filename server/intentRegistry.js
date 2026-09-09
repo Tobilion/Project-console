@@ -37,6 +37,16 @@ export const ROUTER_REPO_MAP_CHARS = 1200;
 // project-authored entries are ever eligible and they are per-project, not global.
 export const CONFIG_RUN_ENTRY_FLOOR = 0.55;
 
+// Weak-stage fallback floor (B.4, 2026-09-09): the single minimum-confidence bar every
+// non-semantic fallback tier shares — the NLP classifier gate (nlpEngine.classify +
+// matcher.js's re-check), and the no-match did-you-mean chip (matchHelpers.
+// computeDidYouMean). Deliberately one constant, not three matching literals: the three
+// sites must stay the same bar (they are all "a weak guess surfacing", measured against
+// the 0.6 semantic floor above), and the comparison is always >= (nlpEngine.classify once
+// used strict >, an epsilon-only difference at exactly 0.45 that the re-check in matcher.js
+// would have accepted anyway — unified, not weakened).
+export const FALLBACK_SCORE_FLOOR = 0.45;
+
 // Confirmed via the Phase-3 harness (2026-08-03): bare "open the project" is a run_project seed
 // phrase (miscIntents.js) that can score ≥ CONFIG_RUN_ENTRY_FLOOR against a project's own config
 // entry (0.590 vs the harness "test project" trigger) and get silently diverted into running that

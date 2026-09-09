@@ -16,7 +16,7 @@ import { getEffectiveThreshold } from './intentTelemetry.js';
 import { metrics } from './metrics.js';
 import { routeViaLocalModel } from './localRouter.js';
 import { formatRepoMap } from './codebaseIndexer.js';
-import { BUILTIN_INTENTS, CONFIG_RUN_ENTRY_FLOOR, OPEN_PROJECT_RE, ROUTER_REPO_MAP_CHARS, intentWorkspaceEligible } from './intentRegistry.js';
+import { BUILTIN_INTENTS, CONFIG_RUN_ENTRY_FLOOR, FALLBACK_SCORE_FLOOR, OPEN_PROJECT_RE, ROUTER_REPO_MAP_CHARS, intentWorkspaceEligible } from './intentRegistry.js';
 import { PURE_CHITCHAT_INTENTS, isTrustworthyChitChat, isTrustworthyKnowledgeIntent, looksLikeRealRequest } from './intentTrust.js';
 import { tryLookupEntry, captureTelemetry, getFallbackSuggestions, computeDidYouMean } from './matchHelpers.js';
 
@@ -37,8 +37,8 @@ export { getFallbackSuggestions } from './matchHelpers.js';
  *  eligible here — that branch stays below, untouched. */
 export function isNlpBuiltinEligible(intent, input) {
   if (!BUILTIN_INTENTS.has(intent)) return false;
-  // 2026-08-26 live crosscheck: the NLP classifier is the pipeline's weakest stage (flat 0.45
-  // gate, no margin — its documented failure mode on out-of-distribution input), and it
+  // 2026-08-26 live crosscheck: the NLP classifier is the pipeline's weakest stage (flat
+  // FALLBACK_SCORE_FLOOR gate, no margin — its documented failure mode on out-of-distribution input), and it
   // dispatched `deploy` for "why isnt this working", firing the git-push CONFIRM on a
   // frustration question. This stage may only dispatch canned chit-chat, read-only knowledge
   // intents, and the read-only project.context.* diagnostics (entry_point/structure/tests/
@@ -95,10 +95,13 @@ function questionBlocksExecuting(input, intent) {
   return QUESTION_MARKER_RE.test(input.trim());
 }
 
-/** Unified 3-stage matching pipeline:
- *  1. Semantic (embedding cosine similarity — highest confidence)
+/** Unified matching pipeline (stage numbers are the historical dispatch order — there is
+ *  no stage 3; the tiers below run in this exact sequence):
+ *  0. Multi-intent split (conjunctions → per-clause matches)
+ *  1. Semantic (embedding cosine; 1a project config entry, 1b builtin intent)
  *  2. NLP.js (trained classifier — legacy fallback)
- *  3. Fuzzy (Fuse.js suggestion — weakest, only for fallback text)
+ *  4. Local router tier (bounded local-model classification)
+ *  5. Fuzzy (Fuse.js suggestion chips + non-blocking "did you mean")
  */
 export async function matchInput(input, project, projectIndex, options = {}) {
   metrics.inc('matching.total');
@@ -186,10 +189,10 @@ export async function matchInput(input, project, projectIndex, options = {}) {
     // that actually came from the semantic stage — otherwise every keyword-tier match (always
     // 0.4-0.55 confidence by design) gets silently discarded by the semantic default floor
     // (0.6) and the keyword fallback list can never win a match.
-    const passesGate = semanticResult.source === 'semantic'
+    const matched = semanticResult.source === 'semantic'
       ? semanticResult.confidence >= getEffectiveThreshold(semanticResult.intent)
       : true;
-    if (passesGate) {
+    if (matched) {
       // 1a. Project-specific entry match
       if (semanticResult.meta) {
         const entryResult = tryLookupEntry(
@@ -280,7 +283,7 @@ export async function matchInput(input, project, projectIndex, options = {}) {
   const tNlp = Date.now();
   const nlpResult = await nlpEngine.classify(input);
   metrics.observe('matching.stage.nlp', Date.now() - tNlp);
-  if (nlpResult && nlpResult.score >= 0.45) {
+  if (nlpResult && nlpResult.score >= FALLBACK_SCORE_FLOOR) {
     const intent = nlpResult.intent;
 
     if (isNlpBuiltinEligible(intent, input) && !questionBlocksExecuting(input, intent)) {
