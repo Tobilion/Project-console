@@ -285,9 +285,20 @@ Retry flow still works exactly as before.
   its own header comment) keep their own already-correct implementations, now with a comment
   pointing at `portProbe.js` as the contract source of truth to keep in sync by eye — the
   master prompt's own fallback for exactly this CJS/ESM-boundary case. **Still fully open**:
-  B.1 (the ~15-file oversized-file split list — note `NotificationsPanel.tsx`/
-  `PdfToolsPanel.tsx`/`RemindersPanel.tsx` are still over 400 lines after the dedup above, so
-  they still need the B.1 split pass separately), the rest of B.2 (the `answer`-helper dedup
+  B.1's first split target is done (commit 68020ec: `builtinGeneralFiles.js` — 493 lines —
+  is now a thin dispatcher over `server/wsHandlers/generalFiles/` domain leaves
+  find/tidy/duplicates/rename/move plus shared `constants.js` and `queue.js`; the public
+  export surface (`generalFileHandlers`, all `perform*`/`plan*`, `extractFindQuery`) is
+  re-exported unchanged, so `connectionConfirm.js`/`fileToolsRoutes.js`/`checkHandlerCoverage.js`
+  needed zero edits. Verified: check-handlers 287/287, check-tools 182/182, check-ws-cases
+  137/137, npm test 602/602, tsc clean). B.3 frontend poll cadences consolidated (commit
+  2cf94d6: new `src/constants.ts` with `PANEL_POLL_CLIPBOARD/DASHBOARD/PDF/NOTIFICATIONS/
+  SLOW_MS`; every cadence is byte-identical to the old literal, only the duplication is gone
+  — deliberately left out of tuningStore, which stays backend-numbers-with-bounds-only). The
+  rest of B.1 (the remaining oversized files — `builtinChitChat.js` 523,
+  `preSemanticOverrides.js` 471, `matcher.js` 429, `server/index.js` 443, plus
+  `NotificationsPanel.tsx`/`PdfToolsPanel.tsx`/`RemindersPanel.tsx` and the rest of the
+  frontend panel list — see the spec's per-file notes), the rest of B.2 (the `answer`-helper dedup
   across 60+ wsHandlers files), the rest of B.3, and B.4's naming/comment-length audit. This
   is the largest remaining phase — chunk it across many commits, one dedup/split target per
   commit, not one giant pass. B.3's external-endpoints row is also done: new
