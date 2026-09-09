@@ -644,9 +644,20 @@ Verified: check-handlers 287/287, check-ws-cases clean, npm test 602/602, tsc cl
   'welcome'` tour-view branch in `useAppGlobalListeners` (same state flip as the header
   home button) + both steps retargeted + `TourStep.view` union extended. Verified: tsc
   clean, vite build clean, target cross-check still 0 missing. Browser confirmation that
-  the ring actually lands on the grid still outstanding (no browser here). Still open:
-  C-3 (targetless/duplicate-target steps), C-4 (untoured flows), C-5 (progress/auto-
-  advance/reduced-motion).
+  the ring actually lands on the grid still outstanding (no browser here). C-3 done
+  (2026-09-09, opencode): 13 targetless steps audited one by one — 6 now have real targets
+  (Opening Is Locking → welcome/bento-grid; Suggestion-Only → header-pill, plus its stale
+  "pill sends chat message" sentence fixed to the E-5 REST behavior; Safety Net →
+  process-dock; General Is Tools-First → tools/tools-grid; __general__ Pseudo-Project →
+  chat-input; Switching Without Losing Place → header-pill; Schedules/Notifications →
+  tools/notifications-panel via the step `panel` field), 7 deliberately left as cards
+  (welcome intro, two developer elaborations after Trigger's ring, four concept steps with
+  no single control). Dup groups resolved the same way (Chats → chats-list, Projects →
+  project-list, Finding It Later → dashboard-button, Switchboard → a new additive
+  `app-header` root attribute, Include Every Folder → settings-button, Terminal Thread →
+  terminal-header); remaining dups are same-control-correct (three bento steps all ARE the
+  grid). Verified: tsc clean, vite build clean, 0 missing targets. Still open:
+  C-4 (untoured flows), C-5 (progress/auto-advance/reduced-motion).
 - Phases G, H, I, J, L: **not started.**
 
 **Native verification baseline (2026-09-09, opencode on Windows — supersedes the bridged-shell

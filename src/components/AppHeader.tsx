@@ -38,7 +38,7 @@ export function AppHeader(props: AppHeaderProps) {
   } = props;
 
   return (
-    <header className="relative z-10 flex-shrink-0 flex items-center gap-3 h-[52px] px-6 bg-background border-b border-border-faint">
+    <header data-tour="app-header" className="relative z-10 flex-shrink-0 flex items-center gap-3 h-[52px] px-6 bg-background border-b border-border-faint">
       <div className="flex items-center gap-3 min-w-0">
         <h1 className="text-[18px] leading-6 font-semibold italic text-fg-strong whitespace-nowrap">
           <TextScramble text="Project Console" />
