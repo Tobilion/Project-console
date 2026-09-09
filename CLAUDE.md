@@ -774,7 +774,14 @@ Verified: check-handlers 287/287, check-ws-cases clean, npm test 602/602, tsc cl
   to more precise anchors); the attribute itself is untouched in `AppHeader.tsx`. Still open:
   the rest of C-4 (AI model picker, permissionMode, Dashboard/dock sub-tabs, scanAllFolders,
   per-category Settings, FirstRunSetup, CLI/desktop coverage), C-5 (progress/auto-
-  advance/reduced-motion).
+  advance/reduced-motion). C-5 partially done (2026-09-09, opencode): step-progress
+  ("Step X of Y" + dot strip) and completion badges already existed — verified, no change;
+  reduced-motion is now respected (`MotionConfig reducedMotion="user"` kills the modal
+  tweens, spotlight ring loses its transition, scroll jumps are instant). Auto-advance on
+  performing the action is deliberately deferred (the spec's own "don't force this
+  everywhere" — detecting arbitrary user actions per step is high-risk without browser
+  verification; ←/→/Esc/backdrop navigation covers movement). Verified: tsc + vite build
+  clean.
 - Phases G, H, I, J, L: **not started.**
 
 **Native verification baseline (2026-09-09, opencode on Windows — supersedes the bridged-shell

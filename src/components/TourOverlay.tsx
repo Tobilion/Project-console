@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { motion } from 'motion/react';
+import { motion, MotionConfig } from 'motion/react';
 import { Check, ChevronLeft, ChevronRight, X, Sparkles } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { TourSection, TourStep, markTourTaken, TOUR_SECTIONS, TOUR_GROUPS, readToursTaken } from '../tours';
@@ -21,6 +21,15 @@ interface TourOverlayProps {
 export function TourOverlay({ section, mode, onClose }: TourOverlayProps) {
   const [step, setStep] = useState(0);
   const [targetRect, setTargetRect] = useState<DOMRect | null>(null);
+  // C-5 (2026-09-09): respect the OS reduced-motion setting — instant scroll jumps and no
+  // animated transitions instead of smooth scrolling + motion tweens.
+  const reduceMotion = (() => {
+    try {
+      return window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
+    } catch {
+      return false;
+    }
+  })();
 
   const current: TourStep = section.steps[step];
   const total = section.steps.length;
@@ -41,7 +50,7 @@ export function TourOverlay({ section, mode, onClose }: TourOverlayProps) {
         if (cancelled) return;
         const el = document.querySelector<HTMLElement>(`[data-tour="${current.target}"]`);
         if (el) {
-          el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+          el.scrollIntoView({ block: 'center', behavior: reduceMotion ? 'auto' : 'smooth' });
           const t = window.setTimeout(() => {
             if (!cancelled) setTargetRect(el.getBoundingClientRect());
           }, 420);
@@ -103,11 +112,11 @@ export function TourOverlay({ section, mode, onClose }: TourOverlayProps) {
   ) : current.icon;
 
   return (
-    <>
+    <MotionConfig reducedMotion="user">
       {/* Spotlight ring around the guided step's target element. */}
       {mode === 'guided' && targetRect && (
         <div
-          className="fixed z-[60] pointer-events-none rounded-xl border-2 border-accent-teal shadow-[0_0_0_4px_rgba(100,210,255,0.25)] transition-all duration-200"
+          className={`fixed z-[60] pointer-events-none rounded-xl border-2 border-accent-teal shadow-[0_0_0_4px_rgba(100,210,255,0.25)]${reduceMotion ? '' : ' transition-all duration-200'}`}
           style={{
             left: targetRect.left - 4,
             top: targetRect.top - 4,
@@ -180,7 +189,7 @@ export function TourOverlay({ section, mode, onClose }: TourOverlayProps) {
           </div>
         </motion.div>
       </motion.div>
-    </>
+    </MotionConfig>
   );
 }
 
