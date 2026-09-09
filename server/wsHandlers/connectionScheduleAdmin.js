@@ -60,6 +60,9 @@ export async function handleScheduleCommand(ws, project, lowerInput, input) {
       data: removed
         ? `Removed schedule \`${removed.id}\` ("${removed.command}", ${removed.label}).`
         : `No schedule \`${removeMatch[1]}\` exists for **[${project.name}]** — try \`list schedules\`.`,
+      // E-6: additive toast on the success confirmation only (the not-found branch is an
+      // error, not a routine confirmation).
+      ...(removed ? { toast: true } : {}),
     }));
     end(ws);
     return true;
@@ -129,6 +132,8 @@ async function createSchedule(ws, project, rawInput, intervalPhrase, command) {
   ws.send(JSON.stringify({
     type: 'answer',
     data: `Scheduled ✅ — **${schedule.id}**: ${schedule.label} → \`${schedule.command}\` (intent \`${intentId}\`).\n\nResults post to this chat when someone is connected, otherwise to the schedule log (\`review schedule log\`). Manage with \`list schedules\` / \`remove schedule ${schedule.id}\`.`,
+    // E-6: routine creation confirmation, bubble + additive toast (see wsReply.js).
+    toast: true,
   }));
   end(ws);
 }

@@ -487,6 +487,7 @@ eq('mode admin: switch to general mode consumed', switched, true);
 // answer + trailing end (the 2026-08-14 fix — see CLAUDE.md's mode-switch bug note; these
 // rows double as the regression guard the note's lesson asks for).
 eq('mode admin: answer confirms the switch', ws.sent.length === 2 && ws.sent[0].type === 'answer' && ws.sent[1].type === 'end' && ws.sent[0].data.includes('general mode'), true);
+eq('mode admin: switch confirmation carries additive toast', ws.sent[0].toast === true, true);
 eq('mode admin: console.config.json override persisted', written.workspaceType, 'general');
 eq('mode admin: in-memory project updated', tmpProj.workspaceType, 'general');
 sent.length = 0;
@@ -495,6 +496,7 @@ eq('mode admin: re-switching to the same mode says already', same === true && ws
 sent.length = 0;
 const what = await handleModeCommand(ws, tmpProj, 'what mode am i in');
 eq('mode admin: what mode am i in answers', what === true && ws.sent.length === 2 && ws.sent[0].type === 'answer' && ws.sent[1].type === 'end' && ws.sent[0].data.includes('general'), true);
+eq('mode admin: genuine question answer stays bubble-only', ws.sent[0].toast === undefined, true);
 sent.length = 0;
 const notMode = await handleModeCommand(ws, tmpProj, 'run the tests');
 eq('mode admin: unrelated input not consumed', notMode === false && ws.sent.length === 0, true);
@@ -748,6 +750,7 @@ eq('reminder leaf: cancel answers not-found', ws.sent.length === 1 && ws.sent[0]
 sent.length = 0;
 await handleBuiltinIntent(ws, 'system.reminders.create', 'remind me to stretch', proj, {});
 eq('reminder leaf: dateless input becomes a todo (no date)', ws.sent.length === 1 && ws.sent[0].type === 'answer' && /Added to your list/.test(ws.sent[0].data), true);
+eq('reminder leaf: create confirmation carries additive toast', ws.sent[0].toast === true, true);
 
 // Parse-contract unit shapes (pure, no store interaction; the recurrence types are the
 // machine-independent part — fireAt/firstFireAt instants are only asserted as future).
@@ -907,9 +910,12 @@ const cardProj = {
 await appendNote(cardRoot, 'buy milk', 'local');
 await appendNote(cardRoot, 'call dentist', 'local');
 sent.length = 0;
+await handleBuiltinIntent(ws, 'system.notes.create', 'note: file the report', cardProj, {});
+eq('notes leaf: create confirmation carries additive toast', ws.sent.length === 1 && ws.sent[0].type === 'answer' && ws.sent[0].toast === true && /file the report/.test(ws.sent[0].data), true);
+sent.length = 0;
 await handleBuiltinIntent(ws, 'system.notes.list', 'show my notes', cardProj, {});
 const listAns = sent.find((s) => s.type === 'answer');
-eq('notes card: list carries text/date/projectId items', listAns?.card?.type === 'notes' && listAns.card.items.length === 2 && listAns.card.items.every((it) => typeof it.text === 'string' && it.projectId === 'card-p' && 'date' in it) && /buy milk/.test(listAns.data), true);
+eq('notes card: list carries text/date/projectId items', listAns?.card?.type === 'notes' && listAns.card.items.length === 3 && listAns.card.items.every((it) => typeof it.text === 'string' && it.projectId === 'card-p' && 'date' in it) && /buy milk/.test(listAns.data), true);
 sent.length = 0;
 await handleBuiltinIntent(ws, 'system.notes.search', 'search my notes for dentist', cardProj, {});
 const searchAns = sent.find((s) => s.type === 'answer');
@@ -1109,6 +1115,10 @@ delete process.env.WATCH_RULES_FILE;
 sent.length = 0;
 const sch1 = await handleScheduleCommand(ws, proj, 'list schedules', 'list schedules');
 eq('schedule admin: list answers + trailing end', sch1 === true && ws.sent.length === 2 && ws.sent[0].type === 'answer' && ws.sent[1].type === 'end', true);
+const rmSch = addSchedule({ projectId: 'p1', projectName: 'HProj', spec: { type: 'interval', everyMs: 60000 }, command: 'git status', kind: 'command' });
+sent.length = 0;
+const schRm = await handleScheduleCommand(ws, proj, `remove schedule ${rmSch.id}`, `remove schedule ${rmSch.id}`);
+eq('schedule admin: remove confirmation carries additive toast', schRm === true && ws.sent.length === 2 && ws.sent[0].type === 'answer' && ws.sent[1].type === 'end' && ws.sent[0].toast === true, true);
 sent.length = 0;
 const hist1 = await handleHistoryCommand(ws, proj, 'show history', 'show history');
 eq('history admin: show history answers + trailing end', hist1 === true && ws.sent.length === 2 && ws.sent[0].type === 'answer' && ws.sent[1].type === 'end', true);

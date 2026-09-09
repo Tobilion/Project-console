@@ -20,7 +20,9 @@ export const noteHandlers = {
       return;
     }
     const result = await appendNote(project.path, text, sessionContext?.displayName || 'local');
-    answer(ws, result.success ? `📝 ${result.data}` : result.error);
+    // E-6: routine creation confirmation — the bubble stays (the CLI's only signal) and the
+    // web client additionally fires a toast from the same payload.
+    answer(ws, result.success ? `📝 ${result.data}` : result.error, result.success ? { toast: true } : undefined);
   },
 
   'system.notes.list': async (ws, action, input, project) => {

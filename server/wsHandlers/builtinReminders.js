@@ -34,10 +34,11 @@ export const reminderHandlers = {
     });
     // Phase 4 audit (2026-08-12): dateless reminders are TODOs — they live in the list's
     // No Date section and never fire, so the answer must not promise delivery.
+    // E-6: routine creation confirmation, bubble + additive toast (see wsReply.js).
     const data = parsed.type === 'todo'
       ? `Added to your list 📋 — **${schedule.id}**: "${schedule.text}" (no date set).\n\nManage with \`list my reminders\` / \`cancel reminder ${schedule.id}\`.`
       : `Reminder set 🔔 — **${schedule.id}**: ${schedule.label} → "${schedule.text}".\n\nIt posts to whatever chat is open when it fires (otherwise to the schedule log). Manage with \`list my reminders\` / \`cancel reminder ${schedule.id}\`.`;
-    ws.send(JSON.stringify({ type: 'answer', data }));
+    ws.send(JSON.stringify({ type: 'answer', data, toast: true }));
   },
 
   'system.reminders.list': async (ws, action, input, project) => {

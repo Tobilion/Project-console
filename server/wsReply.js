@@ -6,8 +6,13 @@
 // the two most common reply shapes so a future protocol change edits one file, not twelve.
 // Zero further imports — safe for any leader to reuse without pulling in the rest of the
 // server graph (same contract as server/portProbe.js and server/atomicWrite.js).
+// E-6 (2026-09-09): `answer` takes an optional `{ toast: true }` for routine confirmations
+// (created/scheduled/enabled acks) — the web client then ALSO fires a toast while the CLI
+// keeps the bubble as its only signal. Never used for answers carrying `actionIds` (those
+// already fire their own Undo toast) or for errors/questions.
 
-export const answer = (ws, data) => ws.send(JSON.stringify({ type: 'answer', data }));
+export const answer = (ws, data, opts = {}) =>
+  ws.send(JSON.stringify({ type: 'answer', data, ...(opts.toast ? { toast: true } : {}) }));
 
 export const end = (ws) => ws.send(JSON.stringify({ type: 'end' }));
 

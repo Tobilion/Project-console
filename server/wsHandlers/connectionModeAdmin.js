@@ -26,6 +26,9 @@ export async function handleModeCommand(ws, project, lowerInput) {
       data: changed
         ? `**${project.name}** is now in **${mode} mode** — dev-shaped suggestions/help are ${mode === 'dev' ? 'shown' : 'filtered out'} (commands still match exactly as before), and it's persisted in console.config.json so it survives rescans.`
         : `**${project.name}** is already in **${mode} mode**.`,
+      // E-6: routine confirmation, bubble + additive toast (see wsReply.js). The
+      // "what mode" answer below stays bubble-only — it answers a genuine question.
+      toast: true,
     }));
     ws.send(JSON.stringify({ type: 'end' }));
     return true;

@@ -98,6 +98,8 @@ function enableFor(ws, project, command) {
     type: 'answer',
     data: `Auto-start is ON for **[${project.name}]** — every console boot will run \`${command}\` once the site is not already answering.\n` +
       `Manage it with \`list auto-start\`, \`disable auto-start\`, or run it right now with \`run auto-start now\`.`,
+    // E-6: routine confirmation, bubble + additive toast (see wsReply.js).
+    toast: true,
   }));
   appendAutoStartLog(`${project.name}: auto-start ENABLED ("${command}")`);
   end(ws);
