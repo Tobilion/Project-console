@@ -799,9 +799,13 @@ batteries), check-handlers 287/287, check-tools 182/182, check-indexer 103/103, 
 137/137, check-intents 1/17/137, check-docs 81 curated + 141 generated with 0 unmapped.
 `node bin/cli.js doctor` run natively: only the 2 known warnings (piped-stdin TTY notice,
 Ollama unreachable — same as the bridged session found), tmp sweep clean. K-11's
-`system.chit_chat.troubleshoot` handler invoked natively for the first time (was blocked in
-the bridge by the esbuild platform mismatch): correctly reports those same 2 issues and notes
-neither has a safe auto-fix. **Still genuinely outstanding** (need a browser/Electron/human):
+  `system.chit_chat.troubleshoot` handler invoked natively for the first time (was blocked in
+  the bridge by the esbuild platform mismatch): correctly reports those same 2 issues and notes
+  neither has a safe auto-fix. **Re-swept 2026-09-09 after 25 more session commits
+  (opencode)**: npm test 602/602, lint clean, check-matcher 425/425, check-handlers
+  322/322 (+35 new rows this session), check-tools 182/182, check-indexer 103/103,
+  check-ws-cases 137/137, check-intents 1/17/137, check-docs 81 + 141 with 0 unmapped —
+  everything green. **Still genuinely outstanding** (need a browser/Electron/human):
 D-9's "+" button click-through + `POST /api/scan-path` `mode:'add'` against a running server,
 F-11's card browser render, K-11's Electron fatal-error screen, E-1's real toast arrival,
 and the D-7 panel click-throughs.
