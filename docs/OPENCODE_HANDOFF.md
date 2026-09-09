@@ -136,35 +136,49 @@ unconfirmed:
 These are genuinely new scope, not corrections to the original 3 research passes — they
 carry `[ADDED 2026-09-08 ...]` tags inline in
 `docs/PROJECT_CONSOLE_MASTER_EXECUTION_PROMPT.md` so they're unmistakable when reading
-the spec fresh. Full detail is in the spec itself; short version:
+the spec fresh. **All 5 now have real, committed code as of commit `1fd7f63`** (this handoff
+doc originally described them as pure spec text — that's now stale, updated 2026-09-09).
+Short version of what shipped and what's still open for each — CLAUDE.md's per-item
+"progress" paragraphs (search for "A-15 progress", "D-9 progress", etc.) have the full detail
+including exactly what was and wasn't live-verified in this bridge environment:
 
-- **A-15** — compound/multi-word requests ("open the site and check network at 3")
-  must render a chip/answer for EVERY recognized clause, not just the
-  highest-confidence one. Today the second clause is silently dropped with zero
-  acknowledgment. Needs a `MULTI-INTENT` matcher battery added alongside the fix.
-- **D-9** — support multiple simultaneous scan roots per workspace tab (not just one
-  path), additive to the existing per-tab single-root model — an explicit "+ Add
-  folder" affordance distinct from "replace this tab's folder."
-- **F-11** — chat-native rich tool UI: reminders should render as an interactive
-  Apple-Reminders-style card inline in the chat transcript (checkbox rows, tap to
-  complete) rather than plain text, wired to the same D-7 REST endpoints so the card
-  and the Reminders panel stay in sync. Once proven, extend the same card pattern to
-  at least one more tool (notes is the natural second candidate).
-- **K-10** — upgrade `console doctor`. **Partially done as of commit `65e3a0d`**
-  (after this handoff doc was first written): `--fix` auto-fix mode, a `checkTmpFiles()`
-  check, the A-6 tmp-sweep now wired into `autoFixDoctor()` via a shared
-  `server/tmpFileSweep.js` module, `--json` output on both the standalone entry and
-  `bin/cli.js`'s `doctor` subcommand, and new `GET /api/doctor` / `POST /api/doctor/fix`
-  REST routes — all live-verified (found and removed 30 real orphaned `.tmp` files in
-  this repo). **Still open:** the Settings-reachable Diagnostics panel UI itself (no
-  frontend code exists yet — follow `server/toolPanelRegistry.js`'s pattern and consume
-  the new REST routes) and stale-daemon-lock-file / corrupted-embedding-cache auto-fixes
-  (only the tmp-file one is implemented so far).
-- **K-11** — a "Troubleshoot this" flow wherever the app currently shows a raw error:
-  the fatal boot-error screen and failed chat tool calls both need a one-click path
-  from "here's what broke" to "here's the fix," building directly on K-10's auto-fixes.
-  Ship K-10 and K-11 together — K-11 is the surface-it-to-the-user half of what K-10
-  makes possible on demand.
+- **A-15** (commit `0788c52`) — DONE, code + a live-verified fix. Compound requests like "open
+  the site and measure network at 3" now render a chip for EVERY recognized clause instead of
+  silently dropping the second one — fixed `server/matcherMulti.js`'s over-broad whole-phrase
+  guard and its over-broad quote guard. New `MULTI-INTENT` battery added.
+  **NOT verified**: `npm run check-matcher` itself couldn't run in this bridge (esbuild
+  platform mismatch) — opencode MUST run it for real before trusting this, especially the two
+  re-asserted "must NOT split" regression cases.
+- **D-9** (commit `4c406e1`) — DONE, backend + a first frontend affordance. New
+  `server/multiRootScan.js` merges multiple scan roots per tab; `POST /api/scan-path` gained
+  `mode: 'add'`; a small "+" button in the sidebar adds a folder instead of replacing the
+  current one, with an open-roots chip row. Live-verified: the merge/dedupe/id-collision logic,
+  directly, against real temp directories. **NOT verified**: no browser click-through of the
+  new UI; removing an already-added root is NOT implemented (only adding).
+- **F-11** (commit `2189a62`) — DONE, shared card contract + first card type. An additive
+  `card` field on the WS answer payload (`src/types.ts`), rendered by a new
+  `ReminderCard.tsx` — an Apple-Reminders-style checklist wired to the same D-7
+  `DELETE /api/reminders/:id` the Reminders panel uses. Live-verified end-to-end through the
+  real handler pipeline (create -> list -> correct card shape). **NOT verified**: no browser
+  render of the actual card. Notes is the spec's suggested second card type — not started.
+- **K-10** (commit `65e3a0d`) — DONE for the parts that have a safe auto-fix: `--fix` mode, a
+  `checkTmpFiles()` check, the A-6 tmp-sweep wired into `autoFixDoctor()`, `--json` output, new
+  `GET /api/doctor` / `POST /api/doctor/fix` REST routes — all live-verified (found and removed
+  30 real orphaned `.tmp` files in this repo). **Still open**: the Settings-reachable
+  Diagnostics panel UI (no frontend code exists yet — follow `server/toolPanelRegistry.js`'s
+  pattern) and stale-daemon-lock-file / corrupted-embedding-cache auto-fixes (only the tmp-file
+  one is implemented).
+- **K-11** (commit `1fd7f63`) — DONE, both halves. Chat side: a new
+  `system.chit_chat.troubleshoot` builtin (reachable by typing "troubleshoot" or via a new
+  suggestion chip a failed command's answer now offers) runs the same doctor checks/auto-fixes
+  K-10 built. Fatal-boot-screen side: `desktop/main.cjs` now runs an AUTOMATIC (not
+  interactive-button — see CLAUDE.md's K-11 paragraph for why) diagnostic before the error
+  screen renders, appending findings/fixes to what the user sees. Live-verified: the core logic
+  of both pieces, standalone, against this repo's real environment. **NOT verified**: the
+  builtin-intent handler itself couldn't be invoked directly (its import chain hits the same
+  esbuild platform mismatch as `npm test`); the Electron fatal-error path was never triggered
+  in a real window (this bridge can't launch Electron) — opencode should force a real boot
+  failure and confirm the error screen + Retry flow both still work correctly.
 
 ## Git identity / conventions already established
 
