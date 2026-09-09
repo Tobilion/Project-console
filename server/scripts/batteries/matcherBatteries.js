@@ -164,6 +164,31 @@ const BATTERIES = [
     ],
   },
   {
+    // A-15 (2026-09-08, live bug report): "open the site and measure network at 3" rendered a
+    // confirm chip for run_project (serve site) and silently dropped the network-watch clause
+    // entirely — no chip, no acknowledgment. Root cause: matchMultiParts' whole-phrase guard
+    // bailed on ANY confident whole-phrase match, not just ones where the whole is a genuinely
+    // distinct combined intent (like git_commit_push above) — here the whole just re-derives
+    // clause 1's own intent (run_project) while silently absorbing clause 2's tokens. Fixed in
+    // server/matcherMulti.js by only suppressing the split when the whole's winning intent is
+    // NOT among the intents the individual clauses resolve to on their own. Also covers the
+    // quote-boundary fix (splitConjunctions no longer bails on ANY quote in the input — only
+    // when the actual separator sits inside one).
+    name: 'MULTI-INTENT (A-15, 2026-09-08 live bug report + quote-boundary fix)',
+    items: [
+      // The exact reported repro: both clauses must render, not just run_project's confirm.
+      ['open the site and measure network at 3', 'MULTI[builtin=run_project | entry=python main.py watch --interval {interval}]'],
+      // Equivalent phrasing already covered by CONTROL above ('run the site and watch at
+      // interval of 5 minutes') stays MULTI — confirms the fix doesn't regress the existing case.
+      // A quote elsewhere in the input must not block a split whose separator is outside it.
+      ['run tests and export data', 'MULTI[builtin=run_tests | entry=python main.py export]'],
+      // Compound single-action phrasing must still resolve as ONE intent, not a bogus split
+      // (regression guard for the AUDIT-2026-08-26 cases above, re-asserted here for A-15).
+      ['commit and push', 'BUILTIN=git_commit_push'],
+      ['pull the latest changes and then run the tests', 'MULTI[builtin=git_pull | builtin=run_tests]'],
+    ],
+  },
+  {
     name: 'BASICS (2026-08-03 phase: open/copy/remote/processes/session)',
     items: [
       ['open the project in vs code', 'BUILTIN=project.action.open_in_vscode'],

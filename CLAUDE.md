@@ -60,6 +60,36 @@ end-to-end, not just a code read. `--json` mode's output was also visually confi
 K-11 (troubleshoot-flow-on-error) is still fully unstarted, as is the Settings Diagnostics panel
 half of K-10.
 
+**A-15 progress (2026-09-09)**: fixed both root causes named in the spec item. (1)
+`server/matcherMulti.js`'s `matchMultiParts` whole-phrase guard previously bailed on splitting
+ANY time the whole phrase matched confidently, even when that confident match was really just
+one clause dominating (the reported repro: "open the site and measure network at 3" matched
+`run_project` on the whole phrase — the SAME intent clause 1 resolves to alone — and clause 2's
+network-watch intent was silently dropped, no chip, no acknowledgment). Now the guard only
+suppresses the split when the whole's winning intent is a genuinely distinct combined intent
+that NEITHER clause resolves to on its own (the case it exists for — "commit and push" whole ->
+`git_commit_push`, but "commit" alone -> `git_status`-ish and "push" alone -> `deploy`, so
+`git_commit_push` isn't in that set and the guard correctly keeps that one from splitting). (2)
+`splitConjunctions` previously refused to split at all if the input contained ANY quote
+character anywhere, even when the actual conjunction sat nowhere near the quoted text; it now
+locates quoted spans first and only refuses to split AT a separator that falls inside one of
+them, so a quoted argument still protects its own "and" while an unrelated "and" elsewhere in
+the same message splits normally. Added a `MULTI-INTENT (A-15, 2026-09-08)` battery to
+`server/scripts/batteries/matcherBatteries.js` covering the exact reported repro, the
+already-working equivalent from `CONTROL`, a quote-elsewhere-in-input case, and both existing
+"must NOT split" regression guards (`commit and push`, `pull the latest changes and then run the
+tests`) re-asserted so a regression here fails loudly.
+**NOT verified end-to-end in this environment** — `npm run check-matcher` (and `npm test`) hit
+the same `@esbuild/win32-x64` vs `linux-x64` platform mismatch as every other test-runner attempt
+this session (confirmed by trying it directly: `Error: You installed esbuild for another
+platform...`). What WAS verified here: `node --check` on every touched file, and a standalone
+Node script directly exercising `splitConjunctions()` in isolation (no tsx/semantic-matcher
+dependency) against 6 representative inputs, all producing the expected split/no-split result.
+The `matchMultiParts` confidence-based branch (the part that actually depends on the real
+semantic matcher and embeddings) was NOT exercised at all — **opencode must run
+`npm run check-matcher` for real before trusting this fix**, especially the new
+`MULTI-INTENT` battery and the two re-asserted `AUDIT-2026-08-26` regression cases.
+
 **Progress so far** (chronological, oldest first):
 - **Phase A: DONE.** A-1, A-2, A-3, A-5, A-6, A-7, A-9, A-11 (commit 98cd5c0, building on
   7e8b322). A-10 verified already covered by the 2026-08-26/08-28 audit passes (bare commit,
