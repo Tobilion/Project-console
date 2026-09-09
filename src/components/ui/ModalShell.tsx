@@ -53,7 +53,7 @@ export function ModalShell({ open, onClose, maxWidth = 'max-w-md', children }: M
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.98, y: 4 }}
             transition={{ duration: 0.18, ease: 'easeOut' }}
-            className={`relative z-10 w-full ${maxWidth} mx-4 bg-panel/90 backdrop-blur-xl border border-border-strong rounded-2xl shadow-modal overflow-hidden max-h-[85vh] flex flex-col`}
+            className={`relative z-10 w-full ${maxWidth} mx-4 bg-panel/90 backdrop-blur-xl border border-border-strong rounded-2xl shadow-modal overflow-hidden max-h-[85vh] flex flex-col glass-lens`}
           >
             <div className="flex-1 min-h-0 overflow-y-auto">
               {children}

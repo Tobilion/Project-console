@@ -143,7 +143,7 @@ export function TourOverlay({ section, mode, onClose }: TourOverlayProps) {
           <div className="absolute inset-0 bg-scrim-strong backdrop-blur-sm" onClick={onClose} />
         )}
         <motion.div
-          className="relative z-10 w-full max-w-lg mx-4 bg-panel/95 backdrop-blur-xl border border-border-strong rounded-2xl shadow-modal overflow-hidden"
+          className="relative z-10 w-full max-w-lg mx-4 bg-panel/95 backdrop-blur-xl border border-border-strong rounded-2xl shadow-modal overflow-hidden glass-lens"
           initial={{ opacity: 0, scale: 0.97, y: 8 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
           transition={{ duration: 0.18, ease: 'easeOut' }}
@@ -221,7 +221,7 @@ export function TourPicker({ onPick, onClose }: { onPick: (sectionId: string, mo
     >
       <div className="absolute inset-0 bg-scrim-strong backdrop-blur-sm" onClick={onClose} />
       <motion.div
-        className="relative z-10 w-full max-w-xl mx-4 bg-panel/95 backdrop-blur-xl border border-border-strong rounded-2xl shadow-modal overflow-hidden"
+        className="relative z-10 w-full max-w-xl mx-4 bg-panel/95 backdrop-blur-xl border border-border-strong rounded-2xl shadow-modal overflow-hidden glass-lens"
         initial={{ opacity: 0, scale: 0.97, y: 8 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
         transition={{ duration: 0.18, ease: 'easeOut' }}

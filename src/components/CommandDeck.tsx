@@ -422,7 +422,7 @@ export const CommandDeck = ({
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.98, y: -4 }}
             transition={{ duration: 0.18, ease: 'easeOut' }}
-            className="relative z-10 w-full max-w-[760px] mx-auto mt-24 bg-panel/90 backdrop-blur-xl border border-border-strong rounded-2xl shadow-modal overflow-hidden"
+            className="relative z-10 w-full max-w-[760px] mx-auto mt-24 bg-panel/90 backdrop-blur-xl border border-border-strong rounded-2xl shadow-modal overflow-hidden glass-lens"
             onMouseDown={e => e.stopPropagation()}
           >
         <div className="flex items-center gap-3 px-4 h-12 border-b border-border-faint">

@@ -833,7 +833,19 @@ Verified: check-handlers 287/287, check-ws-cases clean, npm test 602/602, tsc cl
   GPU transform, off-screen until first move, frozen static when prefers-reduced-motion;
   gated by a new `colorFollowsMouse` profile toggle (default on, Settings → Appearance).
   Verified: profile default/off/absent round-trip, tsc + vite build clean; how the glow
-  actually looks over real content still needs eyes on a screen (no browser here).
+  actually looks over real content still needs eyes on a screen (no browser here). G-5
+  done (2026-09-09, opencode): liquid glass as `GlassFilter` (ported SVG filter def only
+  — no new deps, so G-7's cva/slot question dissolves) mounted once in `App`, glass
+  tokens (`--color-glass-border`, `--shadow-glass`, both themes) + a
+  `[data-liquid-glass="on"] .glass-lens` rule (url + blur, glass edge/shadow), a
+  `liquidGlass` profile toggle default ON (Settings → Appearance, mirrored on `<html>`
+  like `data-theme`), and `glass-lens` on the already-translucent overlay shells
+  (ModalShell, CommandDeck, both TourOverlay cards — opaque panels/cards deliberately
+  untouched, glass on opaque paint is invisible). Off (or a missing filter mount, which
+  must stay unconditional per the invariant comment) renders exactly as before.
+  Verified: profile default/off round-trip, tsc + vite build clean; the refraction
+  strength/edge values are judgment calls pending a real screen. Still open: G-6 (radii
+  polish), G-7 (moot — no ported components need it), G-4's loading-screen reuse (H).
 - Phases H, I, J, L: **not started.**
 
 **Native verification baseline (2026-09-09, opencode on Windows — supersedes the bridged-shell

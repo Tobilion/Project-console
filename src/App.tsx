@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { X } from 'lucide-react';
 import { GlowOrbs } from './components/GlowOrbs';
+import { GlassFilter } from './components/ui/GlassFilter';
 import { AppHeader } from './components/AppHeader';
 import { AppMainView } from './components/AppMainView';
 import { AppOverlays } from './components/AppOverlays';
@@ -92,6 +93,12 @@ function App() {
       root.style.setProperty('--color-accent-blue', accent);
     }
   }, [profile.accentColor]);
+
+  // G-5: liquid-glass switch. Mirrors the data-theme attribute pattern (off/absent leaves
+  // every .glass-lens surface exactly as its own utilities render it).
+  useEffect(() => {
+    document.documentElement.dataset.liquidGlass = profile.liquidGlass === false ? 'off' : 'on';
+  }, [profile.liquidGlass]);
 
   const {
     projects, activeProject, scanPath, setScanPath, scanPaths, handleAddScanPath, messages,
@@ -371,6 +378,7 @@ function App() {
   return (
     <div className="h-screen relative flex flex-col">
       <GlowOrbs followMouse={profile.colorFollowsMouse} />
+      <GlassFilter />
 
       {!chatFullscreen && (
         <AppHeader

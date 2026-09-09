@@ -80,6 +80,7 @@ export function UserProfileModal({ open, profile, onClose, onSave, initialCatego
   const [quietStart, setQuietStart] = useState(profile.quietHoursStart === null ? 'off' : String(profile.quietHoursStart));
   const [quietEnd, setQuietEnd] = useState(profile.quietHoursEnd === null ? 'off' : String(profile.quietHoursEnd));
   const [colorFollowsMouse, setColorFollowsMouse] = useState(profile.colorFollowsMouse);
+  const [liquidGlass, setLiquidGlass] = useState(profile.liquidGlass);
   const [generalToolsFirst, setGeneralToolsFirst] = useState(profile.generalToolsFirst);
   const [category, setCategory] = useState<CategoryId>((initialCategory as CategoryId) || 'identity');
 
@@ -108,6 +109,7 @@ export function UserProfileModal({ open, profile, onClose, onSave, initialCatego
       setQuietStart(profile.quietHoursStart === null ? 'off' : String(profile.quietHoursStart));
       setQuietEnd(profile.quietHoursEnd === null ? 'off' : String(profile.quietHoursEnd));
       setColorFollowsMouse(profile.colorFollowsMouse);
+      setLiquidGlass(profile.liquidGlass);
       setGeneralToolsFirst(profile.generalToolsFirst);
       if (initialCategory) setCategory(initialCategory as CategoryId);
     }
@@ -140,6 +142,7 @@ export function UserProfileModal({ open, profile, onClose, onSave, initialCatego
       quietHoursStart: quietStart === 'off' ? null : Number(quietStart),
       quietHoursEnd: quietEnd === 'off' ? null : Number(quietEnd),
       colorFollowsMouse,
+      liquidGlass,
     });
     onClose();
   };
@@ -315,6 +318,17 @@ export function UserProfileModal({ open, profile, onClose, onSave, initialCatego
                   <div>
                     <p className="text-sm text-fg">Background glow follows the mouse</p>
                     <p className="text-[11px] text-fg-dim mt-0.5">When on, a soft accent glow tracks the pointer across the app background. Has no effect with reduced-motion on.</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className={sectionCls} data-setting="liquidGlass">
+                <div className="flex items-start gap-3">
+                  <Toggle enabled={liquidGlass} onToggle={() => setLiquidGlass(!liquidGlass)}
+                    title={liquidGlass ? 'Liquid glass on' : 'Plain blur'} />
+                  <div>
+                    <p className="text-sm text-fg">Liquid glass overlays</p>
+                    <p className="text-[11px] text-fg-dim mt-0.5">When on, modal and palette shells refract the background instead of plain-blurring it. When off, they render exactly as before.</p>
                   </div>
                 </div>
               </div>

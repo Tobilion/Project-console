@@ -97,6 +97,10 @@ const DEFAULT_PROFILE = {
   // the already-shipped static GlowOrbs + SpotlightCard hover language); turn off for a
   // static background. prefers-reduced-motion freezes it regardless of this setting.
   colorFollowsMouse: true,
+  // G-5 (2026-09-09): liquid-glass treatment on overlay shells (modals, command deck,
+  // tour cards). Default true per the raw request ("let liquid glass be able to turn on
+  // and off from settings" ships enabled); off is pixel-identical to before.
+  liquidGlass: true,
 };
 
 // Only plain, trimmed strings up to a sane length — mirrors the conservative
@@ -159,6 +163,7 @@ function readProfile() {
       quietHoursStart: sanitizeQuietHour(p.quietHoursStart),
       quietHoursEnd: sanitizeQuietHour(p.quietHoursEnd),
       colorFollowsMouse: sanitizeBool(p.colorFollowsMouse, DEFAULT_PROFILE.colorFollowsMouse),
+      liquidGlass: sanitizeBool(p.liquidGlass, DEFAULT_PROFILE.liquidGlass),
     };
   } catch {
     // Missing or corrupt file — serve defaults without touching disk.
@@ -213,6 +218,7 @@ export function sanitizeProfile(body, current) {
     quietHoursStart: 'quietHoursStart' in body ? sanitizeQuietHour(body.quietHoursStart) : current.quietHoursStart,
     quietHoursEnd: 'quietHoursEnd' in body ? sanitizeQuietHour(body.quietHoursEnd) : current.quietHoursEnd,
     colorFollowsMouse: sanitizeBool(body.colorFollowsMouse, current.colorFollowsMouse),
+    liquidGlass: sanitizeBool(body.liquidGlass, current.liquidGlass),
   };
 }
 

@@ -57,6 +57,9 @@ export interface UserProfile {
   // G-4 (2026-09-09): sitewide color-follows-mouse ambient glow (default on; Settings →
   // Appearance; prefers-reduced-motion freezes it regardless).
   colorFollowsMouse: boolean;
+  // G-5 (2026-09-09): liquid-glass treatment on overlay shells (default on; Settings →
+  // Appearance; off is pixel-identical to before).
+  liquidGlass: boolean;
 }
 
 // Neutral defaults, not a hardcoded person's name/title — matches server/routes/profileRoutes.js's
@@ -89,6 +92,7 @@ const DEFAULT_PROFILE: UserProfile = {
   quietHoursStart: null,
   quietHoursEnd: null,
   colorFollowsMouse: true,
+  liquidGlass: true,
 };
 
 /** Client state for the user profile persisted to the server (GET/POST /api/profile).

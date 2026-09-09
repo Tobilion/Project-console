@@ -61,6 +61,11 @@
   --color-scrim-faint: #00000033;
   --color-scrim-strong: #00000099;
   --color-overlay: #161618;
+  /* G-5 liquid glass: edge highlight + deep shadow for glass-lens surfaces. Values are a
+     judgment call pending eyes-on review (see the G-5 commit) — the toggle exists so any
+     over-strong treatment is one click off. */
+  --color-glass-border: rgba(255, 255, 255, 0.14);
+  --shadow-glass: 0 20px 40px rgba(0, 0, 0, 0.5);
 }
 
 /* Light theme — attribute override, mirrors the portfolio's inverted .dark block.
@@ -108,6 +113,10 @@
   --color-scrim-faint: rgba(24, 24, 27, 0.03);
   --color-scrim-strong: rgba(24, 24, 27, 0.08);
   --color-overlay: #E5E5EA;
+  /* G-5 liquid glass, light variant: softer shadow, stronger edge (light glass reads
+     through brighter backdrops). */
+  --color-glass-border: rgba(255, 255, 255, 0.5);
+  --shadow-glass: 0 20px 40px rgba(0, 0, 0, 0.18);
   color-scheme: light;
 }
 
@@ -188,6 +197,8 @@
   --color-scrim-faint: var(--color-scrim-faint);
   --color-scrim-strong: var(--color-scrim-strong);
   --color-overlay: var(--color-overlay);
+  --color-glass-border: var(--color-glass-border);
+  --shadow-glass: var(--shadow-glass);
 }
 
 html, body {
@@ -217,6 +228,18 @@ html, body {
    Dark keeps full intensity — pixel-identical. */
 :root[data-theme="light"] .glow-orb {
   opacity: 0.5;
+}
+
+/* G-5 liquid glass: `.glass-lens` surfaces gain SVG-filter refraction + a glass edge when
+   <html data-liquid-glass="on"> (profile toggle, default on). Toggle off (or no attribute)
+   leaves every surface exactly as its own utilities render it — zero visual change. The
+   url(#container-glass) reference resolves against the GlassFilter SVG App mounts once;
+   that mount must stay unconditional (see GlassFilter.tsx). */
+[data-liquid-glass="on"] .glass-lens {
+  backdrop-filter: url(#container-glass) blur(20px);
+  -webkit-backdrop-filter: url(#container-glass) blur(20px);
+  border-color: var(--color-glass-border);
+  box-shadow: var(--shadow-glass);
 }
 
 /* AI markdown replies (Terminal.tsx) — theme-token prose colors instead of Tailwind
