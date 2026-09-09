@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from 'react';
-import { ListChecks, RefreshCw, Plus, Check, Send, Clock, SlidersHorizontal, Pencil } from 'lucide-react';
+import { ListChecks, RefreshCw, Plus, Check, Send, Clock, SlidersHorizontal, Pencil, Trash2 } from 'lucide-react';
 import { apiFetchJson } from '../utils/apiFetch';
 import { usePanelPolling, useFlashMessage } from '../hooks/usePanelPolling';
 import { PANEL_POLL_SLOW_MS } from '../constants';
@@ -35,6 +35,9 @@ interface ReminderInfo {
   lastFiredAt: number | null;
   createdAt: number | null;
   linkedNoteText: string | null;
+  /** F-4: persisted completed flag — completed reminders live in the Completed section
+   *  instead of being deleted (older servers omit it; treat as active). */
+  completed?: boolean;
 }
 
 interface RemindersPanelProps {
@@ -81,39 +84,6 @@ function nextFireAt(r: ReminderInfo): number | null {
   return null;
 }
 
-// Phase 5: reconstruct a trigger phrase the server's parser understands from a stored
-// reminder spec, for the Undo-after-complete affordance ("cancel reminder <id>" is
-// destructive — undo re-creates the same reminder instead of leaving a dead grey row).
-const WEEKDAY_NAMES = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
-function formatHhMm(hour: number, minute: number): string {
-  const h12 = hour % 12 === 0 ? 12 : hour % 12;
-  return `${h12}:${String(minute).padStart(2, '0')} ${hour < 12 ? 'AM' : 'PM'}`;
-}
-function undoSpec(r: ReminderInfo): string {
-  if (r.type === 'oneshot' && r.fireAt) {
-    const d = new Date(r.fireAt);
-    const ymd = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-    return `remind me on ${ymd} at ${formatHhMm(d.getHours(), d.getMinutes())} to ${r.text}`;
-  }
-  if (r.type === 'daily' && r.hour !== null && r.minute !== null) {
-    return `remind me daily at ${formatHhMm(r.hour, r.minute)} to ${r.text}`;
-  }
-  if (r.type === 'weekly' && r.weekday !== null && r.hour !== null && r.minute !== null) {
-    return `remind me every ${WEEKDAY_NAMES[r.weekday]} at ${formatHhMm(r.hour, r.minute)} to ${r.text}`;
-  }
-  if (r.type === 'interval' && r.everyMs) {
-    const days = r.everyMs / 86400000;
-    const isWeeks = days % 7 === 0 && days >= 7;
-    const n = isWeeks ? days / 7 : days;
-    const span = `every ${n} ${isWeeks ? 'week' : 'day'}${n > 1 ? 's' : ''}`;
-    if (r.hour !== null && r.minute !== null) {
-      return `remind me ${span} at ${formatHhMm(r.hour, r.minute)} to ${r.text}`;
-    }
-    return `remind me ${span} to ${r.text}`;
-  }
-  return `remind me ${r.text}`;
-}
-
 type View = 'today' | 'upcoming' | 'all' | 'nodate' | 'completed';
 
 export function RemindersPanel({ project, onSendMessage }: RemindersPanelProps) {
@@ -141,12 +111,16 @@ export function RemindersPanel({ project, onSendMessage }: RemindersPanelProps) 
     }
     setError(null);
     setReminders(data.reminders || []);
-    // Phase 5: prune "completing" rows that the server has actually removed — without this
-    // a completed (deleted) reminder stays greyed out in the list forever.
+    // Phase 5: prune "completing" rows the server has resolved — without this a row
+    // stays greyed out forever. Completed rows stay live on the server now (F-4: complete
+    // flags instead of deleting), so prune ids that are completed OR gone.
     setCompleting((prev) => {
       if (prev.size === 0) return prev;
-      const live = new Set((data.reminders || []).map((r) => r.id));
-      const next = new Set([...prev].filter((id) => live.has(id)));
+      const byId = new Map((data.reminders || []).map((r) => [r.id, r]));
+      const next = new Set([...prev].filter((id) => {
+        const live = byId.get(id);
+        return live && !live.completed;
+      }));
       return next.size === prev.size ? prev : next;
     });
   }, []);
@@ -203,20 +177,39 @@ export function RemindersPanel({ project, onSendMessage }: RemindersPanelProps) 
 
   const handleComplete = (id: string) => {
     const r = reminders.find((x) => x.id === id);
-    if (!r) return;
+    if (!r || r.completed) return;
     setCompleting((prev) => new Set(prev).add(id));
-    // Undo-after-complete via the shared toast store (2026-08-24): cancel is destructive, so
-    // completing offers an Undo that re-creates the same reminder. Duration is the profile's
+    // F-4: completing sets the persisted flag (POST /api/reminders/:id/complete) and moves
+    // the row to the Completed section — it no longer deletes. Undo reopens the same
+    // record instead of re-creating a copy. Duration is the profile's
     // reminderToastDurationMs (Settings), not a hardcoded 8s (B.3, 2026-09-09).
-    const spec = undoSpec(r);
+    completeReminder(id, true).then((ok) => {
+      if (!ok) setCompleting((prev) => { const next = new Set(prev); next.delete(id); return next; });
+    });
     addToast({
       title: 'Reminder completed',
       description: r.text,
       actionLabel: 'Undo',
       duration: reminderToastDuration(),
-      onAction: () => createReminder(spec),
+      onAction: () => { void completeReminder(id, false); },
     });
-    cancelReminder(id);
+  };
+
+  const completeReminder = async (id: string, completed: boolean): Promise<boolean> => {
+    const result = await apiFetchJson<{ ok: boolean; error?: string }>(
+      `/api/reminders/${encodeURIComponent(id)}/complete`,
+      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ completed }) }
+    );
+    if (!result) { setError('Could not reach the server.'); return false; }
+    if (!result.ok) { setError(result.error || 'Could not update the reminder.'); return false; }
+    setError(null);
+    fetchReminders();
+    return true;
+  };
+
+  const handleDelete = (id: string) => {
+    // F-4: explicit hard-delete, distinct from complete — removes the record outright.
+    void cancelReminder(id);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -231,6 +224,11 @@ export function RemindersPanel({ project, onSendMessage }: RemindersPanelProps) 
     const c: ReminderInfo[] = [];
     const todayEnd = END_OF_TODAY();
     for (const r of reminders) {
+      // F-4: explicitly completed reminders live in Completed, ahead of every date rule.
+      if (r.completed) {
+        c.push(r);
+        continue;
+      }
       // Phase 5.2: reminders that have already fired (oneshot with fireAt in the past) go
       // into the Completed section — they're still listed for reference until the user
       // cancels them (they auto-remove on next scheduler tick, but remain visible until then).
@@ -275,6 +273,7 @@ export function RemindersPanel({ project, onSendMessage }: RemindersPanelProps) 
     const completingThis = completing.has(reminder.id);
     const overdue = reminder.type === 'oneshot' && reminder.fireAt !== null && isOverdue(reminder.fireAt);
     const isTodo = reminder.type === 'todo' || reminder.fireAt === null;
+    const done = reminder.completed === true;
     return (
       <div
         className={cn(
@@ -284,21 +283,21 @@ export function RemindersPanel({ project, onSendMessage }: RemindersPanelProps) 
       >
         <button
           onClick={() => handleComplete(reminder.id)}
-          disabled={completingThis}
+          disabled={completingThis || done}
           className="shrink-0 w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all"
           style={{
             borderColor: 'var(--rm-gray4)',
             minWidth: '20px',
             minHeight: '20px',
           }}
-          title="Complete (removes the reminder)"
+          title={done ? 'Completed' : 'Complete (moves to the Completed section)'}
         >
-          {completingThis ? (
+          {(completingThis || done) ? (
             <Check size={12} color="var(--rm-blue)" strokeWidth={3} />
           ) : null}
         </button>
         <div className="flex-1 min-w-0">
-          <div className={cn('text-[13px] font-semibold leading-snug truncate transition-all', completingThis && 'line-through')}
+          <div className={cn('text-[13px] font-semibold leading-snug truncate transition-all', (completingThis || done) && 'line-through')}
             style={{ color: 'var(--rm-label)' }}>
             {reminder.text}
           </div>
@@ -327,6 +326,13 @@ export function RemindersPanel({ project, onSendMessage }: RemindersPanelProps) 
           title="Edit details (date, time, repeat)"
         >
           <Pencil size={13} />
+        </button>
+        <button
+          onClick={() => handleDelete(reminder.id)}
+          className="shrink-0 p-1.5 rounded-lg opacity-0 group-hover:opacity-70 hover:!opacity-100 hover:bg-scrim-faint transition-all text-fg-dim hover:!text-accent-red"
+          title="Delete this reminder permanently"
+        >
+          <Trash2 size={13} />
         </button>
       </div>
     );

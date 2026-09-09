@@ -6,7 +6,7 @@
 // schedules — that asymmetry is deliberate and documented in CLAUDE.md).
 
 import { parseReminderInput } from '../schedules/reminderParser.js';
-import { addSchedule, getSchedules, getScheduleById, removeScheduleById } from '../schedules/scheduleStore.js';
+import { addSchedule, getSchedules, getScheduleById, removeScheduleById, setReminderCompleted } from '../schedules/scheduleStore.js';
 
 export const reminderHandlers = {
   'system.reminders.create': async (ws, action, input, project, sessionContext) => {
@@ -50,9 +50,11 @@ export const reminderHandlers = {
       const last = s.lastFiredAt ? new Date(s.lastFiredAt).toLocaleString() : 'never';
       const owner = s.projectId === project.id ? '' : ` (${s.projectName || s.projectId})`;
       const noteLink = s.linkedNoteText ? ` 📝 "${s.linkedNoteText.slice(0, 30)}"` : '';
+      // F-4: completed reminders stay listed (Completed section/panel) — marked, not hidden.
+      const doneMark = s.completed ? '✓ ' : '';
       // Todos (dateless reminders) render with their own label — no "fires" language.
-      if (s.type === 'todo') return `${i + 1}. **${s.id}**${owner} — 📋 "${s.text}" (no date)${noteLink}`;
-      return `${i + 1}. **${s.id}**${owner} — ${s.label} → "${s.text}" — last fired ${last}${noteLink}`;
+      if (s.type === 'todo') return `${i + 1}. ${doneMark}**${s.id}**${owner} — 📋 "${s.text}" (no date)${noteLink}`;
+      return `${i + 1}. ${doneMark}**${s.id}**${owner} — ${s.label} → "${s.text}" — last fired ${last}${noteLink}`;
     });
     // F-11 (2026-09-08/09): additive `card` alongside the plain markdown `data` above — same
     // shape src/types.ts's ReminderCardItem/TerminalMessageCard expect, so the web client can
@@ -66,18 +68,38 @@ export const reminderHandlers = {
   },
 
   'system.reminders.cancel': async (ws, action, input, project) => {
-    // Support "mark all reminders as done" — cancels every reminder in one shot.
-    if (/^mark\s+all\s+reminders?\s+as\s+done$/i.test(input.trim()) || /^complete\s+all\s+reminders?$/i.test(input.trim())) {
-      const all = getSchedules().filter((s) => s.kind === 'reminder');
+    const trimmed = input.trim();
+    // F-4 (2026-09-09): completing and deleting are distinct verbs now. "mark/complete/
+    // finish ... as done" sets the persisted completed flag (the reminder moves to the
+    // Completed section instead of vanishing); "cancel/delete/remove" hard-deletes the
+    // record as before. The pre-semantic pin routes both families here, so the split
+    // happens on the verb, not the route.
+    const completeAll = /^mark\s+all\s+reminders?\s+as\s+done$/i.test(trimmed) || /^complete\s+all\s+reminders?$/i.test(trimmed) || /^finish\s+all\s+reminders?$/i.test(trimmed);
+    const completeOne = /^mark\s+reminder\s+(\S+)\s+as\s+done$/i.exec(trimmed) || /^complete\s+reminder\s+(\S+)$/i.exec(trimmed) || /^finish\s+reminder\s+(\S+)$/i.exec(trimmed);
+    // Support "mark all reminders as done" — completes every reminder in one shot.
+    if (completeAll) {
+      const all = getSchedules().filter((s) => s.kind === 'reminder' && !s.completed);
       if (all.length === 0) {
         ws.send(JSON.stringify({ type: 'answer', data: 'No reminders to complete.' }));
         return;
       }
-      for (const r of all) removeScheduleById(r.id);
-      ws.send(JSON.stringify({ type: 'answer', data: `Completed and removed ${all.length} reminder${all.length > 1 ? 's' : ''}.` }));
+      for (const r of all) setReminderCompleted(r.id, true);
+      ws.send(JSON.stringify({ type: 'answer', data: `Completed ${all.length} reminder${all.length > 1 ? 's' : ''} — see the Completed section.` }));
       return;
     }
-    const m = input.match(/^cancel\s+reminder\s+(\S+)$/i) || input.match(/^delete\s+reminder\s+(\S+)$/i) || input.match(/^remove\s+reminder\s+(\S+)$/i) || input.match(/^mark\s+reminder\s+(\S+)\s+as\s+done$/i) || input.match(/^complete\s+reminder\s+(\S+)$/i) || input.match(/^finish\s+reminder\s+(\S+)$/i);
+    if (completeOne) {
+      let id = completeOne[1];
+      if (/^\d+$/.test(id)) id = `s${id}`;
+      const done = setReminderCompleted(id, true);
+      ws.send(JSON.stringify({
+        type: 'answer',
+        data: done
+          ? `Completed reminder \`${done.id}\` ("${done.text}") — see the Completed section.`
+          : `No reminder \`${id}\` — try \`list my reminders\`.`,
+      }));
+      return;
+    }
+    const m = input.match(/^cancel\s+reminder\s+(\S+)$/i) || input.match(/^delete\s+reminder\s+(\S+)$/i) || input.match(/^remove\s+reminder\s+(\S+)$/i);
     let id = m ? m[1] : null;
     if (!id) {
       ws.send(JSON.stringify({ type: 'answer', data: 'Which one? `list my reminders` shows the ids — then `cancel reminder <id>`.' }));

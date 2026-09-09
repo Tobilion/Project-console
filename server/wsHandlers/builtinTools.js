@@ -34,7 +34,7 @@ export const toolsHandlers = {
     if (!panel) return false;
     const reminders = getSchedules().filter((s) => s.kind === 'reminder');
     const listText = reminders.length
-      ? reminders.map((s, i) => `${i + 1}. **${s.id}** — ${s.text} (${s.label})`).join('\n')
+      ? reminders.map((s, i) => `${i + 1}. ${s.completed ? '✓ ' : ''}**${s.id}** — ${s.text} (${s.label})`).join('\n')
       : '(none set)';
     ws.send(JSON.stringify({
       type: 'answer',

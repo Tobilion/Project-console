@@ -703,7 +703,18 @@ Verified: check-handlers 287/287, check-ws-cases clean, npm test 602/602, tsc cl
   the store is append-only with no in-place replace (F-6), so the panel owns editing.
   Verified through the real handler pipeline (list/search/empty shapes), tsc + vite build
   clean, 2 new check-handlers rows (298/298). Browser render of both card types still
-  outstanding. Still open: F-4/F-5(1)/F-6/
+  outstanding. F-4 done (2026-09-09, opencode): real `completed` flag on the schedule
+  record (no migration — old records just lack it) + `setReminderCompleted(id, bool)` in
+  the store; the scheduler's `isDue` skips completed so they never fire again; chat
+  "mark/complete/finish as done" now flags (incl. "mark all") while cancel/delete/remove
+  still hard-deletes; list outputs mark completed rows with ✓ (both list sites);
+  `POST /api/reminders/:id/complete` (default true, false reopens) backs the panel
+  checkbox (undo reopens the same record — the `undoSpec` re-create machinery is gone as
+  dead code) plus a distinct per-row Delete button, and the F-11 ReminderCard tap (which
+  now completes instead of deleting — its "session-lifetime visual" comment updated).
+  Panel Completed section takes flagged items first (fired-past oneshots still land there
+  too). Verified: 5 new check-handlers rows (308/308), npm test 602/602, tsc + vite build
+  clean. Browser confirmation still outstanding. Still open: F-5(1)/F-6/
   F-8/F-9/F-10-rest.
 - **Phase C: started** (2026-09-09, opencode). C-1 verified already covered — no change
   needed: the spec's "missing panel targets" list is stale, `ToolsPanel.tsx` renders a

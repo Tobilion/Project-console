@@ -98,6 +98,10 @@ export function addSchedule({ projectId, projectName, spec, command, text, kind 
     // Phase 2.2: when a reminder is created "about" a specific note, the note's first
     // line is stored here so deleting the note can also cancel linked reminders.
     linkedNoteText: linkedNoteText || null,
+    // F-4 (2026-09-09): persisted completed flag — completing a reminder sets this and
+    // moves it to the Completed section instead of deleting it. Old records saved before
+    // this field existed simply lack it (falsy), so no migration is needed.
+    completed: false,
   };
   schedules.push(schedule);
   schedulePersist();
@@ -180,6 +184,20 @@ export function snoozeReminder(id, minutes = 10) {
     linkedNoteText: existing.linkedNoteText || null,
   });
   return { schedule: copy, minutes: mins };
+}
+
+/** F-4 (2026-09-09): mark a reminder completed (or reopen it with completed=false) —
+ *  completing sets the persisted flag and moves the reminder to the Completed section
+ *  instead of deleting it; only an explicit delete removes the record. Returns the
+ *  schedule, or null when the id is unknown or not a reminder. */
+export function setReminderCompleted(id, completed = true) {
+  const schedule = schedules.find((s) => s.id === id);
+  if (!schedule || schedule.kind !== 'reminder') return null;
+  schedule.completed = completed === true;
+  if (completed === true) schedule.completedAt = Date.now();
+  else delete schedule.completedAt;
+  persistNow();
+  return schedule;
 }
 
 /** Phase 5.2: remove every reminder-kind schedule (command schedules are untouched).

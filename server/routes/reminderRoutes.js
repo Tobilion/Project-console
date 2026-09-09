@@ -8,7 +8,7 @@
 // (the panel's composer/quick-add already produce chat-shaped phrases, e.g. "remind me
 // tomorrow at 9am to call the dentist" — reusing the same parser means create behavior can
 // never diverge between the chat and panel paths).
-import { getSchedules, addSchedule, getScheduleById, removeScheduleById, snoozeReminder } from '../schedules/scheduleStore.js';
+import { getSchedules, addSchedule, getScheduleById, removeScheduleById, setReminderCompleted, snoozeReminder } from '../schedules/scheduleStore.js';
 import { parseReminderInput } from '../schedules/reminderParser.js';
 import { resolveProject } from '../state.js';
 
@@ -32,6 +32,7 @@ export function registerReminderRoutes(app) {
         createdAt: s.createdAt ?? null,
         createdBy: s.createdBy ?? 'local',
         linkedNoteText: s.linkedNoteText ?? null,
+        completed: s.completed === true,
       }));
     res.json({ reminders });
   });
@@ -76,6 +77,18 @@ export function registerReminderRoutes(app) {
     const removed = removeScheduleById(id);
     if (!removed) return res.json({ ok: false, error: `No reminder "${id}".` });
     res.json({ ok: true, removed });
+  });
+
+  // Complete / reopen (F-4, 2026-09-09) — sets the persisted completed flag instead of
+  // deleting the record (DELETE above stays the explicit hard-delete). Body { completed }
+  // defaults true; false reopens. Same id-resolution + failure conventions as cancel.
+  app.post('/api/reminders/:id/complete', (req, res) => {
+    let id = req.params.id;
+    if (/^\d+$/.test(id)) id = `s${id}`;
+    const completed = req.body?.completed !== false;
+    const schedule = setReminderCompleted(id, completed);
+    if (!schedule) return res.json({ ok: false, error: `No reminder "${id}".` });
+    res.json({ ok: true, completed: schedule.completed === true, schedule });
   });
 
   // Snooze (E-2, 2026-09-09) — defers a fired reminder by N minutes (default 10, clamped

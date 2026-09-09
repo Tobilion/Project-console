@@ -918,7 +918,7 @@ fs.rmSync(cardRoot, { recursive: true, force: true });
 
 // E-2 (2026-09-09): snoozeReminder schedules one deferred oneshot copy and leaves the
 // original untouched; unknown ids and command schedules refuse with null; minutes clamp.
-const { snoozeReminder } = await import(pathToFileURL(base + 'schedules/scheduleStore.js').href);
+const { snoozeReminder, setReminderCompleted, getScheduleById } = await import(pathToFileURL(base + 'schedules/scheduleStore.js').href);
 const snoozeSrc = addSchedule({ projectId: 'noteslinked-p', projectName: 'NotesLinked', spec: { type: 'once', fireAt: Date.now() + 3600000 }, text: 'take a break', kind: 'reminder', createdBy: 'local' });
 const before = Date.now();
 const snoozed = snoozeReminder(snoozeSrc.id, 10);
@@ -929,6 +929,24 @@ const cmdSch = addSchedule({ projectId: 'noteslinked-p', projectName: 'NotesLink
 eq('reminders snooze: command schedule refuses', snoozeReminder(cmdSch.id, 10) === null, true);
 const snoozeClamped = snoozeReminder(snoozeSrc.id, 99999);
 eq('reminders snooze: minutes clamp to 1440', !!snoozeClamped && snoozeClamped.minutes === 1440, true);
+
+// F-4 (2026-09-09): completing sets the persisted flag (record survives, listed with a
+// mark) while cancel/delete removes it; "mark all as done" completes instead of deleting.
+const completeSrc = addSchedule({ projectId: 'noteslinked-p', projectName: 'NotesLinked', spec: { type: 'once', fireAt: Date.now() + 3600000 }, text: 'water plants', kind: 'reminder', createdBy: 'local' });
+sent.length = 0;
+await handleBuiltinIntent(ws, 'system.reminders.cancel', `complete reminder ${completeSrc.id}`, proj, {});
+eq('reminders complete verb: flags instead of deleting', ws.sent.length === 1 && ws.sent[0].type === 'answer' && /Completed reminder/.test(ws.sent[0].data) && getScheduleById(completeSrc.id)?.completed === true, true);
+sent.length = 0;
+await handleBuiltinIntent(ws, 'system.reminders.list', 'list my reminders', proj, {});
+eq('reminders list: completed row marked, still listed', /✓ /.test(sent.find((s) => s.type === 'answer')?.data || ''), true);
+sent.length = 0;
+await handleBuiltinIntent(ws, 'system.reminders.cancel', `cancel reminder ${completeSrc.id}`, proj, {});
+eq('reminders cancel verb: hard-deletes', /Cancelled reminder/.test(sent.find((s) => s.type === 'answer')?.data || '') && !getScheduleById(completeSrc.id), true);
+const completeAll1 = addSchedule({ projectId: 'noteslinked-p', projectName: 'NotesLinked', spec: { type: 'once', fireAt: Date.now() + 3600000 }, text: 'one more', kind: 'reminder', createdBy: 'local' });
+sent.length = 0;
+await handleBuiltinIntent(ws, 'system.reminders.cancel', 'mark all reminders as done', proj, {});
+eq('reminders mark-all: completes instead of deleting', /Completed \d+ reminder/.test(sent.find((s) => s.type === 'answer')?.data || '') && getScheduleById(completeAll1.id)?.completed === true, true);
+eq('reminders complete: unknown id answers cleanly', setReminderCompleted('s000000', true) === null, true);
 fs.rmSync(linkedRoot, { recursive: true, force: true });
 
 // --- CSV TOOLS (Phase 7, 2026-08-12) -------------------------------------------

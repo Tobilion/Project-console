@@ -36,6 +36,9 @@ function weeklyAtMs(schedule) {
 }
 
 function isDue(schedule, now) {
+  // F-4 (2026-09-09): completed reminders never fire again — they sit in the Completed
+  // section until explicitly deleted.
+  if (schedule.completed) return false;
   if (schedule.type === 'interval') {
     return now - (schedule.lastFiredAt || schedule.createdAt) >= schedule.everyMs;
   }

@@ -6,13 +6,12 @@
 // messageContent.tsx — so CLI/accessibility and any client that doesn't understand `card`
 // still get the full answer).
 //
-// "Done" here calls the exact same DELETE /api/reminders/:id the Reminders panel's own
-// cancel button uses (server/routes/reminderRoutes.js, D-7) — there is no separate
-// "completed but kept" state in the schedule store (cancelling a reminder removes it
-// outright), so this card's completed section is a local, session-lifetime visual — reopening
-// the chat later shows the reminder gone entirely (consistent with `cancel reminder <id>`
-// already being a hard delete everywhere else in the app, just presented with Apple
-// Reminders' "tap to complete" language instead of "cancel").
+// "Done" here calls POST /api/reminders/:id/complete — the exact same endpoint the
+// Reminders panel's own checkbox uses (server/routes/reminderRoutes.js, F-4) — so the card
+// and the panel can never diverge on what "done" means. Completed rows move to the struck-
+// through section AND stay there: reopening the chat later still shows them under Completed
+// (the record persists with its completed flag until explicitly deleted), consistent with
+// `complete reminder <id>` in chat.
 import React, { useState } from 'react';
 import { Check } from 'lucide-react';
 import type { ReminderCardItem } from '../../types';
@@ -27,7 +26,11 @@ export function ReminderCard({ items }: { items: ReminderCardItem[] }) {
     if (status[id] === 'pending' || status[id] === 'done') return;
     setStatus((prev) => ({ ...prev, [id]: 'pending' }));
     try {
-      const res = await fetch(`/api/reminders/${encodeURIComponent(id)}`, { method: 'DELETE' });
+      const res = await fetch(`/api/reminders/${encodeURIComponent(id)}/complete`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ completed: true }),
+      });
       const data = await res.json().catch(() => ({ ok: false }));
       setStatus((prev) => ({ ...prev, [id]: data.ok ? 'done' : 'error' }));
     } catch {
