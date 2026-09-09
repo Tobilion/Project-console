@@ -353,13 +353,15 @@ export function useConsole() {
     }
   }, [sessions]);
 
-  const { handleNewChat, handleQuickStart, handleScan, handleSelectProject, handleSelectProjectReuse, handleSwitchSession, handleSwitchToProject } = navigation;
+  const { handleNewChat, handleQuickStart, handleScan, handleAddScanPath, handleSelectProject, handleSelectProjectReuse, handleSwitchSession, handleSwitchToProject } = navigation;
 
   return {
     projects: projects.projects,
     activeProject: projects.activeProject,
     scanPath: projects.scanPath,
     setScanPath: projects.setScanPath,
+    scanPaths: projects.scanPaths,
+    handleAddScanPath,
     messages: sessions.messages,
     pendingConfirm: terminal.pendingConfirm,
     sessions: sessions.sessions,

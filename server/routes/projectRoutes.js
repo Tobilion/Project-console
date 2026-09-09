@@ -13,6 +13,7 @@ import { listActions } from '../actionHistory.js';
 import { syncProjectWatchers } from '../codeIndex/codeIndexBuilder.js';
 import { readProfile } from './profileRoutes.js';
 import { getCachedScanStale, isRevalidating, setRevalidating, setCachedScan, invalidateScanCacheForPath } from '../scanCache.js';
+import { discoverProjectsAcrossRoots, addRoot } from '../multiRootScan.js';
 import { log as logger } from '../logger.js';
 
 // Phase T (2026-08-14): whether discovery includes every subfolder as a project — read fresh
@@ -46,6 +47,24 @@ export function registerProjectRoutes(app, dirname) {
     const scanDir = tabWs ? tabWs.scanDirectory : state.currentScanDirectory;
     const dirToScan = setupMockProjectsIfMissing(scanDir, dirname);
     const includeAll = scanAllFoldersEnabled();
+
+    // D-9 (2026-09-08/09): a tab with more than one scan root (added via POST /api/scan-path's
+    // `mode: 'add'`) merges every root's projects instead of scanning only tabWs.scanDirectory.
+    // Each root still goes through the exact same per-root whole-scan cache as the single-root
+    // path below — this is purely additive, a single-root tab never enters this branch.
+    if (tabWs && Array.isArray(tabWs.scanDirectories) && tabWs.scanDirectories.length > 1) {
+      const projects = await discoverProjectsAcrossRoots(tabWs.scanDirectories, includeAll);
+      tabWs.projectsCache = projects;
+      const known = allKnownProjects();
+      semanticMatcher.clearProjectIntents().catch(() => {});
+      semanticMatcher.addProjectIntents(known).catch(() => {});
+      res.json({
+        scanPath: tabWs.scanDirectory,
+        scanPaths: tabWs.scanDirectories,
+        projects,
+      });
+      return;
+    }
     // Phase 6 (2026-08-17): whole-scan cache. Previously every fetch re-ran the full
     // container walk (per-project config/doc reads + codebase indexing), which a multi-tab
     // reload paid once per tab. A hit is validated against per-project mtimes, so config/
@@ -125,11 +144,22 @@ export function registerProjectRoutes(app, dirname) {
   // Phase T (2026-08-14): ?tab=<id> mutates that tab's workspace instead of the global
   // scan root — the "duplicate tab scans a different folder" feature.
   app.post('/api/scan-path', asyncHandler(async (req, res) => {
-    const { path: newPath } = req.body || {};
+    // D-9 (2026-09-08/09): `mode: 'add'` opens an ADDITIONAL scan root on this tab instead of
+    // replacing its current one — "so project console is not stuck to one path and can easily
+    // add other paths with new paths" (live request). Omitted/'replace' preserves every byte of
+    // the original single-root behavior below unchanged; 'add' is a distinct branch further
+    // down that never touches it.
+    const { path: newPath, mode } = req.body || {};
     const tabId = typeof req.query.tab === 'string' ? req.query.tab : null;
 
     if (!newPath || typeof newPath !== 'string' || newPath.trim() === '') {
       return res.status(400).json({ success: false, error: 'Directory path is required.' });
+    }
+    if (mode === 'add' && !tabId) {
+      return res.status(400).json({
+        success: false,
+        error: 'Adding an additional scan folder requires a tab (?tab=<id>) — the global scan root stays single-path.',
+      });
     }
 
     const sanitizedPath = newPath.trim();
@@ -177,6 +207,37 @@ export function registerProjectRoutes(app, dirname) {
       // previously sat outside the handler's only guard (audit 2026-08-06, Phase 2).
       const effectivePath = setupMockProjectsIfMissing(resolvedPath, dirname);
       const includeAll = scanAllFoldersEnabled();
+
+      if (mode === 'add') {
+        // D-9 add-a-root path: merge the new root into the tab's existing root set (dedupe by
+        // resolved path) and re-scan the whole set via the same per-root cache every other path
+        // here uses — an already-open root's cache entry is reused, so adding a second folder
+        // never forces a redundant cold scan of the first.
+        const tabWs = getTabWorkspace(tabId);
+        const existingRoots = tabWs && Array.isArray(tabWs.scanDirectories) && tabWs.scanDirectories.length
+          ? tabWs.scanDirectories
+          : [tabWs?.scanDirectory || state.currentScanDirectory];
+        const roots = addRoot(existingRoots, effectivePath);
+        const projects = await discoverProjectsAcrossRoots(roots, includeAll);
+        setTabWorkspace(tabId, { scanDirectory: roots[0], scanDirectories: roots, projectsCache: projects });
+        syncProjectWatchers(allKnownProjects());
+
+        res.json({
+          success: true,
+          scanPath: roots[0],
+          scanPaths: roots,
+          projects,
+        });
+
+        const known = allKnownProjects();
+        nlpEngine.train(known).catch((err) => {
+          logger.error('Background NLP retrain failed:', err.message);
+        });
+        semanticMatcher.clearProjectIntents().catch(() => {});
+        semanticMatcher.addProjectIntents(known).catch((err) =>
+          logger.warn('Project-intent refresh failed after rescan:', err?.message || err));
+        return;
+      }
       // D-3 (2026-09-08): this endpoint used to cold-scan unconditionally, even when a
       // duplicated tab or a restored tab pointed at the SAME root another tab had already
       // scanned moments earlier (5 saved tabs on the same root previously meant 5 full

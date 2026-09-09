@@ -93,7 +93,7 @@ function App() {
   }, [profile.accentColor]);
 
   const {
-    projects, activeProject, scanPath, setScanPath, messages,
+    projects, activeProject, scanPath, setScanPath, scanPaths, handleAddScanPath, messages,
     pendingConfirm, sessions, activeSessionId,
     aiEnabled, ollamaStatus, aiThinking, aiThinkingText, commandPending, indexingProjectId,
     aiModel, aiMode, showWelcome, setShowWelcome, pendingToolConfirm, chatFocusSignal,
@@ -427,6 +427,8 @@ function App() {
               activeSessionId,
               scanPath,
               setScanPath,
+              scanPaths,
+              handleAddScanPath,
               handleScan,
               handleBrowseFolder,
               createSession,

@@ -35,6 +35,7 @@ export interface UseConsoleNavigationDeps {
     activeProject: { id: string; name: string } | null;
     scanPath: string;
     scanNewPath: (path: string, tabId?: string | null) => Promise<{ success: boolean; error?: string }>;
+    addScanPath: (path: string, tabId: string | null) => Promise<{ success: boolean; error?: string }>;
     setActiveProject: React.Dispatch<React.SetStateAction<{ id: string; name: string } | null>>;
     handleSelectProject: (p: unknown, tabId?: string | null) => void;
   };
@@ -148,6 +149,24 @@ export function useConsoleNavigation({
         sessions.createSession();
       }
       sessions.setMessages(prev => [...prev, makeMessage('error', result.error || 'Scan failed.')]);
+    }
+  };
+
+  // D-9 (2026-09-08/09): adds the scan-box path as an ADDITIONAL root on the active tab
+  // instead of replacing it — the "+ Add folder" affordance next to Scan. Requires a real tab
+  // (server-side: the global workspace stays single-root); surfaces its own error the same way
+  // handleScan does above rather than failing silently.
+  const handleAddScanPath = async (path: string) => {
+    const result = await projects.addScanPath(path, tabs.activeTabId);
+    if (result.success) {
+      sessions.setShowWelcome(false);
+      tabs.snapshotActiveTab();
+    } else {
+      sessions.setShowWelcome(false);
+      if (!sessions.activeSessionId) {
+        sessions.createSession();
+      }
+      sessions.setMessages(prev => [...prev, makeMessage('error', result.error || 'Adding that folder failed.')]);
     }
   };
 
@@ -313,6 +332,7 @@ export function useConsoleNavigation({
     handleNewChat,
     handleQuickStart,
     handleScan,
+    handleAddScanPath,
     handleSelectProject,
     handleSelectProjectReuse,
     handleSwitchSession,

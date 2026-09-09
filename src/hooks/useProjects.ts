@@ -12,6 +12,9 @@ export function useProjects() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [activeProject, setActiveProject] = useState<Project | null>(null);
   const [scanPath, setScanPath] = useState('');
+  // D-9 (2026-09-08/09): every scan root currently open on the active tab (length 1 for the
+  // overwhelmingly common single-folder case — this is purely additive to scanPath above).
+  const [scanPaths, setScanPaths] = useState<string[]>([]);
   const [indexingProjectId, setIndexingProjectId] = useState<string | null>(null);
 
   const fetchProjects = async (tabId: string | null = null) => {
@@ -21,6 +24,7 @@ export function useProjects() {
       if (data.projects) {
         setProjects(data.projects);
         setScanPath(data.scanPath || '');
+        setScanPaths(data.scanPaths || (data.scanPath ? [data.scanPath] : []));
         return { projects: data.projects as Project[], scanPath: data.scanPath as string };
       }
     } catch (err) {
@@ -44,6 +48,7 @@ export function useProjects() {
       if (data.success) {
         setProjects(data.projects || []);
         setScanPath(data.scanPath || newPath);
+        setScanPaths(data.scanPaths || [data.scanPath || newPath]);
         setActiveProject(null);
         return { success: true };
       }
@@ -51,6 +56,34 @@ export function useProjects() {
       // paste the full path instead") never reached the user, so a failed scan looked like
       // nothing happened at all.
       return { success: false, error: data.error || 'Scan failed for an unknown reason.' };
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'Could not reach the server.' };
+    }
+  };
+
+  // D-9 (2026-09-08/09): adds `newPath` as an ADDITIONAL scan root on this tab instead of
+  // replacing scanPath — "so project console is not stuck to one path and can easily add
+  // other paths with new paths" (live request). Requires a real tab (server-side: the global,
+  // no-tab workspace stays single-root). scanPaths tracks every root currently open on the
+  // active tab so the UI can show/manage them; scanPath (singular) keeps pointing at the
+  // first/primary root for every existing single-root call site, unchanged.
+  const addScanPath = async (newPath: string, tabId: string | null): Promise<{ success: boolean; error?: string }> => {
+    if (!newPath.trim()) return { success: false, error: 'No path given.' };
+    if (!tabId) return { success: false, error: 'Open a tab first — the global workspace stays single-folder.' };
+    try {
+      const res = await fetch(`/api/scan-path${tabQuery(tabId)}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: newPath.trim(), mode: 'add' })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setProjects(data.projects || []);
+        setScanPath(data.scanPath || newPath);
+        setScanPaths(data.scanPaths || [data.scanPath || newPath]);
+        return { success: true };
+      }
+      return { success: false, error: data.error || 'Adding that folder failed for an unknown reason.' };
     } catch (err: any) {
       return { success: false, error: err?.message || 'Could not reach the server.' };
     }
@@ -74,7 +107,7 @@ export function useProjects() {
 
   return {
     projects, setProjects, activeProject, setActiveProject,
-    scanPath, setScanPath, indexingProjectId, setIndexingProjectId,
-    fetchProjects, scanNewPath, handleSelectProject,
+    scanPath, setScanPath, scanPaths, indexingProjectId, setIndexingProjectId,
+    fetchProjects, scanNewPath, addScanPath, handleSelectProject,
   };
 }

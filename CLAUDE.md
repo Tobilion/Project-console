@@ -90,6 +90,45 @@ semantic matcher and embeddings) was NOT exercised at all — **opencode must ru
 `npm run check-matcher` for real before trusting this fix**, especially the new
 `MULTI-INTENT` battery and the two re-asserted `AUDIT-2026-08-26` regression cases.
 
+**D-9 progress (2026-09-09)**: implemented multi-root scanning end-to-end, backend + a first
+frontend affordance. `server/multiRootScan.js` (new) adds `discoverProjectsAcrossRoots(roots,
+includeAll)`, which scans each root through the EXACT same per-root whole-scan cache
+(`scanCache.js`) the single-root path already used — no cache-signature changes were needed,
+since the cache was already keyed per-root — then merges results (dedupe by resolved absolute
+path so an overlapping root can't double-list a project) and re-runs `dedupeProjectIds()` across
+the full merged set (two different roots can each contain a same-named folder, and the
+per-root id-collision guard only ever saw one root at a time). `GET /api/projects` uses it when
+a tab's `scanDirectories` array has more than one entry; `POST /api/scan-path` gained a
+`mode: 'add'` (tab-scoped only — the global no-tab workspace stays single-root by design) that
+appends a new root via `addRoot()` instead of replacing the tab's folder, re-scans through the
+same merge helper, and stores the full root list on the tab workspace. Frontend:
+`useProjects.ts` gained `scanPaths` state + `addScanPath()`; `useConsoleNavigation.ts` gained
+`handleAddScanPath`; wired through `useConsole.ts` and `App.tsx` to a new small "+" (FolderPlus)
+button next to the existing Scan button in `SidebarDrawer.tsx` — typing/pasting a folder path
+and clicking it ADDS that folder as another open root instead of replacing the current one, and
+every open root for the active tab now renders as a small chip row under the scan bar (hidden
+entirely when there's only one root, so the common case is visually unchanged).
+
+Live-verified: `discoverProjectsAcrossRoots` against real temp directories on this machine —
+two distinct roots merge correctly (2 projects, each correctly tagged with its `sourceRoot`);
+two roots with a same-named project folder ("shared" in both) correctly get distinct ids after
+the merge-time re-dedupe; passing the same root twice does not double-list its project;
+`addRoot()` correctly no-ops on an already-present path and appends a genuinely new one. A full
+`tsc --noEmit -p .` across the whole repo (server + frontend) is clean.
+**NOT verified**: no real browser click-through of the new "+" button/chip row (this environment
+has no way to render the actual UI); the `POST /api/scan-path` `mode: 'add'` REST path itself
+was not exercised against a running server (only its underlying `discoverProjectsAcrossRoots`/
+`addRoot` helpers were, directly). opencode should start a real console, add a second folder via
+the sidebar "+" button, and confirm both folders' projects show up in the project grid/dashboard
+and that reloading the tab preserves both roots (tab state is session-lifetime by design — see
+Phase T's original per-tab-workspace note above — confirm that's still true with multiple roots).
+Not done at all: removing a root once added (only adding is implemented, matching the literal
+request — "can easily add other paths with new paths" — but there's no UI/API to drop one yet;
+worth a follow-up spec note if wanted), and no visual indicator on individual project cards
+showing which root they came from beyond the `sourceRoot` field already present on each project
+object (the Dashboard/project-grid components were not touched — a project card could read
+`project.sourceRoot` to show this, but nothing does yet).
+
 **Progress so far** (chronological, oldest first):
 - **Phase A: DONE.** A-1, A-2, A-3, A-5, A-6, A-7, A-9, A-11 (commit 98cd5c0, building on
   7e8b322). A-10 verified already covered by the 2026-08-26/08-28 audit passes (bare commit,

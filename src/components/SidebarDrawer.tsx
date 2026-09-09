@@ -1,7 +1,7 @@
 import React from 'react';
 import { Project, ChatSession } from '../types';
 import { GENERAL_PROJECT_ID } from '../types';
-import { FolderSearch, Plus, MessageSquare, Trash2, Pencil, ChevronLeft, ChevronRight, Brain, FolderGit2, Star, Maximize2 } from 'lucide-react';
+import { FolderSearch, FolderPlus, Plus, MessageSquare, Trash2, Pencil, ChevronLeft, ChevronRight, Brain, FolderGit2, Star, Maximize2 } from 'lucide-react';
 import { WorkspaceToggleButton } from './ui/WorkspaceToggleButton';
 
 export interface SidebarDrawerProps {
@@ -11,6 +11,10 @@ export interface SidebarDrawerProps {
   activeSessionId: string | null;
   scanPath: string;
   setScanPath: (v: string) => void;
+  // D-9 (2026-09-08/09): every scan root open on the active tab (length <=1 for the common
+  // single-folder case) plus the handler to add another one — purely additive next to Scan.
+  scanPaths?: string[];
+  handleAddScanPath?: (path: string) => void;
   handleScan: (e: React.FormEvent<HTMLFormElement>) => void;
   handleBrowseFolder: () => void;
   createSession: (projectId?: string, projectName?: string) => void;
@@ -49,7 +53,7 @@ function folderLabel(path: string): string {
 // for).
 export const SidebarDrawer = ({
   projects, activeProject, sessions, activeSessionId,
-  scanPath, setScanPath, handleScan, handleBrowseFolder,
+  scanPath, setScanPath, scanPaths, handleAddScanPath, handleScan, handleBrowseFolder,
   createSession, switchSession, deleteSession, renameSession, handleSelectProject,
   onOpenChatHistory,
   workspaceProjects, addToWorkspace, removeFromWorkspace,
@@ -153,8 +157,31 @@ export const SidebarDrawer = ({
           >
             Scan
           </button>
+          {/* D-9 (2026-09-08/09): "so project console is not stuck to one path and can easily
+              add other paths with new paths" — adds the current input as an ADDITIONAL root on
+              this tab instead of replacing it, keeping every folder already open. */}
+          {handleAddScanPath && (
+            <button
+              type="button"
+              onClick={() => scanPath.trim() && handleAddScanPath(scanPath.trim())}
+              className="flex items-center px-1 text-fg-subtle hover:text-fg-strong transition-colors flex-shrink-0"
+              title="Add this as another scan folder (keeps your other folders open) — Scan replaces, this adds"
+            >
+              <FolderPlus size={13} />
+            </button>
+          )}
         </form>
       </div>
+
+      {Array.isArray(scanPaths) && scanPaths.length > 1 && (
+        <div className="px-2.5 pb-2 flex flex-wrap gap-1 flex-shrink-0" title="Every folder currently scanned on this tab">
+          {scanPaths.map((p) => (
+            <span key={p} className="px-1.5 py-0.5 bg-surface/70 border border-border-faint rounded text-[9px] font-mono text-fg-subtle truncate max-w-[100px]">
+              {folderLabel(p)}
+            </span>
+          ))}
+        </div>
+      )}
 
       <div className="p-2.5 flex-shrink-0">
         <button
