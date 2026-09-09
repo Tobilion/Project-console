@@ -59,6 +59,7 @@ export function TerminalInput({
               <select
                 value={aiModel}
                 onChange={(e) => onSetModel(e.target.value)}
+                data-tour="ai-model-picker"
                 title={ollamaStatus.cloudModels?.some(m => m.name === aiModel) ? 'Running on Ollama Cloud — needs internet + `ollama signin`' : 'Running locally'}
                 className="bg-surface border border-border-soft rounded-lg px-1.5 py-1 text-[11px] text-fg-muted focus:outline-none focus:border-accent-teal/40 flex-shrink-0 max-w-[220px]"
               >
@@ -80,6 +81,7 @@ export function TerminalInput({
               <select
                 value={aiMode}
                 onChange={(e) => onSetMode(e.target.value)}
+                data-tour="ai-mode-picker"
                 className="bg-surface border border-border-soft rounded-lg px-1.5 py-1 text-[11px] text-fg-muted focus:outline-none focus:border-accent-teal/40 flex-shrink-0"
               >
                 {AI_MODES.map(m => (

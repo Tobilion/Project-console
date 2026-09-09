@@ -212,6 +212,13 @@ export const TOUR_SECTIONS: TourSection[] = [
         target: 'ai-toggle',
       },
       {
+        icon: '◐',
+        title: 'Model & Mode Pickers',
+        body: 'With AI on and at least one model installed, two dropdowns appear next to the toggle: the model picker (Local optgroup for offline models, Ollama Cloud optgroup after ollama signin — your explicit pick persists as the defaultAiModel profile setting and is preferred on every later toggle-on) and the mode picker (Default/Coding/Tutor/Creative/Consultant/Structured/Reason — Reason raises the token budget via REASON_MODE_NUM_PREDICT). If you see no dropdowns, toggle AI on first — they only mount when there is something to pick.',
+        view: 'chat',
+        target: 'ai-model-picker',
+      },
+      {
         icon: '⬡',
         title: 'AI Tool Loop & Gating',
         body: 'When AI is on, the model can call up to 6 rounds of tools: readFile, writeFile, editFile (multi-hunk all-or-nothing, whitespace-normalized), findFiles, insertAtLine, appendToFile, searchCode (RE2), listFiles, getProjectInfo, getGitStatus, undoLastChange, saveMemory, executeCommand, probeUrl, runTests, webSearch, deepResearch — all sandboxed to the active project. Writes, risky executeCommand, runTests and stopProcess are ALWAYS_CONFIRM_TOOLS — no session grant or console.tools.json allow-after-first-ask can waive them. “Approve this task” pre-grants only the non-risky file tools for that session+project. Every write is syntax-checked and journaled so revert action <id> still works.',
