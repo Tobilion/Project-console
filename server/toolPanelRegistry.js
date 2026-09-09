@@ -114,6 +114,17 @@ export const TOOL_PANELS = [
     available: true,
     chatHint: 'show the repo map',
   },
+  {
+    // K-10 (2026-09-09): the Settings/UI surface for `console doctor` — machine-level checks
+    // (ports/daemon/model/cache/Ollama/update/tooling/disk/temp-files) with safe auto-fixes,
+    // served by GET /api/doctor + POST /api/doctor/fix (server/routes/doctorRoutes.js).
+    id: 'diagnostics',
+    name: 'Diagnostics',
+    description: 'Machine health checks with safe auto-fixes (console doctor in the UI)',
+    icon: 'activity',
+    available: true,
+    chatHint: 'troubleshoot',
+  },
 ];
 
 export function getToolPanels() {

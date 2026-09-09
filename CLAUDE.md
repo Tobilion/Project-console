@@ -51,12 +51,21 @@ boot" contract), surfaced as a new "Temp files" check in `runDoctorChecks()`; (2
 mode on both `node --import tsx server/doctor.js --json` and `node bin/cli.js doctor --json`; (3)
 new `GET /api/doctor` + `POST /api/doctor/fix` REST routes (`server/routes/doctorRoutes.js`,
 mounted in `server/index.js`) so a future Settings Diagnostics panel has something to call — the
-panel UI itself is NOT built yet, that's the remaining part of K-10. Live-verified in this
-environment: a real run of `node --import tsx server/doctor.js` found 30 genuinely orphaned
-`.tmp` files in this repo's own `data/conversations/` (left over from this session's bridged-shell
-work), `node bin/cli.js doctor --fix` removed exactly those 30 and reported the count, and a
-follow-up doctor run confirmed "no orphaned .tmp files" — this is a real, working fix verified
-end-to-end, not just a code read. `--json` mode's output was also visually confirmed well-formed.
+   panel UI itself is NOT built yet, that's the remaining part of K-10. Live-verified in this
+   environment: a real run of `node --import tsx server/doctor.js` found 30 genuinely orphaned
+   `.tmp` files in this repo's own `data/conversations/` (left over from this session's bridged-shell
+   work), `node bin/cli.js doctor --fix` removed exactly those 30 and reported the count, and a
+   follow-up doctor run confirmed "no orphaned .tmp files" — this is a real, working fix verified
+   end-to-end, not just a code read. `--json` mode's output was also visually confirmed well-formed.
+   **K-10 Diagnostics panel UI done (2026-09-09, opencode)**: new `DiagnosticsPanel.tsx`
+   (Tools > Diagnostics, registry id `diagnostics`, lazy-loaded like every sibling panel)
+   renders `GET /api/doctor` as green/yellow/red rows on mount + Refresh (on-demand, never
+   polled — several checks probe live ports/processes), an Auto-fix button (`POST
+   /api/doctor/fix` → flash report → re-check), and a "Troubleshoot in chat" link sending
+   `troubleshoot` (ties the panel to the K-11 chat flow); plus a matching tour step so it
+   doesn't become another untoured flow. Verified: registry serves it (14 panels), routes
+   mounted, tsc + vite build clean, tour cross-check 0 missing. Browser click-through of
+   Refresh/Auto-fix still outstanding (no browser here).
 K-11 (troubleshoot-flow-on-error) is still fully unstarted, as is the Settings Diagnostics panel
 half of K-10.
 

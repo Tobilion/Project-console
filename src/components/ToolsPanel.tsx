@@ -1,6 +1,6 @@
 import { lazy, Suspense } from 'react';
 import { motion } from 'motion/react';
-import { Calculator, FileText, ListChecks, FolderSearch, FolderOpen, StickyNote, Table as TableIcon, ClipboardCopy, Archive, Bell, BookOpen, Store, Map as MapIcon, LayoutGrid, ArrowLeft } from 'lucide-react';
+import { Calculator, FileText, ListChecks, FolderSearch, FolderOpen, StickyNote, Table as TableIcon, ClipboardCopy, Archive, Bell, BookOpen, Store, Map as MapIcon, Activity, LayoutGrid, ArrowLeft } from 'lucide-react';
 import type { ToolPanelDef, Project } from '../types';
 import { PanelErrorBoundary } from './PanelErrorBoundary';
 
@@ -21,6 +21,7 @@ const NotificationsPanel = lazy(() => import('./NotificationsPanel').then((m) =>
 const DocumentsPanel = lazy(() => import('./DocumentsPanel').then((m) => ({ default: m.DocumentsPanel })));
 const MarketplacePanel = lazy(() => import('./MarketplacePanel').then((m) => ({ default: m.MarketplacePanel })));
 const RepoMapPanel = lazy(() => import('./RepoMapPanel').then((m) => ({ default: m.RepoMapPanel })));
+const DiagnosticsPanel = lazy(() => import('./DiagnosticsPanel').then((m) => ({ default: m.DiagnosticsPanel })));
 
 // Phase 1.5 (UPGRADE-ROADMAP.md, 2026-08-11): the shared interactive "Tools" surface — a
 // card-grid launcher (icon + name + one-line description per registered tool, served by
@@ -43,6 +44,7 @@ const ICONS: Record<string, React.ComponentType<{ size?: number; className?: str
   'book-open': BookOpen,
   store: Store,
   map: MapIcon,
+  activity: Activity,
 };
 
 interface PanelProps {
@@ -68,6 +70,7 @@ const PANEL_VIEWS: Record<string, (p: PanelProps) => React.ReactElement> = {
   'knowledge-base': ({ project, onSendMessage, aiEnabled, tabId }) => <DocumentsPanel project={project} onSendMessage={onSendMessage} aiEnabled={aiEnabled} tabId={tabId} />,
   marketplace: ({ project, onSendMessage }) => <MarketplacePanel project={project} onSendMessage={onSendMessage} />,
   'repo-map': ({ project, tabId }) => <RepoMapPanel project={project} tabId={tabId} />,
+  diagnostics: ({ onSendMessage }) => <DiagnosticsPanel onSendMessage={onSendMessage} />,
 };
 
 // Shared shell every panel view used to duplicate: back button + the scroll region that

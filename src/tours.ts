@@ -364,6 +364,14 @@ export const TOUR_SECTIONS: TourSection[] = [
       },
       {
         icon: '▦',
+        title: 'Diagnostics (Doctor in the UI)',
+        body: 'Tools > Diagnostics renders `console doctor` as rows instead of terminal text: ports, daemon, embedding model, writability, Ollama, updates, tooling, disk, temp files — green/yellow/red with the full detail inline. Auto-fix applies every safe remediation (stale daemon lock, orphaned .tmp sweep, cache re-verify) then re-runs the checks; “Troubleshoot in chat” sends the K-11 troubleshoot flow for anything the auto-fix can’t cover. On-demand only (mount + Refresh), never polled.',
+        view: 'tools',
+        panel: 'diagnostics',
+        target: 'diagnostics-panel',
+      },
+      {
+        icon: '▦',
         title: 'From Panel to Chat (Single Source of Truth)',
         body: 'A panel never writes behind chat’s back. Folder Explorer “Open in PyCharm” sends “open main.py with PyCharm” into chat; PdfToolsPanel Merge sends “merge alpha.pdf and beta.pdf into combined.pdf”; File Tools Tidy sends the tidy trigger — so confirm cards, journaling, and the undo toast stay in the terminal as the one observable truth. The dashboard’s Run/Stop/Push buttons do the same. If the CLI can’t render a panel, it gets the same answer text without openPanel.',
         view: 'tools',
