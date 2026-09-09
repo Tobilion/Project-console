@@ -9,13 +9,24 @@ import { handleExecute } from './connectionExecute.js';
 import { handleConfirmResponse } from './connectionConfirm.js';
 import { handleToolCall } from './connectionToolCall.js';
 
-/** WebSocket message dispatch — one case per message type, delegating to the leaf handlers. */
-async function routeMessage(ws, parsed, sessionContext) {
+/** WebSocket message dispatch — one case per message type, delegating to the leaf handlers. Exported for the I-4a harness rows (identity is a route-level concern). */
+export async function routeMessage(ws, parsed, sessionContext) {
   switch (parsed.type) {
     case 'set_display_name': {
       // Phase 19 (2026-08-12): attribution label only. No auth, no permissions — trust is
       // established by being on the same local network (HOST=0.0.0.0 is the explicit opt-in).
       // Sanitized to a short plain label; "local" reserved for the default single-user case.
+      // Phase I (I-4a, 2026-09-09): an armed connection already carries verified identity
+      // (sessionContext.authUser, stamped at connect) — client claims are ignored so one
+      // LAN user cannot impersonate another; the reply echoes the verified name so the
+      // client syncs to it. Disarmed servers keep the Phase 19 behavior exactly.
+      if (sessionContext.authUser) {
+        sessionContext.displayName = sessionContext.authUser.username;
+        if (ws.readyState === 1) {
+          ws.send(JSON.stringify({ type: 'display_name_set', data: sessionContext.displayName }));
+        }
+        return;
+      }
       const raw = String(parsed.payload?.name || '').trim().replace(/[\u0000-\u001f\u007f]/g, '');
       sessionContext.displayName = raw && raw.length <= 40 ? raw.slice(0, 40) : 'local';
       if (ws.readyState === 1) {
@@ -303,4 +314,4 @@ function releasePendingTurnState(ws, sessionContext) {
   return releasedConfirmations;
 }
 
-export { routeMessage, sendAiStatus };
+export { sendAiStatus };

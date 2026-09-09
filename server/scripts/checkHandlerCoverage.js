@@ -516,6 +516,18 @@ const notMode = await handleModeCommand(ws, tmpProj, 'run the tests');
 eq('mode admin: unrelated input not consumed', notMode === false && ws.sent.length === 0, true);
 fs.rmSync(tmpRoot, { recursive: true, force: true });
 
+// I-4a (2026-09-09): verified WS identity — an armed connection's self-claim is ignored
+// in favor of the cookie-stamped authUser; disarmed connections keep Phase 19 self-claim.
+const { routeMessage } = await import(pathToFileURL(base + 'wsHandlers/connectionRoutes.js').href);
+const claimWs = { readyState: 1, sent: [], send(s) { this.sent.push(JSON.parse(s)); } };
+const openCtx = {};
+await routeMessage(claimWs, { type: 'set_display_name', payload: { name: 'Mallory' } }, openCtx);
+eq('identity: disarmed self-claim sticks (Phase 19)', openCtx.displayName === 'Mallory' && claimWs.sent[0]?.data === 'Mallory', true);
+const armedWs = { readyState: 1, sent: [], send(s) { this.sent.push(JSON.parse(s)); } };
+const armedCtx = { authUser: { username: 'tobi', role: 'admin' }, displayName: 'tobi' };
+await routeMessage(armedWs, { type: 'set_display_name', payload: { name: 'Mallory' } }, armedCtx);
+eq('identity: armed claim ignored, verified name kept', armedCtx.displayName === 'tobi' && armedWs.sent[0]?.data === 'tobi', true);
+
 // --- GENERAL FILE TOOLS (Phase 2, 2026-08-11) --------------------------------
 // Dispatch shapes against the C:/tmp/nowhere fixture (nonexistent dir — walkDir degrades to
 // [] there, so every answer is deterministic and no real files are ever touched):

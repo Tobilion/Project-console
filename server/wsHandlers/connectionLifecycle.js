@@ -5,6 +5,7 @@ import { metrics } from '../metrics.js';
 import { routeMessage, sendAiStatus } from './connectionRoutes.js';
 import { takeUpdateNotice } from '../updateChecker.js';
 import { log as logger } from '../logger.js';
+import { validateSession, tokenFromCookieHeader } from '../auth/authSessions.js';
 
 function heartbeat() {
   this.isAlive = true;
@@ -31,7 +32,7 @@ export function initWebSocketServer() {
   wss.on('connection', onConnection);
 }
 
-function onConnection(ws) {
+function onConnection(ws, request) {
   ws.isAlive = true;
   ws.on('pong', heartbeat);
 
@@ -136,6 +137,12 @@ function onConnection(ws) {
     // When the server is LAN-bound the client/CLI may set a display name via set_display_name;
     // it's an attribution label, not an account (no auth, no permissions — LAN trust only).
     displayName: 'local',
+    // Phase I (I-4a, 2026-09-09): verified identity from the upgrade-request cookie when the
+    // server is armed (authGate already rejected cookieless sockets, so a present cookie
+    // here is valid by construction — re-validated anyway). set_display_name cannot
+    // override it (see connectionRoutes.js): an armed connection's attribution is proof,
+    // not a claim. Null on open servers — Phase 19 behavior untouched.
+    authUser: null,
     workspaceProjectIds: [],
     // Phase T (2026-08-14): the tab workspace this connection is scoped to (from the execute
     // payload's tabId). Project resolution goes through this tab's own scan cache when set,
@@ -164,6 +171,21 @@ function onConnection(ws) {
     // the same lifetime as every other aiEnabled/activeProjectId setting here.
     toolGrants: new Set(),
   };
+
+  // Phase I (I-4a, 2026-09-09): stamp the verified identity from the upgrade cookie (the
+  // gate already rejected cookieless sockets while armed — validateSession re-checks
+  // anyway so this stays correct if the gate ever passes anonymous sockets through).
+  // Disarmed servers have no sessions: validateSession(null) is null, displayName stays
+  // 'local', and the Phase 19 self-claim flow below is untouched.
+  try {
+    const verified = validateSession(tokenFromCookieHeader(request?.headers?.cookie));
+    if (verified) {
+      sessionContext.authUser = verified;
+      sessionContext.displayName = verified.username;
+    }
+  } catch {
+    // identity must never break connection setup — worst case is 'local' attribution
+  }
 
   // Phase 1: register for out-of-band targeting (scheduled-fire answers). Unregistered in
   // the close handler below; a stale entry for a dead socket could otherwise receive
