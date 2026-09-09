@@ -13,7 +13,7 @@ export interface TourStep {
   title: string;
   body: string;
   /** Guided mode: the app view this step needs active (the overlay switches to it first). */
-  view?: 'tools' | 'dashboard' | 'chat' | 'general' | 'commandRef';
+  view?: 'tools' | 'dashboard' | 'chat' | 'general' | 'commandRef' | 'welcome';
   /** Guided mode: open this Tools panel before spotlighting (only when view is 'tools'). */
   panel?: string;
   /** Guided mode: a data-tour id to spotlight (scrolls into view + ring). */
@@ -109,14 +109,14 @@ export const TOUR_SECTIONS: TourSection[] = [
         icon: '▦',
         title: 'What Counts as a Project',
         body: 'The scanner walks the base dir and keeps a subfolder when it finds console.config.json, a CLAUDE.md/README.md/ABOUT-*.md, a package.json, or — with no docs at all — real source in ~19 languages, a recognized config file (Cargo.toml, go.mod, requirements.txt, etc.), or a real .git dir. PDF-only folders with no code are kept too but classify as General (see the workspace pill). Turn on Settings → “Include every folder” to list every subfolder even with zero signals — off by default so junk stays hidden.',
-        view: 'chat',
+        view: 'welcome',
         target: 'bento-grid',
       },
       {
         icon: '◈',
         title: 'Bento Cards',
         body: 'Each discovered project renders as a Bento card: folder name, truncated path tooltip, count of context docs and trigger entries. The active project gets a blue left-border accent. The per-card workspace toggle (hidden until hover) lets you add/remove that project from the multi-project workspace chip in the terminal header — useful when you want to ask questions that span two projects. Click the card body to open a fresh chat locked to that folder.',
-        view: 'general',
+        view: 'welcome',
         target: 'bento-grid',
       },
       {

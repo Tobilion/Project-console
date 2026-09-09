@@ -635,7 +635,19 @@ Verified: check-handlers 287/287, check-ws-cases clean, npm test 602/602, tsc cl
   backtrack/opt-out). Verified: check-handlers 292/292, check-ws-cases 137/137, npm test
   602/602, tsc clean. Still open: F-1/F-2(already done via A-14)/F-3/F-4/F-5(1)(2)/F-6/F-7/
   F-8/F-9/F-10, and F-11's second card type (notes).
-- Phases C, G, H, I, J, L: **not started.**
+- **Phase C: started** (2026-09-09, opencode). C-1 verified already covered — no change
+  needed: the spec's "missing panel targets" list is stale, `ToolsPanel.tsx` renders a
+  dynamic `<div data-tour={`${activePanel}-panel`}>` shell around every open panel, so all
+  10 named targets resolve when their panel is open (mechanically re-checked: 25 unique
+  tour targets, 0 missing). C-2 fixed: the two `bento-grid` steps pointed at `chat`/
+  `general` views, but `BentoGrid` only mounts on the Welcome screen — new `view:
+  'welcome'` tour-view branch in `useAppGlobalListeners` (same state flip as the header
+  home button) + both steps retargeted + `TourStep.view` union extended. Verified: tsc
+  clean, vite build clean, target cross-check still 0 missing. Browser confirmation that
+  the ring actually lands on the grid still outstanding (no browser here). Still open:
+  C-3 (targetless/duplicate-target steps), C-4 (untoured flows), C-5 (progress/auto-
+  advance/reduced-motion).
+- Phases G, H, I, J, L: **not started.**
 
 **Native verification baseline (2026-09-09, opencode on Windows — supersedes the bridged-shell
 caveat below)**: full suite green at commit e0bc8ed before any new work — npm test 602/602,

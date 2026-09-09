@@ -174,7 +174,7 @@ function App() {
   }, [handleOpenSettings]);
 
   // Phase 9 (2026-08-24 split): global keyboard + tour CustomEvent listeners.
-  useAppGlobalListeners({ setDeckOpen, setShortcutsOpen, setShowDashboard, setShowCommandRef, setToolsOpen, setTourPickerOpen, setTourSection });
+  useAppGlobalListeners({ setDeckOpen, setShortcutsOpen, setShowDashboard, setShowCommandRef, setToolsOpen, setTourPickerOpen, setTourSection, setShowWelcome, setChatFullscreen });
 
   // Tour-driven panel opening: guided steps inside Tools can request a specific panel.
   // The overlay dispatches 'lpc:tour-view' with {view:'tools', panel:'folder-explorer'}; the

@@ -14,10 +14,12 @@ export interface UseAppGlobalListenersDeps {
   setToolsOpen: React.Dispatch<React.SetStateAction<boolean>>;
   setTourPickerOpen: React.Dispatch<React.SetStateAction<boolean>>;
   setTourSection: React.Dispatch<React.SetStateAction<TourSection | null>>;
+  setShowWelcome: React.Dispatch<React.SetStateAction<boolean>>;
+  setChatFullscreen: React.Dispatch<React.SetStateAction<boolean>>;
 }
 
 export function useAppGlobalListeners(deps: UseAppGlobalListenersDeps) {
-  const { setDeckOpen, setShortcutsOpen, setShowDashboard, setShowCommandRef, setToolsOpen, setTourPickerOpen, setTourSection } = deps;
+  const { setDeckOpen, setShortcutsOpen, setShowDashboard, setShowCommandRef, setToolsOpen, setTourPickerOpen, setTourSection, setShowWelcome, setChatFullscreen } = deps;
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -64,6 +66,11 @@ export function useAppGlobalListeners(deps: UseAppGlobalListenersDeps) {
       } else if (view === 'dashboard') { setShowDashboard(true); setShowCommandRef(false); setToolsOpen(false); }
       else if (view === 'commandRef') { setShowDashboard(false); setShowCommandRef(true); setToolsOpen(false); }
       else if (view === 'general') { setShowDashboard(false); setToolsOpen(false); setShowCommandRef(false); }
+      // C-2 (2026-09-09): the discovery section's bento-grid steps explicitly request the
+      // welcome view (same state flip as the header home button) — BentoGrid only mounts on
+      // the Welcome screen, so routing those steps to chat/general left the spotlight with
+      // nothing to find and it fell back to a generic card.
+      else if (view === 'welcome') { setShowDashboard(false); setToolsOpen(false); setChatFullscreen(false); setShowCommandRef(false); setShowWelcome(true); }
       else { setShowDashboard(false); setToolsOpen(false); setShowCommandRef(false); }
     };
     const onLaunchTour = (e: Event) => {
@@ -77,5 +84,5 @@ export function useAppGlobalListeners(deps: UseAppGlobalListenersDeps) {
       window.removeEventListener('lpc:tour-view', onTourView);
       window.removeEventListener('lpc:launch-tour', onLaunchTour);
     };
-  }, [setShowDashboard, setShowCommandRef, setToolsOpen, setTourPickerOpen, setTourSection]);
+  }, [setShowDashboard, setShowCommandRef, setToolsOpen, setTourPickerOpen, setTourSection, setShowWelcome, setChatFullscreen]);
 }
