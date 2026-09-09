@@ -305,11 +305,15 @@ Verified: check-handlers 287/287, check-ws-cases clean, npm test 602/602, tsc cl
    B.3 frontend poll cadences consolidated (commit 2cf94d6: new `src/constants.ts` with `PANEL_POLL_CLIPBOARD/DASHBOARD/PDF/NOTIFICATIONS/
   SLOW_MS`; every cadence is byte-identical to the old literal, only the duplication is gone
   — deliberately left out of tuningStore, which stays backend-numbers-with-bounds-only). The
-  rest of B.1 (the remaining oversized files — `preSemanticOverrides.js` 471,
-  `matcher.js` 429, `server/index.js` 443, plus
-  `NotificationsPanel.tsx`/`PdfToolsPanel.tsx`/`RemindersPanel.tsx` and the rest of the
-  frontend panel list — see the spec's per-file notes), the rest of B.2 (the `answer`-helper dedup
-  across 60+ wsHandlers files), the rest of B.3, and B.4's naming/comment-length audit. This
+   rest of B.1 (the remaining oversized files — `preSemanticOverrides.js` 471,
+   `matcher.js` 429, plus
+   `NotificationsPanel.tsx`/`PdfToolsPanel.tsx`/`RemindersPanel.tsx` and the rest of the
+   frontend panel list — see the spec's per-file notes; `server/index.js` 443 is now DONE,
+   commit 25ffc0d extracted its boot phases into `server/boot/` leaves `portBind.js`/
+   `projectDiscovery.js`/`mlStartup.js`/`viteSetup.js`/`configWatcher.js`, leaving index.js a
+   genuine thin orchestrator), the rest of B.2 (the `answer`-helper dedup
+   across 60+ wsHandlers files — first slice done, commit 65d1039: new `server/wsReply.js`
+   shared helper), the rest of B.3, and B.4's naming/comment-length audit. This
   is the largest remaining phase — chunk it across many commits, one dedup/split target per
   commit, not one giant pass. B.3's external-endpoints row is also done: new
   `server/apiEndpoints.js` centralizes `npmRegistryLatestUrl(pkgName)` (env-overridable via
@@ -555,14 +559,38 @@ Verified: check-handlers 287/287, check-ws-cases clean, npm test 602/602, tsc cl
   and arguably a regression (losing live output, or reimplementing git-push safety twice in
   two places to keep it). Left as-is; noted here so a future pass doesn't assume this was
   missed.
-- Phases C, E, F, G, H, I, J, L: **not started.**
+- **Phase E: started** (commits e3d46ed, e0bc8ed, 2026-09-09 — see below). E-1 done
+  (`server/notify/notifyChannels.js`: the WinRT wrapper no longer resolves `{ok:true}`
+  unconditionally — empty `catch{}` removed, exit-code + stderr checked in the close
+  handler; AUMID aligned to `com.localprojectconsole.app` matching electron-builder's
+  `appId`; new `ensureAumidRegistered()` registers the AUMID via the registry for
+  non-packaged launch paths; "Send test notification" already existed in
+  `NotificationsPanel.tsx` and now surfaces the real post-fix result). E-4 partially done:
+  the bell-badge dismiss now calls `POST /api/notifications/dismiss {id:'all'}` instead of
+  clearing local state only (previously resurfaced on next poll) — the anchored-popup
+  replacement, polling-interval unification, and verbosity/quiet-hours settings are still
+  open. E-5 partially done: new `POST /api/projects/:id/workspace-type` REST endpoint
+  (writes console.config.json + updates in-memory state + broadcasts `project_updated`)
+  and `handleWorkspaceTabChange` calls it directly instead of composing a chat message —
+  pill clicks no longer pollute the terminal; the chat path stays as the CLI fallback.
+  Still open: E-5's no-active-project case (`if (!activeProject?.id) return` still flips
+  the pill locally with no server write), E-2's snooze, E-3's opt-in surfacing, E-6's
+  answer-to-toast audit.
+- Phases C, F, G, H, I, J, L: **not started.**
 
-**Verification caveat carried across all of the above**: everything was checked with
-`node --check` on this bridged Linux shell (see the environment note below) — nobody has yet
-run the real `npm test`/`npm run lint` on Windows against this branch. Do that before
-assuming any of A/K is bulletproof, especially the matcher-adjacent K-5 changes (error text
-changes don't usually break check-matcher, but confirm — grep the batteries for the old
-"Confirmation token is invalid or expired" string in case a row asserts on it verbatim).
+**Native verification baseline (2026-09-09, opencode on Windows — supersedes the bridged-shell
+caveat below)**: full suite green at commit e0bc8ed before any new work — npm test 602/602,
+`npm run lint` clean, check-matcher 425/425 (incl. the A-15 MULTI-INTENT and K-11 TROUBLESHOOT
+batteries), check-handlers 287/287, check-tools 182/182, check-indexer 103/103, check-ws-cases
+137/137, check-intents 1/17/137, check-docs 81 curated + 141 generated with 0 unmapped.
+`node bin/cli.js doctor` run natively: only the 2 known warnings (piped-stdin TTY notice,
+Ollama unreachable — same as the bridged session found), tmp sweep clean. K-11's
+`system.chit_chat.troubleshoot` handler invoked natively for the first time (was blocked in
+the bridge by the esbuild platform mismatch): correctly reports those same 2 issues and notes
+neither has a safe auto-fix. **Still genuinely outstanding** (need a browser/Electron/human):
+D-9's "+" button click-through + `POST /api/scan-path` `mode:'add'` against a running server,
+F-11's card browser render, K-11's Electron fatal-error screen, E-1's real toast arrival,
+and the D-7 panel click-throughs.
 
 **Before trusting any research-doc finding as still-accurate**: this codebase moves fast
 and several "confirmed" findings in the master prompt turned out to already be fixed by the
