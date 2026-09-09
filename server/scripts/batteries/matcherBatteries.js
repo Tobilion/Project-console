@@ -9,7 +9,7 @@ const ENTRIES = [
   { triggers: ['run one measurement', 'run a single measurement', 'run once', 'run one cycle'], type: 'command', action: 'python main.py once' },
   { triggers: ['export data', 'export to csv', 'export the data'], type: 'command', action: 'python main.py export' },
   { triggers: ['seed demo data', 'load demo data', 'demo mode', 'fill with fake data'], type: 'command', action: 'python main.py demo' },
-  { triggers: ['watch network', 'track network speed', 'monitor network', 'watch network at interval', 'run network speed test on a loop', 'keep checking the network'],
+  { triggers: ['watch network', 'track network speed', 'monitor network', 'watch network at interval', 'run network speed test on a loop', 'keep checking the network', 'measure network', 'check network'],
     type: 'command', action: 'python main.py watch --interval {interval}',
     params: [{ name: 'interval', prompt: 'What interval, in minutes? (e.g. 15)', pattern: '\\d+' }] },
   { triggers: ['run tests', 'test project'], type: 'command', action: 'python -m pytest' },

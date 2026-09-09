@@ -398,6 +398,17 @@ export const CHIT_CHAT_INTENTS = {
       'joke for me', 'tell me something funny',
     ],
   },
+  'system.chit_chat.troubleshoot': {
+    // K-11 (2026-09-09): the chat-side entry point for the doctor/auto-fix flow. Pinned by
+    // pre-semantic overrides (literal "troubleshoot" + variants), but embedding-stage examples
+    // are needed so check-handlers can verify INTENTS ↔ BUILTIN_INTENTS parity.
+    examples: [
+      'troubleshoot', 'troubleshoot this', 'troubleshoot it',
+      'run diagnostics', 'run a diagnostic', 'diagnose the problem',
+      'diagnose the issue', 'check for problems', 'check for issues',
+      'what is wrong', 'fix this', 'something is broken',
+    ],
+  },
   'system.monitoring.metrics': {
     examples: [
       'show metrics', 'view metrics', 'monitoring', 'monitor',

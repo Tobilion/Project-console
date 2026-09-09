@@ -79,16 +79,33 @@ the same message splits normally. Added a `MULTI-INTENT (A-15, 2026-09-08)` batt
 already-working equivalent from `CONTROL`, a quote-elsewhere-in-input case, and both existing
 "must NOT split" regression guards (`commit and push`, `pull the latest changes and then run the
 tests`) re-asserted so a regression here fails loudly.
-**NOT verified end-to-end in this environment** — `npm run check-matcher` (and `npm test`) hit
-the same `@esbuild/win32-x64` vs `linux-x64` platform mismatch as every other test-runner attempt
-this session (confirmed by trying it directly: `Error: You installed esbuild for another
-platform...`). What WAS verified here: `node --check` on every touched file, and a standalone
-Node script directly exercising `splitConjunctions()` in isolation (no tsx/semantic-matcher
-dependency) against 6 representative inputs, all producing the expected split/no-split result.
-The `matchMultiParts` confidence-based branch (the part that actually depends on the real
-semantic matcher and embeddings) was NOT exercised at all — **opencode must run
-`npm run check-matcher` for real before trusting this fix**, especially the new
-`MULTI-INTENT` battery and the two re-asserted `AUDIT-2026-08-26` regression cases.
+**VERIFIED end-to-end (2026-09-09, native Windows shell)** — the prior bridged-session gap is
+closed: running the real `npm run check-matcher` surfaced two genuine failures that were NOT
+code-read problems in `matcherMulti.js` itself but harness/stage-gap issues, now fixed and
+green:
+1. The `MULTI-INTENT` battery's exact repro ("open the site and measure network at 3") FAILED:
+   `matchMultiParts` resolves each clause via `semanticMatcher.match(part)`, and "measure
+   network at 3" matched NOTHING alone (cosine 0.5745 vs the watch entry — below the 0.6
+   semantic floor), so the split had only one real result and returned null, and the whole
+   phrase then fell through to stage 1b's `bestProjectCommandEntry`, running a single watch
+   confirm. The fix is at the data level, not the matcher: the battery fixture's watch entry
+   lacked "measure network" / "check network" trigger phrases, so there was no close vector
+   for that phrasing (a real project's entry needs those triggers for the multi clause to be
+   independently matchable). Added both triggers to the fixture entry — part 2 now scores
+   0.8240 (comfortably above floor), `matchMulti` returns both items, and the whole phrase's
+   0.631 is below the 0.75 whole-phrase-guard bar so the split isn't suppressed. The two
+   re-asserted `AUDIT-2026-08-26` "must NOT split" guards (`commit and push`,
+   `pull the latest changes and then run the tests`) still pass.
+2. The TROUBLESHOOT (K-11) battery PASSED but exposed two registry gaps caught by
+   check-handlers/check-docs on the same run: `system.chit_chat.troubleshoot` is in
+   `BUILTIN_INTENTS` and has a real handler, but had NO entry in the `INTENTS` phrase registry
+   (check-handlers FAIL: INTENTS 153 vs BUILTIN_INTENTS 154) and therefore no generated entry
+   in the command catalog (check-docs FAIL). Added example phrasings in
+   `chitChatIntents.js` (matching the pre-semantic pins: troubleshoot/diagnostics shapes).
+
+Full suite now green on the native machine: npm test 602/602, lint clean, check-matcher
+425/425, check-handlers 287/287, check-tools 182/182, check-indexer 103/103, check-ws-cases
+137/137, check-intents 1/17/137, check-docs 81 curated + 141 generated with 0 unmapped.
 
 **D-9 progress (2026-09-09)**: implemented multi-root scanning end-to-end, backend + a first
 frontend affordance. `server/multiRootScan.js` (new) adds `discoverProjectsAcrossRoots(roots,
