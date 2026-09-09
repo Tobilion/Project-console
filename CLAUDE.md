@@ -727,8 +727,13 @@ Verified: check-handlers 287/287, check-ws-cases clean, npm test 602/602, tsc cl
   now completes instead of deleting — its "session-lifetime visual" comment updated).
   Panel Completed section takes flagged items first (fired-past oneshots still land there
   too). Verified: 5 new check-handlers rows (308/308), npm test 602/602, tsc + vite build
-  clean. Browser confirmation still outstanding. Still open: F-5(1)/F-6/
-  F-8/F-9/F-10-rest.
+  clean. Browser confirmation still outstanding. F-9 verified no-change-needed
+  (2026-09-09, opencode): no tree-implying expand affordance exists anymore — folders
+  drill-in on click/Enter/double-click with accurate "Enter to open folder" titles plus
+  breadcrumb/back/forward to get back, so the spec's fallback condition (remove the
+  misleading affordance) is already satisfied; a genuine inline tree is a bigger feature
+  than this pass and stays open. Still open: F-5(1)/F-6/
+  F-8/F-10-rest.
 - **Phase C: started** (2026-09-09, opencode). C-1 verified already covered — no change
   needed: the spec's "missing panel targets" list is stale, `ToolsPanel.tsx` renders a
   dynamic `<div data-tour={`${activePanel}-panel`}>` shell around every open panel, so all
