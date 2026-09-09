@@ -132,13 +132,16 @@ two roots with a same-named project folder ("shared" in both) correctly get dist
 the merge-time re-dedupe; passing the same root twice does not double-list its project;
 `addRoot()` correctly no-ops on an already-present path and appends a genuinely new one. A full
 `tsc --noEmit -p .` across the whole repo (server + frontend) is clean.
+**VERIFIED live against a running server (2026-09-09, opencode native)**: booted a real
+console, `POST /api/scan-path?tab=d9test` replace with rootA → 1 project, then the same
+endpoint with `mode: 'add'` rootB → `scanPaths` holds both roots and the merged list holds
+both projects each correctly tagged with its `sourceRoot`; a follow-up `GET /api/projects?
+tab=d9test` still returns both (roots persist for the tab session); global no-tab
+`mode: 'add'` is correctly rejected with 400 (single-root-by-design preserved). Test server
+killed by PID afterward, temp fixtures removed.
 **NOT verified**: no real browser click-through of the new "+" button/chip row (this environment
-has no way to render the actual UI); the `POST /api/scan-path` `mode: 'add'` REST path itself
-was not exercised against a running server (only its underlying `discoverProjectsAcrossRoots`/
-`addRoot` helpers were, directly). opencode should start a real console, add a second folder via
-the sidebar "+" button, and confirm both folders' projects show up in the project grid/dashboard
-and that reloading the tab preserves both roots (tab state is session-lifetime by design — see
-Phase T's original per-tab-workspace note above — confirm that's still true with multiple roots).
+has no way to render the actual UI); opencode should still click the sidebar "+" button in a
+real console and confirm both folders' projects show up in the project grid/dashboard.
 Not done at all: removing a root once added (only adding is implemented, matching the literal
 request — "can easily add other paths with new paths" — but there's no UI/API to drop one yet;
 worth a follow-up spec note if wanted), and no visual indicator on individual project cards
