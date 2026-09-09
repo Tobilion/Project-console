@@ -895,6 +895,26 @@ eq('notes delete: dated delete removes exactly that line', twinDated.success ===
 const twinSingle = await deleteNote(twinRoot, 'call dentist');
 eq('notes delete: single-match flow unchanged', twinSingle.success === true && twinSingle.data === 'call dentist', true);
 fs.rmSync(twinRoot, { recursive: true, force: true });
+
+// F-11 (2026-09-09): the list/search answers carry an additive `notes` card (text/date/
+// projectId per item, same slice the markdown rows show) alongside the unchanged markdown.
+const cardRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'console-notescard-'));
+const cardProj = {
+  id: 'card-p', name: 'CardProj', path: cardRoot, workspaceType: 'general',
+  config: { projectName: 'CardProj', entries: [] }, contextFiles: [],
+  parsedKnowledge: {}, codebaseIndex: { languages: [], keyFiles: {} },
+};
+await appendNote(cardRoot, 'buy milk', 'local');
+await appendNote(cardRoot, 'call dentist', 'local');
+sent.length = 0;
+await handleBuiltinIntent(ws, 'system.notes.list', 'show my notes', cardProj, {});
+const listAns = sent.find((s) => s.type === 'answer');
+eq('notes card: list carries text/date/projectId items', listAns?.card?.type === 'notes' && listAns.card.items.length === 2 && listAns.card.items.every((it) => typeof it.text === 'string' && it.projectId === 'card-p' && 'date' in it) && /buy milk/.test(listAns.data), true);
+sent.length = 0;
+await handleBuiltinIntent(ws, 'system.notes.search', 'search my notes for dentist', cardProj, {});
+const searchAns = sent.find((s) => s.type === 'answer');
+eq('notes card: search card matches the hit set', searchAns?.card?.type === 'notes' && searchAns.card.items.length === 1 && searchAns.card.items[0].text === 'call dentist', true);
+fs.rmSync(cardRoot, { recursive: true, force: true });
 fs.rmSync(linkedRoot, { recursive: true, force: true });
 
 // --- CSV TOOLS (Phase 7, 2026-08-12) -------------------------------------------

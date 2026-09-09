@@ -10,6 +10,7 @@ import ReactMarkdown from 'react-markdown';
 import { AlertTriangle, ExternalLink, ChevronDown, ChevronRight, Wrench } from 'lucide-react';
 import { OutputBlock } from '../TerminalOutputBlock';
 import { ReminderCard } from './ReminderCard';
+import { NotesCard } from './NotesCard';
 
 /** The server appends a performance note to the end of streamed AI replies (see
  *  server/ollama.js chatStream): `\n\n_(2.0s, 9 tok/s)_`. Strip it from the rendered
@@ -185,10 +186,12 @@ export const MessageRowContent = React.memo(function MessageRowContent({
         </div>
       )}
 
-      {/* F-11 (2026-09-08/09): additive rich-tool-UI card, rendered BELOW the plain-text/
+      {/* F-11 (2026-09-08/09): additive rich-tool-UI cards, rendered BELOW the plain-text/
           markdown answer above (never replacing it) so CLI/accessibility and any client that
-          doesn't understand `card` still see the full answer. One card type so far. */}
+          doesn't understand `card` still see the full answer. Two card types: reminders and
+          notes. */}
       {msg.card?.type === 'reminders' && <ReminderCard items={msg.card.items} />}
+      {msg.card?.type === 'notes' && <NotesCard items={msg.card.items} />}
     </div>
   );
 }, (prev, next) => (

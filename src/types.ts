@@ -82,12 +82,13 @@ export interface TerminalMessage {
   /** F-11 (2026-09-08/09): additive, chat-native rich tool UI — same pattern as `openPanel`
    *  above (a plain field on the WS 'answer' payload the CLI simply never reads, per
    *  server/cli-client.js's 'answer' case only ever touching `msg.data`). `data` stays the
-   *  full plain-text/markdown answer for CLI/accessibility; `card`, when present, renders a
-   *  richer inline widget for that SAME content in the web chat thread (see
-   *  src/components/terminal/messageContent.tsx). One card type shipped so far (reminders,
-   *  an Apple-Reminders-style checklist wired to the D-7 REST reminders endpoints) — the
-   *  `type` field is a discriminant so more card types can be added without touching this
-   *  contract again. */
+ *  full plain-text/markdown answer for CLI/accessibility; `card`, when present, renders a
+ *  richer inline widget for that SAME content in the web chat thread (see
+ *  src/components/terminal/messageContent.tsx). Two card types shipped (reminders, an
+ *  Apple-Reminders-style checklist, and notes, a list with inline delete — both wired to
+ *  the D-7 REST endpoints) — the
+ *  `type` field is a discriminant so more card types can be added without touching this
+ *  contract again. */
   card?: TerminalMessageCard | null;
 }
 
@@ -105,7 +106,20 @@ export interface ReminderCardItem {
 }
 
 export type TerminalMessageCard =
-  | { type: 'reminders'; items: ReminderCardItem[] };
+  | { type: 'reminders'; items: ReminderCardItem[] }
+  | { type: 'notes'; items: NoteCardItem[] };
+
+/** One item in a `notes`-type inline card — the note's own text plus the project it lives
+ *  in (the D-7 notes REST endpoints are project-scoped, so the card needs the id to call
+ *  DELETE /api/projects/:id/notes without prop-drilling). `date` is the note's own date
+ *  suffix when it has one. Inline EDIT is deliberately not offered here: the store is
+ *  append-only with no in-place replace (see F-6), so an in-card editor would have to
+ *  append-a-copy — the Notes panel owns editing until that model exists. */
+export interface NoteCardItem {
+  text: string;
+  date?: string | null;
+  projectId: string;
+}
 
 export interface ChatSession {
   id: string;

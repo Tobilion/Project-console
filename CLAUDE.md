@@ -683,8 +683,16 @@ Verified: check-handlers 287/287, check-ws-cases clean, npm test 602/602, tsc cl
   opencode): the folder-stale day-count input now clamps to the server's 1-365 range
   inline (empty = 7-day default, over-range values corrected visibly in the field) instead
   of sending nonsense counts to the chat error path; input capped at 3 digits with a
-  `1-365` title hint. tsc clean. Still open: F-4/F-5(1)/F-6/
-  F-8/F-9/F-10-rest, and F-11's second card type (notes).
+  `1-365` title hint. tsc clean. F-11's second card type done (2026-09-09, opencode):
+  notes list + search now attach an additive `notes` card (`NoteCardItem{text,date,
+  projectId}` in `types.ts`, rendered by new `NotesCard.tsx` below the unchanged markdown)
+  with per-row delete wired to the same `DELETE /api/projects/:id/notes` the panel uses
+  (twin-ambiguity errors surface inline on the row, nothing removed); no inline edit —
+  the store is append-only with no in-place replace (F-6), so the panel owns editing.
+  Verified through the real handler pipeline (list/search/empty shapes), tsc + vite build
+  clean, 2 new check-handlers rows (298/298). Browser render of both card types still
+  outstanding. Still open: F-4/F-5(1)/F-6/
+  F-8/F-9/F-10-rest.
 - **Phase C: started** (2026-09-09, opencode). C-1 verified already covered — no change
   needed: the spec's "missing panel targets" list is stale, `ToolsPanel.tsx` renders a
   dynamic `<div data-tour={`${activePanel}-panel`}>` shell around every open panel, so all

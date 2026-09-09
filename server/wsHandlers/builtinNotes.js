@@ -29,13 +29,18 @@ export const noteHandlers = {
       answer(ws, 'No notes yet. Try `note: buy milk` to jot something down.');
       return;
     }
-    const rows = notes
-      .slice()
-      .reverse()
-      .slice(0, 20)
-      .map((n, i) => `${i + 1}. ${n.text}${n.date ? ` — ${n.date}` : ''}`);
+    const shown = notes.slice().reverse().slice(0, 20);
+    const rows = shown.map((n, i) => `${i + 1}. ${n.text}${n.date ? ` — ${n.date}` : ''}`);
     const more = notes.length > 20 ? `\n\n…and ${notes.length - 20} older notes (see .console/notes.md).` : '';
-    answer(ws, `### Notes (${notes.length})\n\n${rows.join('\n')}${more}`);
+    // F-11 (2026-09-09): additive `notes` card alongside the plain markdown above — same
+    // shape src/types.ts's NoteCardItem expects (text/date/projectId), same newest-20 slice
+    // the markdown rows use, so the web client renders the identical set as a deletable
+    // inline list while the CLI (which only ever reads `data`) is unaffected.
+    const card = {
+      type: 'notes',
+      items: shown.map((n) => ({ text: n.text, date: n.date || null, projectId: project.id })),
+    };
+    ws.send(JSON.stringify({ type: 'answer', data: `### Notes (${notes.length})\n\n${rows.join('\n')}${more}`, card }));
   },
 
   'system.notes.search': async (ws, action, input, project) => {
@@ -56,7 +61,13 @@ export const noteHandlers = {
       return;
     }
     const rows = hits.map((n) => `- ${n.text}${n.date ? ` (${n.date})` : ''}`);
-    answer(ws, `Found **${hits.length}** note${hits.length === 1 ? '' : 's'} matching "${q}":\n\n${rows.join('\n')}`);
+    // F-11 (2026-09-09): same additive `notes` card as the list handler above, scoped to the
+    // top-10 hits the markdown rows show.
+    const card = {
+      type: 'notes',
+      items: hits.map((n) => ({ text: n.text, date: n.date || null, projectId: project.id })),
+    };
+    ws.send(JSON.stringify({ type: 'answer', data: `Found **${hits.length}** note${hits.length === 1 ? '' : 's'} matching "${q}":\n\n${rows.join('\n')}`, card }));
   },
 
   'system.notes.delete': async (ws, action, input, project, sessionContext) => {
