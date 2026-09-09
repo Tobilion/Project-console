@@ -308,17 +308,27 @@ Verified: check-handlers 287/287, check-ws-cases clean, npm test 602/602, tsc cl
    B.3 frontend poll cadences consolidated (commit 2cf94d6: new `src/constants.ts` with `PANEL_POLL_CLIPBOARD/DASHBOARD/PDF/NOTIFICATIONS/
   SLOW_MS`; every cadence is byte-identical to the old literal, only the duplication is gone
   — deliberately left out of tuningStore, which stays backend-numbers-with-bounds-only). The
-   rest of B.1 (the remaining oversized files — `preSemanticOverrides.js` 471,
-   `matcher.js` 429, plus
+   rest of B.1 (the remaining oversized files — `matcher.js` 429, plus
    `NotificationsPanel.tsx`/`PdfToolsPanel.tsx`/`RemindersPanel.tsx` and the rest of the
    frontend panel list — see the spec's per-file notes; `server/index.js` 443 is now DONE,
    commit 25ffc0d extracted its boot phases into `server/boot/` leaves `portBind.js`/
    `projectDiscovery.js`/`mlStartup.js`/`viteSetup.js`/`configWatcher.js`, leaving index.js a
-   genuine thin orchestrator), the rest of B.2 (the `answer`-helper dedup
-   across 60+ wsHandlers files — first slice done, commit 65d1039: new `server/wsReply.js`
-   shared helper), the rest of B.3, and B.4's naming/comment-length audit. This
-  is the largest remaining phase — chunk it across many commits, one dedup/split target per
-  commit, not one giant pass. B.3's external-endpoints row is also done: new
+   genuine thin orchestrator; `preSemanticOverrides.js` 471 is now DONE — commit
+   (this session, opencode): pins live in new `server/preSemanticOverridePins.js` data module
+   (all 150 intent+pattern+flags entries verified byte-identical + order-preserved against
+   HEAD via a throwaway comparison harness), the original file is a thin lookup +
+   re-export (single consumer `matcherMatch.js` needed zero edits), and
+   `scripts/guard-staged.mjs` maps the new pins file to check-matcher so pin edits still
+   trip the harness in pre-commit. Verified: check-matcher 425/425, npm test 602/602,
+   tsc clean), the rest of B.2 (the `answer`-helper dedup
+   across 60+ wsHandlers files — CLOSED as-designed 2026-09-09, opencode: `wsReply.js`
+   is imported by 15 leaves incl. all five new `generalFiles/` leaves; the only remaining
+   `const answer =` hits are local message-text variables, not helper declarations, and the
+   remaining raw sends each carry unique text — a mechanical rewrite of all ~300 would be
+   pure churn against check-handlers' exact-payload assertions, so they stay), the rest of
+   B.3, and B.4's naming/comment-length audit. This
+   is the largest remaining phase — chunk it across many commits, one dedup/split target per
+   commit, not one giant pass. B.3's external-endpoints row is also done: new
   `server/apiEndpoints.js` centralizes `npmRegistryLatestUrl(pkgName)` (env-overridable via
   `NPM_REGISTRY_URL`) and `duckDuckGoSearchUrl(query)` (env-overridable via
   `DUCKDUCKGO_SEARCH_URL`) — `server/updateChecker.js` and `server/doctor.js` had each built

@@ -5,7 +5,8 @@
 //
 // Mapping rules (keep in sync with the modules they cover):
 //   wsHandlers/**            -> check-handlers  (dispatch rows for every handler)
-//   matcher*/semanticMatcher*/intents/**/preSemanticOverrides.js/intentRegistry.js/
+//   matcher*/semanticMatcher*/intents/**/preSemanticOverrides.js/
+//   preSemanticOverridePins.js/intentRegistry.js/
 //   intentTrust.js           -> check-matcher (+ check-intents for intents/**, which own the
 //                               phrase corpus the matcher scores against)
 //   tool*/executor*/paramCommand/commandRisk/dangerousPatterns/urlSafety + their tests ->
@@ -63,6 +64,7 @@ const has = {
   matcher: (f) =>
     f.includes('/matcher') || f.includes('/semanticMatcher') ||
     f.startsWith('server/intents/') || f.endsWith('preSemanticOverrides.js') ||
+    f.endsWith('preSemanticOverridePins.js') ||
     f.endsWith('intentRegistry.js') || f.endsWith('intentTrust.js') ||
     f.includes('commandCatalog.js') || f.includes('consoleCommandDocs.js') ||
     f.includes('commandGuesser.js') || f.includes('contextResolver.js') || f.includes('contextInjector.js'),
