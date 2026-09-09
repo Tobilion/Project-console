@@ -1,7 +1,7 @@
 import type { WsCtx, WsCaseHandler } from './wsCtx';
 import { makeId } from './wsCtx';
 import { WS_STREAMING_CASES } from './wsStreamingCases';
-import { addToast } from '../components/ui/toastStore';
+import { addToast, aiRedirectDelay, reminderToastDuration } from '../components/ui/toastStore';
 
 /**
  * The non-streaming WS-message case handlers, extracted verbatim from useConsole.ts's
@@ -30,18 +30,10 @@ const answerCase: WsCaseHandler = (ctx, payload) => {
   // answer bubble to skip the delay. A 0ms setting means instant (the original behavior).
   if (payload.openPanel) {
     const panel = payload.openPanel;
-    // Read the delay from the server's profile via a quick fetch (cached by the browser
-    // after first load). Falls back to 0ms on any failure so behavior never degrades.
-    const delayMs = (() => {
-      try {
-        const profileRaw = localStorage.getItem('console.profile');
-        if (profileRaw) {
-          const p = JSON.parse(profileRaw);
-          return typeof p?.aiRedirectDelayMs === 'number' ? p.aiRedirectDelayMs : 0;
-        }
-      } catch {}
-      return 0;
-    })();
+    // Read the delay from the profile prefs useUserProfile mirrors into localStorage
+    // (B.3, 2026-09-09 — previously this read a 'console.profile' key nothing ever wrote,
+    // so the delay silently never fired). Falls back to 0ms on any failure.
+    const delayMs = aiRedirectDelay();
     if (delayMs > 0) {
       // Show a subtle toast indicating a panel is about to open, then open after delay.
       addToast({
@@ -385,7 +377,7 @@ const notificationFiredCase: WsCaseHandler = (_ctx, payload) => {
   addToast({
     title: payload.data.title,
     description: payload.data.body || '',
-    duration: 10000,
+    duration: reminderToastDuration(),
   });
 };
 

@@ -2,9 +2,10 @@ import { useSyncExternalStore } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { CheckCircle2, X } from 'lucide-react';
 import { cn } from '../../lib/utils';
-import { dismissToast, getToasts, subscribeToast, type Toast } from './toastStore';
+import { dismissToast, getToasts, subscribeToast, reminderToastPosition, type Toast } from './toastStore';
 
 function ToastCard({ toast }: { toast: Toast }) {
+
   return (
     <motion.div
       layout
@@ -55,11 +56,23 @@ function ToastCard({ toast }: { toast: Toast }) {
   );
 }
 
-/** Fixed bottom-right toast stack. Rendered once from App so any module can fire addToast(). */
+/** Anchor classes per reminderToastPosition value. Read at render so a Settings change
+ *  applies to the next toast shown (the stack only re-renders on toast changes). */
+const POSITION_CLS = {
+  'top-left': 'top-4 left-4',
+  'top-right': 'top-4 right-4',
+  'bottom-left': 'bottom-4 left-4',
+  'bottom-right': 'bottom-4 right-4',
+  center: 'top-4 left-1/2 -translate-x-1/2',
+} as const;
+
+/** Toast stack anchored at the profile's reminderToastPosition (Settings; B.3, 2026-09-09 —
+ *  previously hardcoded bottom-right while the setting sat dead in the profile). Rendered
+ *  once from App so any module can fire addToast(). */
 export function Toaster() {
   const toasts = useSyncExternalStore(subscribeToast, getToasts, getToasts);
   return (
-    <div className="fixed bottom-4 right-4 z-[100] flex flex-col gap-2 pointer-events-none">
+    <div className={cn('fixed z-[100] flex flex-col gap-2 pointer-events-none', POSITION_CLS[reminderToastPosition()])}>
       <AnimatePresence>
         {toasts.map((t) => (
           <ToastCard key={t.id} toast={t} />

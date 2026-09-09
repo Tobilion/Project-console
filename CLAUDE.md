@@ -335,7 +335,20 @@ Verified: check-handlers 287/287, check-ws-cases clean, npm test 602/602, tsc cl
    `projectScanHelpers.js` replaces the verbatim stat/read/parse/sanitize copies in
    `projectScanSingle.js` and `projectScanContainer.js`'s `scanOne` — log prefixes preserved
    via the label so output is byte-identical; also confirmed `sanitizeChatReplies` was
-   already the single shared implementation, covering that B.2 row too). This
+   already the single shared implementation, covering that B.2 row too). B.3's toast-duration
+   row is also done (2026-09-09, opencode): `reminderToastDurationMs`/`reminderToastPosition`
+   existed in the profile + Settings UI but nothing read them (RemindersPanel hardcoded
+   `duration: 8000`, the fired-reminder toast hardcoded 10000, the Toaster viewport fixed
+   bottom-right). New `reminderToastDuration()`/`reminderToastPosition()` helpers in
+   `toastStore.ts` (sanitized, defaults exactly the old hardcodes except the fired toast now
+   unifies on the profile's 8000 default the slider advertises) feed all three sites, and
+   `useUserProfile` mirrors just these display prefs into `localStorage['console.profile']`
+   on load + successful save — which also fixes a second dead setting found while wiring:
+   `aiRedirectDelayMs`'s reader in `wsMessageCases.ts` read that same key, which nothing ever
+   wrote, so the redirect delay silently never fired (now uses a shared `aiRedirectDelay()`
+   helper). Verified: helpers return old defaults with no key present, tsc clean, vite build
+   clean, check-ws-cases 137/137. Browser confirmation of a moved/longer toast still
+   outstanding (no browser here). This
    is the largest remaining phase — chunk it across many commits, one dedup/split target per
    commit, not one giant pass. B.3's external-endpoints row is also done: new
   `server/apiEndpoints.js` centralizes `npmRegistryLatestUrl(pkgName)` (env-overridable via

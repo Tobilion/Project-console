@@ -84,7 +84,10 @@ export function useUserProfile() {
     fetch('/api/profile')
       .then((res) => res.json())
       .then((data) => {
-        if (data?.userProfile) setProfile(data.userProfile);
+        if (data?.userProfile) {
+          setProfile(data.userProfile);
+          syncProfilePrefs(data.userProfile);
+        }
       })
       .catch(() => console.warn('Using default local profile state'))
       .finally(() => setLoaded(true));
@@ -108,7 +111,10 @@ export function useUserProfile() {
       }
       const data = await res.json();
       // Reflect the server's sanitized/merged value back (it may fall back on invalid input).
-      if (data?.userProfile) setProfile(data.userProfile);
+      if (data?.userProfile) {
+        setProfile(data.userProfile);
+        syncProfilePrefs(data.userProfile);
+      }
       return true;
     } catch (err) {
       console.error('Failed to persist profile to server:', err);
@@ -120,4 +126,23 @@ export function useUserProfile() {
   const getFormattedName = useCallback((): string => formatUserName(profile), [profile]);
 
   return { profile, updateProfile, getFormattedName, loaded };
+}
+
+/**
+ * Mirror the display/timing prefs that module-level (non-React) call sites need into
+ * localStorage['console.profile'] — the toast store's reminderToastDuration/
+ * reminderToastPosition helpers and wsMessageCases' aiRedirectDelay reader all read this
+ * key. Only called with server-confirmed values (initial load + successful saves), never
+ * the optimistic pre-save state, so readers never see a value the server rejected.
+ */
+function syncProfilePrefs(p: Pick<UserProfile, 'aiRedirectDelayMs' | 'reminderToastDurationMs' | 'reminderToastPosition'>): void {
+  try {
+    localStorage.setItem('console.profile', JSON.stringify({
+      aiRedirectDelayMs: p.aiRedirectDelayMs,
+      reminderToastDurationMs: p.reminderToastDurationMs,
+      reminderToastPosition: p.reminderToastPosition,
+    }));
+  } catch {
+    // Private-mode quota etc. — readers fall back to defaults, so never throw here.
+  }
 }

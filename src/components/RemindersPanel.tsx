@@ -5,7 +5,7 @@ import { usePanelPolling, useFlashMessage } from '../hooks/usePanelPolling';
 import { PANEL_POLL_SLOW_MS } from '../constants';
 import { cn } from '../lib/utils';
 import { EmptyState } from './ui/EmptyState';
-import { addToast } from './ui/toastStore';
+import { addToast, reminderToastDuration } from './ui/toastStore';
 import { ReminderComposer } from './ReminderComposer';
 import type { Project } from '../types';
 import './RemindersPanel.css';
@@ -206,13 +206,14 @@ export function RemindersPanel({ project, onSendMessage }: RemindersPanelProps) 
     if (!r) return;
     setCompleting((prev) => new Set(prev).add(id));
     // Undo-after-complete via the shared toast store (2026-08-24): cancel is destructive, so
-    // completing offers an 8s Undo that re-creates the same reminder.
+    // completing offers an Undo that re-creates the same reminder. Duration is the profile's
+    // reminderToastDurationMs (Settings), not a hardcoded 8s (B.3, 2026-09-09).
     const spec = undoSpec(r);
     addToast({
       title: 'Reminder completed',
       description: r.text,
       actionLabel: 'Undo',
-      duration: 8000,
+      duration: reminderToastDuration(),
       onAction: () => createReminder(spec),
     });
     cancelReminder(id);
