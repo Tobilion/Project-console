@@ -250,7 +250,14 @@ function App() {
     } else {
       setToolsOpen(false);
     }
-    if (!activeProject?.id) return;
+    if (!activeProject?.id) {
+      // E-5 (2026-09-09, second half): with no active project there is no
+      // console.config.json to write — persist the choice as the profile's
+      // defaultWorkspaceType instead, so the pill selection survives reload
+      // (useAppViewState falls back to it) rather than silently reverting.
+      if (profile.defaultWorkspaceType !== mode) void updateProfile({ defaultWorkspaceType: mode });
+      return;
+    }
     const tabs = readWorkspaceTabs();
     tabs[activeProject.id] = mode;
     try {

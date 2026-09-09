@@ -576,9 +576,13 @@ Verified: check-handlers 287/287, check-ws-cases clean, npm test 602/602, tsc cl
   (writes console.config.json + updates in-memory state + broadcasts `project_updated`)
   and `handleWorkspaceTabChange` calls it directly instead of composing a chat message —
   pill clicks no longer pollute the terminal; the chat path stays as the CLI fallback.
-  Still open: E-5's no-active-project case (`if (!activeProject?.id) return` still flips
-  the pill locally with no server write), E-2's snooze, E-3's opt-in surfacing, E-6's
-  answer-to-toast audit.
+  E-5's no-active-project case also fixed (2026-09-09, opencode): `handleWorkspaceTabChange`
+  with no active project now persists the choice to the profile's `defaultWorkspaceType`
+  (via the existing `updateProfile` POST, server-sanitized in `profileRoutes.js`) instead
+  of just flipping the pill locally — `useAppViewState` already falls back to that field,
+  so the choice now survives reload instead of silently reverting. `tsc` clean; browser
+  click-through of the pill with/without a project still outstanding (no browser here).
+  Still open: E-2's snooze, E-3's opt-in surfacing, E-6's answer-to-toast audit.
 - Phases C, F, G, H, I, J, L: **not started.**
 
 **Native verification baseline (2026-09-09, opencode on Windows — supersedes the bridged-shell
