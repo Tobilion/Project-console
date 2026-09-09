@@ -814,7 +814,20 @@ Verified: check-handlers 287/287, check-ws-cases clean, npm test 602/602, tsc cl
   everywhere" — detecting arbitrary user actions per step is high-risk without browser
   verification; ←/→/Esc/backdrop navigation covers movement). Verified: tsc + vite build
   clean.
-- Phases G, H, I, J, L: **not started.**
+- **Phase G: started** (2026-09-09, opencode). G-2 done: the tour spotlight glow is now
+  `color-mix(in srgb, var(--color-accent-teal) 25%, transparent)` (inline style, same
+  pattern as `SpotlightCard`'s hover glow) instead of the fixed `rgba(100,210,255,0.25)`
+  literal — matches the teal border and adapts per theme. G-3 done: folder-directory
+  glyphs (`BentoGrid`, Dashboard `projectCard`, FileTools + FolderExplorer views) moved
+  from teal/`accent` to `accent-blue` so they follow the picker; the update banner's
+  `accent/20` alias → `accent-blue/20`; the Calculator operator glyph `#FFFFFF` →
+  `var(--color-primary-on)` (identical in dark-first; light-mode glyphs go dark-on-orange
+  by design, still high-contrast). Two deliberate keeps: the Settings "Auto" gradient
+  button's hardcoded dark/light halves (it depicts BOTH themes — tokenizing it would make
+  both halves the current theme and defeat the icon), and the dashboard card's
+  orange/green/red status accents (semantic meanings, not stray literals). Verified: tsc
+  + vite build clean; browser confirmation of the new hues still outstanding.
+- Phases H, I, J, L: **not started.**
 
 **Native verification baseline (2026-09-09, opencode on Windows — supersedes the bridged-shell
 caveat below)**: full suite green at commit e0bc8ed before any new work — npm test 602/602,

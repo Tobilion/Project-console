@@ -30,8 +30,8 @@ export const BentoGrid = ({ projects, activeProject, onSelect, workspaceProjects
             className="p-6 h-full flex flex-col"
           >
             <div className="flex items-center gap-3 mb-4">
-              <div className="p-2 bg-accent-teal/10 rounded-lg">
-                <FolderGit2 className="text-accent-teal" size={24} />
+              <div className="p-2 bg-accent-blue/10 rounded-lg">
+                <FolderGit2 className="text-accent-blue" size={24} />
               </div>
                <h3 className="text-lg font-bold text-fg-strong flex-1">{project.name}</h3>
                <WorkspaceToggleButton

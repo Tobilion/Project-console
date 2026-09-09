@@ -96,7 +96,7 @@ export function EntryRow(props: EntryRowProps) {
             title={e.isDir ? 'Enter to open folder · right-click for more' : 'Double-click or Enter to open in its default app · Ctrl+click to multi-select · drag onto a folder to move'}
             className="flex items-center gap-2 text-left w-full cursor-pointer"
           >
-            {e.isDir ? <Folder size={14} className="shrink-0 text-accent" /> : fileIcon(e.name)}
+            {e.isDir ? <Folder size={14} className="shrink-0 text-accent-blue" /> : fileIcon(e.name)}
             <span className="text-fg-strong font-mono truncate">{e.name}</span>
           </button>
         )}
@@ -184,7 +184,7 @@ export function EntryTile(props: EntryTileProps) {
       )}
     >
       <div className="flex flex-col items-center gap-1">
-        {e.isDir ? <Folder size={tileIconSize} className="text-accent" /> : fileIcon(e.name, tileIconSize)}
+        {e.isDir ? <Folder size={tileIconSize} className="text-accent-blue" /> : fileIcon(e.name, tileIconSize)}
         {!e.isDir && (
           <span className="text-[9px] text-fg-faint font-mono uppercase">{extOf(e.name) || 'file'}</span>
         )}

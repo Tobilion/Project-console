@@ -62,7 +62,7 @@ export function DashboardProjectCard(props: DashboardProjectCardProps) {
     >
       <div className="flex items-start justify-between gap-4 mb-3">
         <div className="flex items-center gap-2 min-w-0">
-          <FolderGit2 size={16} className="text-accent-teal flex-shrink-0" />
+          <FolderGit2 size={16} className="text-accent-blue flex-shrink-0" />
           <h3 className="text-sm font-bold text-fg-strong truncate">{entry.name}</h3>
           <span className="text-[10px] text-fg-dim font-mono truncate hidden lg:inline" title={entry.path}>
             {formatPath(entry.path, scanPath)}

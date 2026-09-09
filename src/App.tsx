@@ -396,7 +396,7 @@ function App() {
       )}
 
       {updateNotice && (
-        <div className="relative z-10 flex-shrink-0 mb-3 flex items-center gap-3 px-4 py-2 text-xs text-fg-strong bg-accent/10 border border-accent/20 rounded-lg">
+        <div className="relative z-10 flex-shrink-0 mb-3 flex items-center gap-3 px-4 py-2 text-xs text-fg-strong bg-accent-blue/10 border border-accent-blue/20 rounded-lg">
           <span>
             Update available: <span className="font-mono">{updateNotice.current}</span> → <span className="font-mono">{updateNotice.latest}</span>. Type <span className="font-mono">"update console"</span> in chat to install it.
           </span>

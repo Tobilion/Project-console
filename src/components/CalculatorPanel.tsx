@@ -121,7 +121,7 @@ export function CalculatorPanel({ onSendMessage }: CalculatorPanelProps) {
       style={{
         height: 60,
         backgroundColor: kind === 'op' ? 'var(--calc-orange)' : kind === 'func' ? 'var(--calc-func)' : 'var(--calc-key)',
-        color: kind === 'op' ? '#FFFFFF' : 'var(--calc-label)',
+        color: kind === 'op' ? 'var(--color-primary-on)' : 'var(--calc-label)',
         fontSize: kind === 'num' ? 24 : kind === 'op' ? 26 : 20,
       }}
     >

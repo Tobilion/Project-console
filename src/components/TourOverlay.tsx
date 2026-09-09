@@ -116,12 +116,17 @@ export function TourOverlay({ section, mode, onClose }: TourOverlayProps) {
       {/* Spotlight ring around the guided step's target element. */}
       {mode === 'guided' && targetRect && (
         <div
-          className={`fixed z-[60] pointer-events-none rounded-xl border-2 border-accent-teal shadow-[0_0_0_4px_rgba(100,210,255,0.25)]${reduceMotion ? '' : ' transition-all duration-200'}`}
+          className={`fixed z-[60] pointer-events-none rounded-xl border-2 border-accent-teal${reduceMotion ? '' : ' transition-all duration-200'}`}
           style={{
             left: targetRect.left - 4,
             top: targetRect.top - 4,
             width: targetRect.width + 8,
             height: targetRect.height + 8,
+            // G-2: the glow was a hardcoded rgba(100,210,255,0.25) literal — fixed
+            // blue-teal in both themes regardless of tokens. color-mix against the same
+            // accent-teal token as the border keeps the 25% tint theme-aware
+            // (SpotlightCard.tsx's hover-glow pattern).
+            boxShadow: '0 0 0 4px color-mix(in srgb, var(--color-accent-teal) 25%, transparent)',
           }}
         />
       )}

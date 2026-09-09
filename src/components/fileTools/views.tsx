@@ -40,7 +40,7 @@ export function FileRow({ entry, onClick }: { entry: FileEntry; onClick?: () => 
         if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick(); }
       } : undefined}
       className={cn('flex items-center gap-2 px-2 py-1.5 hover:bg-scrim-faint rounded transition-colors text-xs min-h-[30px]', onClick && 'cursor-pointer')} onClick={onClick}>
-      {isDir ? <FolderOpen size={14} className="text-accent shrink-0" /> : fileIcon(name)}
+      {isDir ? <FolderOpen size={14} className="text-accent-blue shrink-0" /> : fileIcon(name)}
       <span className="text-fg-strong truncate flex-1 font-mono">{name}</span>
       <span className="text-fg-dim text-[11px] hidden sm:block truncate max-w-[180px]" title={path}>{path}</span>
       {!isDir && <span className="text-fg-dim text-[11px] text-right w-[60px] shrink-0">{formatSize(size)}</span>}
