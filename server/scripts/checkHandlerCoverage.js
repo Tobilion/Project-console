@@ -877,6 +877,24 @@ if (askLinked) {
 } else {
   eq('notes delete: opt-out auto-cancels with a hint', ws.sent.length === 1 && ws.sent[0].type === 'answer' && /cancelled 1 linked/.test(ws.sent[0].data) && !getSchedules().some((s) => s.id === linkedSch.id), true);
 }
+
+// F-5(2) (2026-09-09): same-text twins (different dates — the only way twins survive
+// appendNote's exact-dedupe) no longer silently lose the first hit: a dateless delete is
+// an ambiguity error listing the dated candidates, a dated delete removes exactly that
+// line, and the single-match flow is unchanged.
+const { deleteNote } = await import(pathToFileURL(base + 'notesStore.js').href);
+const twinRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'console-notestwin-'));
+fs.mkdirSync(path.join(twinRoot, '.console'), { recursive: true });
+fs.writeFileSync(path.join(twinRoot, '.console', 'notes.md'), '- buy milk (2026-01-01)\n- buy milk (2026-02-02)\n- call dentist (2026-03-03)\n');
+const twinAmb = await deleteNote(twinRoot, 'buy milk');
+eq('notes delete: twin dateless delete is an ambiguity error', twinAmb.success === false && /2 notes match/.test(twinAmb.error) && /2026-02-02/.test(twinAmb.error), true);
+eq('notes delete: ambiguity removes nothing', (await listNotes(twinRoot)).length === 3, true);
+const twinDated = await deleteNote(twinRoot, 'buy milk (2026-02-02)');
+const twinRest = await listNotes(twinRoot);
+eq('notes delete: dated delete removes exactly that line', twinDated.success === true && twinRest.length === 2 && twinRest.some((n) => n.date === '2026-01-01') && !twinRest.some((n) => n.date === '2026-02-02'), true);
+const twinSingle = await deleteNote(twinRoot, 'call dentist');
+eq('notes delete: single-match flow unchanged', twinSingle.success === true && twinSingle.data === 'call dentist', true);
+fs.rmSync(twinRoot, { recursive: true, force: true });
 fs.rmSync(linkedRoot, { recursive: true, force: true });
 
 // --- CSV TOOLS (Phase 7, 2026-08-12) -------------------------------------------

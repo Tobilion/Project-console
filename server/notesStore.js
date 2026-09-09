@@ -110,18 +110,38 @@ export async function deleteNote(projectPath, noteText) {
     }
 
     const lines = content.split('\n').filter((l) => l.trim());
-    const kept = [];
-    let removed = null;
-    for (const line of lines) {
-      const bare = line.replace(/^- /, '').replace(/\s*\(\d{4}-\d{2}-\d{2}\)\s*$/, '').replace(/\s*· by .+$/, '');
-      if (normalize(bare) === target && !removed) {
-        removed = bare;
-      } else {
-        kept.push(line);
-      }
+    // F-5(2) (2026-09-09): two match strengths. A dated input ("buy milk (2026-02-02)")
+    // matches the one dated line exactly; a dateless input matches by text alone. The old
+    // code only ever did the dateless comparison and removed the FIRST hit, so deleting
+    // "buy milk" with two same-text notes (different dates, or different LAN authors —
+    // the only way twins survive appendNote's exact-dedupe) silently removed one and left
+    // the twin with zero indication. Multiple dateless hits are now an ambiguity error
+    // that lists the dated candidates instead of a silent partial delete.
+    const stripAuthor = (l) => l.replace(/^- /, '').replace(/\s*· by .+$/, '');
+    const stripDate = (l) => l.replace(/\s*\(\d{4}-\d{2}-\d{2}\)\s*$/, '');
+    const datedHits = [];
+    const datelessHits = [];
+    lines.forEach((line, idx) => {
+      const noAuthor = stripAuthor(line);
+      if (normalize(noAuthor) === target) datedHits.push(idx);
+      else if (normalize(stripDate(noAuthor)) === target) datelessHits.push(idx);
+    });
+    let removeIdx = -1;
+    const ambiguous = datedHits.length > 1 ? datedHits : datedHits.length === 0 ? datelessHits : [];
+    if (datedHits.length === 1) {
+      removeIdx = datedHits[0];
+    } else if (datedHits.length === 0 && datelessHits.length === 1) {
+      removeIdx = datelessHits[0];
+    } else if (ambiguous.length > 1) {
+      const options = ambiguous.map((i) => `"${stripAuthor(lines[i])}"`).join(', ');
+      return { success: false, error: `${ambiguous.length} notes match "${noteText}" (${options}) — include the date to delete just one, e.g. "delete note: ${stripAuthor(lines[ambiguous[0]])}".` };
     }
 
-    if (!removed) return { success: false, error: 'No note matched that text.' };
+    if (removeIdx === -1) return { success: false, error: 'No note matched that text.' };
+
+    const removedLine = lines[removeIdx];
+    const removed = stripDate(stripAuthor(removedLine));
+    const kept = lines.filter((_, idx) => idx !== removeIdx);
 
     await fs.mkdir(path.dirname(filePath), { recursive: true });
     await ensureGitignored(projectPath);

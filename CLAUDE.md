@@ -654,7 +654,13 @@ Verified: check-handlers 287/287, check-ws-cases clean, npm test 602/602, tsc cl
   reported as additive `linkedKept` (panel shows a "kept — cancel in Reminders if unneeded"
   hint), only auto-cancelled with the setting off. 5 new check-handlers rows (ask/yes/no/
   backtrack/opt-out). Verified: check-handlers 292/292, check-ws-cases 137/137, npm test
-  602/602, tsc clean. F-1 verified already wired — no change needed (2026-09-09, opencode):
+  602/602, tsc clean. F-5(2) done in the same area (2026-09-09, opencode): `deleteNote`
+  matched dateless-only and removed the first hit, so same-text twins (different dates —
+  the only way twins survive append's exact-dedupe) silently lost one. Now two match
+  strengths: a dated input removes exactly that line, a dateless input with several hits
+  is an ambiguity error listing the dated candidates (nothing removed); the single-match
+  flow is byte-identical. 4 new check-handlers rows (296/296 total). Full stable-ID
+  identity + the F-5(1) recycle bin remain open (a storage migration, not this fix). F-1 verified already wired — no change needed (2026-09-09, opencode):
   the "no onClick handler" finding is stale, `WelcomeScreen`'s Quick Start Guide button calls
   `onQuickStart` → `handleQuickStart` (`useConsoleNavigation.ts`, threaded via `useConsole.ts`
   + `App.tsx:478`), which posts the `QUICK_START_TEXT` system message + creates a session if
