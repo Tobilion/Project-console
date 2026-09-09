@@ -654,7 +654,12 @@ Verified: check-handlers 287/287, check-ws-cases clean, npm test 602/602, tsc cl
   reported as additive `linkedKept` (panel shows a "kept — cancel in Reminders if unneeded"
   hint), only auto-cancelled with the setting off. 5 new check-handlers rows (ask/yes/no/
   backtrack/opt-out). Verified: check-handlers 292/292, check-ws-cases 137/137, npm test
-  602/602, tsc clean. Still open: F-1/F-2(already done via A-14)/F-3/F-4/F-5(1)(2)/F-6/F-7/
+  602/602, tsc clean. F-1 verified already wired — no change needed (2026-09-09, opencode):
+  the "no onClick handler" finding is stale, `WelcomeScreen`'s Quick Start Guide button calls
+  `onQuickStart` → `handleQuickStart` (`useConsoleNavigation.ts`, threaded via `useConsole.ts`
+  + `App.tsx:478`), which posts the `QUICK_START_TEXT` system message + creates a session if
+  needed (deliberately local, not chat-routed, since the welcome screen has no active
+  project — documented in the handler's own comment). Still open: F-3/F-4/F-5(1)(2)/F-6/F-7/
   F-8/F-9/F-10, and F-11's second card type (notes).
 - **Phase C: started** (2026-09-09, opencode). C-1 verified already covered — no change
   needed: the spec's "missing panel targets" list is stale, `ToolsPanel.tsx` renders a
