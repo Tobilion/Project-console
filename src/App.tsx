@@ -247,11 +247,15 @@ function App() {
     try {
       localStorage.setItem(WORKSPACE_TAB_KEY, JSON.stringify(tabs));
     } catch {}
-    // Sync the server so its suggestion/help filtering matches immediately — the same
-    // pre-matcher admin command as typing "switch to developer mode" in chat (which is also
-    // what the CLI users type; it shows up as a normal message in the terminal, and the
-    // server's answer confirms the change).
-    handleSendMessage(mode === 'dev' ? 'switch to developer mode' : 'switch to general mode');
+    // E-5 (2026-09-09): use the direct-REST endpoint instead of routing through the chat
+    // pipeline — the old path sent "switch to developer/general mode" through WS → matcher →
+    // handleModeCommand → answer bubble → end, polluting the terminal with a visible bubble
+    // for what should be a silent UI state change.
+    apiFetchJson<{ ok: boolean; changed: boolean }>(`/api/projects/${activeProject.id}/workspace-type`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mode }),
+    }).catch(() => {});
   };
 
   // Phase 19 (2026-08-12): LAN display-name attribution — when the server is bound to

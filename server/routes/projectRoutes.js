@@ -14,6 +14,8 @@ import { syncProjectWatchers } from '../codeIndex/codeIndexBuilder.js';
 import { readProfile } from './profileRoutes.js';
 import { getCachedScanStale, isRevalidating, setRevalidating, setCachedScan, invalidateScanCacheForPath } from '../scanCache.js';
 import { discoverProjectsAcrossRoots, addRoot } from '../multiRootScan.js';
+import { writeFileAtomicSync } from '../atomicWrite.js';
+import { ensureConsoleConfigGitignored } from '../sessionMigration.js';
 import { log as logger } from '../logger.js';
 
 // Phase T (2026-08-14): whether discovery includes every subfolder as a project — read fresh
@@ -351,6 +353,34 @@ export function registerProjectRoutes(app, dirname) {
     if (!project) return res.status(404).json({ error: 'Project not found' });
     const limit = Math.min(Math.max(parseInt(req.query.limit ?? '30', 10) || 30, 1), 200);
     res.json({ actions: listActions(project.path, { limit }) });
+  }));
+
+  // E-5 (2026-09-09): direct-REST mode switch — converts the header pill's Developer/General
+  // toggle from a chat-pipeline round-trip (which polluted the terminal with a visible answer
+  // bubble) into a fast, silent REST call that writes console.config.json, updates in-memory
+  // state, and returns the result directly. The chat path is preserved as a fallback for CLI
+  // users who type "switch to developer mode" in the terminal.
+  app.post('/api/projects/:id/workspace-type', asyncHandler(async (req, res) => {
+    const project = resolveProject(req.params.id, req.query.tab);
+    if (!project) return res.status(404).json({ error: 'Project not found' });
+    const { mode } = req.body || {};
+    if (mode !== 'dev' && mode !== 'general') {
+      return res.status(400).json({ error: 'mode must be "dev" or "general"' });
+    }
+    if (project.workspaceType === mode) {
+      return res.json({ ok: true, changed: false, mode, name: project.name });
+    }
+    const configPath = path.join(project.path, 'console.config.json');
+    let config = {};
+    try { if (fs.existsSync(configPath)) config = JSON.parse(fs.readFileSync(configPath, 'utf-8')); } catch { config = {}; }
+    if (typeof config !== 'object' || Array.isArray(config)) config = {};
+    config.workspaceType = mode;
+    writeFileAtomicSync(configPath, JSON.stringify(config, null, 2));
+    void ensureConsoleConfigGitignored(project.path).catch(() => {});
+    project.workspaceType = mode;
+    if (project.config) project.config.workspaceType = mode;
+    broadcast({ type: 'project_updated', data: project });
+    res.json({ ok: true, changed: true, mode, name: project.name });
   }));
 
   // "Export whole project" (Phase 0): direct download of the project's existing

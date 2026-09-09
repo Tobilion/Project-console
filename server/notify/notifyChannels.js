@@ -9,6 +9,35 @@ import { isSafeExternalUrl } from '../urlSafety';
 
 const WEBHOOK_TIMEOUT_MS = 8000;
 
+// E-1 fix (2026-09-09): the AUMID must match across all launch paths. The electron-builder
+// appId is 'com.localprojectconsole.app' but the old WinRT string was 'local-project-console'.
+// Align to the electron-builder value. In non-packaged dev mode we register it via the
+// registry so CreateToastNotifier can find it (desktop/main.cjs already calls
+// app.setAppUserModelId for the packaged path; this covers npm run dev / npx / CLI).
+const AUMID = 'com.localprojectconsole.app';
+let aumidRegistered = false;
+
+async function ensureAumidRegistered() {
+  if (aumidRegistered || process.platform !== 'win32') return;
+  try {
+    // Register the AUMID in the current user's registry — this is the standard Win32
+    // pattern for non-packaged apps. CreateToastNotifier(AUMID) resolves via this key.
+    const script = `New-Item -Path 'HKCU:\\Software\\Classes\\AppUserModelId\\${AUMID}' -Force | Out-Null; ` +
+      `New-ItemProperty -Path 'HKCU:\\Software\\Classes\\AppUserModelId\\${AUMID}' -Name 'DisplayName' -Value 'Project Console' -Force | Out-Null`;
+    await new Promise((resolve) => {
+      const child = spawn('powershell', ['-NoProfile', '-NonInteractive', '-Command', script], {
+        windowsHide: true, stdio: 'ignore', timeout: 5000,
+      });
+      child.on('close', () => resolve());
+      child.on('error', () => resolve());
+    });
+    aumidRegistered = true;
+  } catch {
+    // Best-effort — if registration fails, toasts may silently not appear.
+    aumidRegistered = true;
+  }
+}
+
 function xmlEscape(s) {
   return String(s)
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
@@ -38,23 +67,38 @@ export function sendDesktopNotification(title, body, opts = {}) {
     `<text>${xmlEscape(title)}</text><text>${xmlEscape(body)}</text>` +
     `</binding></visual></toast>`;
   const winScript =
-    'try { ' +
     '[Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime] | Out-Null; ' +
     '[Windows.Data.Xml.Dom.XmlDocument, Windows.Data.Xml.Dom.XmlDocument, ContentType = WindowsRuntime] | Out-Null; ' +
     `$x = New-Object Windows.Data.Xml.Dom.XmlDocument; $x.LoadXml(${psQuote(xml)}); ` +
-    "[Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier('local-project-console').Show((New-Object Windows.UI.Notifications.ToastNotification $x)) " +
-    '} catch {}';
+    `[Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier('${AUMID}').Show((New-Object Windows.UI.Notifications.ToastNotification $x));`;
 
   return new Promise((resolve) => {
     try {
       if (process.platform === 'win32') {
-        const child = spawn('powershell', ['-NoProfile', '-NonInteractive', '-Command', winScript], {
-          windowsHide: true,
-          stdio: 'ignore',
-          timeout: 5000,
+        // Ensure the AUMID is registered before composing — without it CreateToastNotifier
+        // silently returns a notifier that never renders (E-1). Fire-and-forget: if it
+        // fails the toast attempt below still reports the real failure instead of a lie.
+        ensureAumidRegistered().finally(() => {
+          const child = spawn('powershell', ['-NoProfile', '-NonInteractive', '-Command', winScript], {
+            windowsHide: true,
+            stdio: ['ignore', 'pipe', 'pipe'],
+            timeout: 5000,
+          });
+          // Collect stderr so a real WinRT exception surfaces instead of being swallowed.
+          let stderr = '';
+          child.stderr.on('data', (d) => { stderr += String(d); });
+          child.on('error', () => resolve({ ok: false, reason: 'powershell could not be started' }));
+          child.on('close', (code) => {
+            // E-1 fix: the old handler unconditionally resolved { ok: true } regardless of the
+            // PowerShell exit code or any WinRT exception text — every failure (missing AUMID,
+            // notification settings off, classic-App identifier mismatch) reported success, so
+            // users set alarms and got nothing with zero signal. Now a non-zero exit code or a
+            // stderr mentioning an exception/rejection is reported as a failure.
+            const realError = stderr.trim() && /exception|error|reject|not found/i.test(stderr);
+            if (code === 0 && !realError) resolve({ ok: true });
+            else resolve({ ok: false, reason: (stderr.trim() || `powershell exited ${code}`).slice(0, 300) });
+          });
         });
-        child.on('error', () => resolve({ ok: false, reason: 'powershell could not be started' }));
-        child.on('close', () => resolve({ ok: true }));
       } else if (process.platform === 'darwin') {
         const appleScript = `display notification ${psQuote(body)} with title ${psQuote(title)}`;
         const child = spawn('osascript', ['-e', appleScript], { timeout: 5000 });
