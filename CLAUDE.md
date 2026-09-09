@@ -51,7 +51,8 @@ boot" contract), surfaced as a new "Temp files" check in `runDoctorChecks()`; (2
 mode on both `node --import tsx server/doctor.js --json` and `node bin/cli.js doctor --json`; (3)
 new `GET /api/doctor` + `POST /api/doctor/fix` REST routes (`server/routes/doctorRoutes.js`,
 mounted in `server/index.js`) so a future Settings Diagnostics panel has something to call — the
-   panel UI itself is NOT built yet, that's the remaining part of K-10. Live-verified in this
+   panel UI itself is NOT built yet, that's the remaining part of K-10. (That sentence is
+   now stale — see the "Diagnostics panel UI done" paragraph just below.) Live-verified in this
    environment: a real run of `node --import tsx server/doctor.js` found 30 genuinely orphaned
    `.tmp` files in this repo's own `data/conversations/` (left over from this session's bridged-shell
    work), `node bin/cli.js doctor --fix` removed exactly those 30 and reported the count, and a
