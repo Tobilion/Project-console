@@ -672,8 +672,15 @@ Verified: check-handlers 287/287, check-ws-cases clean, npm test 602/602, tsc cl
   to `/` when the path starts with `/`. Bonus F-10(a) in the same file: `openDefaultApp`'s
   silent `.catch(() => {})` now surfaces `setError` like the open-with path (the D-7
   comment claiming otherwise is updated too). Verified: tsc clean, home-target logic
-  7/7 against Windows/POSIX/edge inputs. Still open: F-3/F-4/F-5(1)(2)/F-6/F-7/
-  F-8/F-9/F-10, and F-11's second card type (notes).
+  7/7 against Windows/POSIX/edge inputs. F-3 done (2026-09-09, opencode): the session-
+  accumulation half was already handled (`deleteCurrentSessionIfEmpty()` in both select
+  paths — clicking around never orphans empties); the General-lands-on-Tools half is now
+  behind an explicit `generalToolsFirst` profile toggle (default true = today's behavior,
+  Settings → Appearance) gating the `useAppViewState` effect, exactly as the spec asked.
+  Verified: profile default true/absent-keeps/off-saves/junk-falls-back via a direct
+  `readProfile`/`sanitizeProfile` round-trip, tsc clean, vite build clean. Browser
+  confirmation of the toggle still outstanding. Still open: F-4/F-5(1)/F-6/
+  F-8/F-9/F-10-rest, and F-11's second card type (notes).
 - **Phase C: started** (2026-09-09, opencode). C-1 verified already covered — no change
   needed: the spec's "missing panel targets" list is stale, `ToolsPanel.tsx` renders a
   dynamic `<div data-tour={`${activePanel}-panel`}>` shell around every open panel, so all

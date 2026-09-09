@@ -77,6 +77,7 @@ export function UserProfileModal({ open, profile, onClose, onSave, initialCatego
   const [reminderToastPosition, setReminderToastPosition] = useState(profile.reminderToastPosition);
   const [askBeforeDeleteLinkedNote, setAskBeforeDeleteLinkedNote] = useState(profile.askBeforeDeleteLinkedNote);
   const [aiRedirectDelayMs, setAiRedirectDelayMs] = useState(profile.aiRedirectDelayMs);
+  const [generalToolsFirst, setGeneralToolsFirst] = useState(profile.generalToolsFirst);
   const [category, setCategory] = useState<CategoryId>((initialCategory as CategoryId) || 'identity');
 
   const [hexDraft, setHexDraft] = useState('');
@@ -101,6 +102,7 @@ export function UserProfileModal({ open, profile, onClose, onSave, initialCatego
       setReminderToastPosition(profile.reminderToastPosition);
       setAskBeforeDeleteLinkedNote(profile.askBeforeDeleteLinkedNote);
       setAiRedirectDelayMs(profile.aiRedirectDelayMs);
+      setGeneralToolsFirst(profile.generalToolsFirst);
       if (initialCategory) setCategory(initialCategory as CategoryId);
     }
   }, [open, profile, initialCategory]);
@@ -128,7 +130,7 @@ export function UserProfileModal({ open, profile, onClose, onSave, initialCatego
       sandboxRiskyCommands, clipboardHistory, clipboardPersist, scanAllFolders,
       explorerViewMode, permissionMode, persistRemindersAcrossRestart,
       reminderToastDurationMs, reminderToastPosition, askBeforeDeleteLinkedNote,
-      aiRedirectDelayMs,
+      aiRedirectDelayMs, generalToolsFirst,
     });
     onClose();
   };
@@ -284,6 +286,17 @@ export function UserProfileModal({ open, profile, onClose, onSave, initialCatego
                     </button>
                   </div>
                 </FieldLabel>
+              </div>
+
+              <div className={sectionCls} data-setting="generalToolsFirst">
+                <div className="flex items-start gap-3">
+                  <Toggle enabled={generalToolsFirst} onToggle={() => setGeneralToolsFirst(!generalToolsFirst)}
+                    title={generalToolsFirst ? 'General opens the Tools grid' : 'General opens chat'} />
+                  <div>
+                    <p className="text-sm text-fg">General workspace opens Tools first</p>
+                    <p className="text-[11px] text-fg-dim mt-0.5">When on, picking a project in General lands on the Tools card grid. When off, it lands straight on chat instead.</p>
+                  </div>
+                </div>
               </div>
 
               <EditorsSection />

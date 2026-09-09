@@ -222,6 +222,7 @@ function App() {
     showDashboard, setShowDashboard, activeToolPanel, setActiveToolPanel,
     isTabSwitchingRef, workspaceTab, setWorkspaceTab, activeProject,
     defaultWorkspaceType: profile.defaultWorkspaceType,
+    generalToolsFirst: profile.generalToolsFirst,
     fetchToolPanels, chatFullscreen,
   });
 

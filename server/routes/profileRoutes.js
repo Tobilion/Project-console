@@ -78,6 +78,11 @@ const DEFAULT_PROFILE = {
   // Phase 4.2: aiRedirectDelayMs — pause before the UI auto-opens a panel/tab after an AI
   // trigger command (0 = instant, default 2000ms).
   aiRedirectDelayMs: 2000,
+  // F-3 (2026-09-09): General-tools-first landing — when true (default, preserving the
+  // long-standing behavior), the General workspace opens the Tools card grid once a
+  // project is active. Turn it off to land on chat instead (a project click then goes
+  // straight to the thread). Default true so existing installs see zero behavior change.
+  generalToolsFirst: true,
 };
 
 // Only plain, trimmed strings up to a sane length — mirrors the conservative
@@ -129,6 +134,7 @@ function readProfile() {
       reminderToastPosition: ['top-left', 'top-right', 'bottom-left', 'bottom-right', 'center'].includes(p.reminderToastPosition) ? p.reminderToastPosition : DEFAULT_PROFILE.reminderToastPosition,
       askBeforeDeleteLinkedNote: sanitizeBool(p.askBeforeDeleteLinkedNote, DEFAULT_PROFILE.askBeforeDeleteLinkedNote),
       aiRedirectDelayMs: typeof p.aiRedirectDelayMs === 'number' ? Math.max(0, Math.min(10000, p.aiRedirectDelayMs)) : DEFAULT_PROFILE.aiRedirectDelayMs,
+      generalToolsFirst: sanitizeBool(p.generalToolsFirst, DEFAULT_PROFILE.generalToolsFirst),
     };
   } catch {
     // Missing or corrupt file — serve defaults without touching disk.
@@ -176,6 +182,7 @@ export function sanitizeProfile(body, current) {
     reminderToastPosition: ['top-left', 'top-right', 'bottom-left', 'bottom-right', 'center'].includes(body.reminderToastPosition) ? body.reminderToastPosition : current.reminderToastPosition,
     askBeforeDeleteLinkedNote: sanitizeBool(body.askBeforeDeleteLinkedNote, current.askBeforeDeleteLinkedNote),
     aiRedirectDelayMs: typeof body.aiRedirectDelayMs === 'number' ? Math.max(0, Math.min(10000, body.aiRedirectDelayMs)) : current.aiRedirectDelayMs,
+    generalToolsFirst: sanitizeBool(body.generalToolsFirst, current.generalToolsFirst),
   };
 }
 

@@ -44,6 +44,9 @@ export interface UserProfile {
   // Phase 4.2: aiRedirectDelayMs — pause before auto-opening a panel/tab after an AI
   // trigger command (0 = instant, default 2000ms).
   aiRedirectDelayMs: number;
+  // F-3 (2026-09-09): General-tools-first landing — General opens the Tools grid once a
+  // project is active. Default true (long-standing behavior); off lands on chat instead.
+  generalToolsFirst: boolean;
 }
 
 // Neutral defaults, not a hardcoded person's name/title — matches server/routes/profileRoutes.js's
@@ -71,6 +74,7 @@ const DEFAULT_PROFILE: UserProfile = {
   reminderToastPosition: 'bottom-right',
   askBeforeDeleteLinkedNote: true,
   aiRedirectDelayMs: 2000,
+  generalToolsFirst: true,
 };
 
 /** Client state for the user profile persisted to the server (GET/POST /api/profile).

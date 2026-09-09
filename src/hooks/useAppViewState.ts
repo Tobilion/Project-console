@@ -21,6 +21,8 @@ export interface UseAppViewStateDeps {
   setWorkspaceTab: React.Dispatch<React.SetStateAction<'dev' | 'general'>>;
   activeProject: { id: string; workspaceType?: string } | null;
   defaultWorkspaceType: 'dev' | 'general' | undefined;
+  /** F-3 (2026-09-09): explicit toggle for the General-tools-first landing (default true). */
+  generalToolsFirst?: boolean;
   fetchToolPanels: () => void;
   chatFullscreen: boolean;
 }
@@ -30,7 +32,7 @@ export function useAppViewState(deps: UseAppViewStateDeps) {
     registerViewSync, showCommandRef, setShowCommandRef, toolsOpen, setToolsOpen,
     showDashboard, setShowDashboard, activeToolPanel, setActiveToolPanel,
     isTabSwitchingRef, workspaceTab, setWorkspaceTab, activeProject,
-    defaultWorkspaceType, fetchToolPanels, chatFullscreen,
+    defaultWorkspaceType, generalToolsFirst, fetchToolPanels, chatFullscreen,
   } = deps;
 
   // Per-tab view restoration (Phase T fix, 2026-08-14): the top-level view (chat / dashboard /
@@ -76,14 +78,17 @@ export function useAppViewState(deps: UseAppViewStateDeps) {
   // through the grid's close/back and the header Tools toggle.
   // 2026-08-14: only when a project is active. With no project picked the General workspace is
   // chat-first (the user can talk before choosing a project), so the tools grid is not forced.
+  // F-3 (2026-09-09): gated behind the generalToolsFirst profile toggle (Settings →
+  // Appearance, default on) — with it off a project click lands straight on chat instead.
   useEffect(() => {
     // A tab switch restores the arriving tab's own view — never force the tools grid open
     // while that restore is in flight (the user chose "tab's saved view wins").
     if (isTabSwitchingRef.current) return;
+    if (generalToolsFirst === false) return;
     if (workspaceTab === 'general' && activeProject?.id && !showDashboard && !activeToolPanel && !chatFullscreen) {
       setToolsOpen(true);
     }
-  }, [workspaceTab, activeProject?.id, showDashboard, activeToolPanel, chatFullscreen, isTabSwitchingRef, setToolsOpen]);
+  }, [workspaceTab, activeProject?.id, showDashboard, activeToolPanel, chatFullscreen, generalToolsFirst, isTabSwitchingRef, setToolsOpen]);
 
   // Phase 1.5: the Tools surface (shared interactive tool panels). The per-project last-open
   // panel persists via console.toolPanelByProject (restore effect below), mirroring Phase 1's
