@@ -15,6 +15,7 @@ import { matchInput } from '../matcher.js';
 import { parseIntervalPhrase } from '../schedules/scheduleParser.js';
 import { addSchedule, getSchedules, removeSchedule } from '../schedules/scheduleStore.js';
 import { isReadOnlyIntent, readOnlySummary } from '../schedules/scheduleIntents.js';
+import { isEventEnabled } from '../notify/notifyStore.js';
 import { syncEventTriggerWatchers } from '../schedules/scheduler.js';
 import { readScheduleLog } from '../schedules/scheduleFire.js';
 import { end } from '../wsReply.js';
@@ -129,9 +130,15 @@ async function createSchedule(ws, project, rawInput, intervalPhrase, command) {
 
   const schedule = addSchedule({ projectId: project.id, projectName: project.name, spec: parsed, command, intentId });
   syncEventTriggerWatchers();
+  // E-3: one-time surfacing — schedule results already post here, but the opt-in
+  // schedule-find toast is invisible unless someone mentions it. A single hint line when
+  // the event is off (never a chip/question, never repeated once enabled).
+  const findHint = isEventEnabled('schedule-find')
+    ? ''
+    : `\n\nTip: \`notify me when schedule-find\` also toasts these results outside chat.`;
   ws.send(JSON.stringify({
     type: 'answer',
-    data: `Scheduled ✅ — **${schedule.id}**: ${schedule.label} → \`${schedule.command}\` (intent \`${intentId}\`).\n\nResults post to this chat when someone is connected, otherwise to the schedule log (\`review schedule log\`). Manage with \`list schedules\` / \`remove schedule ${schedule.id}\`.`,
+    data: `Scheduled ✅ — **${schedule.id}**: ${schedule.label} → \`${schedule.command}\` (intent \`${intentId}\`).\n\nResults post to this chat when someone is connected, otherwise to the schedule log (\`review schedule log\`). Manage with \`list schedules\` / \`remove schedule ${schedule.id}\`.${findHint}`,
     // E-6: routine creation confirmation, bubble + additive toast (see wsReply.js).
     toast: true,
   }));

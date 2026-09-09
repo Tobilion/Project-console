@@ -55,7 +55,8 @@ export async function handleNotifyCommand(ws, project, lowerInput, input) {
       return true;
     }
     const rule = addWatchRule({ folder, event: 'folder-stale', days, projectId: project.id, projectName: project.name });
-    ws.send(JSON.stringify({ type: 'answer', data: `Stale-check watching **${folder}** (no changes for ${days} days) — fires once per day once it goes stale.`, openPanel: 'notifications' }));
+    // E-3 parity with the file-changed/file-added branch above: say the event needs enabling.
+    ws.send(JSON.stringify({ type: 'answer', data: `Stale-check watching **${folder}** (no changes for ${days} days) — fires once per day once it goes stale. Desktop/webhook notifications will fire when the event is enabled (\`notify me when folder-stale\`).`, openPanel: 'notifications' }));
     end(ws);
     return true;
   }

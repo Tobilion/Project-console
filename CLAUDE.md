@@ -657,9 +657,15 @@ Verified: check-handlers 287/287, check-ws-cases clean, npm test 602/602, tsc cl
   auto-start enable + mode-switch (genuine questions, errors, lists, and `actionIds`
   answers with their own Undo toast are excluded). `wsReply.answer` gained an optional
   `{ toast }` third arg (all existing 2-arg callers byte-identical). 5 new check-handlers
-  rows (313/313). Verified: tsc clean, check-ws-cases 137/137, npm test 602/602.
-  Still open: E-3's opt-in surfacing, E-4's anchored popup + verbosity/quiet-hours
-  (see E-4 sentence above).
+  rows (313/313). Verified: tsc clean, check-ws-cases 137/137, npm test
+  602/602. E-3 done (2026-09-09, opencode): the folder-stale creation answer now carries
+  the same "fires when the event is enabled" hint + panel opener the file-changed branch
+  already had, and schedule-create appends a one-line `notify me when schedule-find`
+  pointer exactly when that event is off (single hint line, never a chip/question, never
+  repeated once enabled; tour coverage of the panel itself landed via the C-3 Schedules
+  retarget). 2 new check-handlers rows — the schedule one asserts whichever branch the
+  machine's real notify store selects (315/315). Verified: lint clean, npm test 602/602.
+  Still open: E-4's anchored popup + verbosity/quiet-hours (see E-4 sentence above).
 - **Phase F: started.** F-5(3) done (2026-09-09, opencode): `system.notes.delete` now
   actually reads `askBeforeDeleteLinkedNote` (default true) — with linked reminders present
   it deletes the note first, then stages a `pendingNoteDelete` yes/no question (new

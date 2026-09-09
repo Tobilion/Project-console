@@ -1081,6 +1081,7 @@ eq('watch admin: file-changed rule consumed + answers + opens panel', w1 === tru
 sent.length = 0;
 const w2 = await handleNotifyCommand(ws, proj, "notify me if C:/tmp/watch-b hasn't changed in 7 days", "notify me if C:/tmp/watch-b hasn't changed in 7 days");
 eq('watch admin: folder-stale rule consumed + answers + opens panel', w2 === true && ws.sent.length === 2 && ws.sent[0].type === 'answer' && ws.sent[1].type === 'end' && ws.sent[0].openPanel === 'notifications' && /Stale-check/.test(ws.sent[0].data), true);
+eq('watch admin: stale answer surfaces the event opt-in (E-3 parity)', /when the event is enabled/.test(ws.sent[0].data), true);
 sent.length = 0;
 const w3 = await handleNotifyCommand(ws, proj, 'list watched folders', 'list watched folders');
 eq('watch admin: list shows both rules', w3 === true && ws.sent.length === 2 && ws.sent[0].type === 'answer' && ws.sent[1].type === 'end' && ws.sent[0].data.includes('watch-a') && ws.sent[0].data.includes('watch-b'), true);
@@ -1115,6 +1116,14 @@ delete process.env.WATCH_RULES_FILE;
 sent.length = 0;
 const sch1 = await handleScheduleCommand(ws, proj, 'list schedules', 'list schedules');
 eq('schedule admin: list answers + trailing end', sch1 === true && ws.sent.length === 2 && ws.sent[0].type === 'answer' && ws.sent[1].type === 'end', true);
+// E-3: schedule-create surfaces the schedule-find opt-in hint exactly when the event is
+// off (tolerant by design — the notify store reads the real data/notifications.json, so a
+// machine with the event on takes the other branch).
+const { isEventEnabled } = await import(pathToFileURL(base + 'notify/notifyStore.js').href);
+sent.length = 0;
+const schCreate = await handleScheduleCommand(ws, proj, 'schedule every 10 minutes "git status"', 'schedule every 10 minutes "git status"');
+const schCreateAns = sent.find((s) => s.type === 'answer');
+eq('schedule admin: create surfaces schedule-find opt-in when off', schCreate === true && !!schCreateAns && schCreateAns.data.includes('Scheduled') && (/schedule-find/.test(schCreateAns.data) === !isEventEnabled('schedule-find')), true);
 const rmSch = addSchedule({ projectId: 'p1', projectName: 'HProj', spec: { type: 'interval', everyMs: 60000 }, command: 'git status', kind: 'command' });
 sent.length = 0;
 const schRm = await handleScheduleCommand(ws, proj, `remove schedule ${rmSch.id}`, `remove schedule ${rmSch.id}`);
