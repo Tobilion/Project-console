@@ -17,7 +17,10 @@ const answerCase: WsCaseHandler = (ctx, payload) => {
   // 'end') — its own bubble, unchanged.
   ctx.ai.setAiThinking(false);
   if (!payload.data?.trim()) return;
-  ctx.sessions.setMessages(prev => [...prev, { id, type: 'bot', content: payload.data, isMarkdown: true, timestamp: Date.now() }]);
+  // F-11 (2026-09-08/09): additive `card` passthrough — same pattern as `openPanel` below,
+  // just carried onto the message object instead of triggering a redirect. Omitted on every
+  // answer that doesn't set it, so this is a no-op for the overwhelming majority of answers.
+  ctx.sessions.setMessages(prev => [...prev, { id, type: 'bot', content: payload.data, isMarkdown: true, timestamp: Date.now(), card: payload.card ?? null }]);
   // Phase 1.5: an additive `openPanel` field on the answer payload switches the web client
   // to a shared interactive tool panel (e.g. "open calculator" -> 'calculator'). This is
   // deliberate web-only surface — the CLI ignores `openPanel` permanently (see the explicit

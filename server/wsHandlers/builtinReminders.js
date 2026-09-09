@@ -54,7 +54,15 @@ export const reminderHandlers = {
       if (s.type === 'todo') return `${i + 1}. **${s.id}**${owner} — 📋 "${s.text}" (no date)${noteLink}`;
       return `${i + 1}. **${s.id}**${owner} — ${s.label} → "${s.text}" — last fired ${last}${noteLink}`;
     });
-    ws.send(JSON.stringify({ type: 'answer', data: `### Reminders\n\n${rows.join('\n')}` }));
+    // F-11 (2026-09-08/09): additive `card` alongside the plain markdown `data` above — same
+    // shape src/types.ts's ReminderCardItem/TerminalMessageCard expect, so the web client can
+    // render this as an Apple-Reminders-style checklist (src/components/terminal/ReminderCard.tsx)
+    // while the CLI (which only ever reads `data`, see server/cli-client.js) is unaffected.
+    const card = {
+      type: 'reminders',
+      items: reminders.map((s) => ({ id: s.id, text: s.text, label: s.type === 'todo' ? null : s.label, type: s.type })),
+    };
+    ws.send(JSON.stringify({ type: 'answer', data: `### Reminders\n\n${rows.join('\n')}`, card }));
   },
 
   'system.reminders.cancel': async (ws, action, input, project) => {

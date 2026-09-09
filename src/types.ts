@@ -79,7 +79,33 @@ export interface TerminalMessage {
   source?: 'chat' | 'panel';
   /** Which tool panel sent a panel-originated message (e.g. 'reminders', 'notes'). */
   tool?: string;
+  /** F-11 (2026-09-08/09): additive, chat-native rich tool UI — same pattern as `openPanel`
+   *  above (a plain field on the WS 'answer' payload the CLI simply never reads, per
+   *  server/cli-client.js's 'answer' case only ever touching `msg.data`). `data` stays the
+   *  full plain-text/markdown answer for CLI/accessibility; `card`, when present, renders a
+   *  richer inline widget for that SAME content in the web chat thread (see
+   *  src/components/terminal/messageContent.tsx). One card type shipped so far (reminders,
+   *  an Apple-Reminders-style checklist wired to the D-7 REST reminders endpoints) — the
+   *  `type` field is a discriminant so more card types can be added without touching this
+   *  contract again. */
+  card?: TerminalMessageCard | null;
 }
+
+/** One item in a `reminders`-type inline card — kept intentionally small (id/text/label +
+ *  the `todo` distinction the chat/REST list responses already carry) rather than embedding
+ *  the full schedule-store record, so the card never has to know about fields it doesn't
+ *  render. */
+export interface ReminderCardItem {
+  id: string;
+  text: string;
+  /** Human label for a dated reminder (e.g. "tomorrow at 9:00 AM"); absent for todos. */
+  label?: string | null;
+  /** 'todo' = dateless (No Date section); anything else is a dated reminder. */
+  type?: string;
+}
+
+export type TerminalMessageCard =
+  | { type: 'reminders'; items: ReminderCardItem[] };
 
 export interface ChatSession {
   id: string;

@@ -129,6 +129,44 @@ showing which root they came from beyond the `sourceRoot` field already present 
 object (the Dashboard/project-grid components were not touched — a project card could read
 `project.sourceRoot` to show this, but nothing does yet).
 
+**F-11 progress (2026-09-09)**: shipped the shared card contract plus its first card type
+(reminders), exactly as the spec item calls for ("one shared 'inline tool card' component
+contract as an ADDITIVE field on the existing answer/WS message shape, same pattern as
+openPanel... build the first card type for reminders wired to the same D-7 REST endpoints...
+keep every card readable as plain text for CLI/accessibility"). `src/types.ts` gained
+`TerminalMessageCard`/`ReminderCardItem` and an additive `card?:` field on `TerminalMessage`.
+`src/hooks/wsMessageCases.ts`'s `answerCase` passes `payload.card` straight onto the message
+object (`payload` is already untyped `any` there, same as the pre-existing `openPanel` field —
+no new casts needed). `server/wsHandlers/builtinReminders.js`'s `system.reminders.list` now
+sends a `card: { type: 'reminders', items: [...] }` alongside the UNCHANGED plain-markdown
+`data` string — the markdown list still renders exactly as before, the card is a pure addition
+below it (see `src/components/terminal/messageContent.tsx`, which renders
+`<ReminderCard items={msg.card.items} />` only when `msg.card?.type === 'reminders'`). New
+`src/components/terminal/ReminderCard.tsx`: an Apple-Reminders-style checklist — tap a row to
+mark it done, done rows move into a struck-through "Completed" section — wired to the exact
+same `DELETE /api/reminders/:id` the Reminders panel's own cancel button already uses (D-7),
+so the card and the panel can never diverge on what "done" means. `server/cli-client.js`'s
+'answer' case only ever reads `msg.data`, confirmed by inspection, so `card` is silently and
+safely ignored there exactly like `openPanel` already is.
+
+Live-verified end-to-end through the REAL handler pipeline (not a mock): created two real
+reminders via `reminderHandlers['system.reminders.create']` (one dated, one attempted-todo —
+the todo phrasing I tried wasn't recognized by `parseReminderInput`, an unrelated pre-existing
+parser gap, not something this change touches), then called
+`reminderHandlers['system.reminders.list']` and confirmed the emitted WS payload's `card.items`
+carries the exact `{id, text, label, type}` shape `ReminderCardItem`/`ReminderCard.tsx` expect,
+alongside the original unchanged markdown `data` string. A full `tsc --noEmit -p .` across
+server + frontend is clean. Test schedule cleaned up afterward (`data/schedules.json` is
+gitignored regardless, so nothing leaked into the repo).
+**NOT verified**: no real browser render of the card itself — the checkbox tap →
+optimistic-done → DELETE-call → revert-on-failure flow was written to mirror the Reminders
+panel's own behavior but was never clicked in an actual browser. opencode should start a real
+console, say "list my reminders" with at least one reminder set, confirm the card renders
+below the markdown list, tap a row, and confirm it both strikes through immediately and
+actually disappears from `GET /api/reminders` (i.e. the DELETE really landed). Per the spec
+item, notes is the natural second card type to build once this one is proven live — not
+started.
+
 **Progress so far** (chronological, oldest first):
 - **Phase A: DONE.** A-1, A-2, A-3, A-5, A-6, A-7, A-9, A-11 (commit 98cd5c0, building on
   7e8b322). A-10 verified already covered by the 2026-08-26/08-28 audit passes (bare commit,
