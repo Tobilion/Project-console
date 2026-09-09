@@ -348,6 +348,22 @@ export const TOUR_SECTIONS: TourSection[] = [
       },
       {
         icon: '▦',
+        title: 'Pack Marketplace',
+        body: 'Tools > Marketplace is the App-Store grid over the pack registry (Phase 17): browse/search hosted console.tools.json packs, preview a pack’s tool names, commands and risky flags, then install with the same two-step confirm the local “install pack <path>” flow uses (pendingPackInstall, 5-min TTL, by-name merge). Registry fetches are public-HTTPS-only with sha256 checksum verification against the index; the registry URL itself lives in gitignored data/registry-config.json via “set pack registry <url>”. Chat equivalents: “browse pack registry”, “search packs for X”, “install pack <name> from registry”.',
+        view: 'tools',
+        panel: 'marketplace',
+        target: 'marketplace-panel',
+      },
+      {
+        icon: '▦',
+        title: 'Calculator',
+        body: 'Tools > Calculator is a live widget, not a demo: “=” evaluates through POST /api/calculate — the same safe shunting-yard evaluator (mathEval.js, no eval/Function) the “calculate …” chat command uses, so panel and chat can never disagree. It also speaks the expanded grammar: “convert 5 km to miles”, “15% of 80”, “18% tip on 64.50”. Full keyboard support (digits/operators/Enter/Backspace/Escape, ignored while an input field is focused).',
+        view: 'tools',
+        panel: 'calculator',
+        target: 'calculator-panel',
+      },
+      {
+        icon: '▦',
         title: 'From Panel to Chat (Single Source of Truth)',
         body: 'A panel never writes behind chat’s back. Folder Explorer “Open in PyCharm” sends “open main.py with PyCharm” into chat; PdfToolsPanel Merge sends “merge alpha.pdf and beta.pdf into combined.pdf”; File Tools Tidy sends the tidy trigger — so confirm cards, journaling, and the undo toast stay in the terminal as the one observable truth. The dashboard’s Run/Stop/Push buttons do the same. If the CLI can’t render a panel, it gets the same answer text without openPanel.',
         view: 'tools',

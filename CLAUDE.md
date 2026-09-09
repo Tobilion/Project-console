@@ -667,8 +667,15 @@ Verified: check-handlers 287/287, check-ws-cases clean, npm test 602/602, tsc cl
   project-list, Finding It Later → dashboard-button, Switchboard → a new additive
   `app-header` root attribute, Include Every Folder → settings-button, Terminal Thread →
   terminal-header); remaining dups are same-control-correct (three bento steps all ARE the
-  grid). Verified: tsc clean, vite build clean, 0 missing targets. Still open:
-  C-4 (untoured flows), C-5 (progress/auto-advance/reduced-motion).
+  grid). Verified: tsc clean, vite build clean, 0 missing targets. C-4 started (2026-09-09,
+  opencode): added the two highest-priority missing steps — Pack Marketplace (was zero
+  coverage) and Calculator — to the tools section in the existing view+panel+target pattern
+  (both resolve via the dynamic panel shell; 31 unique targets, 0 missing). Side effect of
+  the C-3 retargets worth knowing: no step targets `tools-button` anymore (all three moved
+  to more precise anchors); the attribute itself is untouched in `AppHeader.tsx`. Still open:
+  the rest of C-4 (AI model picker, permissionMode, Dashboard/dock sub-tabs, scanAllFolders,
+  per-category Settings, FirstRunSetup, CLI/desktop coverage), C-5 (progress/auto-
+  advance/reduced-motion).
 - Phases G, H, I, J, L: **not started.**
 
 **Native verification baseline (2026-09-09, opencode on Windows — supersedes the bridged-shell
