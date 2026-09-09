@@ -187,6 +187,20 @@ sent.length = 0;
 await handleBuiltinIntent(ws, 'project.action.reveal_file', 'open a file in the folder', proj, {});
 eq('actions leaf: reveal_file without a name asks which file', ws.sent.length === 1 && ws.sent[0].type === 'answer' && ws.sent[0].data.includes('Which file'), true);
 
+// F-8 (2026-09-09): OS-association discovery — pure parser unit shapes plus a live
+// machine-tolerant shape row (Windows boxes report their real handlers, anything else
+// reports empty; both shapes are accepted, never exact app names).
+const { parseFtypeTemplate, expandEnvVars, associatedAppsFor, argsWithFile } = await import(pathToFileURL(base + 'osApps.js').href);
+eq('osApps: quoted exe + %L/%* template parses', JSON.stringify(parseFtypeTemplate('Python.File="C:\\WINDOWS\\py.exe" "%L" %*')) === JSON.stringify({ exe: 'C:\\WINDOWS\\py.exe', args: ['"%L"'] }), true);
+eq('osApps: unquoted exe + flags parse', JSON.stringify(parseFtypeTemplate('WMP="C:\\a\\wmplayer.exe" /Open "%L"')) === JSON.stringify({ exe: 'C:\\a\\wmplayer.exe', args: ['/Open', '"%L"'] }), true);
+eq('osApps: quoted placeholder substitutes bare (spawn-safe)', JSON.stringify(argsWithFile(['"%L"'], 'C:\\x\\f.py')) === JSON.stringify(['C:\\x\\f.py']), true);
+eq('osApps: missing placeholder appends', JSON.stringify(argsWithFile(['/open'], 'C:\\x\\f.py')) === JSON.stringify(['/open', 'C:\\x\\f.py']), true);
+eq('osApps: %VAR% expands from env', expandEnvVars('%SystemRoot%\\x') === `${process.env.SystemRoot || '%SystemRoot%'}\\x`, true);
+const liveApps = await associatedAppsFor('C:/tmp/probe-file.py');
+eq('osApps: live lookup returns the names shape', liveApps && (liveApps.defaultApp === null || (typeof liveApps.defaultApp.name === 'string' && typeof liveApps.defaultApp.exe === 'string')) && Array.isArray(liveApps.openWith) && liveApps.openWith.every((a) => typeof a.name === 'string' && typeof a.exe === 'string'), true);
+const liveNoExt = await associatedAppsFor('C:/tmp/probe-noext');
+eq('osApps: extensionless path reports empty', liveNoExt.defaultApp === null && liveNoExt.openWith.length === 0, true);
+
 // 2026-09-08: absolute-path reveal fast path (extractAbsolutePath unit shapes).
 eq('extractAbsolutePath: drive-letter path with in-folder suffix', extractAbsolutePath('open C:\\Users\\tobil\\Documents\\School (CU)\\Random Notes\\TEXTBOOK in the folder'), 'C:\\Users\\tobil\\Documents\\School (CU)\\Random Notes\\TEXTBOOK');
 eq('extractAbsolutePath: leading-slash path', extractAbsolutePath('reveal /home/u/notes in the folder'), '/home/u/notes');

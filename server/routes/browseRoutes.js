@@ -9,6 +9,7 @@ import path from 'path';
 import { spawn } from 'child_process';
 import { asyncHandler } from '../asyncHandler.js';
 import { resolveEditor, defaultEditorFor, getEditorsState } from '../editorsStore.js';
+import { associatedAppsFor, argsWithFile } from '../osApps.js';
 
 const MAX_BROWSE_ENTRIES = 2000;
 
@@ -117,6 +118,25 @@ export function registerBrowseRoutes(app) {
     res.json({ success: true });
   }));
 
+  // F-8 (2026-09-09): OS-associated apps for one file — what the OS itself would offer
+  // in an "Open with" menu (default handler + OpenWithList extras), as NAMES only. The
+  // chooser sends a name back to POST /api/browse/open-with's `osApp`, which re-derives
+  // the executable server-side — client strings are never executed.
+  app.get('/api/browse/apps', asyncHandler(async (req, res) => {
+    const raw = req.query.path;
+    if (!isValidBrowsePath(raw)) {
+      return res.status(400).json({ error: 'Requires an absolute file path.' });
+    }
+    const abs = path.resolve(raw);
+    if (!fs.existsSync(abs) || !fs.statSync(abs).isFile()) {
+      return res.status(404).json({ error: `Not a file: ${abs}` });
+    }
+    const { defaultApp, openWith } = await associatedAppsFor(abs);
+    res.json({
+      defaultApp: defaultApp ? { name: defaultApp.name } : null,
+      openWith: openWith.map((a) => ({ name: a.name })),
+    });
+  }));
   // D-7 (2026-09-08): direct-REST equivalent of project.action.open_with
   // (builtinProjectActions.js) for the Folder Explorer's per-file "Open with..." menu.
   // The panel already has the resolved absolute path and the exact editor id from its own
@@ -126,8 +146,10 @@ export function registerBrowseRoutes(app) {
   // as the chat handler, so behavior can't diverge between the two paths. Body:
   // { path, editor? } -- editor omitted or 'default' uses the per-extension default,
   // falling back to VS Code (matching the chat handler's "open X in the editor" branch);
-  // the reserved 'browser' pseudo-editor delegates to the same open-in-default-app spawn
-  // used by /api/browse/open.
+  // F-8 (2026-09-09): { path, osApp } launches an OS-associated app by NAME instead — the
+  // entry is re-derived server-side via associatedAppsFor() on every call, so a client
+  // string is only ever a lookup key, never an executed command. Same status conventions
+  // (400/404/500 + the 50ms ENOENT beat) as the editor branch.
   app.post('/api/browse/open-with', asyncHandler(async (req, res) => {
     const raw = req.body?.path;
     if (!isValidBrowsePath(raw)) {
@@ -135,6 +157,35 @@ export function registerBrowseRoutes(app) {
     }
     const abs = path.resolve(raw);
     if (!fs.existsSync(abs)) return res.status(404).json({ error: `Not found: ${abs}` });
+    const osAppQuery = typeof req.body?.osApp === 'string' ? req.body.osApp.trim() : '';
+    if (osAppQuery) {
+      const { defaultApp, openWith } = await associatedAppsFor(abs);
+      const match = [defaultApp, ...openWith].find((a) => a && a.name.toLowerCase() === osAppQuery.toLowerCase());
+      if (!match) return res.status(404).json({ error: `"${osAppQuery}" is not associated with this file type right now.` });
+      let child;
+      try {
+        child = spawn(match.exe, argsWithFile(match.args, abs), { detached: true, stdio: 'ignore', windowsHide: true });
+      } catch (err) {
+        return res.status(400).json({ error: `Could not launch ${match.name}: ${err.message}` });
+      }
+      let errored = false;
+      child.on('error', (err) => {
+        errored = true;
+        if (!res.headersSent) {
+          if (err.code === 'ENOENT') {
+            res.status(404).json({ error: `${match.name} (${match.exe}) could not be launched.` });
+          } else {
+            res.status(500).json({ error: `Failed to open ${match.name}: ${err.message}` });
+          }
+        }
+      });
+      child.unref();
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      if (!errored && !res.headersSent) res.json({ success: true, editor: match.name });
+      return;
+    }
+    // Editor branch (unchanged): curated registry id, or 'default', or the 'browser'
+    // pseudo-editor delegating to the open-in-default-app spawn used by /api/browse/open.
     const editorQuery = typeof req.body?.editor === 'string' ? req.body.editor.trim() : '';
     let editor = null;
     if (!editorQuery || editorQuery === 'default') {

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Folder, List, LayoutGrid, Lock, Code } from 'lucide-react';
+import { Folder, List, LayoutGrid, Lock, Code, AppWindow } from 'lucide-react';
 import { apiFetchJson } from '../utils/apiFetch';
 import { projectApi } from '../utils/projectApi';
 import { cn } from '../lib/utils';
@@ -54,6 +54,10 @@ export function FolderExplorerPanel({ onSendMessage, tabId = null, project = nul
   });
   const [editors, setEditors] = useState<EditorDef[]>([]);
   const [openWithFor, setOpenWithFor] = useState<string | null>(null);
+  // F-8 (2026-09-09): OS-associated apps for the chooser's file — fetched when the overlay
+  // opens (per-file, since associations are per-extension). Names only; the launch call
+  // sends the name back for the server to re-resolve (client strings never execute).
+  const [osApps, setOsApps] = useState<{ defaultApp: { name: string } | null; openWith: { name: string }[] } | null>(null);
   // Multi-select (2026-08-24): Ctrl/Cmd+click toggles, Shift+click range-selects from the last
   // clicked entry, Esc clears. The selection is read-only convenience (copy paths) — no
   // mutation of the filesystem here, ever.
@@ -288,7 +292,10 @@ export function FolderExplorerPanel({ onSendMessage, tabId = null, project = nul
   // menu/chooser, so there's no free-text editor-name parsing to preserve (unlike the chat
   // intent, which has to extractEditorName() out of a typed sentence). Surfaces a real error
   // via setError on failure, same as openDefaultApp above since the F-10 fix.
-  const openWithEditor = useCallback(async (target: string, editorId?: string) => {
+  // F-8 (2026-09-09): `osApp` variant launches an OS-associated app by name — the server
+  // re-derives the executable from the name on every call (see osApps.js), so this never
+  // sends a command string, only a lookup key.
+  const openWithEditor = useCallback(async (target: string, editorId?: string, osApp?: string) => {
     // Not apiFetchJson: /api/browse/open-with (like its /api/browse/open and /reveal
     // siblings) reports failure via a real HTTP status, not an { ok: false } 200 body --
     // apiFetchJson discards the response body on any non-2xx, which would silently lose
@@ -296,7 +303,7 @@ export function FolderExplorerPanel({ onSendMessage, tabId = null, project = nul
     try {
       const res = await fetch('/api/browse/open-with', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ path: target, editor: editorId }),
+        body: JSON.stringify(osApp ? { path: target, osApp } : { path: target, editor: editorId }),
       });
       const data = await res.json().catch(() => null);
       if (!res.ok || !data?.success) { setError(data?.error || 'Could not open the file.'); return; }
@@ -305,6 +312,10 @@ export function FolderExplorerPanel({ onSendMessage, tabId = null, project = nul
       setError('Could not reach the server.');
     }
   }, []);
+
+  const openWithOsApp = useCallback(async (target: string, appName: string) => {
+    await openWithEditor(target, undefined, appName);
+  }, [openWithEditor]);
 
   const filteredEntries = useMemo(() => {
     if (!searchQuery.trim()) return entries;
@@ -421,6 +432,25 @@ export function FolderExplorerPanel({ onSendMessage, tabId = null, project = nul
     openWithEditor(openWithFor, editorId);
     setOpenWithFor(null);
   };
+
+  const sendOpenWithOs = (appName: string) => {
+    if (!openWithFor) return;
+    openWithOsApp(openWithFor, appName);
+    setOpenWithFor(null);
+    setOsApps(null);
+  };
+
+  // Fetch the OS associations whenever the chooser opens for a (different) file.
+  useEffect(() => {
+    if (!openWithFor) { setOsApps(null); return; }
+    let cancelled = false;
+    apiFetchJson<{ defaultApp: { name: string } | null; openWith: { name: string }[] }>(
+      `/api/browse/apps?path=${encodeURIComponent(openWithFor)}`
+    ).then((d) => {
+      if (!cancelled && d) setOsApps({ defaultApp: d.defaultApp ?? null, openWith: d.openWith ?? [] });
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [openWithFor]);
 
   const tileSize = gridSize === 'lg' ? 72 : gridSize === 'md' ? 56 : 44;
   const tileIcon = gridSize === 'lg' ? 28 : gridSize === 'md' ? 22 : 16;
@@ -637,7 +667,7 @@ export function FolderExplorerPanel({ onSendMessage, tabId = null, project = nul
             <h3 className="text-sm font-semibold text-fg-strong mb-1">Open in editor</h3>
             <p className="text-[11px] text-fg-muted font-mono truncate mb-3">{openWithFor.split(/[\\/]/).pop()}</p>
             <div className="space-y-1 max-h-64 overflow-y-auto">
-              {editors.length === 0 && (
+              {editors.length === 0 && (osApps === null || (osApps.defaultApp === null && osApps.openWith.length === 0)) && (
                 <p className="text-xs text-fg-dim italic">No editors configured yet — add them in Settings → Editors &amp; IDEs.</p>
               )}
               {editors.map((ed) => (
@@ -651,6 +681,27 @@ export function FolderExplorerPanel({ onSendMessage, tabId = null, project = nul
                   <span className="text-[10px] text-fg-dim font-mono">{ed.command}</span>
                 </button>
               ))}
+              {/* F-8: real OS-associated apps for this file's extension (default handler +
+                  OpenWithList extras), merged below the curated editors. */}
+              {osApps && (osApps.defaultApp || osApps.openWith.length > 0) && (
+                <>
+                  <p className="px-3 pt-2 text-[10px] font-bold tracking-wider uppercase text-fg-dim">Windows apps</p>
+                  {[osApps.defaultApp, ...osApps.openWith].filter(Boolean).map((app) => (
+                    <button
+                      key={`os-${app!.name}`}
+                      onClick={() => sendOpenWithOs(app!.name)}
+                      className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-fg-strong hover:bg-scrim-faint border border-transparent hover:border-border-soft transition-colors text-left"
+                      title={app === osApps.defaultApp ? 'Default app for this file type' : undefined}
+                    >
+                      <AppWindow size={13} className="text-accent-teal shrink-0" />
+                      <span className="flex-1">{app!.name}</span>
+                      {app === osApps.defaultApp && (
+                        <span className="text-[10px] text-fg-dim">default</span>
+                      )}
+                    </button>
+                  ))}
+                </>
+              )}
             </div>
             <button
               onClick={() => setOpenWithFor(null)}

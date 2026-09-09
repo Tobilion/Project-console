@@ -733,7 +733,18 @@ Verified: check-handlers 287/287, check-ws-cases clean, npm test 602/602, tsc cl
   breadcrumb/back/forward to get back, so the spec's fallback condition (remove the
   misleading affordance) is already satisfied; a genuine inline tree is a bigger feature
   than this pass and stays open. Still open: F-5(1)/F-6/
-  F-8/F-10-rest.
+  F-8/F-10-rest. F-8 done (2026-09-09, opencode): new `server/osApps.js` discovers real
+  OS handlers per extension on Windows (UserChoice ProgId → assoc/ftype chain, plus
+  Explorer OpenWithList exes via `where`; AppX ids and stale ProgIds skipped, `%VAR%`
+  expanded, quoted `"%L"` substituted bare — spawn passes argv literally), merged into
+  the Folder Explorer "Open with…" chooser as a "Windows apps" section below the curated
+  editors via new `GET /api/browse/apps` (names only) + `osApp` on the existing open-with
+  POST (re-derives server-side from the name — client strings never execute).
+  Live-verified on this machine (.py→py, .mp3→VLC via UserChoice, .pdf→Edge, .txt→none)
+  AND end-to-end against a running server (apps shape, bogus-name 404, real py.exe spawn
+  success). 7 new check-handlers rows (322/322). Non-Windows returns empty (flagged, same
+  precedent as the untested clipboard platform paths); chat `open X with Y` stays curated.
+  tsc + vite build clean. Browser click-through of the chooser section still outstanding.
 - **Phase C: started** (2026-09-09, opencode). C-1 verified already covered — no change
   needed: the spec's "missing panel targets" list is stale, `ToolsPanel.tsx` renders a
   dynamic `<div data-tour={`${activePanel}-panel`}>` shell around every open panel, so all
