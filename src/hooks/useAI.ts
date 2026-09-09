@@ -15,7 +15,19 @@ export function useAI(sendWS: (data: object) => void, setMessages: React.Dispatc
   // current in-flight query; cleared whenever a new query starts or the real answer begins
   // streaming (stream_start), since thinking is done being useful once the answer itself arrives.
   const [aiThinkingText, setAiThinkingText] = useState('');
-  const [aiModel, setAiModel] = useState('qwen2.5-coder:7b');
+  // B.3 (2026-09-09): seed from the profile's defaultAiModel (the picker's last explicit
+  // choice, mirrored to localStorage by useUserProfile) instead of a hardcoded name — the
+  // toggle's "respect a deliberately picked model" logic below then keeps it whenever it
+  // is still installed, falling back to auto-pick otherwise. Empty mirror = auto behavior.
+  const [aiModel, setAiModel] = useState(() => {
+    try {
+      const raw = localStorage.getItem('console.profile');
+      const saved = raw ? (JSON.parse(raw) as { defaultAiModel?: unknown }).defaultAiModel : '';
+      return typeof saved === 'string' && saved ? saved : 'qwen2.5-coder:7b';
+    } catch {
+      return 'qwen2.5-coder:7b';
+    }
+  });
   const [aiMode, setAiMode] = useState('default');
   // In-flight guard for the AI toggle: the ON path is async (Ollama status fetch + possible
   // model auto-pick), and rapid re-clicks used to run it several times over — each success

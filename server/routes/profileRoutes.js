@@ -83,6 +83,10 @@ const DEFAULT_PROFILE = {
   // project is active. Turn it off to land on chat instead (a project click then goes
   // straight to the thread). Default true so existing installs see zero behavior change.
   generalToolsFirst: true,
+  // B.3 (2026-09-09): default AI model name — the picker's last explicit choice,
+  // reselected on boot when still installed. Empty means "auto" (cloud-first, else
+  // first local); the toggle's validity check falls back the same way for junk.
+  defaultAiModel: '',
 };
 
 // Only plain, trimmed strings up to a sane length — mirrors the conservative
@@ -135,6 +139,7 @@ function readProfile() {
       askBeforeDeleteLinkedNote: sanitizeBool(p.askBeforeDeleteLinkedNote, DEFAULT_PROFILE.askBeforeDeleteLinkedNote),
       aiRedirectDelayMs: typeof p.aiRedirectDelayMs === 'number' ? Math.max(0, Math.min(10000, p.aiRedirectDelayMs)) : DEFAULT_PROFILE.aiRedirectDelayMs,
       generalToolsFirst: sanitizeBool(p.generalToolsFirst, DEFAULT_PROFILE.generalToolsFirst),
+      defaultAiModel: sanitizeField(p.defaultAiModel, DEFAULT_PROFILE.defaultAiModel),
     };
   } catch {
     // Missing or corrupt file — serve defaults without touching disk.
@@ -183,6 +188,7 @@ export function sanitizeProfile(body, current) {
     askBeforeDeleteLinkedNote: sanitizeBool(body.askBeforeDeleteLinkedNote, current.askBeforeDeleteLinkedNote),
     aiRedirectDelayMs: typeof body.aiRedirectDelayMs === 'number' ? Math.max(0, Math.min(10000, body.aiRedirectDelayMs)) : current.aiRedirectDelayMs,
     generalToolsFirst: sanitizeBool(body.generalToolsFirst, current.generalToolsFirst),
+    defaultAiModel: sanitizeField(body.defaultAiModel, current.defaultAiModel),
   };
 }
 

@@ -68,6 +68,8 @@ const REMINDER_TOAST_POSITIONS: ReminderToastPosition[] = ['top-left', 'top-righ
 
 function readProfilePrefs(): { reminderToastDurationMs?: unknown; reminderToastPosition?: unknown; aiRedirectDelayMs?: unknown } {
   try {
+    // The mirror key lives in useUserProfile (single source of truth); kept inline here
+    // to keep this store dependency-free (same contract as the zero-import wsReply/atomics).
     const raw = localStorage.getItem('console.profile');
     if (!raw) return {};
     const parsed = JSON.parse(raw);

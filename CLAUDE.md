@@ -363,7 +363,15 @@ Verified: check-handlers 287/287, check-ws-cases clean, npm test 602/602, tsc cl
    ports), so the fix is `export`ing it from `livenessProbe.js` as the single importable
    source of truth — deliberately NOT a tuningStore knob (an ordered probe list isn't a
    numeric tunable, and reordering changes which servers get found under the per-project
-   cap). Verified via a direct import check + check-handlers 292/292. B.4's matcher-vocabulary
+   cap). Verified via a direct import check + check-handlers 292/292. B.3's default-model
+   row is also done (2026-09-09, opencode): new `defaultAiModel` profile field (default
+   `''` = auto) — the picker's explicit choice persists via `updateProfile` in `App`'s
+   `onSetModel`, rides the `console.profile` mirror (`PROFILE_MIRROR_KEY` now exported
+   from `useUserProfile.ts` as its single source of truth), and `useAI` seeds its initial
+   state from it (falling back to `qwen2.5-coder:7b`); the toggle's existing validity check
+   keeps an uninstalled pick falling back to auto-pick. Verified: profile default/save/
+   junk-fallback round-trip, tsc + vite build clean. Browser confirmation (pick → reload
+   → still picked) still outstanding. B.4's matcher-vocabulary
    item is also done (2026-09-09, opencode): new `FALLBACK_SCORE_FLOOR = 0.45` in
    `intentRegistry.js` replaces the three matching weak-stage literals (`nlpEngine.classify`,
    `matcher.js`'s re-check, `matchHelpers.computeDidYouMean` — all "a weak guess surfacing"

@@ -508,7 +508,11 @@ function App() {
               aiModel,
               aiMode,
               onAIToggle: handleAIToggle,
-              onSetModel: handleSetModel,
+              // B.3 (2026-09-09): persist the picker's explicit choice as the profile's
+              // defaultAiModel so the next boot reselects it (useAI seeds from the mirror).
+              // Fire-and-forget: a failed save only affects the next boot's seed, and the
+              // toggle's validity check falls back to auto-pick regardless.
+              onSetModel: (m: string) => { handleSetModel(m); void updateProfile({ defaultAiModel: m }); },
               onSetMode: handleSetMode,
               toolHistory,
               showToolHistory,

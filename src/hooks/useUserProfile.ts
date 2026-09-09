@@ -47,6 +47,9 @@ export interface UserProfile {
   // F-3 (2026-09-09): General-tools-first landing — General opens the Tools grid once a
   // project is active. Default true (long-standing behavior); off lands on chat instead.
   generalToolsFirst: boolean;
+  // B.3 (2026-09-09): default AI model name — the picker's last explicit choice, reselected
+  // on boot when still installed. Empty means "auto" (cloud-first, else first local).
+  defaultAiModel: string;
 }
 
 // Neutral defaults, not a hardcoded person's name/title — matches server/routes/profileRoutes.js's
@@ -75,6 +78,7 @@ const DEFAULT_PROFILE: UserProfile = {
   askBeforeDeleteLinkedNote: true,
   aiRedirectDelayMs: 2000,
   generalToolsFirst: true,
+  defaultAiModel: '',
 };
 
 /** Client state for the user profile persisted to the server (GET/POST /api/profile).
@@ -139,14 +143,35 @@ export function useUserProfile() {
  * key. Only called with server-confirmed values (initial load + successful saves), never
  * the optimistic pre-save state, so readers never see a value the server rejected.
  */
-function syncProfilePrefs(p: Pick<UserProfile, 'aiRedirectDelayMs' | 'reminderToastDurationMs' | 'reminderToastPosition'>): void {
+function syncProfilePrefs(p: Pick<UserProfile, 'aiRedirectDelayMs' | 'reminderToastDurationMs' | 'reminderToastPosition' | 'defaultAiModel'>): void {
   try {
-    localStorage.setItem('console.profile', JSON.stringify({
+    localStorage.setItem(PROFILE_MIRROR_KEY, JSON.stringify({
       aiRedirectDelayMs: p.aiRedirectDelayMs,
       reminderToastDurationMs: p.reminderToastDurationMs,
       reminderToastPosition: p.reminderToastPosition,
+      defaultAiModel: p.defaultAiModel,
     }));
   } catch {
     // Private-mode quota etc. — readers fall back to defaults, so never throw here.
+  }
+}
+
+/** localStorage key for the server-confirmed profile mirror (see syncProfilePrefs). */
+export const PROFILE_MIRROR_KEY = 'console.profile';
+
+/** Read the mirrored prefs (or {} when absent/unparseable — every reader has defaults). */
+export function readSyncedProfile(): {
+  aiRedirectDelayMs?: unknown;
+  reminderToastDurationMs?: unknown;
+  reminderToastPosition?: unknown;
+  defaultAiModel?: unknown;
+} {
+  try {
+    const raw = localStorage.getItem(PROFILE_MIRROR_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    return typeof parsed === 'object' && parsed !== null ? parsed : {};
+  } catch {
+    return {};
   }
 }
