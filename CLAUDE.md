@@ -659,7 +659,14 @@ Verified: check-handlers 287/287, check-ws-cases clean, npm test 602/602, tsc cl
   `onQuickStart` → `handleQuickStart` (`useConsoleNavigation.ts`, threaded via `useConsole.ts`
   + `App.tsx:478`), which posts the `QUICK_START_TEXT` system message + creates a session if
   needed (deliberately local, not chat-routed, since the welcome screen has no active
-  project — documented in the handler's own comment). Still open: F-3/F-4/F-5(1)(2)/F-6/F-7/
+  project — documented in the handler's own comment). F-7 done (2026-09-09, opencode):
+  path bar/breadcrumb/back-forward/search verified present by inspection (`header.tsx`
+  carries all five nav buttons + the name filter); the one real bug — `home()`'s
+  drive-root regex was Windows-only, silently no-op'ing on POSIX paths — now falls back
+  to `/` when the path starts with `/`. Bonus F-10(a) in the same file: `openDefaultApp`'s
+  silent `.catch(() => {})` now surfaces `setError` like the open-with path (the D-7
+  comment claiming otherwise is updated too). Verified: tsc clean, home-target logic
+  7/7 against Windows/POSIX/edge inputs. Still open: F-3/F-4/F-5(1)(2)/F-6/F-7/
   F-8/F-9/F-10, and F-11's second card type (notes).
 - **Phase C: started** (2026-09-09, opencode). C-1 verified already covered — no change
   needed: the spec's "missing panel targets" list is stale, `ToolsPanel.tsx` renders a

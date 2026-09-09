@@ -256,19 +256,30 @@ export function FolderExplorerPanel({ onSendMessage, tabId = null, project = nul
 
   const home = () => {
     // Windows: %USERPROFILE%; POSIX: $HOME. The server doesn't expose it, so derive from
-    // the current path's drive root as a reasonable fallback.
+    // the current path's filesystem root as a reasonable fallback — drive root (C:\) on
+    // Windows, / on POSIX (F-7: the old drive-letter-only regex silently no-op'd on macOS
+    // and Linux, where every absolute path starts with /).
     const m = path.match(/^[a-zA-Z]:[\\/]/);
-    if (m) browse(m[0]);
+    if (m) { browse(m[0]); return; }
+    if (path.startsWith('/')) browse('/');
   };
 
   // Double-click / Enter on a file opens it in its OS default app (file association) via
-  // POST /api/browse/open — the Windows Explorer "open" behavior.
+  // POST /api/browse/open — the Windows Explorer "open" behavior. Failures surface via
+  // setError like the open-with path below (F-10: the old silent catch left a dead click
+  // with zero feedback when the OS association was missing).
   const openDefaultApp = useCallback(async (target: string) => {
-    await fetch('/api/browse/open', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ path: target }),
-    }).catch(() => {});
+    try {
+      const res = await fetch('/api/browse/open', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: target }),
+      });
+      if (!res.ok) setError('Could not open the file in its default app.');
+      else setError(null);
+    } catch {
+      setError('Could not reach the server.');
+    }
   }, []);
 
   // D-7 (2026-09-08): "open in editor" / "open with <editor>" now hit a direct REST
@@ -276,9 +287,7 @@ export function FolderExplorerPanel({ onSendMessage, tabId = null, project = nul
   // the panel already has the resolved absolute path and the exact editor id from its own
   // menu/chooser, so there's no free-text editor-name parsing to preserve (unlike the chat
   // intent, which has to extractEditorName() out of a typed sentence). Surfaces a real error
-  // via setError on failure -- openDefaultApp above still swallows errors silently, a
-  // pre-existing gap (master prompt F-10) left alone here since fixing it is out of scope
-  // for this D-7 pass.
+  // via setError on failure, same as openDefaultApp above since the F-10 fix.
   const openWithEditor = useCallback(async (target: string, editorId?: string) => {
     // Not apiFetchJson: /api/browse/open-with (like its /api/browse/open and /reveal
     // siblings) reports failure via a real HTTP status, not an { ok: false } 200 body --
