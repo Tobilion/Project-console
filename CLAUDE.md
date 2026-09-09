@@ -647,8 +647,11 @@ Verified: check-handlers 287/287, check-ws-cases clean, npm test 602/602, tsc cl
   the notification item as additive `refId` (notify/history payloads) so the toast can call
   it. 5 new check-handlers rows (303/303). OS-toast action buttons deliberately deferred:
   the WinRT wrapper is fire-and-forget text with no activation-callback path. Browser
-  confirmation of the snooze tap still outstanding. Still open: E-3's opt-in surfacing,
-  E-4's anchored popup + polling unification + verbosity/quiet-hours (see E-4 sentence
+  confirmation of the snooze tap still outstanding. E-4 polling unification done
+  (2026-09-09, opencode): the header bell badge now polls on the same 10s
+  `PANEL_POLL_NOTIFICATIONS_MS` cadence as the Notifications panel itself (was 15s) — one
+  interval for the same `/api/notifications` data. tsc clean. Still open: E-3's opt-in
+  surfacing, E-4's anchored popup + verbosity/quiet-hours (see E-4 sentence
   above), E-6's answer-to-toast audit.
 - **Phase F: started.** F-5(3) done (2026-09-09, opencode): `system.notes.delete` now
   actually reads `askBeforeDeleteLinkedNote` (default true) — with linked reminders present

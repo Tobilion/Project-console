@@ -12,7 +12,7 @@ import { useAppViewState } from './hooks/useAppViewState';
 import { getRandomGreeting } from './utils/greetings';
 import { readWorkspaceTabs, readToolPanels, WORKSPACE_TAB_KEY, TOOL_PANEL_KEY } from './utils/appStorage';
 import { apiFetchJson } from './utils/apiFetch';
-import { PANEL_POLL_SLOW_MS } from './constants';
+import { PANEL_POLL_NOTIFICATIONS_MS } from './constants';
 import type { TourSection } from './tours';
 import { getTourSection } from './tours';
 import { AppFooter } from './components/AppFooter';
@@ -121,6 +121,9 @@ function App() {
   // Phase 5.1: header bell icon — unread notification count polled from the server's
   // notification history. The count is non-dismissed items. Clicking the bell opens
   // the Notifications panel via the Tools surface and resets the count.
+  // E-4 (2026-09-09): same 10s cadence as the Notifications panel itself (was 15s) — one
+  // interval for the same /api/notifications data, so the badge can never visibly lag the
+  // panel by half a cycle.
   const [unreadNotificationsCount, setUnreadNotificationsCount] = useState(0);
   useEffect(() => {
     let mounted = true;
@@ -131,7 +134,7 @@ function App() {
       }
     };
     poll();
-    const t = setInterval(poll, PANEL_POLL_SLOW_MS);
+    const t = setInterval(poll, PANEL_POLL_NOTIFICATIONS_MS);
     return () => { mounted = false; clearInterval(t); };
   }, []);
   const handleOpenNotifications = useCallback(() => {
