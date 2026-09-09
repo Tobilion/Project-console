@@ -2,7 +2,7 @@ import fs from 'fs/promises';
 import path from 'path';
 import { indexProject } from './codebaseIndexer.js';
 import { deriveScriptEntriesForProject, mergeAutoEntries } from './scriptEntries.js';
-import { sanitizeChatReplies, isContextFilename, readProjectContextDocs, commandEntriesFromDocs, isRecognizableByCodeAlone, buildFallbackConfig, detectWorkspaceType } from './projectScanHelpers.js';
+import { readProjectConfig, isContextFilename, readProjectContextDocs, commandEntriesFromDocs, isRecognizableByCodeAlone, buildFallbackConfig, detectWorkspaceType } from './projectScanHelpers.js';
 import { getCommandDir } from './commandDir.js';
 import { scanSingleProject } from './projectScanSingle.js';
 import { MONOREPO_MANIFESTS } from './codebaseData.js';
@@ -84,20 +84,9 @@ export async function discoverProjects(baseDir, opts = {}) {
     async function scanOne(entry) {
       const projectPath = path.join(baseDir, entry.name);
       try {
-        let config = null;
-        try {
-          const configPath = path.join(projectPath, 'console.config.json');
-          const configStats = await fs.stat(configPath);
-          if (configStats.isFile()) {
-            const configData = await fs.readFile(configPath, 'utf-8');
-            config = JSON.parse(configData);
-            sanitizeChatReplies(config);
-          }
-        } catch (err) {
-          if (err.code !== 'ENOENT') {
-            log.warn(`[projectScanContainer] failed to read console.config.json at ${projectPath}:`, err.message);
-          }
-        }
+        // B.2 (2026-09-09): shared readProjectConfig — same sequence scanSingleProject
+        // uses; the label keeps this caller's exact log prefix.
+        let config = await readProjectConfig(projectPath, 'projectScanContainer');
 
         const docs = await readProjectContextDocs(projectPath);
         const contextFiles = docs?.contextFiles || [];

@@ -1,9 +1,6 @@
-import fs from 'fs/promises';
-import path from 'path';
 import { indexProject } from './codebaseIndexer.js';
 import { deriveScriptEntriesForProject, mergeAutoEntries } from './scriptEntries.js';
-import { sanitizeChatReplies, readProjectContextDocs, commandEntriesFromDocs, isRecognizableByCodeAlone, buildFallbackConfig, detectWorkspaceType } from './projectScanHelpers.js';
-import { log } from './logger.js';
+import { readProjectConfig, readProjectContextDocs, commandEntriesFromDocs, isRecognizableByCodeAlone, buildFallbackConfig, detectWorkspaceType } from './projectScanHelpers.js';
 
 /**
  * Reads a single project folder's console.config.json (validated) + context docs, merges
@@ -15,22 +12,10 @@ import { log } from './logger.js';
  * project object stays shape-complete for downstream consumers.
  */
 export async function scanSingleProject(folderName, projectPath, opts = {}) {
-  let config = null;
-  try {
-    const configPath = path.join(projectPath, 'console.config.json');
-    const configStats = await fs.stat(configPath);
-    if (configStats.isFile()) {
-      const configData = await fs.readFile(configPath, 'utf-8');
-      config = JSON.parse(configData);
-      sanitizeChatReplies(config);
-    }
-  } catch (err) {
-    if (err.code === 'ENOENT') {
-      // File doesn't exist — normal for projects without a console.config.json
-    } else {
-      log.warn(`[projectScanSingle] failed to read console.config.json at ${projectPath}:`, err.message);
-    }
-  }
+  // B.2 (2026-09-09): shared readProjectConfig — was a verbatim copy of the container's
+  // sequence below, including its own silent-catch twin (both already logged correctly;
+  // the dedup just means the next fix lands in one place).
+  let config = await readProjectConfig(projectPath, 'projectScanSingle');
 
   const docs = await readProjectContextDocs(projectPath);
   const contextFiles = docs?.contextFiles || [];

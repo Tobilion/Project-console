@@ -158,6 +158,35 @@ export function contextPriority(filename) {
 }
 
 /**
+ * Reads + validates a project's console.config.json (B.2 dedup, 2026-09-09): the identical
+ * stat → isFile → read → JSON.parse → sanitizeChatReplies sequence used to live verbatim in
+ * both projectScanSingle.js and projectScanContainer.js. `label` keeps each caller's exact
+ * log prefix ('projectScanSingle' / 'projectScanContainer') so log output is unchanged.
+ * Returns the parsed config or null. ENOENT (no config file) is silent by design; any other
+ * failure (corrupt JSON, EACCES) logs a warning (K-1) so a broken config never reads as
+ * "no projects found" with zero indication.
+ */
+export async function readProjectConfig(projectPath, label) {
+  try {
+    const configPath = path.join(projectPath, 'console.config.json');
+    const configStats = await fs.stat(configPath);
+    if (configStats.isFile()) {
+      const configData = await fs.readFile(configPath, 'utf-8');
+      const config = JSON.parse(configData);
+      sanitizeChatReplies(config);
+      return config;
+    }
+  } catch (err) {
+    if (err.code === 'ENOENT') {
+      // File doesn't exist — normal for projects without a console.config.json
+    } else {
+      log.warn(`[${label}] failed to read console.config.json at ${projectPath}:`, err.message);
+    }
+  }
+  return null;
+}
+
+/**
  * Reads + parses the per-project docs (CLAUDE.md/README.md/etc. via CONTEXT_FILENAMES) into
  * contextFiles + parsedKnowledge (the ## Stack/## Commands/## Gotchas/## Architecture section
  * split used by overview/explain_followup), sorted so CLAUDE.md wins as the "main doc".
@@ -207,7 +236,14 @@ export async function readProjectContextDocs(projectPath) {
         }
       }
     }
-  } catch (err) {}
+  } catch (err) {
+    // K-1 (2026-09-09): a readdir failure here used to be fully silent, so a permission-denied
+    // project folder read as "no docs" with zero indication. ENOENT stays silent (nothing to
+    // read); anything else (EACCES, ENOTDIR) logs a warning like the config-read path above.
+    if (err.code !== 'ENOENT') {
+      log.warn(`[scan] Could not list directory ${projectPath}: ${err.message}`);
+    }
+  }
 
   if (contextFiles.length === 0) return null;
 

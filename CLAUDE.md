@@ -255,8 +255,12 @@ Retry flow still works exactly as before.
   six appendMessage/ensureConsoleConfigGitignored call sites across
   connectionLifecycle/aiQuery/connectionExecute/connectionModeAdmin now log instead of
   silently swallowing). K-5 — commit f0a0f11 (three confirmation-token error cases
-  differentiated; project-not-found now names the id). K-6, K-7 verified already correct,
-  no change needed (see f0a0f11's message for why).
+   differentiated; project-not-found now names the id). K-6, K-7 verified already correct,
+   no change needed (see f0a0f11's message for why). K-1 follow-up (2026-09-09, opencode):
+   the spec's "identical silent empty catch" claim turned out stale for the config-read
+   copies (both already logged non-ENOENT failures); the one genuine remainder —
+   `readProjectContextDocs`' readdir `catch (err) {}` — now warns on non-ENOENT like the
+   config path does.
 - **Phase B: started.** B.3 done for four knobs (commit 8267ad2: `NUM_CTX`,
   `STREAM_IDLE_TIMEOUT_MS`, `MAX_TOOL_ROUNDS` promoted from env-var-only to live tuningStore
   knobs + a new "AI" group in `TuningSection.tsx`; the rest of B.3's table — poll intervals,
@@ -326,7 +330,12 @@ Verified: check-handlers 287/287, check-ws-cases clean, npm test 602/602, tsc cl
    `const answer =` hits are local message-text variables, not helper declarations, and the
    remaining raw sends each carry unique text — a mechanical rewrite of all ~300 would be
    pure churn against check-handlers' exact-payload assertions, so they stay), the rest of
-   B.3, and B.4's naming/comment-length audit. This
+   B.3, and B.4's naming/comment-length audit. B.2's scan-config duplication is also done
+   (2026-09-09, opencode: new `readProjectConfig(projectPath, label)` in
+   `projectScanHelpers.js` replaces the verbatim stat/read/parse/sanitize copies in
+   `projectScanSingle.js` and `projectScanContainer.js`'s `scanOne` — log prefixes preserved
+   via the label so output is byte-identical; also confirmed `sanitizeChatReplies` was
+   already the single shared implementation, covering that B.2 row too). This
    is the largest remaining phase — chunk it across many commits, one dedup/split target per
    commit, not one giant pass. B.3's external-endpoints row is also done: new
   `server/apiEndpoints.js` centralizes `npmRegistryLatestUrl(pkgName)` (env-overridable via
