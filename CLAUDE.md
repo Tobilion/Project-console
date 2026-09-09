@@ -348,7 +348,12 @@ Verified: check-handlers 287/287, check-ws-cases clean, npm test 602/602, tsc cl
    wrote, so the redirect delay silently never fired (now uses a shared `aiRedirectDelay()`
    helper). Verified: helpers return old defaults with no key present, tsc clean, vite build
    clean, check-ws-cases 137/137. Browser confirmation of a moved/longer toast still
-   outstanding (no browser here). This
+   outstanding (no browser here). B.3's `COMMON_DEV_PORTS` row is also done (2026-09-09,
+   opencode): no duplicated list existed anywhere (only comments/examples mention those
+   ports), so the fix is `export`ing it from `livenessProbe.js` as the single importable
+   source of truth — deliberately NOT a tuningStore knob (an ordered probe list isn't a
+   numeric tunable, and reordering changes which servers get found under the per-project
+   cap). Verified via a direct import check + check-handlers 292/292. This
    is the largest remaining phase — chunk it across many commits, one dedup/split target per
    commit, not one giant pass. B.3's external-endpoints row is also done: new
   `server/apiEndpoints.js` centralizes `npmRegistryLatestUrl(pkgName)` (env-overridable via

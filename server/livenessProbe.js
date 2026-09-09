@@ -20,7 +20,11 @@ const PORT_HINT_RES = [
 // returned zero candidates and a live server the console never spawned was never found).
 // Ordered by popularity so the first 3 (the per-project cap) are the most likely hits:
 // Node 3000, Vite 5173, Flask 5000, Django/Plane 8000, react-scripts 3001, 8080, 4400, 8888.
-const COMMON_DEV_PORTS = [3000, 5173, 5000, 8000, 8001, 8080, 4400, 8888];
+// B.3 (2026-09-09): exported (not a tuningStore knob — an ordered probe list is not a numeric
+// tunable, and reordering it changes which servers get found under the per-project cap, so it
+// stays a code-level constant with a single importable source of truth, same pattern as
+// server/portConfig.js).
+export const COMMON_DEV_PORTS = [3000, 5173, 5000, 8000, 8001, 8080, 4400, 8888];
 
 // A project's package.json scripts is the most-current source of run-command truth (see the
 // 2026-08-03 ordering decision in CLAUDE.md), so a server started OUTSIDE the console that the
