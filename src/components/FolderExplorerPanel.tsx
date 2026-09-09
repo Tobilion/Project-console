@@ -175,25 +175,25 @@ export function FolderExplorerPanel({ onSendMessage, tabId = null, project = nul
     if (!localStorage.getItem(VIEW_KEY)) {
       apiFetchJson<{ userProfile?: { explorerViewMode?: string } }>('/api/profile').then((d) => {
         if (d?.userProfile?.explorerViewMode === 'grid') setView('grid');
-      }).catch(() => {});
+      }).catch(() => { });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
-    try { localStorage.setItem(VIEW_KEY, view); } catch {}
+    try { localStorage.setItem(VIEW_KEY, view); } catch { }
   }, [view]);
   useEffect(() => {
-    try { localStorage.setItem(SIZE_KEY, gridSize); } catch {}
+    try { localStorage.setItem(SIZE_KEY, gridSize); } catch { }
   }, [gridSize]);
   useEffect(() => {
-    try { localStorage.setItem(PATH_KEY(tabId), path); } catch {}
+    try { localStorage.setItem(PATH_KEY(tabId), path); } catch { }
   }, [path]);
 
   useEffect(() => {
     apiFetchJson<{ editors: EditorDef[] }>('/api/editors').then((d) => {
       if (d?.editors) setEditors(d.editors);
-    }).catch(() => {});
+    }).catch(() => { });
   }, []);
 
   // Navigate to a folder, recording history (browse() is the only navigation entry point —
@@ -423,7 +423,7 @@ export function FolderExplorerPanel({ onSendMessage, tabId = null, project = nul
     // chat-command server copy) — a convenience for the selection, no terminal spam.
     try {
       await navigator.clipboard.writeText([...selectedPaths].join('\n'));
-    } catch {}
+    } catch { }
     setSelectedPaths(new Set());
   };
 
@@ -448,7 +448,7 @@ export function FolderExplorerPanel({ onSendMessage, tabId = null, project = nul
       `/api/browse/apps?path=${encodeURIComponent(openWithFor)}`
     ).then((d) => {
       if (!cancelled && d) setOsApps({ defaultApp: d.defaultApp ?? null, openWith: d.openWith ?? [] });
-    }).catch(() => {});
+    }).catch(() => { });
     return () => { cancelled = true; };
   }, [openWithFor]);
 
