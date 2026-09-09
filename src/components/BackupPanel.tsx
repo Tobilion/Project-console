@@ -3,6 +3,7 @@ import { Archive, RefreshCw, Send, CheckCircle2, Download, FolderOpen } from 'lu
 import { apiFetchJson } from '../utils/apiFetch';
 import { projectApi } from '../utils/projectApi';
 import { usePanelPolling, useFlashMessage } from '../hooks/usePanelPolling';
+import { PANEL_POLL_SLOW_MS } from '../constants';
 import { cn } from '../lib/utils';
 import { EmptyState } from './ui/EmptyState';
 import type { Project } from '../types';
@@ -26,7 +27,7 @@ interface BackupPanelProps {
   tabId?: string | null;
 }
 
-const POLL_MS = 15000;
+const POLL_MS = PANEL_POLL_SLOW_MS;
 
 function formatSize(n: number): string {
   if (n >= 1024 * 1024) return (n / (1024 * 1024)).toFixed(1) + ' MB';

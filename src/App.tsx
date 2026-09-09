@@ -12,6 +12,7 @@ import { useAppViewState } from './hooks/useAppViewState';
 import { getRandomGreeting } from './utils/greetings';
 import { readWorkspaceTabs, readToolPanels, WORKSPACE_TAB_KEY, TOOL_PANEL_KEY } from './utils/appStorage';
 import { apiFetchJson } from './utils/apiFetch';
+import { PANEL_POLL_SLOW_MS } from './constants';
 import type { TourSection } from './tours';
 import { getTourSection } from './tours';
 import { AppFooter } from './components/AppFooter';
@@ -130,7 +131,7 @@ function App() {
       }
     };
     poll();
-    const t = setInterval(poll, 15000);
+    const t = setInterval(poll, PANEL_POLL_SLOW_MS);
     return () => { mounted = false; clearInterval(t); };
   }, []);
   const handleOpenNotifications = useCallback(() => {

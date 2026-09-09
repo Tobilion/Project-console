@@ -3,6 +3,7 @@ import { StickyNote, RefreshCw, Send, Search, FileText, Trash2, Bold, Italic, Li
 import { apiFetchJson } from '../utils/apiFetch';
 import { projectApi } from '../utils/projectApi';
 import { usePanelPolling, useFlashMessage } from '../hooks/usePanelPolling';
+import { PANEL_POLL_SLOW_MS } from '../constants';
 import { cn } from '../lib/utils';
 import { EmptyState } from './ui/EmptyState';
 import { ReminderComposer } from './ReminderComposer';
@@ -31,7 +32,7 @@ interface NotesPanelProps {
   tabId?: string | null;
 }
 
-const POLL_MS = 15000;
+const POLL_MS = PANEL_POLL_SLOW_MS;
 const selKey = (projectId: string) => `console.notesSelection.${projectId}`;
 const filterKey = (projectId: string) => `console.notesFilter.${projectId}`;
 

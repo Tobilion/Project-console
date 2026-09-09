@@ -2,6 +2,7 @@ import { useCallback, useState } from 'react';
 import { Bell, RefreshCw, Plus, Trash2, CheckCircle2, Globe, MonitorSmartphone, Zap, Pause, Play, Rows3, Settings2, Send, Clock, Ruler, XCircle, ChevronsLeft, ChevronsRight, ShieldAlert, History, Check, X } from 'lucide-react';
 import { apiFetchJson } from '../utils/apiFetch';
 import { usePanelPolling, useFlashMessage } from '../hooks/usePanelPolling';
+import { PANEL_POLL_NOTIFICATIONS_MS } from '../constants';
 import { cn } from '../lib/utils';
 import type { Project } from '../types';
 
@@ -50,7 +51,7 @@ interface NotificationsPanelProps {
   onSendMessage: (text: string, opts?: { source?: string; tool?: string }) => void;
 }
 
-const POLL_MS = 10000;
+const POLL_MS = PANEL_POLL_NOTIFICATIONS_MS;
 
 const EVENT_COLORS: Record<string, string> = {
   'file-changed': 'var(--color-accent-blue)',

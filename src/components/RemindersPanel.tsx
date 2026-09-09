@@ -2,6 +2,7 @@ import { useCallback, useMemo, useState } from 'react';
 import { ListChecks, RefreshCw, Plus, Check, Send, Clock, SlidersHorizontal, Pencil } from 'lucide-react';
 import { apiFetchJson } from '../utils/apiFetch';
 import { usePanelPolling, useFlashMessage } from '../hooks/usePanelPolling';
+import { PANEL_POLL_SLOW_MS } from '../constants';
 import { cn } from '../lib/utils';
 import { EmptyState } from './ui/EmptyState';
 import { addToast } from './ui/toastStore';
@@ -41,7 +42,7 @@ interface RemindersPanelProps {
   onSendMessage: (text: string, opts?: { source?: string; tool?: string }) => void;
 }
 
-const POLL_MS = 15000;
+const POLL_MS = PANEL_POLL_SLOW_MS;
 const END_OF_TODAY = () => {
   const d = new Date();
   d.setHours(23, 59, 59, 999);

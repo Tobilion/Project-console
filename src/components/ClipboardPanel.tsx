@@ -2,6 +2,7 @@ import { useCallback, useRef, useState } from 'react';
 import { ClipboardCopy, RefreshCw, Copy, Trash2, Pin, CheckCircle2 } from 'lucide-react';
 import { apiFetchJson } from '../utils/apiFetch';
 import { usePanelPolling, useFlashMessage } from '../hooks/usePanelPolling';
+import { PANEL_POLL_CLIPBOARD_MS } from '../constants';
 import { cn } from '../lib/utils';
 
 // Phase 8 (UPGRADE-ROADMAP.md, 2026-08-12): the Clipboard panel — Windows Clipboard History
@@ -21,7 +22,7 @@ interface ClipboardPanelProps {
   onSendMessage: (text: string) => void;
 }
 
-const POLL_MS = 4000;
+const POLL_MS = PANEL_POLL_CLIPBOARD_MS;
 const MAX_PREVIEW = 180;
 
 export function ClipboardPanel({ onSendMessage }: ClipboardPanelProps) {

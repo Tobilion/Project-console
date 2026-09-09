@@ -7,6 +7,7 @@ import { Skeleton } from './ui/Skeleton';
 import type { Project } from '../types';
 import { DashboardProjectCard } from './dashboard/projectCard';
 import type { DashboardEntry } from './dashboard/projectCard';
+import { PANEL_POLL_DASHBOARD_MS } from '../constants';
 
 interface DashboardProps {
   onClose: () => void;
@@ -78,7 +79,7 @@ export const Dashboard = ({ onClose, refreshSignal = 0, projects, workspaceMode 
 
   useEffect(() => {
     fetchDashboard();
-    const id = setInterval(fetchDashboard, 5000);
+    const id = setInterval(fetchDashboard, PANEL_POLL_DASHBOARD_MS);
     return () => clearInterval(id);
   }, [fetchDashboard]);
 
@@ -90,7 +91,7 @@ export const Dashboard = ({ onClose, refreshSignal = 0, projects, workspaceMode 
       if (!cancelled && data) setUsers(data.users || []);
     };
     fetchUsers();
-    const id = setInterval(fetchUsers, 5000);
+    const id = setInterval(fetchUsers, PANEL_POLL_DASHBOARD_MS);
     return () => { cancelled = true; clearInterval(id); };
   }, []);
 

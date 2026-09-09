@@ -2,6 +2,7 @@
 import { Table, RefreshCw, Send } from 'lucide-react';
 import { apiFetchJson } from '../utils/apiFetch';
 import { projectApi } from '../utils/projectApi';
+import { PANEL_POLL_SLOW_MS } from '../constants';
 import { ResultTable } from './spreadsheet/resultTable';
 import { cn } from '../lib/utils';
 import type { Project } from '../types';
@@ -36,7 +37,7 @@ interface SpreadsheetPanelProps {
   tabId?: string | null;
 }
 
-const POLL_MS = 15000;
+const POLL_MS = PANEL_POLL_SLOW_MS;
 const CSV_OPS = ['equals', 'contains', 'greater than', 'less than'];
 
 type Mode = 'sum' | 'average' | 'count' | 'filter';

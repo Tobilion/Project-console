@@ -3,6 +3,7 @@ import { FileText, RefreshCw, Download, FolderOpen, Send, CheckCircle2, ChevronU
 import { apiFetchJson } from '../utils/apiFetch';
 import { projectApi } from '../utils/projectApi';
 import { usePanelPolling, useFlashMessage } from '../hooks/usePanelPolling';
+import { PANEL_POLL_PDF_MS } from '../constants';
 import { cn } from '../lib/utils';
 import { EmptyState } from './ui/EmptyState';
 import type { Project } from '../types';
@@ -26,7 +27,7 @@ interface PdfToolsPanelProps {
   tabId?: string | null;
 }
 
-const POLL_MS = 6000;
+const POLL_MS = PANEL_POLL_PDF_MS;
 
 export function PdfToolsPanel({ project, onSendMessage, tabId = null }: PdfToolsPanelProps) {
   const [files, setFiles] = useState<PdfFileInfo[]>([]);
