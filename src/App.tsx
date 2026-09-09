@@ -370,7 +370,7 @@ function App() {
 
   return (
     <div className="h-screen relative flex flex-col">
-      <GlowOrbs />
+      <GlowOrbs followMouse={profile.colorFollowsMouse} />
 
       {!chatFullscreen && (
         <AppHeader

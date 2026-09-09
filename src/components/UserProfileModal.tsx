@@ -79,6 +79,7 @@ export function UserProfileModal({ open, profile, onClose, onSave, initialCatego
   const [aiRedirectDelayMs, setAiRedirectDelayMs] = useState(profile.aiRedirectDelayMs);
   const [quietStart, setQuietStart] = useState(profile.quietHoursStart === null ? 'off' : String(profile.quietHoursStart));
   const [quietEnd, setQuietEnd] = useState(profile.quietHoursEnd === null ? 'off' : String(profile.quietHoursEnd));
+  const [colorFollowsMouse, setColorFollowsMouse] = useState(profile.colorFollowsMouse);
   const [generalToolsFirst, setGeneralToolsFirst] = useState(profile.generalToolsFirst);
   const [category, setCategory] = useState<CategoryId>((initialCategory as CategoryId) || 'identity');
 
@@ -106,6 +107,7 @@ export function UserProfileModal({ open, profile, onClose, onSave, initialCatego
       setAiRedirectDelayMs(profile.aiRedirectDelayMs);
       setQuietStart(profile.quietHoursStart === null ? 'off' : String(profile.quietHoursStart));
       setQuietEnd(profile.quietHoursEnd === null ? 'off' : String(profile.quietHoursEnd));
+      setColorFollowsMouse(profile.colorFollowsMouse);
       setGeneralToolsFirst(profile.generalToolsFirst);
       if (initialCategory) setCategory(initialCategory as CategoryId);
     }
@@ -137,6 +139,7 @@ export function UserProfileModal({ open, profile, onClose, onSave, initialCatego
       aiRedirectDelayMs, generalToolsFirst,
       quietHoursStart: quietStart === 'off' ? null : Number(quietStart),
       quietHoursEnd: quietEnd === 'off' ? null : Number(quietEnd),
+      colorFollowsMouse,
     });
     onClose();
   };
@@ -301,6 +304,17 @@ export function UserProfileModal({ open, profile, onClose, onSave, initialCatego
                   <div>
                     <p className="text-sm text-fg">General workspace opens Tools first</p>
                     <p className="text-[11px] text-fg-dim mt-0.5">When on, picking a project in General lands on the Tools card grid. When off, it lands straight on chat instead.</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className={sectionCls} data-setting="colorFollowsMouse">
+                <div className="flex items-start gap-3">
+                  <Toggle enabled={colorFollowsMouse} onToggle={() => setColorFollowsMouse(!colorFollowsMouse)}
+                    title={colorFollowsMouse ? 'Background glow follows the mouse' : 'Static background glow'} />
+                  <div>
+                    <p className="text-sm text-fg">Background glow follows the mouse</p>
+                    <p className="text-[11px] text-fg-dim mt-0.5">When on, a soft accent glow tracks the pointer across the app background. Has no effect with reduced-motion on.</p>
                   </div>
                 </div>
               </div>

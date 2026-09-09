@@ -826,7 +826,14 @@ Verified: check-handlers 287/287, check-ws-cases clean, npm test 602/602, tsc cl
   button's hardcoded dark/light halves (it depicts BOTH themes — tokenizing it would make
   both halves the current theme and defeat the icon), and the dashboard card's
   orange/green/red status accents (semantic meanings, not stray literals). Verified: tsc
-  + vite build clean; browser confirmation of the new hues still outstanding.
+  + vite build clean; browser confirmation of the new hues still outstanding. G-4 done
+  (2026-09-09, opencode): sitewide color-follows-mouse as a fourth orb in the existing
+  `GlowOrbs` z-0 ambient layer — 600px accent-teal radial (color-mix, same token language
+  as the static orbs + `SpotlightCard`), one rAF-throttled pointermove listener driving a
+  GPU transform, off-screen until first move, frozen static when prefers-reduced-motion;
+  gated by a new `colorFollowsMouse` profile toggle (default on, Settings → Appearance).
+  Verified: profile default/off/absent round-trip, tsc + vite build clean; how the glow
+  actually looks over real content still needs eyes on a screen (no browser here).
 - Phases H, I, J, L: **not started.**
 
 **Native verification baseline (2026-09-09, opencode on Windows — supersedes the bridged-shell

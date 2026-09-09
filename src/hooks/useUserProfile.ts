@@ -54,6 +54,9 @@ export interface UserProfile {
   // held; history + in-app toasts continue). Null = off; overnight wraps; equal = off.
   quietHoursStart: number | null;
   quietHoursEnd: number | null;
+  // G-4 (2026-09-09): sitewide color-follows-mouse ambient glow (default on; Settings →
+  // Appearance; prefers-reduced-motion freezes it regardless).
+  colorFollowsMouse: boolean;
 }
 
 // Neutral defaults, not a hardcoded person's name/title — matches server/routes/profileRoutes.js's
@@ -85,6 +88,7 @@ const DEFAULT_PROFILE: UserProfile = {
   defaultAiModel: '',
   quietHoursStart: null,
   quietHoursEnd: null,
+  colorFollowsMouse: true,
 };
 
 /** Client state for the user profile persisted to the server (GET/POST /api/profile).

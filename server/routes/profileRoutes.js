@@ -93,6 +93,10 @@ const DEFAULT_PROFILE = {
   // quiet hours silence interruptions, not the record.
   quietHoursStart: null,
   quietHoursEnd: null,
+  // G-4 (2026-09-09): sitewide color-follows-mouse ambient glow. Default true (it extends
+  // the already-shipped static GlowOrbs + SpotlightCard hover language); turn off for a
+  // static background. prefers-reduced-motion freezes it regardless of this setting.
+  colorFollowsMouse: true,
 };
 
 // Only plain, trimmed strings up to a sane length — mirrors the conservative
@@ -154,6 +158,7 @@ function readProfile() {
       defaultAiModel: sanitizeField(p.defaultAiModel, DEFAULT_PROFILE.defaultAiModel),
       quietHoursStart: sanitizeQuietHour(p.quietHoursStart),
       quietHoursEnd: sanitizeQuietHour(p.quietHoursEnd),
+      colorFollowsMouse: sanitizeBool(p.colorFollowsMouse, DEFAULT_PROFILE.colorFollowsMouse),
     };
   } catch {
     // Missing or corrupt file — serve defaults without touching disk.
@@ -207,6 +212,7 @@ export function sanitizeProfile(body, current) {
     // "off" save would silently keep the old window.
     quietHoursStart: 'quietHoursStart' in body ? sanitizeQuietHour(body.quietHoursStart) : current.quietHoursStart,
     quietHoursEnd: 'quietHoursEnd' in body ? sanitizeQuietHour(body.quietHoursEnd) : current.quietHoursEnd,
+    colorFollowsMouse: sanitizeBool(body.colorFollowsMouse, current.colorFollowsMouse),
   };
 }
 
