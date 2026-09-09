@@ -8,6 +8,7 @@
 // identically for the CLI and for typed natural-language phrasing.
 import { listNotes, appendNote, deleteNote } from '../notesStore.js';
 import { getSchedules, removeScheduleById } from '../schedules/scheduleStore.js';
+import { readProfile } from './profileRoutes.js';
 import { resolveProject } from '../state.js';
 import { asyncHandler } from '../asyncHandler.js';
 
@@ -34,15 +35,23 @@ export function registerNoteRoutes(app) {
 
   // Delete by exact note text (same normalized-match contract as deleteNote itself). Mirrors
   // builtinNotes.js's system.notes.delete handler exactly, including the Phase 2.2 cleanup of
-  // any reminder schedules linked to this note's text.
+  // any reminder schedules linked to this note's text — with the same F-5 askBeforeDeleteLinkedNote
+  // policy: a stateless REST call cannot ask, so when the setting is on (the default) linked
+  // reminders are KEPT and reported back (linkedKept) for the caller to surface; only with the
+  // setting explicitly off are they cancelled inline (removedReminders), matching the chat path.
+  // The note itself is deleted first either way, so a failed delete never destroys reminders.
   app.delete('/api/projects/:id/notes', asyncHandler(async (req, res) => {
     const project = resolveProject(req.params.id, req.query.tab);
     if (!project) return res.status(404).json({ error: 'Project not found' });
     const { text } = req.body || {};
+    const result = await deleteNote(project.path, text);
+    if (!result.success) return res.json({ ...result, removedReminders: 0, linkedKept: 0 });
     const linkedReminders = getSchedules()
       .filter((s) => s.kind === 'reminder' && s.linkedNoteText && String(text || '').toLowerCase().includes(s.linkedNoteText.toLowerCase()));
-    for (const r of linkedReminders) removeScheduleById(r.id);
-    const result = await deleteNote(project.path, text);
-    res.json({ ...result, removedReminders: linkedReminders.length });
+    if (readProfile().askBeforeDeleteLinkedNote === false) {
+      for (const r of linkedReminders) removeScheduleById(r.id);
+      return res.json({ ...result, removedReminders: linkedReminders.length, linkedKept: 0 });
+    }
+    res.json({ ...result, removedReminders: 0, linkedKept: linkedReminders.length });
   }));
 }

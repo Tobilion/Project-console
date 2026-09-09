@@ -6,6 +6,7 @@
 // self-sufficient).
 import { appendNote, listNotes, deleteNote } from '../notesStore.js';
 import { getSchedules, removeScheduleById } from '../schedules/scheduleStore.js';
+import { readProfile } from '../routes/profileRoutes.js';
 import { answer } from '../wsReply.js';
 
 const CREATE_PREFIX_RE = /^(?:note|add\s+a\s+note|write\s+a\s+note|jot\s+down)\s*:\s*(.+)$/is;
@@ -58,7 +59,7 @@ export const noteHandlers = {
     answer(ws, `Found **${hits.length}** note${hits.length === 1 ? '' : 's'} matching "${q}":\n\n${rows.join('\n')}`);
   },
 
-  'system.notes.delete': async (ws, action, input, project) => {
+  'system.notes.delete': async (ws, action, input, project, sessionContext) => {
     // Support both "delete the note: <text>" and bare "delete <text>" after the command prefix.
     const text = input
       .replace(/^(?:delete|remove|clear)\s+(?:the\s+)?(?:note|notes?)\s*(?::|about|for|with)?\s*/i, '')
@@ -70,25 +71,38 @@ export const noteHandlers = {
     }
     // Phase 2.2: before deleting the note, check for reminders linked to this note's text.
     // The linkedNoteText field on reminder schedules is set when a reminder is created "about"
-    // a note. If found, the answer lists them and asks the user to confirm; the profile's
-    // askBeforeDeleteLinkedNote setting controls whether this prompt fires.
+    // a note. F-5 (2026-09-09): the profile's askBeforeDeleteLinkedNote setting (default true)
+    // is now actually respected — previously linked reminders were always auto-cancelled even
+    // when the user had asked to be prompted. The note itself is deleted first: when that
+    // fails the reminders stay untouched (previously they were removed before the note
+    // delete was even attempted, so a failed delete still destroyed them).
     const linkedReminders = getSchedules()
       .filter((s) => s.kind === 'reminder' && s.linkedNoteText && text.toLowerCase().includes(s.linkedNoteText.toLowerCase()));
-    let removedReminders = 0;
-    if (linkedReminders.length > 0) {
-      for (const r of linkedReminders) {
-        removeScheduleById(r.id);
-        removedReminders++;
-      }
-    }
     const result = await deleteNote(project.path, text);
     if (!result.success) {
       answer(ws, result.error);
       return;
     }
-    const linkedNoteHint = removedReminders > 0
-      ? ` (and cancelled ${removedReminders} linked reminder${removedReminders > 1 ? 's' : ''})`
-      : '';
-    answer(ws, `🗑️ Deleted note: ${result.data}${linkedNoteHint}`);
+    if (linkedReminders.length === 0) {
+      answer(ws, `🗑️ Deleted note: ${result.data}`);
+      return;
+    }
+    if (readProfile().askBeforeDeleteLinkedNote === false) {
+      let removedReminders = 0;
+      for (const r of linkedReminders) {
+        removeScheduleById(r.id);
+        removedReminders++;
+      }
+      answer(ws, `🗑️ Deleted note: ${result.data} (and cancelled ${removedReminders} linked reminder${removedReminders > 1 ? 's' : ''})`);
+      return;
+    }
+    sessionContext.pendingNoteDelete = {
+      projectId: project.id,
+      noteText: result.data,
+      reminderIds: linkedReminders.map((r) => r.id),
+    };
+    const listed = linkedReminders.map((r) => `- ${r.text || r.id}`).join('\n');
+    const plural = linkedReminders.length > 1;
+    answer(ws, `🗑️ Deleted note: ${result.data}\n\nIt has ${linkedReminders.length} linked reminder${plural ? 's' : ''}:\n${listed}\n\nReply **yes** to cancel ${plural ? 'them' : 'it'} too, or **no** to keep ${plural ? 'them' : 'it'}.`);
   },
 };

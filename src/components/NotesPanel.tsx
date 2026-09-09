@@ -131,7 +131,7 @@ export function NotesPanel({ project, onSendMessage, tabId = null }: NotesPanelP
   const handleDelete = async () => {
     if (!selected || !project?.id) return;
     const noteText = selected.text.split('\n')[0];
-    const result = await apiFetchJson<{ success: boolean; data?: string; error?: string; removedReminders?: number }>(
+    const result = await apiFetchJson<{ success: boolean; data?: string; error?: string; removedReminders?: number; linkedKept?: number }>(
       projectApi(`/api/projects/${encodeURIComponent(project.id)}/notes`, tabId),
       { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: noteText }) }
     );
@@ -139,7 +139,10 @@ export function NotesPanel({ project, onSendMessage, tabId = null }: NotesPanelP
     if (!result.success) { setError(result.error || 'Could not delete the note.'); return; }
     setError(null);
     const linkedHint = result.removedReminders ? ` (and ${result.removedReminders} linked reminder${result.removedReminders > 1 ? 's' : ''})` : '';
-    flashSent(`Deleted: ${result.data}${linkedHint}`);
+    // F-5 (2026-09-09): with askBeforeDeleteLinkedNote on (the default) the REST delete keeps
+    // linked reminders instead of auto-cancelling — say so, pointing at the Reminders panel.
+    const keptHint = result.linkedKept ? ` (${result.linkedKept} linked reminder${result.linkedKept > 1 ? 's' : ''} kept — cancel in Reminders if unneeded)` : '';
+    flashSent(`Deleted: ${result.data}${linkedHint}${keptHint}`);
     setSelectedText(null);
     fetchNotes();
   };

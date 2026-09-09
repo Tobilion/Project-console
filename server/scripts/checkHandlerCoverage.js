@@ -839,6 +839,46 @@ const notesFile = path.join(notesRoot, '.console', 'notes.md');
 eq('notes store: file written under .console/notes.md', fs.existsSync(notesFile), true);
 fs.rmSync(notesRoot, { recursive: true, force: true });
 
+// F-5 (2026-09-09): askBeforeDeleteLinkedNote is respected. A note delete with linked
+// reminders stages a pendingNoteDelete yes/no question instead of auto-cancelling (profile
+// default is ask=true; the rows assert whichever branch the repo's tracked profile selects,
+// same tolerance pattern as the profile-state-dependent clipboard rows). Placed after the
+// notes temp-dir smoke so it reuses that block's notesStore import (appendNote/listNotes).
+const { addSchedule, getSchedules } = await import(pathToFileURL(base + 'schedules/scheduleStore.js').href);
+const { handlePendingNoteDeleteReply } = await import(pathToFileURL(base + 'wsHandlers/connectionInterceptors.js').href);
+const { readProfile } = await import(pathToFileURL(base + 'routes/profileRoutes.js').href);
+const askLinked = readProfile().askBeforeDeleteLinkedNote !== false;
+const linkedRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'console-noteslinked-'));
+const linkedProj = {
+  id: 'noteslinked-p', name: 'NotesLinked', path: linkedRoot, workspaceType: 'general',
+  config: { projectName: 'NotesLinked', entries: [] }, contextFiles: [],
+  parsedKnowledge: {}, codebaseIndex: { languages: [], keyFiles: {} },
+};
+await appendNote(linkedRoot, 'renew license tomorrow', 'local');
+const linkedSch = addSchedule({ projectId: 'noteslinked-p', projectName: 'NotesLinked', spec: { type: 'once', fireAt: Date.now() + 3600000 }, text: 'renew license', kind: 'reminder', linkedNoteText: 'renew license', createdBy: 'local' });
+const noteCtx = {};
+sent.length = 0;
+await handleBuiltinIntent(ws, 'system.notes.delete', 'delete note: renew license tomorrow', linkedProj, noteCtx);
+if (askLinked) {
+  eq('notes delete: ask path questions instead of auto-cancelling', ws.sent.length === 1 && ws.sent[0].type === 'answer' && /linked reminder/.test(ws.sent[0].data) && /yes/.test(ws.sent[0].data) && noteCtx.pendingNoteDelete?.reminderIds?.includes(linkedSch.id), true);
+  eq('notes delete: note itself is gone', (await listNotes(linkedRoot)).length === 0, true);
+  sent.length = 0;
+  const yesConsumed = await handlePendingNoteDeleteReply(ws, linkedProj, 'noteslinked-p', 'yes', noteCtx);
+  eq('notes delete: yes cancels the staged reminder', yesConsumed === true && ws.sent.length === 2 && ws.sent[0].type === 'answer' && /Cancelled 1 linked/.test(ws.sent[0].data) && ws.sent[1].type === 'end' && !getSchedules().some((s) => s.id === linkedSch.id), true);
+  const linkedSch2 = addSchedule({ projectId: 'noteslinked-p', projectName: 'NotesLinked', spec: { type: 'once', fireAt: Date.now() + 3600000 }, text: 'renew license', kind: 'reminder', linkedNoteText: 'renew license', createdBy: 'local' });
+  noteCtx.pendingNoteDelete = { projectId: 'noteslinked-p', noteText: 'renew license tomorrow', reminderIds: [linkedSch2.id] };
+  sent.length = 0;
+  const noConsumed = await handlePendingNoteDeleteReply(ws, linkedProj, 'noteslinked-p', 'no', noteCtx);
+  eq('notes delete: no keeps the staged reminder', noConsumed === true && ws.sent.length === 2 && /Kept the linked/.test(ws.sent[0].data) && ws.sent[1].type === 'end' && getSchedules().some((s) => s.id === linkedSch2.id), true);
+  noteCtx.pendingNoteDelete = { projectId: 'noteslinked-p', noteText: 'x', reminderIds: [linkedSch2.id] };
+  sent.length = 0;
+  const otherConsumed = await handlePendingNoteDeleteReply(ws, linkedProj, 'noteslinked-p', 'what time is it', noteCtx);
+  eq('notes delete: unrelated reply backtracks to the pipeline', otherConsumed === false && noteCtx.pendingNoteDelete == null && ws.sent.length === 0, true);
+} else {
+  eq('notes delete: opt-out auto-cancels with a hint', ws.sent.length === 1 && ws.sent[0].type === 'answer' && /cancelled 1 linked/.test(ws.sent[0].data) && !getSchedules().some((s) => s.id === linkedSch.id), true);
+}
+fs.rmSync(linkedRoot, { recursive: true, force: true });
+
 // --- CSV TOOLS (Phase 7, 2026-08-12) -------------------------------------------
 // Engine unit shapes + a temp-dir smoke with a real CSV (dispatch through the handlers,
 // which read the project path from the project object — all read-only).

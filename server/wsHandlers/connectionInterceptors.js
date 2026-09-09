@@ -3,6 +3,7 @@ import { getFallbackSuggestions } from '../matcher.js';
 import { handleBuiltinIntent } from './builtinIntents.js';
 import { runCommandEntry } from './matchedEntry.js';
 import { addToClaudeMd } from '../projectMemory.js';
+import { removeScheduleById } from '../schedules/scheduleStore.js';
 import { pendingMemorySuggestions } from './connectionState.js';
 import { parseFileNameOnly } from './builtinHelpers.js';
 import { answerDocMatches, pushTargetQuestion } from './builtinChitChat.js';
@@ -213,6 +214,36 @@ export async function handlePendingFileQuestionReply(ws, project, projectId, inp
   await handleBuiltinIntent(ws, pending.intent, trimmed, project, sessionContext);
   ws.send(JSON.stringify({ type: 'end' }));
   return true;
+}
+
+export async function handlePendingNoteDeleteReply(ws, project, projectId, input, sessionContext) {
+  // F-5 (2026-09-09): reply to system.notes.delete's "N linked reminders — cancel them too?"
+  // question (staged as pendingNoteDelete when the profile's askBeforeDeleteLinkedNote is on,
+  // the default). "yes" cancels exactly the staged ids; "no"/"cancel" keeps them (aborting
+  // the extra delete is the same outcome as declining it, matching the sibling interceptors'
+  // cancel semantics); anything else backtracks to the normal pipeline (same rule as
+  // pendingDisambiguation/pendingFileQuestion above).
+  const pending = sessionContext.pendingNoteDelete;
+  if (!pending || pending.projectId !== projectId) return false;
+  const lower = input.trim().toLowerCase();
+  if (/^(yes|yeah|yep|sure|ok|okay|go ahead|do it|please)\b/.test(lower)) {
+    sessionContext.pendingNoteDelete = null;
+    let removed = 0;
+    for (const id of pending.reminderIds) {
+      if (removeScheduleById(id)) removed++;
+    }
+    ws.send(JSON.stringify({ type: 'answer', data: removed > 0 ? `Cancelled ${removed} linked reminder${removed > 1 ? 's' : ''}.` : 'Those reminders are already gone.' }));
+    ws.send(JSON.stringify({ type: 'end' }));
+    return true;
+  }
+  if (/^(no|nope|nah|keep|not now|skip|cancel|nevermind|never mind)\b/.test(lower)) {
+    sessionContext.pendingNoteDelete = null;
+    ws.send(JSON.stringify({ type: 'answer', data: 'Kept the linked reminders — only the note was deleted.' }));
+    ws.send(JSON.stringify({ type: 'end' }));
+    return true;
+  }
+  sessionContext.pendingNoteDelete = null;
+  return false;
 }
 
 export async function handlePendingMemorySuggestionReply(ws, project, lowerInput) {

@@ -602,7 +602,22 @@ Verified: check-handlers 287/287, check-ws-cases clean, npm test 602/602, tsc cl
   so the choice now survives reload instead of silently reverting. `tsc` clean; browser
   click-through of the pill with/without a project still outstanding (no browser here).
   Still open: E-2's snooze, E-3's opt-in surfacing, E-6's answer-to-toast audit.
-- Phases C, F, G, H, I, J, L: **not started.**
+- **Phase F: started.** F-5(3) done (2026-09-09, opencode): `system.notes.delete` now
+  actually reads `askBeforeDeleteLinkedNote` (default true) — with linked reminders present
+  it deletes the note first, then stages a `pendingNoteDelete` yes/no question (new
+  `handlePendingNoteDeleteReply` interceptor in the `handleExecute` chain, same
+  yes/no/backtrack contract as the sibling pending-reply interceptors) instead of always
+  auto-cancelling; opt-out keeps the old auto-cancel hint. Bonus ordering fix in the same
+  handler: reminders were removed BEFORE the note delete was attempted, so a failed delete
+  still destroyed them — now the note delete runs first and a failure leaves reminders
+  untouched. REST mirror (`DELETE /api/projects/:id/notes`) applies the same policy without
+  diverging: stateless calls can't ask, so with the setting on linked reminders are kept and
+  reported as additive `linkedKept` (panel shows a "kept — cancel in Reminders if unneeded"
+  hint), only auto-cancelled with the setting off. 5 new check-handlers rows (ask/yes/no/
+  backtrack/opt-out). Verified: check-handlers 292/292, check-ws-cases 137/137, npm test
+  602/602, tsc clean. Still open: F-1/F-2(already done via A-14)/F-3/F-4/F-5(1)(2)/F-6/F-7/
+  F-8/F-9/F-10, and F-11's second card type (notes).
+- Phases C, G, H, I, J, L: **not started.**
 
 **Native verification baseline (2026-09-09, opencode on Windows — supersedes the bridged-shell
 caveat below)**: full suite green at commit e0bc8ed before any new work — npm test 602/602,
