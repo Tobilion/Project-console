@@ -67,6 +67,7 @@ export const BUILTIN_INTENTS = new Set([
   'system.chit_chat.explain_followup', 'system.chit_chat.undo', 'system.chit_chat.deploy',
   'system.chit_chat.yes_no', 'system.chit_chat.farewell', 'system.chit_chat.identity',
   'system.chit_chat.needs_ai_mode', 'system.chit_chat.ack', 'system.chit_chat.empathy', 'system.chit_chat.joke',
+  'system.chit_chat.troubleshoot',
   'project.knowledge.overview', 'project.knowledge.stack', 'project.knowledge.commands',
   'project.knowledge.gotchas', 'project.knowledge.architecture',
   'project.context.structure', 'project.context.languages', 'project.context.file_count',

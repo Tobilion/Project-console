@@ -15,6 +15,7 @@ export const INTENT_DESCRIPTIONS = {
   'system.chit_chat.gratitude': 'Saying thanks — no action needed.',
   'system.chit_chat.clear': 'Clear/reset/wipe this chat window.',
   'system.chit_chat.help': 'Asking what the assistant can do / list available commands.',
+  'system.chit_chat.troubleshoot': 'Something is broken / run diagnostics and try to fix it (K-11).',
   'system.chit_chat.git_status': 'Check git status / uncommitted changes (read-only).',
   'system.chit_chat.explain_followup': 'Asking for more detail on whatever was just discussed.',
   'system.chit_chat.undo': 'Undo/revert the last risky change via git.',

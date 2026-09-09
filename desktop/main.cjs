@@ -31,6 +31,7 @@ const { spawn } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 const http = require('http');
+const { pathToFileURL } = require('url');
 
 // The CLI's ELECTRON_RUN_AS_NODE crash (2026-08-29) showed an entry point with no
 // top-level handler lives or dies on its first throw. The desktop shell is the only
@@ -281,37 +282,88 @@ async function findRunningConsole() {
   return null;
 }
 
+// K-11 (2026-09-08/09): "add a 'Troubleshoot' button on the fatal-error screen that runs
+// relevant doctor checks and offers matching auto-fixes before retry." The fatal-error page is
+// a bare `data:` URL with no preload/contextBridge wiring (see createWindow above), so a real
+// clickable button there would need an IPC round-trip this file doesn't have plumbing for yet
+// — a bigger, riskier change to the app's boot path than this pass should take without being
+// able to click-test it. Implemented instead as an AUTOMATIC diagnostic that runs BEFORE the
+// error page is even shown: server/doctor.js is plain JS with no server-graph imports (its own
+// documented "must work when the server can't boot" contract — exactly this situation), so it
+// can be `import()`-ed directly from the Electron main process even though the console server
+// itself just failed to start. Findings + any safe auto-fixes are appended to the error detail
+// text, so by the time the user clicks Retry, obvious fixable issues (stale daemon lock files,
+// orphaned temp files, etc. — see K-10) are often already gone. Every step is wrapped and
+// time-boxed so a doctor failure or hang can NEVER block or break showing the original error —
+// this is a pure best-effort addition, never a gate.
+async function runQuickDiagnosticsSafe() {
+  const withTimeout = (p, ms) => Promise.race([
+    p,
+    new Promise((_, reject) => setTimeout(() => reject(new Error('diagnostic timeout')), ms)),
+  ]);
+  try {
+    const rootDir = app.isPackaged ? process.resourcesPath : path.resolve(__dirname, '..');
+    const doctorPath = path.join(rootDir, 'server', 'doctor.js');
+    if (!fs.existsSync(doctorPath)) return null;
+    const mod = await withTimeout(import(pathToFileURL(doctorPath).href), 4000);
+    const checks = await withTimeout(mod.runDoctorChecks(), 4000);
+    const problems = checks.filter((c) => c.status !== 'ok');
+    if (problems.length === 0) return null;
+    const lines = ['Troubleshoot — automatic diagnostic:', ...problems.map((c) => `- ${c.name}: ${c.detail}`)];
+    try {
+      const fixes = await withTimeout(mod.autoFixDoctor(), 4000);
+      if (fixes.length > 0) lines.push('', 'Auto-fixed:', ...fixes.map((f) => `- ${f}`));
+    } catch {
+      // Auto-fix is a bonus on top of the findings above — a failure here still leaves the
+      // findings themselves intact in `lines`.
+    }
+    return lines.join('\n');
+  } catch {
+    return null;
+  }
+}
+
 /** Surface a fatal startup failure: error page in the window + Retry/Quit dialog. */
 function showFatalError(message, detail) {
-  const page = errorPageHtml(message, detail);
-  if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.loadURL(page);
-    mainWindow.focus();
-  } else {
-    createWindow(page);
-  }
-  try {
-    dialog.showMessageBox({
-      type: 'error',
-      title: 'Project Console failed to start',
-      message,
-      detail: detail || 'See the window for the full error.',
-      buttons: ['Retry', 'Quit'],
-      defaultId: 0,
-      cancelId: 1,
-    }).then(({ response }) => {
-      if (response === 0) {
-        // Restart the whole shell (the server child is already dead in every path that
-        // reaches here, or is killed by before-quit on the way out).
-        app.relaunch();
-        app.exit(0);
-      } else {
-        app.quit();
-      }
-    }).catch(() => {});
-  } catch {
-    // Dialog unavailable (headless) — the window page still shows the error.
-  }
+  (async () => {
+    let fullDetail = detail;
+    try {
+      const diagnostic = await runQuickDiagnosticsSafe();
+      if (diagnostic) fullDetail = detail ? `${detail}\n\n${diagnostic}` : diagnostic;
+    } catch {
+      // runQuickDiagnosticsSafe already catches everything internally — this is belt-and-
+      // braces so a truly unexpected throw still can't stop the error screen from showing.
+    }
+    const page = errorPageHtml(message, fullDetail);
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.loadURL(page);
+      mainWindow.focus();
+    } else {
+      createWindow(page);
+    }
+    try {
+      dialog.showMessageBox({
+        type: 'error',
+        title: 'Project Console failed to start',
+        message,
+        detail: fullDetail || 'See the window for the full error.',
+        buttons: ['Retry', 'Quit'],
+        defaultId: 0,
+        cancelId: 1,
+      }).then(({ response }) => {
+        if (response === 0) {
+          // Restart the whole shell (the server child is already dead in every path that
+          // reaches here, or is killed by before-quit on the way out).
+          app.relaunch();
+          app.exit(0);
+        } else {
+          app.quit();
+        }
+      }).catch(() => {});
+    } catch {
+      // Dialog unavailable (headless) — the window page still shows the error.
+    }
+  })();
 }
 
 function getPersistentDataDir() {

@@ -189,6 +189,22 @@ const BATTERIES = [
     ],
   },
   {
+    // K-11 (2026-09-08/09): the troubleshoot flow's chat entry point — reached either directly
+    // by the user or via the "Troubleshoot" suggestion chip a failed command's answer offers
+    // (server/executorClose.js sends the exact literal 'troubleshoot' back through chat).
+    // Pre-semantic-pinned (server/preSemanticOverrides.js) so these never drift with embedding
+    // changes; the how_do_i question-shapes above ("why isnt this working" etc.) are a
+    // deliberately DIFFERENT, read-only intent and must not collide with these executing ones.
+    name: 'TROUBLESHOOT (K-11, 2026-09-08)',
+    items: [
+      ['troubleshoot', 'BUILTIN=system.chit_chat.troubleshoot'],
+      ['troubleshoot this', 'BUILTIN=system.chit_chat.troubleshoot'],
+      ['run diagnostics', 'BUILTIN=system.chit_chat.troubleshoot'],
+      ['diagnose the problem', 'BUILTIN=system.chit_chat.troubleshoot'],
+      ['check for problems', 'BUILTIN=system.chit_chat.troubleshoot'],
+    ],
+  },
+  {
     name: 'BASICS (2026-08-03 phase: open/copy/remote/processes/session)',
     items: [
       ['open the project in vs code', 'BUILTIN=project.action.open_in_vscode'],

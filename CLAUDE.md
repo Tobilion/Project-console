@@ -167,6 +167,56 @@ actually disappears from `GET /api/reminders` (i.e. the DELETE really landed). P
 item, notes is the natural second card type to build once this one is proven live — not
 started.
 
+**K-11 progress (2026-09-09)**: implemented both halves the spec calls for.
+(1) Chat-side: new `system.chit_chat.troubleshoot` builtin intent
+(`server/wsHandlers/builtinChitChat.js`) runs the exact same `runDoctorChecks()`/
+`autoFixDoctor()` K-10 already built — one source of truth for "what's wrong" and "how to fix
+it" across chat, CLI, and REST. Reachable by typing "troubleshoot" (and a few natural variants
+— "run diagnostics", "diagnose the problem", "check for problems") or by tapping a new
+"Troubleshoot" suggestion chip. `server/executorClose.js`'s command-failure path now checks
+whether `offerPortRetry`/`offerUpstreamRetry` (both already returned a boolean, previously
+discarded) actually fired for a genuine failure (code !== 0); if NEITHER recognized it, it
+sends a generic "what likely went wrong" line with that chip — extending K-5's "give specific,
+actionable error text" pattern to the general case those two specific retry offers don't cover.
+The chip's exact text ("troubleshoot") is pinned via a literal `server/preSemanticOverrides.js`
+entry (plus 3 natural-phrasing variants) so it reaches the handler with zero embedding-drift
+risk, same guarantee "commit"/"comit" already get. New `TROUBLESHOOT (K-11, 2026-09-08)`
+battery added to `matcherBatteries.js`.
+(2) Fatal-boot-screen side: `desktop/main.cjs`'s `showFatalError` now runs an AUTOMATIC
+diagnostic (new `runQuickDiagnosticsSafe()`) before the error page/dialog ever render —
+`server/doctor.js` is plain JS with zero server-graph imports (its own "must work when the
+server can't boot" contract, exactly this situation), so it can be `import()`-ed directly from
+the Electron main process even though the console server itself just failed. Findings and any
+safe auto-fixes are appended to the error detail text the user sees, so obvious fixable issues
+are often already gone by the time they click Retry. Deliberately NOT an interactive button —
+the fatal-error page is a bare `data:` URL with no preload/contextBridge IPC wiring, and adding
+real click-to-run-fix interactivity there is a bigger, riskier change to the app's boot path
+than this pass should take without being able to click-test it in a real Electron window (this
+bridge environment cannot launch one). Every diagnostic step is wrapped in try/catch and a
+4-second timeout race so a doctor failure or hang can NEVER block or break showing the original
+fatal error — it is a pure best-effort addition, verified by construction to degrade to exactly
+the pre-K-11 behavior (`fullDetail = detail` unchanged) on any failure.
+
+Live-verified: the chat-side handler's core logic (doctor check → format → auto-fix → re-check
+→ format) was run standalone against this repo's real environment (found the same 2
+pre-existing warnings K-10's testing surfaced — TTY detection, Ollama unreachable — neither has
+an auto-fix yet, confirmed correctly reported as such); the exact 5 trigger phrasings were
+confirmed against `findPreSemanticOverride()` directly, all 5 hit `system.chit_chat.
+troubleshoot` and the pre-existing `why isnt this working` -> `how_do_i` pin is unaffected.
+`runQuickDiagnosticsSafe`'s exact logic (same rootDir resolution, same doctor.js path, same
+dynamic import + timeout + formatting) was extracted and run standalone twice: once against
+the real repo (correctly found + formatted the same 2 warnings) and once against a
+deliberately-missing doctor path (confirmed it returns `null` cleanly with no throw, proving
+the fatal-error screen degrades safely). **NOT verified**: the actual builtin-intent handler
+function could not be invoked directly in this environment (`builtinChitChat.js` transitively
+imports `executor.js` -> `executorSandbox.ts`, hitting the SAME `@esbuild/win32-x64` vs
+`linux-x64` platform mismatch documented everywhere else in this session) — its logic is
+byte-identical to what was verified standalone above, but the wrapper itself wasn't exercised.
+The Electron fatal-error path was never triggered in a real packaged or dev Electron window
+(this bridge cannot launch one) — opencode should force a real boot failure (e.g. rename
+`server/index.js` temporarily) and confirm the error screen shows the diagnostic text and the
+Retry flow still works exactly as before.
+
 **Progress so far** (chronological, oldest first):
 - **Phase A: DONE.** A-1, A-2, A-3, A-5, A-6, A-7, A-9, A-11 (commit 98cd5c0, building on
   7e8b322). A-10 verified already covered by the 2026-08-26/08-28 audit passes (bare commit,

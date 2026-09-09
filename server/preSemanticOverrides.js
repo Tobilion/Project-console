@@ -461,6 +461,18 @@ export const PRE_SEMANTIC_OVERRIDES = [
   { intent: 'csv.average', pattern: /^(?:average|mean|avg)\s+(?:the\s+)?(?:column\s+)?[\w ]+?\s+(?:in|from|of)\s+[\w.-]+\.csv\b/i },
   { intent: 'csv.filter', pattern: /^(?:filter|show rows in|show rows from)\s+[\w.-]+\.csv\s+where\s+\S/i },
   { intent: 'csv.count', pattern: /^(?:count rows in|count rows from|how many rows in)\s+[\w.-]+\.csv\s+where\s+\S/i },
+  // K-11 (2026-09-08/09): the "Troubleshoot" suggestion chip a failed command's answer offers
+  // (server/executorClose.js) sends this exact phrase back as a normal chat message, and it
+  // must hit its handler with zero ambiguity regardless of embedding drift — a literal
+  // pre-semantic pin is the same guarantee "commit"/"comit" get for git_commit above. Also
+  // covers the natural phrasings a user would type on their own ("run diagnostics", "diagnose
+  // the problem", "check for problems") without colliding with the already-pinned how_do_i
+  // question shapes above ("why isnt this working" etc. stay pinned to how_do_i — troubleshoot
+  // is the executing/diagnosing counterpart to that read-only guidance).
+  { intent: 'system.chit_chat.troubleshoot', pattern: /^troubleshoot(\s+(?:this|it))?$/i },
+  { intent: 'system.chit_chat.troubleshoot', pattern: /^run\s+diagnostics?$/i },
+  { intent: 'system.chit_chat.troubleshoot', pattern: /^diagnose\s+(?:the\s+)?(?:problem|issue|error)$/i },
+  { intent: 'system.chit_chat.troubleshoot', pattern: /^check\s+for\s+problems?$/i },
 ];
 
 /**

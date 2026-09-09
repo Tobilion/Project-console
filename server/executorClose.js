@@ -83,8 +83,23 @@ export function createCloseHandler(ctx) {
       // (turnKey set) owns its retries inside the AI tool loop — a confirm card interrupting
       // the turn would go stale before the user could meaningfully act on it.
       if (code !== null && !ctx.turnKey) {
-        offerPortRetry({ ws: ctx.ws, projectId, command: finalCommand, stdout: ctx.getStdout(), stderr: ctx.getStderr(), isDev: ctx.isDev, exitCode: code });
-        offerUpstreamRetry({ ws: ctx.ws, projectId, command: finalCommand, stdout: ctx.getStdout(), stderr: ctx.getStderr(), exitCode: code });
+        const portRetryOffered = offerPortRetry({ ws: ctx.ws, projectId, command: finalCommand, stdout: ctx.getStdout(), stderr: ctx.getStderr(), isDev: ctx.isDev, exitCode: code });
+        const upstreamRetryOffered = offerUpstreamRetry({ ws: ctx.ws, projectId, command: finalCommand, stdout: ctx.getStdout(), stderr: ctx.getStderr(), exitCode: code });
+        // K-11 (2026-09-08/09): "in chat, append a specific 'what likely went wrong' line plus
+        // an actionable fix chip on tool/command failures" — the generic fallback for a genuine
+        // failure (code !== 0) that NEITHER specific retry offer above recognized (a port
+        // conflict or a missing git upstream each already get their own one-click fix card).
+        // The "troubleshoot" suggestion sends that exact phrase back through the normal chat
+        // pipeline, where a literal pre-semantic override (server/preSemanticOverrides.js)
+        // guarantees it hits system.chit_chat.troubleshoot's doctor-backed handler regardless
+        // of embedding drift.
+        if (code !== 0 && !portRetryOffered && !upstreamRetryOffered && ctx.ws && ctx.ws.readyState === 1) {
+          ctx.ws.send(JSON.stringify({
+            type: 'answer',
+            data: `That command exited with an error (code ${code}). Could be a config issue, a missing dependency, or something environmental — tap below to run a quick diagnostic.`,
+            suggestions: ['troubleshoot'],
+          }));
+        }
       }
 
       sendEvent('end', `\nProcess exited with code ${code}`);
