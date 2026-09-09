@@ -140,8 +140,17 @@ function App() {
     fetchToolPanels();
     setActiveToolPanel('notifications');
     setToolsOpen(true);
+    // E-4 fix: actually dismiss all notifications server-side, not just clear local state.
+    // Without the API call the count resurfaces on the next poll cycle.
+    if (unreadNotificationsCount > 0) {
+      apiFetchJson('/api/notifications/dismiss', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: 'all' }),
+      }).catch(() => {});
+    }
     setUnreadNotificationsCount(0);
-  }, [fetchToolPanels, setActiveToolPanel, setToolsOpen]);
+  }, [fetchToolPanels, setActiveToolPanel, setToolsOpen, unreadNotificationsCount]);
 
   // Phase 4.1: open Settings at a specific category + field. Consumed by chat/navigation
   // hooks that dispatch 'lpc:open-settings' with {category, field}.
