@@ -1,6 +1,7 @@
 import fs from 'fs/promises';
 import path from 'path';
 import { ensureGitignored } from './conversationStore.js';
+import { getTuning } from './tuningStore.js';
 
 // User-authored scratch notes, stored at <project>/.console/notes.md — a THIRD store,
 // deliberately distinct from memoryStore.js (AI-authored durable facts in memory.md) and
@@ -12,6 +13,12 @@ const NOTES_FILE = 'notes.md';
 
 const MAX_ENTRIES = 200;
 const MAX_ENTRY_CHARS = 1000;
+
+// B.3 (2026-09-09): the entry cap is a live tuning knob (Settings → Advanced → Tuning);
+// the exported const above stays the documented default (see tuningStore.js).
+function maxEntries() {
+  return getTuning('MAX_NOTES_ENTRIES', MAX_ENTRIES);
+}
 
 // Per-project promise chain serializing appendNote's read-modify-write (same reasoning as
 // memoryStore.js's lock: two concurrent writes would both read the base file and last-writer-
@@ -82,7 +89,7 @@ export async function appendNote(projectPath, content, createdBy = 'local') {
     const date = new Date().toISOString().slice(0, 10);
     const author = createdBy && createdBy !== 'local' ? ` · by ${createdBy}` : '';
     lines.push(`- ${trimmed} (${date})${author}`);
-    const capped = lines.slice(-MAX_ENTRIES);
+    const capped = lines.slice(-maxEntries());
 
     await fs.mkdir(path.dirname(filePath), { recursive: true });
     await ensureGitignored(projectPath);

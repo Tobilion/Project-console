@@ -379,7 +379,14 @@ Verified: check-handlers 287/287, check-ws-cases clean, npm test 602/602, tsc cl
    state from it (falling back to `qwen2.5-coder:7b`); the toggle's existing validity check
    keeps an uninstalled pick falling back to auto-pick. Verified: profile default/save/
    junk-fallback round-trip, tsc + vite build clean. Browser confirmation (pick → reload
-   → still picked) still outstanding. B.4's matcher-vocabulary
+   → still picked) still outstanding. B.3's caps row is also done (2026-09-09, opencode):
+   `MAX_NOTES_ENTRIES`/`MAX_MEMORY_ENTRIES` (both 200, bounds 50–2000) are live
+   tuningStore knobs read via `getTuning` at append time (the module consts stay the
+   documented defaults), with a "Storage caps" group in the Tuning UI; `MAX_ENTRY_CHARS`
+   and `IGNORE_DIRS` deliberately stay code-level (input-validation shape and a
+   correctness list, not user preferences — documented here instead of a knob). Verified:
+   isolated-CONSOLE_DATA_DIR round-trip (defaults/set/read-back/bounds + unknown-key
+   rejection), lint clean, check-handlers 322/322. B.4's matcher-vocabulary
    item is also done (2026-09-09, opencode): new `FALLBACK_SCORE_FLOOR = 0.45` in
    `intentRegistry.js` replaces the three matching weak-stage literals (`nlpEngine.classify`,
    `matcher.js`'s re-check, `matchHelpers.computeDidYouMean` — all "a weak guess surfacing"

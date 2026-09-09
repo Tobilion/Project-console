@@ -48,6 +48,13 @@ const TUNING_GROUPS: { label: string; keys: { name: string; hint: string; descri
       { name: 'REASON_MODE_NUM_PREDICT', hint: 'reason-mode token budget', describe: 'How many tokens the model is allowed for a "Reason" toggle response, above the normal chat ceiling.' },
     ],
   },
+  {
+    label: 'Storage caps',
+    keys: [
+      { name: 'MAX_NOTES_ENTRIES', hint: 'max notes per project', describe: 'How many scratch notes a project keeps before the oldest are dropped. Applies uniformly to every project.' },
+      { name: 'MAX_MEMORY_ENTRIES', hint: 'max AI memory entries per project', describe: 'How many durable facts the AI keeps per project before the oldest are dropped.' },
+    ],
+  },
 ];
 
 export function TuningSection() {

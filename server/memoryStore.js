@@ -2,6 +2,7 @@ import fs from 'fs/promises';
 import path from 'path';
 import { ensureGitignored } from './conversationStore.js';
 import { isSemanticallyRedundant } from './memoryDedupe.js';
+import { getTuning } from './tuningStore.js';
 
 // Persistent, cross-session AI memory — a per-project plain-text file the AI itself writes to
 // during AI-mode conversations (see the saveMemory tool in tools.js), so facts/preferences/
@@ -25,6 +26,7 @@ const MAX_PROMPT_CHARS = 4000;
 
 // Hard cap on total entries so the file can't grow unbounded with no review — oldest entries are
 // dropped first once this is exceeded. Generous enough that this should rarely actually bite.
+// B.3 (2026-09-09): live tuning knob (MAX_MEMORY_ENTRIES); the const below stays the default.
 const MAX_ENTRIES = 200;
 
 // Per-project promise chain serializing appendMemoryEntry's read-modify-write: two concurrent
@@ -139,7 +141,7 @@ export async function appendMemoryEntry(projectPath, content) {
 
     const date = new Date().toISOString().slice(0, 10);
     lines.push(`- ${trimmed} (${date})`);
-    const capped = lines.slice(-MAX_ENTRIES);
+    const capped = lines.slice(-getTuning('MAX_MEMORY_ENTRIES', MAX_ENTRIES));
 
     await fs.mkdir(path.dirname(filePath), { recursive: true });
     await ensureGitignored(projectPath);

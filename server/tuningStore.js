@@ -41,6 +41,11 @@ export const TUNING_DEFAULTS = {
   NUM_CTX: 16384,
   STREAM_IDLE_TIMEOUT_MS: 120000,
   MAX_TOOL_ROUNDS: 6,
+  // notesStore / memoryStore (Phase B.3, 2026-09-09): per-project entry caps. Global knobs
+  // (not per-project settings) — the stores apply one uniform cap to every project, so one
+  // number covers all of them; bounds keep the files bounded either way.
+  MAX_NOTES_ENTRIES: 200,
+  MAX_MEMORY_ENTRIES: 200,
 };
 
 // Per-key numeric bounds; anything outside [min, max] (or non-finite) is rejected rather than
@@ -63,6 +68,8 @@ const BOUNDS = {
   NUM_CTX: { min: 2048, max: 131072 },
   STREAM_IDLE_TIMEOUT_MS: { min: 10000, max: 600000 },
   MAX_TOOL_ROUNDS: { min: 1, max: 30 },
+  MAX_NOTES_ENTRIES: { min: 50, max: 2000 },
+  MAX_MEMORY_ENTRIES: { min: 50, max: 2000 },
 };
 
 let overrides = {};
