@@ -258,8 +258,16 @@ Retry flow still works exactly as before.
   ambiguous). A-14/F-2 done (commit 9143e41: reason mode now actually raises `num_predict`
   via a new `REASON_MODE_NUM_PREDICT` tuning knob, not just a prompt nudge; the response-
   variation half of A-14 was already covered by the existing `pickRandom`/`chatReplyPool`
-  pattern on ack/empathy). Live test transcript (the last sub-item of A-14) still outstanding
-  — needs a running server + real conversation, not just a code read.
+  pattern on ack/empathy). A-14's live test transcript is now done (2026-09-09, opencode
+  native): booted a real console against a temp fixture project and drove 11 turns over
+  real WS (`execute` → answer → `end`, every turn terminated cleanly): hello → greeting,
+  time → correct local clock, "what is this project about" → README content + file stats,
+  empty reminders list (no card, correctly), note create → 📝, show notes → markdown PLUS
+  a live `notes` card over the wire (F-11 proven outside a browser), reminder create with
+  a correct +3h fire time, "troubleshoot" → the K-11 handler reporting 3 real issues,
+  "console doctor" → the full CLI-parity report, note delete (no linked → no question),
+  reminder cancel; the project's notes list was verified empty afterward (no residue).
+  Test server killed by PID, fixtures removed.
 - **Phase K: DONE** (error sweep). K-1, K-4 (partial), K-9 (partial) — commit 74fd7e9. K-2,
   K-3 — commit ad1ec0d (sessionIndex.js persistence-chain + writeIndex fallback now log;
   six appendMessage/ensureConsoleConfigGitignored call sites across
