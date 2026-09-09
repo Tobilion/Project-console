@@ -147,8 +147,54 @@ eq('auth gate: disarmed again with no users', authArmed(), false);
 }
 eq('auth gate: WS open while disarmed', checkWsAuth({ headers: {} }), true);
 
-try { fs.unlinkSync(process.env.USERS_FILE); } catch {}
-delete process.env.USERS_FILE;
+// --- I-3: route-level gating over real HTTP ------------------------------------
+// Boots a throwaway express app (ephemeral localhost port) with the real auth routes:
+// register-while-armed rules, me.armed, users visibility, and the full login session.
+{
+  const expressMod = await import('express');
+  const express = expressMod.default || expressMod;
+  const { registerAuthRoutes } = await import(pathToFileURL(base + 'routes/authRoutes.js').href);
+  const { requireAuth } = await import(pathToFileURL(base + 'auth/authGate.js').href);
+  const { registerUser: regUser } = await import(pathToFileURL(base + 'auth/userStore.js').href);
+  await regUser('routeadmin', 'a strong route password');
+  const app = express();
+  app.use(express.json());
+  app.use('/api', requireAuth);
+  registerAuthRoutes(app);
+  const server = app.listen(0, '127.0.0.1');
+  await new Promise((r) => server.on('listening', r));
+  const url = `http://127.0.0.1:${server.address().port}`;
+  const post = async (p, body, cookie) => {
+    const res = await fetch(url + p, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...(cookie ? { Cookie: cookie } : {}) },
+      body: JSON.stringify(body || {}),
+    });
+    return { status: res.status, json: await res.json().catch(() => null), cookie: res.headers.get('set-cookie') };
+  };
+  const get = async (p, cookie) => {
+    const res = await fetch(url + p, { headers: cookie ? { Cookie: cookie } : {} });
+    return { status: res.status, json: await res.json().catch(() => null) };
+  };
+  const meAnon = await get('/api/auth/me');
+  eq('auth routes: me reports armed + null user anonymously', meAnon.json?.armed === true && meAnon.json?.user === null, true);
+  const regClosed = await post('/api/auth/register', { username: 'intruder', password: 'a strong password here' });
+  eq('auth routes: open registration closed while armed (403)', regClosed.status === 403 && regClosed.json?.ok === false, true);
+  const usersAnon = await get('/api/auth/users');
+  eq('auth routes: user list needs a session while armed (401)', usersAnon.status === 401, true);
+  const adminLogin = await post('/api/auth/login', { username: 'routeadmin', password: 'a strong route password' });
+  const adminCookie = (adminLogin.cookie || '').split(';')[0];
+  eq('auth routes: admin login sets cookie', adminLogin.status === 200 && /console_auth=/.test(adminCookie), true);
+  const regByAdmin = await post('/api/auth/register', { username: 'second', password: 'a strong password here' }, adminCookie);
+  eq('auth routes: admin session can register (second user)', regByAdmin.status === 200 && regByAdmin.json?.user?.role === 'user', true);
+  const usersAuthed = await get('/api/auth/users', adminCookie);
+  eq('auth routes: user list visible with session, hashes excluded', usersAuthed.status === 200 && usersAuthed.json?.users?.length >= 2 && usersAuthed.json.users.every((u) => !u.passwordHash), true);
+  const meAuthed = await get('/api/auth/me', adminCookie);
+  eq('auth routes: me returns identity with session', meAuthed.json?.user?.username === 'routeadmin', true);
+  await new Promise((r) => server.close(r));
+}
+
+try { fs.unlinkSync(process.env.USERS_FILE); } catch {}delete process.env.USERS_FILE;
 
 console.log(`\ncheck-auth: ${pass + fail} checks, ${fail} failed`);
 process.exit(fail ? 1 : 0);

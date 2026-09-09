@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { X } from 'lucide-react';
 import { GlowOrbs } from './components/GlowOrbs';
 import { GlassFilter } from './components/ui/GlassFilter';
+import { LoginScreen } from './components/LoginScreen';
 import { AppHeader } from './components/AppHeader';
 import { AppMainView } from './components/AppMainView';
 import { AppOverlays } from './components/AppOverlays';
@@ -143,6 +144,24 @@ function App() {
     poll();
     const t = setInterval(poll, PANEL_POLL_NOTIFICATIONS_MS);
     return () => { mounted = false; clearInterval(t); };
+  }, []);
+
+  // Phase I (2026-09-09): lock-screen gate. One raw fetch on mount asks /api/auth/me
+  // whether accounts exist and whether this browser holds a session. Disarmed servers
+  // (and unreachable ones — fetch failure means today's open behavior) render the app
+  // untouched; armed-but-anonymous renders LoginScreen instead of everything below.
+  const [authState, setAuthState] = useState<{ armed: boolean; user: { username: string; role: string } | null } | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/auth/me')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (!cancelled && data && typeof data.armed === 'boolean') {
+          setAuthState({ armed: data.armed, user: data.user ?? null });
+        }
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
   }, []);
   const handleOpenNotifications = useCallback(() => {
     // Prefetch the registry so the panel shell has names/icons on first paint — the panel
@@ -374,6 +393,20 @@ function App() {
   // When it is, confirm cards render inline in the thread; the fixed overlay below
   // exists solely for the non-chat views where this thread is unmounted.
   const chatViewActive = !showCommandRef && !toolsOpen && !showDashboard && !(showWelcome && !chatFullscreen);
+
+  // Phase I lock screen — armed server, anonymous browser. Rendered instead of the whole
+  // console (placed after all hooks, so hook order is unaffected).
+  if (authState && authState.armed && !authState.user) {
+    return (
+      <div className="h-screen relative flex flex-col">
+        <GlowOrbs followMouse={profile.colorFollowsMouse} />
+        <GlassFilter />
+        <div className="relative z-10 flex-1 min-h-0">
+          <LoginScreen />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="h-screen relative flex flex-col">

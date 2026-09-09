@@ -4,7 +4,7 @@
 // cannot change single-user behavior). Status codes are real HTTP semantics (400/401/409,
 // not {ok:false}-at-200 — auth failures are not business-logic results), so the login UI
 // uses raw fetch, never apiFetchJson (which discards non-2xx bodies).
-import { registerUser, verifyUser, resetPassword, listUsers } from '../auth/userStore.js';
+import { registerUser, verifyUser, resetPassword, listUsers, hasUsers } from '../auth/userStore.js';
 import {
   createSession,
   validateSession,
@@ -20,6 +20,13 @@ export function registerAuthRoutes(app) {
   app.post(
     '/api/auth/register',
     asyncHandler(async (req, res) => {
+      // Open registration ONLY while no users exist (first-admin setup). Once armed,
+      // creating accounts requires an admin session — otherwise anyone on the LAN could
+      // self-provision into an armed server. (I-3: the login UI only shows the register
+      // tab when the server reports registered:false.)
+      if (hasUsers() && req.authUser?.role !== 'admin') {
+        return res.status(403).json({ ok: false, error: 'Registration is closed — ask your admin to create an account.' });
+      }
       const { username, password } = req.body || {};
       const result = await registerUser(username, password);
       if (result.error) {
@@ -53,7 +60,9 @@ export function registerAuthRoutes(app) {
 
   app.get('/api/auth/me', (req, res) => {
     const user = validateSession(tokenFromCookieHeader(req.headers.cookie));
-    res.json({ user });
+    // `armed` lets clients (web login screen, CLI) decide the flow without probing
+    // protected routes: false = today's open server, no login exists.
+    res.json({ user, armed: hasUsers() });
   });
 
   app.post(
@@ -68,8 +77,12 @@ export function registerAuthRoutes(app) {
     }),
   );
 
-  // Admin visibility (used by the future login UI + Phase L docs): usernames + roles only.
+  // Account list (usernames + roles only, never hashes). Requires a session while
+  // armed — no anonymous user enumeration. Open while disarmed (harmless: no accounts).
   app.get('/api/auth/users', (req, res) => {
+    if (hasUsers() && !req.authUser) {
+      return res.status(401).json({ ok: false, error: 'Login required.' });
+    }
     res.json({ users: listUsers() });
   });
 }

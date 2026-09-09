@@ -21,7 +21,7 @@ import {
   WANT_LAST,
   generalPseudoProject,
 } from './cliOptions.js';
-import { stripMarkdown, discoverServer, pickResumeSession, readBootLogTail } from './cliDiscovery.js';
+import { stripMarkdown, discoverServer, pickResumeSession, readBootLogTail, setCliAuthCookie, getCliAuthCookie, tryFetchProjects } from './cliDiscovery.js';
 import { selectProject, findProjectFromArgs } from './cliProjectPicker.js';
 import { renderMascot } from './cliMascot.js';
 import { createCliRenderer } from './cliRenderer.js';
@@ -226,7 +226,7 @@ async function main() {
       ? (elapsed) => { try { spinner.message(`Still connecting (${elapsed}s elapsed, checking ports ${BASE_PORT}-${BASE_PORT + MAX_PORT_ATTEMPTS - 1})...`); } catch {} }
       : (SCRIPTED ? () => {} : null)
   );
-  if (!discovered || discovered.projects.length === 0) {
+  if (!discovered || (discovered.projects.length === 0 && !discovered.armed)) {
     if (spinner) try { spinner.stop(chalk.red(`✖ Could not connect to a server on ports ${BASE_PORT}-${BASE_PORT + MAX_PORT_ATTEMPTS - 1}`)); } catch {}
     else process.stderr.write(`${C.red}✖ Could not connect to a server on ports ${BASE_PORT}-${BASE_PORT + MAX_PORT_ATTEMPTS - 1}${C.reset}\n`);
     process.stderr.write(`${C.yellow}  Make sure the console is running (start the Project Console app, or "npm run dev"), then try again.${C.reset}\n`);
@@ -241,6 +241,55 @@ async function main() {
   }
 
   let { projects, port: PORT } = discovered;
+  // Phase I (2026-09-09): the discovery probe reports armed servers (401 on /api/projects)
+  // instead of skipping them — log in here, before anything else needs projects. TTY gets
+  // an interactive prompt (password masked); non-TTY/scripted callers get a clear error
+  // pointing at the web login (no credential flags by design — passwords must not land in
+  // shell history). The cookie jar (cliDiscovery) then authenticates every later fetch +
+  // the WS upgrade below.
+  if (discovered.armed && !getCliAuthCookie()) {
+    if (spinner) try { spinner.stop(chalk.yellow('! Server requires login')); } catch {}
+    if (!isTTY || SCRIPTED) {
+      process.stderr.write(`${C.yellow}This console requires login. Log in via the web UI first, or run this command in an interactive terminal.${C.reset}\n`);
+      process.exit(1);
+    }
+    console.log(`\n${C.bold}This console requires login.${C.reset}\n`);
+    const loginName = await p.text({
+      message: 'Username',
+      validate: (v) => (v.trim() ? undefined : 'Enter your username.'),
+    }).catch(() => undefined);
+    const loginPass = await p.password({
+      message: 'Password',
+    }).catch(() => undefined);
+    if (!loginName || !loginPass) {
+      process.stderr.write(`${C.red}Login cancelled.${C.reset}\n`);
+      process.exit(1);
+    }
+    try {
+      const loginRes = await fetch(`http://${HOST}:${PORT}/api/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: String(loginName).trim(), password: String(loginPass) }),
+      });
+      const loginData = await loginRes.json().catch(() => null);
+      const setCookie = loginRes.headers.get('set-cookie');
+      if (!loginRes.ok || !loginData?.ok || !setCookie) {
+        process.stderr.write(`${C.red}Login failed: ${loginData?.error || `HTTP ${loginRes.status}`}${C.reset}\n`);
+        process.exit(1);
+      }
+      setCliAuthCookie(setCookie.split(';')[0]);
+      console.log(`${C.green}✔ ${C.reset}Logged in as ${loginData.user.username}.\n`);
+      const refetch = await tryFetchProjects(PORT);
+      if (!refetch || refetch.armed) {
+        process.stderr.write(`${C.red}Login did not unlock the project list — try again.${C.reset}\n`);
+        process.exit(1);
+      }
+      projects = refetch.projects;
+    } catch (err) {
+      process.stderr.write(`${C.red}Login failed: ${err.message}${C.reset}\n`);
+      process.exit(1);
+    }
+  }
   // Stop the spinner BEFORE the port-collision note so stdout writes don't interleave with the
   // still-animating spinner line (clack owns that line until .stop()).
   if (spinner) {
@@ -256,7 +305,8 @@ async function main() {
   // the web downloads use) — scriptable, no chat involved.
   if (EXPORT_ID) {
     try {
-      const res = await fetch(`http://${HOST}:${PORT}/api/sessions/${encodeURIComponent(EXPORT_ID)}/export?format=${EXPORT_FORMAT}`, { signal: AbortSignal.timeout(15000) });
+      const authed = getCliAuthCookie() ? { Cookie: getCliAuthCookie() } : {};
+      const res = await fetch(`http://${HOST}:${PORT}/api/sessions/${encodeURIComponent(EXPORT_ID)}/export?format=${EXPORT_FORMAT}`, { signal: AbortSignal.timeout(15000), headers: authed });
       if (!res.ok) {
         process.stderr.write(`Export failed: HTTP ${res.status}\n`);
         process.exit(1);
@@ -275,7 +325,8 @@ async function main() {
   // Never blocks: on any failure or non-TTY, silently skip (setupComplete stays false and the
   // web wizard will show instead).
   try {
-    const profRes = await fetch(`http://${HOST}:${PORT}/api/profile`);
+    const authed = getCliAuthCookie() ? { Cookie: getCliAuthCookie() } : {};
+    const profRes = await fetch(`http://${HOST}:${PORT}/api/profile`, { headers: authed });
     const profData = await profRes.json();
     const userProfile = profData?.userProfile;
     if (!SCRIPTED && isTTY && userProfile && !userProfile.setupComplete) {
@@ -298,7 +349,7 @@ async function main() {
       }).catch(() => true);
       await fetch(`http://${HOST}:${PORT}/api/profile`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...(getCliAuthCookie() ? { Cookie: getCliAuthCookie() } : {}) },
         body: JSON.stringify({ userProfile: {
           name: (firstName || '').trim(),
           setupComplete: true,
@@ -369,7 +420,12 @@ async function main() {
     console.log(`${C.gray}Type a message, 'projects' to switch/rescan, or 'quit' to exit.${C.reset}\n`);
   }
 
-  const ws = new WebSocket(`ws://${HOST}:${PORT}/stream`);
+  const ws = new WebSocket(
+    `ws://${HOST}:${PORT}/stream`,
+    // Phase I: armed servers need the login cookie on the upgrade request — without it
+    // the server answers 401 (handled as a fast login pointer just below).
+    getCliAuthCookie() ? { headers: { Cookie: getCliAuthCookie() } } : undefined,
+  );
   activeWs = ws;
   // Phase I: same fast 401 fail as the scripted path (a routine 'error'/'close' here would
   // read as a dead server, and the discovery retry loop would burn 90s first).
@@ -393,7 +449,8 @@ async function main() {
   // When the server is 127.0.0.1-only the prompt is skipped entirely and attribution stays
   // "local" — single-user behavior completely unchanged (per the roadmap's explicit rule).
   try {
-    const usersRes = await fetch(`http://${HOST}:${PORT}/api/connected-users`);
+    const authed = getCliAuthCookie() ? { Cookie: getCliAuthCookie() } : {};
+    const usersRes = await fetch(`http://${HOST}:${PORT}/api/connected-users`, { headers: authed });
     const usersData = await usersRes.json();
     if (usersData?.lanBound && isTTY) {
       const name = await p.text({

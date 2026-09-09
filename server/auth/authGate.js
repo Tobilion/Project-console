@@ -20,8 +20,14 @@ export function authArmed() {
  *  Inside the mount, req.path is the /api-stripped remainder (/projects, /auth/login). */
 export function requireAuth(req, res, next) {
   if (!authArmed()) return next();
-  if (req.path === '/auth' || req.path.startsWith('/auth/')) return next();
+  // /api/auth/* always passes (the login page must reach register/login) — but still
+  // attach identity when a valid cookie is present, so admin-only sub-paths (register
+  // while armed) can check req.authUser without a second parse.
   const user = validateSession(tokenFromCookieHeader(req.headers.cookie));
+  if (req.path === '/auth' || req.path.startsWith('/auth/')) {
+    if (user) req.authUser = user;
+    return next();
+  }
   if (!user) {
     return res.status(401).json({ ok: false, error: 'Login required.' });
   }

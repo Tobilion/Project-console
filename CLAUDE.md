@@ -884,8 +884,19 @@ Verified: check-handlers 287/287, check-ws-cases clean, npm test 602/602, tsc cl
   real booted server with a seeded account: anon `/api/projects` → 401, login → cookie,
   authed GET → 200, WS without cookie → 401, WS with cookie → open. tsc clean,
   npm test 602/602; desktop/daemon copies syntax-checked (can't run Electron/daemon
-  here). Still open: login UI + CLI login (I-3), per-user data sharding (I-4), OS-auth
-  reset UX (I-5), plus H, J, L.
+  here). I-3 done (2026-09-09, opencode): register is open ONLY while zero users exist
+  (first-admin setup); once armed it needs an admin session (403 otherwise — closes the
+  LAN self-provisioning hole), `/api/auth/users` needs any session, and `/api/auth/me`
+  reports `armed`. Web: new `LoginScreen` (login + reset tabs, raw fetch, reload on
+  success, lockout-escape hint) rendered by `App` instead of everything when armed-anon.
+  CLI: `tryFetchProjects` reports armed servers (no more invisible-server duplicate
+  spawns), TTY gets a username/masked-password prompt with the cookie jar threading
+  every later fetch + the WS upgrade, non-TTY fails fast with a pointer (verified live:
+  2s, exit 1, no 90s burn); `unexpected-response` 401 handlers on both WS paths.
+  7 new check-auth rows (51/51). Live-verified the full loop against a booted armed
+  server. tsc + vite build clean, check-ws-cases 137/137. Still open: per-user data
+  sharding (I-4), OS-auth reset UX (I-5: recovery codes work everywhere via UI+API, the
+  safeStorage/Hello upgrade is future), plus H, J, L.
 - Phases H, J, L: **not started.**
 
 **Native verification baseline (2026-09-09, opencode on Windows — supersedes the bridged-shell

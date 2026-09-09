@@ -9,12 +9,40 @@ export function stripMarkdown(text) {
   return text.replace(/\*\*(.+?)\*\*/g, '$1').replace(/`(.+?)`/g, '$1').replace(/### /g, '');
 }
 
+// Phase I (2026-09-09): CLI auth cookie jar. Set once after the CLI login prompt (or
+// left null on open servers); every fetch helper below attaches it, and cli-client.js
+// reads it for the WS upgrade headers. Module state, same pattern as the file's other
+// shared discovery state.
+let cliAuthCookie = null;
+export function setCliAuthCookie(cookie) {
+  cliAuthCookie = cookie || null;
+}
+export function getCliAuthCookie() {
+  return cliAuthCookie;
+}
+function authHeaders() {
+  return cliAuthCookie ? { Cookie: cliAuthCookie } : {};
+}
+
 export async function tryFetchProjects(port) {
   try {
     // 5s, not 2s: measured live 2026-08-10 — this machine's /api/projects takes ~1.7s on a
     // freshly booted server (project discovery rescans 15 folders), so a 2s abort fired on
     // most retry cycles and the CLI reported "could not connect" against a healthy server.
-    const res = await fetch(`http://${HOST}:${port}/api/projects`, { signal: AbortSignal.timeout(5000) });
+    const res = await fetch(`http://${HOST}:${port}/api/projects`, {
+      signal: AbortSignal.timeout(5000),
+      headers: authHeaders(),
+    });
+    // Phase I: an armed server answers 401 + { ok:false, error:'Login required.' } — that
+    // is still a live console (see server/portProbe.js), so report the port as armed
+    // instead of null; the CLI login flow follows. Anything else non-OK stays null.
+    if (res.status === 401) {
+      const data = await res.json().catch(() => null);
+      if (data?.ok === false && data?.error === 'Login required.') {
+        return { projects: [], port, armed: true };
+      }
+      return null;
+    }
     if (!res.ok) return null;
     const data = await res.json();
     return { projects: data.projects || [], port };
@@ -82,7 +110,10 @@ export function readBootLogTail(maxLines = 12) {
 export async function pickResumeSession(port) {
   let sessions = [];
   try {
-    const res = await fetch(`http://${HOST}:${port}/api/sessions`, { signal: AbortSignal.timeout(8000) });
+    const res = await fetch(`http://${HOST}:${port}/api/sessions`, {
+      signal: AbortSignal.timeout(8000),
+      headers: authHeaders(),
+    });
     if (res.ok) sessions = (await res.json()).sessions || [];
   } catch {
     return null;
