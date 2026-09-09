@@ -871,8 +871,21 @@ Verified: check-handlers 287/287, check-ws-cases clean, npm test 602/602, tsc cl
   HTTP (register/admin/dup-409/bad-login-401/cookie/me/anon/users/reset-rotation/session-
   kill/logout), disk holds hashes only, tsc clean. Deliberately deferred to later I
   slices: enforcement gating, login UI, per-user data sharding, OS-auth reset (recovery
-  codes are the universal v1 mechanism — see the I plan below). Still open: everything
-  after I-1, plus H, J, L.
+  codes are the universal v1 mechanism — see the I plan below). I-2 done (2026-09-09,
+  opencode): enforcement gating via new `server/auth/authGate.js` (`authArmed()` =
+  users exist; `requireAuth` mounted as `app.use('/api', …)` before all routes — open
+  while disarmed (byte-identical), 401 + `req.authUser` while armed, `/api/auth/*`
+  always passes; `checkWsAuth` in the `/stream` upgrade path with a 401 status line
+  instead of a bare destroy). Launchers can't spawn an open duplicate next to an armed
+  server: `probeConsolePort` + the daemon/desktop by-eye copies recognize the armed-401
+  shape as "ours"; the CLI fails fast on 401 (`unexpected-response`, no 90s retry burn)
+  with a login pointer (full CLI login rides I-3's login UI). LAN log line now says
+  login-required when armed. 10 new check-auth rows (44/44). Live-verified against a
+  real booted server with a seeded account: anon `/api/projects` → 401, login → cookie,
+  authed GET → 200, WS without cookie → 401, WS with cookie → open. tsc clean,
+  npm test 602/602; desktop/daemon copies syntax-checked (can't run Electron/daemon
+  here). Still open: login UI + CLI login (I-3), per-user data sharding (I-4), OS-auth
+  reset UX (I-5), plus H, J, L.
 - Phases H, J, L: **not started.**
 
 **Native verification baseline (2026-09-09, opencode on Windows — supersedes the bridged-shell

@@ -255,13 +255,17 @@ function probePort(port) {
   // can't statically import that ESM module, so keep the two in sync by eye.
   return new Promise((resolve) => {
     const req = http.get(`http://127.0.0.1:${port}/api/projects`, { timeout: PORT_PROBE_TIMEOUT_MS }, (res) => {
-      if (res.statusCode !== 200) { res.resume(); resolve(null); return; }
+      // Phase I: an armed server answers 401 + { ok:false, error:'Login required.' } — still
+      // ours (keep in sync with server/portProbe.js by eye); anything else non-200 is foreign.
+      if (res.statusCode !== 200 && res.statusCode !== 401) { res.resume(); resolve(null); return; }
       let body = '';
       res.on('data', (chunk) => { body += chunk; });
       res.on('end', () => {
         try {
           const data = JSON.parse(body);
-          resolve(Array.isArray(data.projects) ? port : null);
+          if (Array.isArray(data.projects)) return resolve(port);
+          if (res.statusCode === 401 && data.ok === false && data.error === 'Login required.') return resolve(port);
+          resolve(null);
         } catch {
           resolve(null);
         }

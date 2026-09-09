@@ -20,15 +20,19 @@
  * `/api/projects` with a body shaped like `{ projects: [...] }` (empty array included — a
  * console with no discovered projects yet is still a running console), or `null` otherwise
  * (connection refused, timeout, non-2xx, or a response from some unrelated local service).
+ * Phase I (2026-09-09): an ARMED server (accounts exist) answers 401 +
+ * `{ ok: false, error: 'Login required.' }` — that is still our server, so it resolves
+ * the port too (otherwise launchers would start an open duplicate next to it).
  */
 export async function probeConsolePort(port, timeoutMs = 5000) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const res = await fetch(`http://127.0.0.1:${port}/api/projects`, { signal: controller.signal });
-    if (!res.ok) return null;
-    const data = await res.json();
-    return Array.isArray(data.projects) ? port : null;
+    const data = await res.json().catch(() => null);
+    if (Array.isArray(data?.projects)) return port;
+    if (res.status === 401 && data?.ok === false && data?.error === 'Login required.') return port;
+    return null;
   } catch {
     return null;
   } finally {

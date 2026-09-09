@@ -79,6 +79,14 @@ process.on('SIGINT', () => {
 function runScriptedMode(ws, project, sessionId) {
   let sawError = false;
   const emitJson = (msg) => process.stdout.write(JSON.stringify({ type: msg.type, data: msg.data ?? null }) + '\n');
+  // Phase I: an armed server rejects the upgrade with 401 — fail fast with a login pointer
+  // instead of the generic error/close path below (which would read as "server is down").
+  ws.on('unexpected-response', (_req, res) => {
+    if (res?.statusCode === 401) {
+      process.stderr.write('This console requires login. Open it in a browser to log in first (CLI login is coming).\n');
+      process.exit(1);
+    }
+  });
   ws.on('message', (raw) => {
     let msg;
     try { msg = JSON.parse(raw); } catch { return; }
@@ -363,6 +371,14 @@ async function main() {
 
   const ws = new WebSocket(`ws://${HOST}:${PORT}/stream`);
   activeWs = ws;
+  // Phase I: same fast 401 fail as the scripted path (a routine 'error'/'close' here would
+  // read as a dead server, and the discovery retry loop would burn 90s first).
+  ws.on('unexpected-response', (_req, res) => {
+    if (res?.statusCode === 401) {
+      console.log('\nThis console requires login. Open it in a browser to log in first (CLI login is coming).');
+      process.exit(1);
+    }
+  });
   // Scripted modes take over the socket immediately — runScriptedMode attaches its own open/
   // message/error/close handlers and never returns. MUST run before the LAN-display-name
   // fetch below: that await yields to the event loop, and a fast localhandshake can emit

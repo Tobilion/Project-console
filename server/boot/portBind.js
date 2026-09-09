@@ -1,6 +1,7 @@
 import { state } from '../state.js';
 import { wss } from '../wsServer.js';
 import { BASE_PORT as PORT, HOST, MAX_PORT_ATTEMPTS } from '../portConfig.js';
+import { authArmed, checkWsAuth } from '../auth/authGate.js';
 import { log } from '../logger.js';
 
 /**
@@ -24,7 +25,13 @@ export async function bindPort(httpServer, emitBootState) {
           log.info(`Console Server running on http://${HOST}:${tryPort}`);
           log.info(`Default scan path: ${state.currentScanDirectory}`);
           if (HOST === '0.0.0.0') {
-            log.info('WARNING: bound to 0.0.0.0 — reachable from your LAN. This server can run shell commands with no authentication.');
+            // Phase I: with accounts armed, LAN exposure is login-gated — the scary
+            // sentence below only applies to the open (no users) configuration.
+            if (authArmed()) {
+              log.info('Bound to 0.0.0.0 — reachable from your LAN, login required (auth is armed).');
+            } else {
+              log.info('WARNING: bound to 0.0.0.0 — reachable from your LAN. This server can run shell commands with no authentication.');
+            }
           }
           resolve();
         };
@@ -72,6 +79,15 @@ export async function bindPort(httpServer, emitBootState) {
       }
       const pathname = new URL(request.url, `http://${request.headers.host}`).pathname;
       if (pathname === '/stream' || pathname === '/stream/') {
+        // Phase I: armed servers reject unauthenticated sockets with a 401 status line
+        // (instead of a bare destroy) so CLI clients can report "login required".
+        if (!checkWsAuth(request)) {
+          try {
+            socket.write('HTTP/1.1 401 Unauthorized\r\nContent-Type: application/json\r\n\r\n{"ok":false,"error":"Login required."}');
+          } catch { /* best-effort */ }
+          socket.destroy();
+          return;
+        }
         wss.handleUpgrade(request, socket, head, (ws) => {
           wss.emit('connection', ws, request);
         });

@@ -10,6 +10,7 @@ import { loadLearnedIntents } from './learnedIntents.js';
 import { loadDevUrls } from './devUrlStore.js';
 import { initScheduler } from './schedules/scheduler.js';
 import { loadUsers } from './auth/userStore.js';
+import { requireAuth } from './auth/authGate.js';
 import { initNotifications } from './notify.js';
 import { loadAutoStart, initAutoStart } from './autoStartProjects.js';
 import { syncClipboardPolling } from './clipboardHistory.js';
@@ -66,6 +67,11 @@ const app = express();
 
 app.use(compression());
 app.use(express.json());
+
+// Phase I (2026-09-09): login gate — open server while no accounts exist (today's
+// behavior, byte-identical), 401 on /api (except /api/auth/*) once armed. Static assets
+// and Vite dev middleware mount later and are never gated (the login page must load).
+app.use('/api', requireAuth);
 
 registerProjectRoutes(app, __dirname);
 registerSessionRoutes(app);

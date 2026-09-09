@@ -26,7 +26,7 @@ function eq(name, actual, expected) {
   }
 }
 
-const { registerUser, verifyUser, resetPassword, listUsers, hasUsers, findUser } =
+const { registerUser, verifyUser, resetPassword, listUsers, hasUsers, findUser, clearUsersForTests } =
   await import(pathToFileURL(base + 'auth/userStore.js').href);
 const sessions =
   await import(pathToFileURL(base + 'auth/authSessions.js').href);
@@ -90,6 +90,62 @@ eq('auth: password never on disk in clear', !raw.includes('yet another password 
 eq('auth: recovery code never on disk in clear', !raw.includes(r4.recoveryCode), true);
 eq('auth: hashes are bcrypt', /^\$2[aby]\$10\$/.test(JSON.parse(raw).users[0].passwordHash), true);
 eq('auth: findUser is case-insensitive', findUser('TOBI')?.username, 'tobi');
+
+// --- enforcement gate (I-2) -------------------------------------------------------
+// Disarmed (no users... except the two registered above — arm explicitly by registering
+// a gate user, then restore by clearing). requireAuth takes the /api-stripped path,
+// matching the app.use('/api', requireAuth) mount semantics.
+const { requireAuth, checkWsAuth, authArmed } =
+  await import(pathToFileURL(base + 'auth/authGate.js').href);
+function fakeReq(pathname, cookie) {
+  return { path: pathname, headers: cookie ? { cookie } : {} };
+}
+function fakeRes() {
+  const res = { statusCode: null, body: null };
+  res.status = (code) => { res.statusCode = code; return res; };
+  res.json = (obj) => { res.body = obj; return res; };
+  return res;
+}
+eq('auth gate: armed once users exist', authArmed(), true);
+{
+  let nexted = false;
+  const res = fakeRes();
+  requireAuth(fakeReq('/projects', null), res, () => { nexted = true; });
+  eq('auth gate: armed + no cookie -> 401', nexted === false && res.statusCode === 401 && res.body?.error === 'Login required.', true);
+}
+{
+  let nexted = false;
+  const res = fakeRes();
+  requireAuth(fakeReq('/projects', 'junk-header-without-equals'), res, () => { nexted = true; });
+  eq('auth gate: malformed cookie -> 401', nexted === false && res.statusCode === 401, true);
+}
+{
+  // /api/auth/* stays open while armed (the login page must reach register/login).
+  let nexted = false;
+  requireAuth(fakeReq('/auth/login', null), fakeRes(), () => { nexted = true; });
+  eq('auth gate: auth routes pass while armed', nexted, true);
+}
+const gateLogin = await verifyUser('tobi', 'yet another password here');
+const gateToken = sessions.createSession(gateLogin.username, gateLogin.role);
+{
+  let nexted = false;
+  const req = fakeReq('/projects', `console_auth=${gateToken}`);
+  const res = fakeRes();
+  requireAuth(req, res, () => { nexted = true; });
+  eq('auth gate: valid cookie passes + carries identity', nexted === true && req.authUser?.username === 'tobi', true);
+}
+eq('auth gate: WS denied without cookie while armed', checkWsAuth({ headers: {} }), false);
+eq('auth gate: WS allowed with cookie while armed', checkWsAuth({ headers: { cookie: `console_auth=${gateToken}` } }), true);
+clearUsersForTests();
+const { clearSessionsForTests } = await import(pathToFileURL(base + 'auth/authSessions.js').href);
+clearSessionsForTests();
+eq('auth gate: disarmed again with no users', authArmed(), false);
+{
+  let nexted = false;
+  requireAuth(fakeReq('/projects', null), fakeRes(), () => { nexted = true; });
+  eq('auth gate: disarmed passes everything (today behavior)', nexted, true);
+}
+eq('auth gate: WS open while disarmed', checkWsAuth({ headers: {} }), true);
 
 try { fs.unlinkSync(process.env.USERS_FILE); } catch {}
 delete process.env.USERS_FILE;

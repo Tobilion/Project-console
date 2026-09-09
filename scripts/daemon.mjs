@@ -69,10 +69,12 @@ async function probePort(port, timeoutMs = 5000) {
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const res = await fetch(`http://127.0.0.1:${port}/api/projects`, { signal: controller.signal });
-    if (!res.ok) return false;
     // A console server answers with a {projects: [...]} shape — a foreign 200 must not count.
-    const data = await res.json();
-    return Array.isArray(data.projects);
+    // Phase I: an armed server answers 401 + { ok:false, error:'Login required.' } — still
+    // ours (keep in sync with server/portProbe.js by eye).
+    const data = await res.json().catch(() => null);
+    if (Array.isArray(data?.projects)) return true;
+    return res.status === 401 && data?.ok === false && data?.error === 'Login required.';
   } catch {
     return false;
   } finally {
