@@ -854,7 +854,26 @@ Verified: check-handlers 287/287, check-ws-cases clean, npm test 602/602, tsc cl
    violation); larger radii anywhere would be a taste call needing eyes, not a mechanical
    fix. G-7 moot (no ported components need cva/slot). Still open: G-4's loading-screen
    reuse (H).
-- Phases H, I, J, L: **not started.**
+- **Phase I: started** (2026-09-09, opencode — per user direction, all remaining phases
+  stay in scope). I-1 done: local accounts with zero enforcement yet (nothing can lock
+  out; single-user behavior byte-identical). New `server/auth/` leaves —
+  `userStore.js` (flat gitignored `data/users.json`, bcryptjs hashes for passwords AND
+  recovery codes, 8–128 char policy with no silent bcrypt truncation, timing-safe
+  unknown-user compares, first user becomes admin, recovery-code rotation on reset) and
+  `authSessions.js` (opaque `crypto.randomUUID` tokens, server-side Map, HttpOnly
+  SameSite=Lax 30d cookie, sliding expiry + sweep, strict cookie parse, no JWT dep).
+  New `server/routes/authRoutes.js` (register/login/logout/me/reset/users, real HTTP
+  status codes — the future login UI uses raw fetch, never `apiFetchJson`; reset kills
+  live sessions) mounted in `server/index.js` + `loadUsers()` at boot; `bcryptjs@3`
+  added (pure JS — no native compile, safe for the Electron/esbuild bundles);
+  `data/users.json` gitignored; new `npm run check-auth` harness (34 rows) wired into
+  CI + `guard-staged.mjs`. Verified: check-auth 34/34, all 10 route behaviors over real
+  HTTP (register/admin/dup-409/bad-login-401/cookie/me/anon/users/reset-rotation/session-
+  kill/logout), disk holds hashes only, tsc clean. Deliberately deferred to later I
+  slices: enforcement gating, login UI, per-user data sharding, OS-auth reset (recovery
+  codes are the universal v1 mechanism — see the I plan below). Still open: everything
+  after I-1, plus H, J, L.
+- Phases H, J, L: **not started.**
 
 **Native verification baseline (2026-09-09, opencode on Windows — supersedes the bridged-shell
 caveat below)**: full suite green at commit e0bc8ed before any new work — npm test 602/602,

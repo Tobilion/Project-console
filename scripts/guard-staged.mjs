@@ -16,6 +16,7 @@
 //                                (catalog <-> README table sync)
 //   cli-client*/cliRenderer*/cliOptions*/checkWsMessageCases* -> check-ws-cases (CLI parity)
 //   codeIndex/**/codebase*   -> check-indexer
+//   auth/**, authRoutes, checkAuthCoverage -> check-auth (Phase I accounts)
 //   server/test/**           -> the safety + matcher test suites (npm test)
 // Anything else (frontend src/, scripts/, desktop/) -> no battery (tsc in the hook already
 // covers types; CI runs the full set).
@@ -82,6 +83,7 @@ const has = {
     f.includes('cli-client.js') || f.includes('cliRenderer') || f.includes('cliOptions.js') ||
     f.includes('checkWsMessageCases'),
   indexer: (f) => f.startsWith('server/codeIndex/') || f.includes('codebaseIndexer') || f.includes('codebaseParser') || f.includes('codebaseDetect'),
+  auth: (f) => f.startsWith('server/auth/') || f.includes('authRoutes') || f.includes('checkAuthCoverage'),
   tests: (f) => f.startsWith('server/test/'),
   encoding: (f) => /\.(js|ts|tsx|css|json|md)$/.test(f),
 };
@@ -94,6 +96,7 @@ if (wanted([has.tools])) toRun.push('check-tools');
 if (wanted([has.docs])) toRun.push('check-docs');
 if (wanted([has.wsCases])) toRun.push('check-ws-cases');
 if (wanted([has.indexer])) toRun.push('check-indexer');
+if (wanted([has.auth])) toRun.push('check-auth');
 if (wanted([has.tests])) toRun.push('test');
 if (wanted([has.encoding])) toRun.push('check-encoding');
 

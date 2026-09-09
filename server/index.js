@@ -9,6 +9,7 @@ import { state } from './state.js';
 import { loadLearnedIntents } from './learnedIntents.js';
 import { loadDevUrls } from './devUrlStore.js';
 import { initScheduler } from './schedules/scheduler.js';
+import { loadUsers } from './auth/userStore.js';
 import { initNotifications } from './notify.js';
 import { loadAutoStart, initAutoStart } from './autoStartProjects.js';
 import { syncClipboardPolling } from './clipboardHistory.js';
@@ -43,6 +44,7 @@ import { registerConnectedUsersRoutes } from './routes/connectedUsersRoutes.js';
 import { registerBrowseRoutes } from './routes/browseRoutes.js';
 import { registerEditorRoutes } from './routes/editorRoutes.js';
 import { registerLogRoutes } from './routes/logRoutes.js';
+import { registerAuthRoutes } from './routes/authRoutes.js';
 import { loadTuning } from './tuningStore.js';
 import { loadEditors } from './editorsStore.js';
 import { log } from './logger.js';
@@ -90,6 +92,7 @@ registerConnectedUsersRoutes(app);
 registerBrowseRoutes(app);
 registerEditorRoutes(app);
 registerLogRoutes(app);
+registerAuthRoutes(app);
 // Final error middleware: a rejection that slips past asyncHandler (or a throw inside a sync
 // handler) used to bypass Express entirely — the request never got a response and the client
 // hung (see asyncHandler.js). Any async route handler wrapped with asyncHandler lands here;
@@ -144,6 +147,8 @@ async function init() {
 
   // Phase 1: restore persisted schedules and start the scheduler tick.
   initScheduler();
+  // Phase I: restore local user accounts (no enforcement yet — see authRoutes.js).
+  loadUsers();
   // Phase 2: restore notification rules and register the taskQueue completion hook.
   initNotifications();
   // Phase 15: restore file-watch notification rules and attach their folder watchers.
