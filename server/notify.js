@@ -24,11 +24,11 @@ function projectNameOf(projectId) {
  * Phase 3.2: `toast` opts (durationMs/position) ride through to the desktop channel so
  * reminder toasts honor the user's profile customization.
  */
-export async function notify(projectId, event, { title, body }, toastOpts = {}) {
+export async function notify(projectId, event, { title, body, refId = null }, toastOpts = {}) {
   const results = [];
   try {
     if (!isEventEnabled(event)) return results;
-    const item = recordNotificationItem(projectId, projectNameOf(projectId), event, title, body);
+    const item = recordNotificationItem(projectId, projectNameOf(projectId), event, title, body, refId ? { refId } : null);
     broadcast({ type: 'notification_fired', data: item });
     const payload = {
       event,
@@ -37,6 +37,7 @@ export async function notify(projectId, event, { title, body }, toastOpts = {}) 
       body,
       timestamp: Date.now(),
       app: 'local-project-console',
+      ...(refId ? { refId } : null),
     };
     if (getRules().desktop) {
       // Reminders apply the user's toast-duration/position profile settings (only when the

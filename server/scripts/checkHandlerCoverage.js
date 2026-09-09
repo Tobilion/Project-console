@@ -915,6 +915,20 @@ await handleBuiltinIntent(ws, 'system.notes.search', 'search my notes for dentis
 const searchAns = sent.find((s) => s.type === 'answer');
 eq('notes card: search card matches the hit set', searchAns?.card?.type === 'notes' && searchAns.card.items.length === 1 && searchAns.card.items[0].text === 'call dentist', true);
 fs.rmSync(cardRoot, { recursive: true, force: true });
+
+// E-2 (2026-09-09): snoozeReminder schedules one deferred oneshot copy and leaves the
+// original untouched; unknown ids and command schedules refuse with null; minutes clamp.
+const { snoozeReminder } = await import(pathToFileURL(base + 'schedules/scheduleStore.js').href);
+const snoozeSrc = addSchedule({ projectId: 'noteslinked-p', projectName: 'NotesLinked', spec: { type: 'once', fireAt: Date.now() + 3600000 }, text: 'take a break', kind: 'reminder', createdBy: 'local' });
+const before = Date.now();
+const snoozed = snoozeReminder(snoozeSrc.id, 10);
+eq('reminders snooze: deferred oneshot copy ~10min out', !!snoozed && snoozed.minutes === 10 && snoozed.schedule.kind === 'reminder' && snoozed.schedule.text === 'take a break' && snoozed.schedule.fireAt >= before + 9 * 60 * 1000 && snoozed.schedule.fireAt <= Date.now() + 11 * 60 * 1000, true);
+eq('reminders snooze: original untouched', getSchedules().some((s) => s.id === snoozeSrc.id), true);
+eq('reminders snooze: unknown id refuses', snoozeReminder('s000000', 10) === null, true);
+const cmdSch = addSchedule({ projectId: 'noteslinked-p', projectName: 'NotesLinked', spec: { type: 'interval', everyMs: 60000 }, command: 'echo hi', kind: 'command' });
+eq('reminders snooze: command schedule refuses', snoozeReminder(cmdSch.id, 10) === null, true);
+const snoozeClamped = snoozeReminder(snoozeSrc.id, 99999);
+eq('reminders snooze: minutes clamp to 1440', !!snoozeClamped && snoozeClamped.minutes === 1440, true);
 fs.rmSync(linkedRoot, { recursive: true, force: true });
 
 // --- CSV TOOLS (Phase 7, 2026-08-12) -------------------------------------------

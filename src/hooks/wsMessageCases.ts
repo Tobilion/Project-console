@@ -374,10 +374,27 @@ const displayNameSetCase: WsCaseHandler = () => {
 
 const notificationFiredCase: WsCaseHandler = (_ctx, payload) => {
   if (!payload.data?.title) return;
+  // E-2 (2026-09-09): a fired reminder's toast offers Snooze — one deferred oneshot copy
+  // 10 minutes out (POST /api/reminders/:id/snooze, same endpoint the panel could call).
+  // The schedule id rides the notification item as refId (server/notify.js); anything
+  // without one (other events, older servers) renders the plain toast as before.
+  const snoozeId = payload.data?.event === 'reminder-fired' && typeof payload.data?.refId === 'string'
+    ? payload.data.refId
+    : null;
   addToast({
     title: payload.data.title,
     description: payload.data.body || '',
     duration: reminderToastDuration(),
+    ...(snoozeId ? {
+      actionLabel: 'Snooze 10 min',
+      onAction: () => {
+        fetch(`/api/reminders/${encodeURIComponent(snoozeId)}/snooze`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ minutes: 10 }),
+        }).catch(() => {});
+      },
+    } : null),
   });
 };
 

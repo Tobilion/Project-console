@@ -640,7 +640,16 @@ Verified: check-handlers 287/287, check-ws-cases clean, npm test 602/602, tsc cl
   of just flipping the pill locally — `useAppViewState` already falls back to that field,
   so the choice now survives reload instead of silently reverting. `tsc` clean; browser
   click-through of the pill with/without a project still outstanding (no browser here).
-  Still open: E-2's snooze, E-3's opt-in surfacing, E-6's answer-to-toast audit.
+  E-2 done (2026-09-09, opencode): fired-reminder toasts now carry a "Snooze 10 min"
+  action — new `snoozeReminder(id, minutes)` in `scheduleStore.js` schedules one deferred
+  oneshot copy (original cadence untouched; unknown ids and command schedules refuse;
+  minutes clamp 1–1440) behind `POST /api/reminders/:id/snooze`, and the schedule id rides
+  the notification item as additive `refId` (notify/history payloads) so the toast can call
+  it. 5 new check-handlers rows (303/303). OS-toast action buttons deliberately deferred:
+  the WinRT wrapper is fire-and-forget text with no activation-callback path. Browser
+  confirmation of the snooze tap still outstanding. Still open: E-3's opt-in surfacing,
+  E-4's anchored popup + polling unification + verbosity/quiet-hours (see E-4 sentence
+  above), E-6's answer-to-toast audit.
 - **Phase F: started.** F-5(3) done (2026-09-09, opencode): `system.notes.delete` now
   actually reads `askBeforeDeleteLinkedNote` (default true) — with linked reminders present
   it deletes the note first, then stages a `pendingNoteDelete` yes/no question (new

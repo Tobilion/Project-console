@@ -8,7 +8,7 @@
 // (the panel's composer/quick-add already produce chat-shaped phrases, e.g. "remind me
 // tomorrow at 9am to call the dentist" — reusing the same parser means create behavior can
 // never diverge between the chat and panel paths).
-import { getSchedules, addSchedule, getScheduleById, removeScheduleById } from '../schedules/scheduleStore.js';
+import { getSchedules, addSchedule, getScheduleById, removeScheduleById, snoozeReminder } from '../schedules/scheduleStore.js';
 import { parseReminderInput } from '../schedules/reminderParser.js';
 import { resolveProject } from '../state.js';
 
@@ -76,5 +76,16 @@ export function registerReminderRoutes(app) {
     const removed = removeScheduleById(id);
     if (!removed) return res.json({ ok: false, error: `No reminder "${id}".` });
     res.json({ ok: true, removed });
+  });
+
+  // Snooze (E-2, 2026-09-09) — defers a fired reminder by N minutes (default 10, clamped
+  // 1–1440) by scheduling one extra oneshot copy; the original's own cadence is untouched.
+  // Same id-resolution rules as cancel; same { ok: false }-at-200 failure convention.
+  app.post('/api/reminders/:id/snooze', (req, res) => {
+    let id = req.params.id;
+    if (/^\d+$/.test(id)) id = `s${id}`;
+    const result = snoozeReminder(id, req.body?.minutes);
+    if (!result) return res.json({ ok: false, error: `No snoozable reminder "${id}".` });
+    res.json({ ok: true, minutes: result.minutes, schedule: result.schedule });
   });
 }

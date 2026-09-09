@@ -159,6 +159,29 @@ export function getScheduleById(id) {
   return schedules.find((s) => s.id === id) || null;
 }
 
+/** E-2 (2026-09-09): snooze a fired reminder — schedules ONE deferred copy that fires once
+ *  `minutes` from now, leaving the original's own cadence untouched (a recurring reminder
+ *  keeps its pattern plus one extra fire; a oneshot was already removed on fire, so the
+ *  copy IS the snooze). Returns the new schedule, or null when the id is unknown or not a
+ *  reminder (command schedules are never snoozed). Minutes clamp to 1–1440. */
+export function snoozeReminder(id, minutes = 10) {
+  const existing = schedules.find((s) => s.id === id);
+  if (!existing || existing.kind !== 'reminder') return null;
+  const mins = Number.isFinite(Number(minutes)) ? Math.max(1, Math.min(1440, Math.floor(Number(minutes)))) : 10;
+  const fireAt = Date.now() + mins * 60 * 1000;
+  const copy = addSchedule({
+    projectId: existing.projectId,
+    projectName: existing.projectName,
+    spec: { type: 'oneshot', fireAt, label: existing.label || existing.text },
+    kind: 'reminder',
+    text: existing.text,
+    fireAt,
+    createdBy: existing.createdBy || 'local',
+    linkedNoteText: existing.linkedNoteText || null,
+  });
+  return { schedule: copy, minutes: mins };
+}
+
 /** Phase 5.2: remove every reminder-kind schedule (command schedules are untouched).
  *  Used at boot when the profile's persistRemindersAcrossRestart is off, so reminders
  *  from a previous session never fire against a fresh session the user configured as

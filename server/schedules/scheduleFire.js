@@ -142,9 +142,11 @@ function deliverReminder(schedule) {
 
   // Always invoke notify() so desktop toasts, webhooks, and in-console notification history
   // record the fired reminder regardless of session connectivity or app window state.
+  // E-2: refId carries the schedule id so the in-app toast can offer Snooze.
   notify(schedule.projectId, 'reminder-fired', {
     title: `Reminder: ${schedule.text}`,
     body: `${schedule.label}`,
+    refId: schedule.id,
   });
 
   if (target) {

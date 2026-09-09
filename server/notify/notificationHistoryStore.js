@@ -36,7 +36,7 @@ export function getNotificationHistory() {
   return history.slice();
 }
 
-export function recordNotificationItem(projectId, projectName, event, title, body) {
+export function recordNotificationItem(projectId, projectName, event, title, body, extra = null) {
   const item = {
     id: crypto.randomUUID().slice(0, 8),
     projectId,
@@ -46,6 +46,9 @@ export function recordNotificationItem(projectId, projectName, event, title, bod
     body,
     timestamp: Date.now(),
     dismissed: false,
+    // E-2 (2026-09-09): optional caller-supplied reference (e.g. a reminder's schedule id
+    // so the fired-toast can offer Snooze). Additive — existing 5-arg callers are untouched.
+    ...(extra && typeof extra === 'object' ? extra : null),
   };
   history.unshift(item);
   if (history.length > MAX_HISTORY) {
