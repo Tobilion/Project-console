@@ -843,9 +843,15 @@ Verified: check-handlers 287/287, check-ws-cases clean, npm test 602/602, tsc cl
   (ModalShell, CommandDeck, both TourOverlay cards — opaque panels/cards deliberately
   untouched, glass on opaque paint is invisible). Off (or a missing filter mount, which
   must stay unconditional per the invariant comment) renders exactly as before.
-  Verified: profile default/off round-trip, tsc + vite build clean; the refraction
-  strength/edge values are judgment calls pending a real screen. Still open: G-6 (radii
-  polish), G-7 (moot — no ported components need it), G-4's loading-screen reuse (H).
+   Verified: profile default/off round-trip, tsc + vite build clean; the refraction
+   strength/edge values are judgment calls pending a real screen. G-6 audited
+   no-change-needed (2026-09-09, opencode): grepped every `rounded-*` utility — no
+   one-off/arbitrary values anywhere; cards sit on the 18px/12px scale
+   (`rounded-2xl` marketplace/palette/modals, `rounded-xl` panels), small controls on
+   `rounded-md` (6px pills/inputs/kbd — appropriately tighter than cards, not a scale
+   violation); larger radii anywhere would be a taste call needing eyes, not a mechanical
+   fix. G-7 moot (no ported components need cva/slot). Still open: G-4's loading-screen
+   reuse (H).
 - Phases H, I, J, L: **not started.**
 
 **Native verification baseline (2026-09-09, opencode on Windows — supersedes the bridged-shell
