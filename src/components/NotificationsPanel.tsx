@@ -148,7 +148,13 @@ export function NotificationsPanel({ project, onSendMessage }: NotificationsPane
   const addRule = () => {
     if (!folder.trim()) return;
     if (ruleType === 'folder-stale') {
-      send(`notify me if ${folder.trim()} hasn't changed in ${days.trim() || '7'} days`);
+      // F-10 (2026-09-09): mirror the server's 1-365 clamp (connectionNotifyAdmin.js) with
+      // inline feedback instead of sending a nonsense count and getting a guidance bubble
+      // back in chat. Empty means the 7-day default; anything else clamps into range.
+      const n = parseInt(days.trim(), 10);
+      const clamped = Number.isFinite(n) ? Math.max(1, Math.min(365, n)) : 7;
+      if (String(clamped) !== days.trim()) setDays(String(clamped));
+      send(`notify me if ${folder.trim()} hasn't changed in ${clamped} days`);
     } else {
       send(`notify me when ${ruleType === 'file-added' ? 'a new file appears' : 'files change'} in ${folder.trim()}`);
     }
@@ -338,9 +344,10 @@ export function NotificationsPanel({ project, onSendMessage }: NotificationsPane
                   {ruleType === 'folder-stale' && (
                     <input
                       value={days}
-                      onChange={(e) => setDays(e.target.value.replace(/[^\d]/g, ''))}
+                      onChange={(e) => setDays(e.target.value.replace(/[^\d]/g, '').slice(0, 3))}
                       className={cn(inputCls, 'w-16 text-center')}
-                      title="days without changes"
+                      title="Days without changes (1-365)"
+                      placeholder="7"
                     />
                   )}
                   <button onClick={addRule} disabled={!folder.trim()} className="flex items-center gap-1.5 text-xs font-bold rounded-lg px-3 py-2 bg-accent-blue text-white hover:opacity-90 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed">

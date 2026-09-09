@@ -679,7 +679,11 @@ Verified: check-handlers 287/287, check-ws-cases clean, npm test 602/602, tsc cl
   Settings → Appearance) gating the `useAppViewState` effect, exactly as the spec asked.
   Verified: profile default true/absent-keeps/off-saves/junk-falls-back via a direct
   `readProfile`/`sanitizeProfile` round-trip, tsc clean, vite build clean. Browser
-  confirmation of the toggle still outstanding. Still open: F-4/F-5(1)/F-6/
+  confirmation of the toggle still outstanding. F-10(b) done in passing (2026-09-09,
+  opencode): the folder-stale day-count input now clamps to the server's 1-365 range
+  inline (empty = 7-day default, over-range values corrected visibly in the field) instead
+  of sending nonsense counts to the chat error path; input capped at 3 digits with a
+  `1-365` title hint. tsc clean. Still open: F-4/F-5(1)/F-6/
   F-8/F-9/F-10-rest, and F-11's second card type (notes).
 - **Phase C: started** (2026-09-09, opencode). C-1 verified already covered — no change
   needed: the spec's "missing panel targets" list is stale, `ToolsPanel.tsx` renders a
