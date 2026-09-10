@@ -402,6 +402,13 @@ const notificationDismissCase: WsCaseHandler = () => {
   // Notification dismiss broadcast — state synced via REST polling/fetch in panel.
 };
 
+const openScreensaverCase: WsCaseHandler = () => {
+  // Screensaver (2026-09-11): chat intent "open screensaver" -> server sends
+  // {type:'open_screensaver'}; frontend dispatches the same CustomEvent the
+  // Command Deck uses, so both paths converge on App's lpc:open-screensaver listener.
+  window.dispatchEvent(new CustomEvent('lpc:open-screensaver'));
+};
+
 /**
  * The 29 core (non-streaming) cases. Exported separately from the full map because
  * scripts/checkWsMessageCases.ts asserts CLI parity against exactly this set — a key here
@@ -439,6 +446,7 @@ export const WS_CORE_CASES = {
   display_name_set: displayNameSetCase,
   notification_fired: notificationFiredCase,
   notification_dismiss: notificationDismissCase,
+  open_screensaver: openScreensaverCase,
 } satisfies Record<string, WsCaseHandler>;
 
 /** Full dispatch map: core cases + the streaming trio (stream_start/token/stream_end). */

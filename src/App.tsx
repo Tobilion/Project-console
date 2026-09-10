@@ -3,6 +3,7 @@ import { X } from 'lucide-react';
 import { GlowOrbs } from './components/GlowOrbs';
 import { LoginScreen } from './components/LoginScreen';
 import { BootScreen } from './components/BootScreen';
+import { Screensaver } from './components/Screensaver';
 import { NotificationsPopup } from './components/NotificationsPopup';
 import { AppHeader } from './components/AppHeader';
 import { AppMainView } from './components/AppMainView';
@@ -162,6 +163,7 @@ function App() {
   // whether accounts exist and whether this browser holds a session. Disarmed servers
   // (and unreachable ones — fetch failure means today's open behavior) render the app
   // untouched; armed-but-anonymous renders LoginScreen instead of everything below.
+  const [screensaverOpen, setScreensaverOpen] = useState(false);
   const [authState, setAuthState] = useState<{ armed: boolean; user: { username: string; role: string } | null } | null>(null);
   useEffect(() => {
     let cancelled = false;
@@ -217,6 +219,47 @@ function App() {
     window.addEventListener('lpc:open-settings', onOpenSettings);
     return () => window.removeEventListener('lpc:open-settings', onOpenSettings);
   }, [handleOpenSettings]);
+
+  // Screensaver (2026-09-11): idle timeout to SandBlocks screensaver. Mirrors
+  // Windows — full-screen SandBlocks with a "Back to console" button, dismiss on
+  // Esc/click/any key. On-demand via "open screensaver" chat intent (server sends
+  // open_screensaver WS message) or Ctrl+K deck. Auto-opens after N minutes of
+  // no mouse/key/touch/scroll when profile.screensaverEnabled is on (default 15,
+  // configurable in Settings → Appearance). Disabled during FirstRunSetup / welcome
+  // tour / login screen so it never traps.
+  useEffect(() => {
+    const onOpen = () => setScreensaverOpen(true);
+    window.addEventListener('lpc:open-screensaver', onOpen as EventListener);
+    return () => window.removeEventListener('lpc:open-screensaver', onOpen as EventListener);
+  }, []);
+  useEffect(() => {
+    if (!profileLoaded || showFirstRunSetup || screensaverOpen) return;
+    if (!profile.screensaverEnabled) return;
+    if (authState?.armed && !authState.user) return; // login screen — never overlay
+    const mins = Math.max(1, Math.min(120, Math.round(profile.screensaverTimeoutMinutes || 15)));
+    const ms = mins * 60 * 1000;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const arm = () => {
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => setScreensaverOpen(true), ms);
+    };
+    const onActivity = () => arm();
+    // Any input counts as activity
+    window.addEventListener('mousemove', onActivity);
+    window.addEventListener('keydown', onActivity);
+    window.addEventListener('click', onActivity);
+    window.addEventListener('scroll', onActivity, true);
+    window.addEventListener('touchstart', onActivity);
+    arm();
+    return () => {
+      if (timer) clearTimeout(timer);
+      window.removeEventListener('mousemove', onActivity);
+      window.removeEventListener('keydown', onActivity);
+      window.removeEventListener('click', onActivity);
+      window.removeEventListener('scroll', onActivity, true);
+      window.removeEventListener('touchstart', onActivity);
+    };
+  }, [profileLoaded, showFirstRunSetup, screensaverOpen, profile.screensaverEnabled, profile.screensaverTimeoutMinutes, authState]);
 
   // Phase 9 (2026-08-24 split): global keyboard + tour CustomEvent listeners.
   useAppGlobalListeners({ setDeckOpen, setShortcutsOpen, setShowDashboard, setShowCommandRef, setToolsOpen, setTourPickerOpen, setTourSection, setShowWelcome, setChatFullscreen });
@@ -451,6 +494,11 @@ function App() {
     }
   }, [handleOpenNotifications, handleOpenSettings]);
 
+  // Screensaver overlay — sits above the whole console, dismisses to the same
+  // console state underneath (no navigation, no reload). Rendered after profileLoaded
+  // checks so it never traps the boot/login screens.
+  const screensaverNode = screensaverOpen ? <Screensaver onClose={() => setScreensaverOpen(false)} /> : null;
+
   // Phase H boot screen — the web equivalent of the desktop splash. profileLoaded
   // always resolves (useUserProfile settles in .finally), so this can never trap;
   // BootScreen itself waits 400ms before painting so fast loads never flash it.
@@ -479,6 +527,7 @@ function App() {
 
   return (
     <div className="h-screen relative flex flex-col">
+      {screensaverNode}
       <GlowOrbs followMouse={profile.colorFollowsMouse} />
 
       {!chatFullscreen && (

@@ -362,6 +362,7 @@ export function createCliRenderer({ ws, sessionId, state }) {
         if (msg.data?.title) writeLine(`${C.yellow}🔔 [${msg.data.projectName || 'Notification'}] ${msg.data.title}${msg.data.body ? `: ${msg.data.body}` : ''}${C.reset}\n`);
         break;
       case 'notification_dismiss': break; // notification dismiss state — UI only
+      case 'open_screensaver': break; // screensaver is a web-only SandBlocks overlay — no terminal equivalent
       default:
         break;
     }

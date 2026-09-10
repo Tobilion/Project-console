@@ -71,6 +71,12 @@ export interface UserProfile {
   // after the user reported glass invisible everywhere (the old url(#filter) path had
   // dropped the whole rule, and the new blur+tint path's tint could still mask it).
   glassTint: boolean;
+  // Screensaver (2026-09-11): Windows-style idle screensaver showing the SandBlocks
+  // field. Disabled by default; when enabled the console auto-opens it after
+  // screensaverTimeoutMinutes of no input (default 15). Also openable on demand
+  // via "open screensaver" / Command Deck.
+  screensaverEnabled: boolean;
+  screensaverTimeoutMinutes: number;
 }
 
 // Neutral defaults, not a hardcoded person's name/title — matches server/routes/profileRoutes.js's
@@ -107,6 +113,8 @@ const DEFAULT_PROFILE: UserProfile = {
   glassIntensity: 65,
   glassScope: 'cards',
   glassTint: true,
+  screensaverEnabled: false,
+  screensaverTimeoutMinutes: 15,
 };
 
 /** Client state for the user profile persisted to the server (GET/POST /api/profile).

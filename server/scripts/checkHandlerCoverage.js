@@ -59,6 +59,7 @@ const { noteHandlers } = await import(pathToFileURL(base + 'wsHandlers/builtinNo
 const { csvHandlers } = await import(pathToFileURL(base + 'wsHandlers/builtinCsvTools.js').href);
 const { clipboardHandlers } = await import(pathToFileURL(base + 'wsHandlers/builtinClipboard.js').href);
 const { backupHandlers } = await import(pathToFileURL(base + 'wsHandlers/builtinBackup.js').href);
+const { screensaverHandlers } = await import(pathToFileURL(base + 'wsHandlers/builtinScreensaver.js').href);
 const { handleNotifyCommand } = await import(pathToFileURL(base + 'wsHandlers/connectionNotifyAdmin.js').href);
 const { getWatchRules } = await import(pathToFileURL(base + 'watchRules.js').href);
 const { handleScheduleCommand } = await import(pathToFileURL(base + 'wsHandlers/connectionScheduleAdmin.js').href);
@@ -96,7 +97,7 @@ function eq(label, got, expect) {
   else if (!ok) console.log(`  FAIL ${label}\n    expected: ${e}\n    got:      ${g}`);
 }
 
-const merged = { ...gitHandlers, ...chitChatHandlers, ...fileNpmHandlers, ...projectKnowledgeHandlers, ...projectContextHandlers, ...projectActionHandlers, ...diagnosticsHandlers, ...generalFileHandlers, ...toolsHandlers, ...pdfHandlers, ...reminderHandlers, ...noteHandlers, ...csvHandlers, ...clipboardHandlers, ...backupHandlers };
+const merged = { ...gitHandlers, ...chitChatHandlers, ...fileNpmHandlers, ...projectKnowledgeHandlers, ...projectContextHandlers, ...projectActionHandlers, ...diagnosticsHandlers, ...generalFileHandlers, ...toolsHandlers, ...pdfHandlers, ...reminderHandlers, ...noteHandlers, ...csvHandlers, ...clipboardHandlers, ...backupHandlers, ...screensaverHandlers };
 const handlerKeys = Object.keys(merged).sort();
 const builtinKeys = [...BUILTIN_INTENTS].sort();
 const intentKeys = Object.keys(INTENTS).sort();

@@ -452,6 +452,7 @@ App-global identity (name/title/custom role) edited from the ⚙ Settings modal;
 | `npx local-project-console cli` | Launch the console in CLI chat mode — the server boots in the background and the terminal becomes the interactive chat agent (same mode as start.bat's [C] option; installed users run `local-project-console cli`) |
 | `what is ai mode vs trigger mode` / `how is this different from terminal` | Explains trigger (deterministic local matcher) vs AI (local Ollama with tools) and terminal differences |
 | `is my data safe` / `where does my data get stored` | Local-only storage — sessions in `.console/`, global state in `data/`, no cloud unless you use cloud models/search |
+| `open screensaver` / `show screensaver` | Full-screen SandBlocks screensaver (same moving icons as loading screen) — click anywhere / Esc / "Back to console" to return; auto after idle via Settings → Appearance → Screensaver (default 15 min when enabled); also Ctrl+K → Screensaver |
 | `open settings` / `change accent color` / `turn on sandbox mode` | User Profile modal (gear icon): theme, accent, locale, clipboard opt-in, sandbox, permission mode |
 | `how do i get to settings` / `how do i see history` / `open terminal view` | Navigation help — settings, history/revert, dashboard, terminal, project/tabs/chats |
 

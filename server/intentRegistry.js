@@ -165,6 +165,8 @@ export const BUILTIN_INTENTS = new Set([
   'general.files.rename', 'general.files.move',
   // Phase 10 (2026-08-12): log diagnostics — where are my logs / export logs (builtinChitChat.js).
   'system.chit_chat.where_are_logs', 'system.chit_chat.export_logs',
+  // Screensaver (2026-09-11): SandBlocks idle surface — SandBlocks wins on pointer.
+  'system.screensaver.open',
 ]);
 
 // Phase 1 workspaceType filtering (UPGRADE-ROADMAP.md, 2026-08-11): builtin intents that make

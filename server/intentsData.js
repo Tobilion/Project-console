@@ -19,6 +19,7 @@ import { NOTE_INTENTS } from './intents/noteIntents.js';
 import { CSV_INTENTS } from './intents/csvIntents.js';
 import { CLIPBOARD_INTENTS } from './intents/clipboardIntents.js';
 import { BACKUP_INTENTS } from './intents/backupIntents.js';
+import { SCREENSAVER_INTENTS } from './intents/screensaverIntents.js';
 import { getLocalePhrases } from './intents/localeIntents.js';
 
 export const INTENTS = {
@@ -37,6 +38,7 @@ export const INTENTS = {
   ...CSV_INTENTS,
   ...CLIPBOARD_INTENTS,
   ...BACKUP_INTENTS,
+  ...SCREENSAVER_INTENTS,
 };
 
 // Phase 14 (2026-08-12): i18n scaffolding — merge the active locale's phrases into the

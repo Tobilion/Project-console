@@ -97,6 +97,9 @@ export function UserProfileModal({ open, profile, onClose, onSave, initialCatego
   const [glassScope, setGlassScope] = useState<'buttons' | 'cards' | 'all'>(
     profile.glassScope === 'buttons' || profile.glassScope === 'all' ? profile.glassScope : 'cards');
   const [glassTint, setGlassTint] = useState(profile.glassTint !== false);
+  const [screensaverEnabled, setScreensaverEnabled] = useState(profile.screensaverEnabled);
+  const [screensaverTimeoutMinutes, setScreensaverTimeoutMinutes] = useState(
+    typeof profile.screensaverTimeoutMinutes === 'number' ? profile.screensaverTimeoutMinutes : 15);
   const [generalToolsFirst, setGeneralToolsFirst] = useState(profile.generalToolsFirst);
   const [category, setCategory] = useState<CategoryId>((initialCategory as CategoryId) || 'identity');
 
@@ -131,6 +134,8 @@ export function UserProfileModal({ open, profile, onClose, onSave, initialCatego
       setGlassIntensity(typeof profile.glassIntensity === 'number' ? profile.glassIntensity : 65);
       setGlassScope(profile.glassScope === 'buttons' || profile.glassScope === 'all' ? profile.glassScope : 'cards');
       setGlassTint(profile.glassTint !== false);
+      setScreensaverEnabled(!!profile.screensaverEnabled);
+      setScreensaverTimeoutMinutes(typeof profile.screensaverTimeoutMinutes === 'number' ? profile.screensaverTimeoutMinutes : 15);
       setGeneralToolsFirst(profile.generalToolsFirst);
       if (initialCategory) setCategory(initialCategory as CategoryId);
     }
@@ -167,6 +172,8 @@ export function UserProfileModal({ open, profile, onClose, onSave, initialCatego
       glassIntensity,
       glassScope,
       glassTint,
+      screensaverEnabled,
+      screensaverTimeoutMinutes,
     });
     onClose();
   };
@@ -417,6 +424,31 @@ export function UserProfileModal({ open, profile, onClose, onSave, initialCatego
                       </div>
                       {!liquidGlass && <p className="text-[10px] text-fg-faint">Turn liquid glass on to see intensity, tint and scope.</p>}
                     </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className={sectionCls} data-setting="screensaverEnabled">
+                <div className="flex items-start gap-3">
+                  <Toggle enabled={screensaverEnabled} onToggle={() => setScreensaverEnabled(!screensaverEnabled)}
+                    title={screensaverEnabled ? 'Screensaver auto-opens on idle' : 'Screensaver only on demand'} />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm text-fg">Screensaver on idle</p>
+                    <p className="text-[11px] text-fg-dim mt-0.5">When on, the SandBlocks screensaver (same moving icons as the loading screen) opens automatically after no input — like Windows. Dismiss with Esc, any key, or the "Back to console" button.</p>
+                    <div className={`mt-2 flex items-center gap-2 ${screensaverEnabled ? '' : 'opacity-40 pointer-events-none'}`}>
+                      <label className="text-[11px] text-fg-dim">Timeout</label>
+                      <input
+                        type="range" min={1} max={60} step={1} value={screensaverTimeoutMinutes}
+                        onChange={(e) => setScreensaverTimeoutMinutes(Number(e.target.value))}
+                        className="flex-1 accent-accent-blue" title="Minutes of idle before screensaver"
+                      />
+                      <span className="w-12 text-right text-xs font-mono text-fg-strong">{screensaverTimeoutMinutes} min</span>
+                      <button type="button" onClick={() => window.dispatchEvent(new CustomEvent('lpc:open-screensaver'))}
+                        className="ml-2 px-2.5 py-1 rounded-lg text-[11px] font-bold bg-accent-blue text-white hover:opacity-90 transition-opacity">
+                        Preview
+                      </button>
+                    </div>
+                    <p className="text-[10px] text-fg-dim mt-1.5">Also open anytime: type <span className="font-mono">open screensaver</span> in chat or hit Ctrl+K → Screensaver.</p>
                   </div>
                 </div>
               </div>

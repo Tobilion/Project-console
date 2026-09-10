@@ -124,6 +124,10 @@ const DEFAULT_PROFILE = {
   glassScope: 'cards',
   // Glass tint toggle (default true) — off = pure frosted blur, no accent wash.
   glassTint: true,
+  // Screensaver (2026-09-11): idle timeout to SandBlocks screensaver. Off by default
+  // (opt-in), 15 min default so enabling it does the expected thing immediately.
+  screensaverEnabled: false,
+  screensaverTimeoutMinutes: 15,
 };
 
 // Only plain, trimmed strings up to a sane length — mirrors the conservative
@@ -196,6 +200,8 @@ function shapeProfile(p) {
       glassIntensity: typeof p.glassIntensity === 'number' ? Math.max(0, Math.min(100, Math.round(p.glassIntensity))) : DEFAULT_PROFILE.glassIntensity,
       glassScope: ['buttons', 'cards', 'all'].includes(p.glassScope) ? p.glassScope : DEFAULT_PROFILE.glassScope,
       glassTint: sanitizeBool(p.glassTint, DEFAULT_PROFILE.glassTint),
+      screensaverEnabled: sanitizeBool(p.screensaverEnabled, DEFAULT_PROFILE.screensaverEnabled),
+      screensaverTimeoutMinutes: typeof p.screensaverTimeoutMinutes === 'number' ? Math.max(1, Math.min(120, Math.round(p.screensaverTimeoutMinutes))) : DEFAULT_PROFILE.screensaverTimeoutMinutes,
   };
 }
 
@@ -267,6 +273,8 @@ export function sanitizeProfile(body, current) {
     glassIntensity: typeof body.glassIntensity === 'number' ? Math.max(0, Math.min(100, Math.round(body.glassIntensity))) : current.glassIntensity,
     glassScope: ['buttons', 'cards', 'all'].includes(body.glassScope) ? body.glassScope : current.glassScope,
     glassTint: sanitizeBool(body.glassTint, current.glassTint),
+    screensaverEnabled: sanitizeBool(body.screensaverEnabled, current.screensaverEnabled),
+    screensaverTimeoutMinutes: typeof body.screensaverTimeoutMinutes === 'number' ? Math.max(1, Math.min(120, Math.round(body.screensaverTimeoutMinutes))) : current.screensaverTimeoutMinutes,
   };
 }
 

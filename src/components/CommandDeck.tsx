@@ -127,6 +127,7 @@ export const CommandDeck = ({
 
     list.push({ id: 'act-theme', group: 'Actions', label: theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme', keywords: ['dark', 'light', 'theme'], icon: theme === 'dark' ? <Sun size={14} /> : <Moon size={14} />, run: onToggleTheme });
     list.push({ id: 'act-profile', group: 'Actions', label: 'Open profile & settings', keywords: ['settings', 'gear', 'profile'], icon: <Settings size={14} />, run: onOpenProfile });
+    list.push({ id: 'act-screensaver', group: 'Actions', label: 'Open screensaver', keywords: ['screensaver', 'idle', 'sand', 'blocks'], icon: <Sparkles size={14} />, run: () => window.dispatchEvent(new CustomEvent('lpc:open-screensaver')) });
     list.push({ id: 'act-ai', group: 'Actions', label: aiEnabled ? 'Turn AI mode off' : 'Turn AI mode on', keywords: ['ollama', 'model', 'assistant'], icon: <Bot size={14} />, run: onToggleAI });
     list.push({ id: 'act-workspace', group: 'Actions', label: workspaceTab === 'dev' ? 'Switch to General workspace' : 'Switch to Developer workspace', keywords: ['workspace', 'mode', 'developer', 'general'], icon: <ArrowLeftRight size={14} />, run: () => onSetWorkspaceTab(workspaceTab === 'dev' ? 'general' : 'dev') });
     list.push({ id: 'act-dock', group: 'Actions', label: dockExpanded ? 'Collapse process dock' : 'Expand process dock', keywords: ['processes', 'dock', 'logs'], icon: <PanelBottom size={14} />, run: onToggleDock });
