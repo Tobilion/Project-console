@@ -289,8 +289,10 @@ async function runOnce(mode, count, withTypos) {
     inputs.push(...genIntentCover(count, withTypos));
   }
   if (mode === 'user-replay' || mode === 'all') {
-    const userMsgs = loadUserMessages(count);
-    for (const m of userMsgs) {
+    const userMsgs = loadUserMessages(Math.min(count, 500));
+    // uncapped: generate COUNT variations by sampling with replacement from userMsgs
+    for (let i=0;i<count;i++) {
+      const m = pickRandom(userMsgs);
       inputs.push({ input: varyUserStyle(m, withTypos), expected: null, base: `user:${m.slice(0,40)}` });
     }
   }
