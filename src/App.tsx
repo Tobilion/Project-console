@@ -176,6 +176,7 @@ function App() {
   // E-4 (2026-09-10): the header bell opens the anchored popup, not the Tools grid.
   // The full panel stays one click away inside the popup (same endpoints either way).
   const [notifPopupOpen, setNotifPopupOpen] = useState(false);
+
   const handleOpenNotifications = useCallback(() => {
     // Prefetch the registry so the panel shell has names/icons on first paint — the panel
     // itself renders from the static view map regardless (see ToolsPanel).
@@ -407,17 +408,13 @@ function App() {
   // exists solely for the non-chat views where this thread is unmounted.
   const chatViewActive = !showCommandRef && !toolsOpen && !showDashboard && !(showWelcome && !chatFullscreen);
 
-  // Phase H boot screen — the web equivalent of the desktop splash. profileLoaded
-  // always resolves (useUserProfile settles in .finally), so this can never trap;
-  // BootScreen itself waits 400ms before painting so fast loads never flash it.
-  // Placed after all hooks, so hook order is unaffected.
-  if (!profileLoaded) {
-    return <BootScreen />;
-  }
-
   // Portal accounts for the header switcher (usernames + roles only — the endpoint
   // never returns hashes, and it 401s anonymously while armed). Fetched once the lock
-  // check resolves to armed+user; disarmed servers skip it entirely.
+  // check resolves to armed+user; disarmed servers skip it entirely. NOTE: like every
+  // other hook in this component, this MUST stay above the first early return
+  // (!profileLoaded → BootScreen) — hooks after an early return change the hook count
+  // once loading finishes, which crashes React ("rendered more hooks than during the
+  // previous render", 2026-09-10).
   const [accounts, setAccounts] = useState<{ username: string; role: string }[]>([]);
   useEffect(() => {
     if (!authState?.armed || !authState.user) return;
@@ -451,6 +448,14 @@ function App() {
       window.location.reload();
     }
   }, [handleOpenNotifications, handleOpenSettings]);
+
+  // Phase H boot screen — the web equivalent of the desktop splash. profileLoaded
+  // always resolves (useUserProfile settles in .finally), so this can never trap;
+  // BootScreen itself waits 400ms before painting so fast loads never flash it.
+  // Placed after all hooks, so hook order is unaffected.
+  if (!profileLoaded) {
+    return <BootScreen />;
+  }
 
   // Phase I lock screen — armed server, anonymous browser. Rendered instead of the whole
   // console (placed after all hooks, so hook order is unaffected).
