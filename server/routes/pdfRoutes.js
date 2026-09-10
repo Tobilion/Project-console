@@ -150,8 +150,11 @@ export function registerPdfRoutes(app) {
     if (inputs.length > MAX_MERGE_INPUTS) return res.json({ ok: false, error: `Merge is capped at ${MAX_MERGE_INPUTS} PDFs per run.` });
     if (new Set(inputs).size !== inputs.length) return res.json({ ok: false, error: 'The same PDF appears twice in your merge.' });
     if (inputs.includes(output)) return res.json({ ok: false, error: 'The output name is also one of the inputs.' });
+    // J (unlock): optional PDF password — panel REST only, never chat (passwords must
+    // never persist in the session transcript). Tried on every input for merges.
+    const password = typeof req.body?.password === 'string' && req.body.password.length <= 256 ? req.body.password : undefined;
     await createCheckpoint(project.path, `merge ${inputs.join(' and ')} into ${output}`);
-    const result = await mergePdfs(project.path, inputs, output);
+    const result = await mergePdfs(project.path, inputs, output, password);
     if (!result.ok) return res.json(result);
     res.json(result);
   }));
@@ -171,8 +174,9 @@ export function registerPdfRoutes(app) {
       if (!Number.isFinite(page) || page < 1) return res.status(400).json({ error: 'Missing or invalid page number.' });
       spec = { kind: 'at', page };
     }
+    const splitPassword = typeof req.body?.password === 'string' && req.body.password.length <= 256 ? req.body.password : undefined;
     await createCheckpoint(project.path, `split ${hit.path}`);
-    const result = await splitPdf(project.path, hit.path, spec);
+    const result = await splitPdf(project.path, hit.path, spec, splitPassword);
     if (!result.ok) return res.json(result);
     res.json(result);
   }));
@@ -199,8 +203,9 @@ export function registerPdfRoutes(app) {
     if (!Number.isFinite(from) || !Number.isFinite(to)) return res.status(400).json({ error: 'Missing or invalid page range.' });
     const output = (typeof req.body?.output === 'string' && req.body.output.trim())
       || `${hit.path.replace(/\.pdf$/i, '')}-pages-${from}-${to}.pdf`;
+    const pagesPassword = typeof req.body?.password === 'string' && req.body.password.length <= 256 ? req.body.password : undefined;
     await createCheckpoint(project.path, `extract pages ${from}-${to} from ${hit.path} into ${output}`);
-    const result = await extractPages(project.path, hit.path, from, to, output);
+    const result = await extractPages(project.path, hit.path, from, to, output, pagesPassword);
     if (!result.ok) return res.json(result);
     res.json(result);
   }));
@@ -215,8 +220,9 @@ export function registerPdfRoutes(app) {
     if (!text) return res.status(400).json({ error: 'Missing watermark text.' });
     const output = (typeof req.body?.output === 'string' && req.body.output.trim())
       || `${hit.path.replace(/\.pdf$/i, '')}-watermarked.pdf`;
+    const wmPassword = typeof req.body?.password === 'string' && req.body.password.length <= 256 ? req.body.password : undefined;
     await createCheckpoint(project.path, `watermark ${hit.path} with ${text}`);
-    const result = await watermarkPdf(project.path, hit.path, text, output);
+    const result = await watermarkPdf(project.path, hit.path, text, output, wmPassword);
     if (!result.ok) return res.json(result);
     res.json(result);
   }));

@@ -73,7 +73,7 @@ const { handleMatchStatsCommand } = await import(pathToFileURL(base + 'wsHandler
 const { parseReminderInput } = await import(pathToFileURL(base + 'schedules/reminderParser.js').href);
 const {
   parsePdfNames, parsePdfOutput, parsePageSpec, extractWatermarkText,
-  resolvePdfInput, listPdfFiles, mergePdfs, extractPages, watermarkPdf,
+  resolvePdfInput, listPdfFiles, mergePdfs, splitPdf, extractPages, watermarkPdf,
 } = await import(pathToFileURL(base + 'pdfKit.js').href);
 const { PDFDocument } = await import('pdf-lib');
 const { revertAction, listActions, appendAction } = await import(pathToFileURL(base + 'actionHistory.js').href);
@@ -754,6 +754,26 @@ const createdActions = listActions(pdfRoot).filter((a) => a.type === 'file_write
 eq('pdf journal: created files journaled as file_write existed:false', createdActions.length === 3, true);
 const revertOne = await revertAction(pdfRoot, createdActions[0].id);
 eq('pdf revert: revert deletes the created output', revertOne.ok === true && !fs.existsSync(path.join(pdfRoot, createdActions[0].path)), true);
+// J (unlock, 2026-09-10): the panel password threads into loadDocument for all four
+// write ops. Live-probed 2026-09-10: the bundled pdf-lib WRITES encrypted files but its
+// loader never enforces passwords (bare/correct/wrong all load), so a true locked-file
+// round-trip is untestable with this lib — same accepted precedent as the untested
+// Non-Windows clipboard paths. The wrong-password branch is therefore
+// inspection-covered only; everything below IS runnable and asserts the threading, the
+// corrupt-file message (now pointing at the panel field), and zero behavior change
+// for passwordless files.
+const pwMerge = await mergePdfs(pdfRoot, ['alpha.pdf', 'beta.pdf'], 'pw-merge.pdf', 'secret123');
+eq('pdf unlock: password param does not break plain files (merge)',
+  pwMerge.ok === true && pwMerge.pages === 3 && fs.existsSync(path.join(pdfRoot, 'pw-merge.pdf')), true);
+const pwSplit = await splitPdf(pdfRoot, 'alpha.pdf', { kind: 'perPage' }, 'secret123');
+eq('pdf unlock: password param does not break plain files (split)', pwSplit.ok === true, true);
+const pwWm = await watermarkPdf(pdfRoot, 'beta.pdf', 'draft', 'pw-wm.pdf', 'secret123');
+eq('pdf unlock: password param does not break plain files (watermark)',
+  pwWm.ok === true && fs.existsSync(path.join(pdfRoot, 'pw-wm.pdf')), true);
+fs.writeFileSync(path.join(pdfRoot, 'corrupt.pdf'), Buffer.from('not a pdf at all'));
+const corruptMerge = await mergePdfs(pdfRoot, ['corrupt.pdf', 'beta.pdf'], 'corrupt-out.pdf');
+eq('pdf unlock: unloadable file points at the panel password field (not just corruption)',
+  corruptMerge.ok === false && /password field/.test(corruptMerge.error) && !fs.existsSync(path.join(pdfRoot, 'corrupt-out.pdf')), true);
 fs.rmSync(pdfRoot, { recursive: true, force: true });
 
 // --- REMINDERS (Phase 4, 2026-08-12) ------------------------------------------

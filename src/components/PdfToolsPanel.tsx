@@ -151,13 +151,18 @@ export function PdfToolsPanel({ project, onSendMessage, tabId = null }: PdfTools
     });
   };
 
+  // J (unlock): one optional password for locked PDFs — sent with the four write ops
+  // (merge tries it on every input), never logged, never persisted. Held in memory only.
+  const [pdfPassword, setPdfPassword] = useState('');
+  const pwField = () => (pdfPassword ? { password: pdfPassword } : {});
+
   const sendMerge = async () => {
     if (mergeDisabled || !project?.id) return;
     const out = sanitizeOutputName(mergeOutput);
     setLoading(true);
     const result = await apiFetchJson<{ ok: boolean; output?: string; pages?: number; bytes?: number; error?: string }>(
       projectApi(`/api/projects/${encodeURIComponent(project.id)}/pdf/merge`, tabId),
-      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ inputs: mergeList, output: out }) }
+      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ inputs: mergeList, output: out, ...pwField() }) }
     );
     setLoading(false);
     if (!result) { setError('Could not reach the server.'); return; }
@@ -174,7 +179,7 @@ export function PdfToolsPanel({ project, onSendMessage, tabId = null }: PdfTools
       projectApi(`/api/projects/${encodeURIComponent(project.id)}/pdf/split`, tabId),
       {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ input: selected, mode: splitMode, at: splitMode === 'at' ? Number(splitAt.trim() || '1') : undefined }),
+        body: JSON.stringify({ input: selected, mode: splitMode, at: splitMode === 'at' ? Number(splitAt.trim() || '1') : undefined, ...pwField() }),
       }
     );
     setLoading(false);
@@ -206,7 +211,7 @@ export function PdfToolsPanel({ project, onSendMessage, tabId = null }: PdfTools
       projectApi(`/api/projects/${encodeURIComponent(project.id)}/pdf/extract-pages`, tabId),
       {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ input: selected, from: Number(pageFrom.trim() || '1'), to: Number(pageTo.trim() || '2'), output: out }),
+        body: JSON.stringify({ input: selected, from: Number(pageFrom.trim() || '1'), to: Number(pageTo.trim() || '2'), output: out, ...pwField() }),
       }
     );
     setLoading(false);
@@ -224,7 +229,7 @@ export function PdfToolsPanel({ project, onSendMessage, tabId = null }: PdfTools
       projectApi(`/api/projects/${encodeURIComponent(project.id)}/pdf/watermark`, tabId),
       {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ input: selected, text: watermarkText.trim() }),
+        body: JSON.stringify({ input: selected, text: watermarkText.trim(), ...pwField() }),
       }
     );
     setLoading(false);
@@ -236,16 +241,26 @@ export function PdfToolsPanel({ project, onSendMessage, tabId = null }: PdfTools
   };
 
   const FilePicker = (
-    <select
-      value={selected}
-      onChange={(e) => { setSelected(e.target.value); setExtractedText(null); }}
-      className="w-full text-xs bg-panel-strong border border-border-soft rounded-lg px-2.5 py-2 text-fg-strong focus:outline-none focus:border-accent/50"
-    >
-      <option value="">Pick a PDF…</option>
-      {files.map((f) => (
-        <option key={f.path} value={f.name}>{f.name} ({formatSize(f.size)})</option>
-      ))}
-    </select>
+    <>
+      <select
+        value={selected}
+        onChange={(e) => { setSelected(e.target.value); setExtractedText(null); }}
+        className="w-full text-xs bg-panel-strong border border-border-soft rounded-lg px-2.5 py-2 text-fg-strong focus:outline-none focus:border-accent/50"
+      >
+        <option value="">Pick a PDF…</option>
+        {files.map((f) => (
+          <option key={f.path} value={f.name}>{f.name} ({formatSize(f.size)})</option>
+        ))}
+      </select>
+      <input
+        type="password"
+        value={pdfPassword}
+        onChange={(e) => setPdfPassword(e.target.value)}
+        placeholder="PDF password — only if the file is locked"
+        autoComplete="off"
+        className="w-full mt-2 text-xs bg-panel-strong border border-border-soft rounded-lg px-2.5 py-2 text-fg-strong placeholder:text-fg-dim focus:outline-none focus:border-accent-blue/50"
+      />
+    </>
   );
 
   const card = 'bg-panel rounded-xl border border-border-soft p-4';

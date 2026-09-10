@@ -174,11 +174,19 @@ async function readPdfBytes(root, rel) {
   }
 }
 
-async function loadDocument(bytes, rel) {
+/** Passwords never touch the chat transcript (they would persist in the session
+ *  log) — only the panel REST endpoints accept one, passed straight through here.
+ *  Without a password a locked file keeps the old message plus a pointer at the panel
+ *  field; with a wrong one the error says so instead of blaming corruption. */
+async function loadDocument(bytes, rel, password) {
   try {
-    return { doc: await PDFDocument.load(bytes) };
+    const doc = password
+      ? await PDFDocument.load(bytes, { password: String(password) })
+      : await PDFDocument.load(bytes);
+    return { doc };
   } catch (err) {
-    return { error: `Could not open ${rel} (corrupt or password-protected).` };
+    if (password) return { error: `Wrong password for ${rel} — it did not unlock.` };
+    return { error: `Could not open ${rel} (corrupt or password-protected — locked files need their password in the PDF Tools panel's password field).` };
   }
 }
 
@@ -214,14 +222,16 @@ async function writeOutput(root, rel, bytes) {
   return actionId ? { actionId } : {};
 }
 
-/** Merge N PDFs into one. Returns { ok, output, pages, bytes } or { ok:false, error }. */
-export async function mergePdfs(root, inputs, output) {
+/** Merge N PDFs into one. Returns { ok, output, pages, bytes } or { ok:false, error }.
+ *  One optional password is tried on EVERY input (panel REST only, never chat) — a merge
+ *  of files with different passwords refuses naming the file that rejected it. */
+export async function mergePdfs(root, inputs, output, password) {
   const target = await PDFDocument.create();
   let pages = 0;
   for (const rel of inputs) {
     const read = await readPdfBytes(root, rel);
     if (read.error) return { ok: false, error: read.error };
-    const loaded = await loadDocument(read.bytes, rel);
+    const loaded = await loadDocument(read.bytes, rel, password);
     if (loaded.error) return { ok: false, error: loaded.error };
     if (loaded.doc.getPageCount() > MAX_TOTAL_PAGES - pages) {
       return { ok: false, error: `Merging these PDFs would exceed the ${MAX_TOTAL_PAGES}-page cap.` };
@@ -245,10 +255,10 @@ export async function mergePdfs(root, inputs, output) {
 
 /** Split one PDF. spec.kind 'perPage' -> one file per page; 'at' -> two parts around page N.
  *  Returns { ok, outputs: [{path, pages}], totalPages } or { ok:false, error }. */
-export async function splitPdf(root, input, spec) {
+export async function splitPdf(root, input, spec, password) {
   const read = await readPdfBytes(root, input);
   if (read.error) return { ok: false, error: read.error };
-  const loaded = await loadDocument(read.bytes, input);
+  const loaded = await loadDocument(read.bytes, input, password);
   if (loaded.error) return { ok: false, error: loaded.error };
   const total = loaded.doc.getPageCount();
   if (total > MAX_TOTAL_PAGES) {
@@ -324,10 +334,10 @@ export async function extractPdfTextBytes(bytes) {
 }
 
 /** Extract a page range into one new PDF. Returns { ok, output, pages } or { ok:false, error }. */
-export async function extractPages(root, input, from, to, output) {
+export async function extractPages(root, input, from, to, output, password) {
   const read = await readPdfBytes(root, input);
   if (read.error) return { ok: false, error: read.error };
-  const loaded = await loadDocument(read.bytes, input);
+  const loaded = await loadDocument(read.bytes, input, password);
   if (loaded.error) return { ok: false, error: loaded.error };
   const total = loaded.doc.getPageCount();
   if (from < 1 || to > total || from > to) {
@@ -349,10 +359,10 @@ export async function extractPages(root, input, from, to, output) {
 
 /** Draw a centered diagonal-ish watermark word across every page. Returns
  *  { ok, output, pages } or { ok:false, error }. */
-export async function watermarkPdf(root, input, text, output) {
+export async function watermarkPdf(root, input, text, output, password) {
   const read = await readPdfBytes(root, input);
   if (read.error) return { ok: false, error: read.error };
-  const loaded = await loadDocument(read.bytes, input);
+  const loaded = await loadDocument(read.bytes, input, password);
   if (loaded.error) return { ok: false, error: loaded.error };
   if (loaded.doc.getPageCount() > MAX_TOTAL_PAGES) {
     return { ok: false, error: `${input} has ${loaded.doc.getPageCount()} pages — over the ${MAX_TOTAL_PAGES}-page cap.` };
