@@ -52,6 +52,11 @@ export function NotesPanel({ project, onSendMessage, tabId = null }: NotesPanelP
   // Reminder composer popup — opened from the "Set reminder" button with the note's first
   // line prefilled, so the date/time can be set before anything hits chat.
   const [composerOpen, setComposerOpen] = useState(false);
+  // F-5(1): recycle bin — deleted notes move to notes.trash.md instead of vanishing.
+  // The rail toggles between the live list and the trash; restores/empties go through
+  // the same direct-REST endpoints the chat `system.notes.trash` handler uses.
+  const [showTrash, setShowTrash] = useState(false);
+  const [trash, setTrash] = useState<NoteInfo[]>([]);
 
   // Switching the selected note resets the draft so it never shows another note's text.
   const selectedTextRef = useRef<string | null>(null);
@@ -73,6 +78,9 @@ export function NotesPanel({ project, onSendMessage, tabId = null }: NotesPanelP
       return raw === null || raw === '' ? null : raw;
     })());
     setFilter(localStorage.getItem(filterKey(project.id)) ?? '');
+    // Recycle state is per-project — never show another project's trash.
+    setShowTrash(false);
+    setTrash([]);
   }, [project?.id]);
 
   useEffect(() => {
@@ -142,9 +150,45 @@ export function NotesPanel({ project, onSendMessage, tabId = null }: NotesPanelP
     // F-5 (2026-09-09): with askBeforeDeleteLinkedNote on (the default) the REST delete keeps
     // linked reminders instead of auto-cancelling — say so, pointing at the Reminders panel.
     const keptHint = result.linkedKept ? ` (${result.linkedKept} linked reminder${result.linkedKept > 1 ? 's' : ''} kept — cancel in Reminders if unneeded)` : '';
-    flashSent(`Deleted: ${result.data}${linkedHint}${keptHint}`);
+    flashSent(`Deleted: ${result.data}${linkedHint}${keptHint} — kept in the recycle bin below.`);
     setSelectedText(null);
     fetchNotes();
+    fetchTrash();
+  };
+
+  const fetchTrash = useCallback(async () => {
+    if (!project?.id) return;
+    const data = await apiFetchJson<{ trash: NoteInfo[] }>(projectApi(`/api/projects/${encodeURIComponent(project.id)}/notes/trash`, tabId));
+    if (!data) return;
+    setTrash(data.trash || []);
+  }, [project?.id, tabId]);
+
+  const handleRestore = async (note: NoteInfo) => {
+    if (!project?.id) return;
+    // Include the date when known so same-text twins restore unambiguously.
+    const key = note.date ? `${note.text} (${note.date})` : note.text;
+    const result = await apiFetchJson<{ success: boolean; data?: string; error?: string }>(
+      projectApi(`/api/projects/${encodeURIComponent(project.id)}/notes/restore`, tabId),
+      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: key }) }
+    );
+    if (!result) { setError('Could not reach the server.'); return; }
+    if (!result.success) { setError(result.error || 'Could not restore the note.'); return; }
+    setError(null);
+    flashSent(`Restored: ${result.data}`);
+    fetchNotes();
+    fetchTrash();
+  };
+
+  const handleEmptyTrash = async () => {
+    if (!project?.id || trash.length === 0) return;
+    const result = await apiFetchJson<{ success: boolean; count?: number }>(
+      projectApi(`/api/projects/${encodeURIComponent(project.id)}/notes/trash/empty`, tabId),
+      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) }
+    );
+    if (!result) { setError('Could not reach the server.'); return; }
+    setError(null);
+    flashSent(result.count ? `Emptied the recycle bin (${result.count} permanently deleted).` : 'The recycle bin is already empty.');
+    fetchTrash();
   };
 
   // Phase 4: rich text toolbar — inserts markdown syntax at cursor position in the editor.
@@ -252,10 +296,69 @@ export function NotesPanel({ project, onSendMessage, tabId = null }: NotesPanelP
                 className="flex-1 bg-transparent text-[13px] outline-none placeholder:text-fg-dim text-fg-strong min-w-0"
               />
             </div>
+            {/* F-5(1): recycle bin toggle — deleted notes wait here until restored or
+                the bin is emptied, instead of vanishing on delete. */}
+            <button
+              onClick={() => { const next = !showTrash; setShowTrash(next); if (next) fetchTrash(); }}
+              className={cn(
+                'mt-2 w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs transition-colors border border-border-faint',
+                showTrash ? 'bg-panel-strong text-fg-strong' : 'bg-panel text-fg-dim hover:text-fg-strong',
+              )}
+              title={showTrash ? 'Back to notes' : 'Show deleted notes'}
+            >
+              <Trash2 size={13} />
+              <span className="flex-1 text-left">{showTrash ? 'Back to notes' : 'Recycle bin'}</span>
+              {trash.length > 0 && (
+                <span className="px-1.5 py-px rounded-full bg-scrim-faint text-[10px] font-bold">{trash.length}</span>
+              )}
+            </button>
           </div>
 
           <div className="flex-1 overflow-y-auto">
-            {notes.length === 0 && !loading ? (
+            {showTrash ? (
+              trash.length === 0 ? (
+                <EmptyState
+                  icon={<Trash2 size={18} />}
+                  title="Recycle bin is empty"
+                  hint="Deleted notes wait here until you restore or empty them."
+                />
+              ) : (
+                <>
+                  <div className="px-3 py-2 flex items-center justify-between">
+                    <span className="text-[11px] text-fg-dim">{trash.length} deleted note{trash.length === 1 ? '' : 's'}</span>
+                    <button
+                      onClick={handleEmptyTrash}
+                      className="text-[11px] text-accent-red hover:text-fg-strong transition-colors px-2 py-1 rounded hover:bg-accent-red/10"
+                      title="Permanently delete everything in the bin"
+                    >
+                      Empty trash
+                    </button>
+                  </div>
+                  {trash.slice().reverse().map((n) => (
+                    <div key={`${n.text}::${n.date ?? ''}`}>
+                      <div className="w-full flex items-center gap-1 px-3 py-2.5 min-h-[48px]">
+                        <div className="flex-1 min-w-0">
+                          <div className="text-[13px] font-semibold leading-snug truncate text-fg-strong">
+                            {titleOf(n)}
+                          </div>
+                          <div className="text-[11px] text-fg-muted truncate mt-0.5">
+                            {previewOf(n) || n.date || ''}
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => handleRestore(n)}
+                          className="shrink-0 px-2 py-1 rounded-lg text-[11px] text-accent-blue hover:bg-accent-blue/10 transition-colors"
+                          title="Move this note back to your notes"
+                        >
+                          Restore
+                        </button>
+                      </div>
+                      <div className="border-b border-border-faint mx-3" />
+                    </div>
+                  ))}
+                </>
+              )
+            ) : notes.length === 0 && !loading ? (
               <EmptyState
                 icon={<StickyNote size={18} />}
                 title="No notes yet"

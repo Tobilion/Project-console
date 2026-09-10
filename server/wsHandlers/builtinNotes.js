@@ -4,7 +4,7 @@
 // handler's under-specified reply carries the additive `openPanel: 'notes'` field so the web
 // client lands in the Notes panel (CLI ignores openPanel per Phase 1.5 — the text stays
 // self-sufficient).
-import { appendNote, listNotes, deleteNote } from '../notesStore.js';
+import { appendNote, listNotes, deleteNote, listTrash, restoreTrash, emptyTrash } from '../notesStore.js';
 import { getSchedules, removeScheduleById } from '../schedules/scheduleStore.js';
 import { readProfile } from '../routes/profileRoutes.js';
 import { answer } from '../wsReply.js';
@@ -97,7 +97,7 @@ export const noteHandlers = {
       return;
     }
     if (linkedReminders.length === 0) {
-      answer(ws, `🗑️ Deleted note: ${result.data}`);
+      answer(ws, `🗑️ Deleted note: ${result.data} (in the recycle bin — restore it with \`restore note: ${result.data}\`)`);
       return;
     }
     if (readProfile().askBeforeDeleteLinkedNote === false) {
@@ -106,7 +106,7 @@ export const noteHandlers = {
         removeScheduleById(r.id);
         removedReminders++;
       }
-      answer(ws, `🗑️ Deleted note: ${result.data} (and cancelled ${removedReminders} linked reminder${removedReminders > 1 ? 's' : ''})`);
+      answer(ws, `🗑️ Deleted note: ${result.data} (in the recycle bin — and cancelled ${removedReminders} linked reminder${removedReminders > 1 ? 's' : ''})`);
       return;
     }
     sessionContext.pendingNoteDelete = {
@@ -116,6 +116,37 @@ export const noteHandlers = {
     };
     const listed = linkedReminders.map((r) => `- ${r.text || r.id}`).join('\n');
     const plural = linkedReminders.length > 1;
-    answer(ws, `🗑️ Deleted note: ${result.data}\n\nIt has ${linkedReminders.length} linked reminder${plural ? 's' : ''}:\n${listed}\n\nReply **yes** to cancel ${plural ? 'them' : 'it'} too, or **no** to keep ${plural ? 'them' : 'it'}.`);
+    answer(ws, `🗑️ Deleted note: ${result.data} (in the recycle bin)\n\nIt has ${linkedReminders.length} linked reminder${plural ? 's' : ''}:\n${listed}\n\nReply **yes** to cancel ${plural ? 'them' : 'it'} too, or **no** to keep ${plural ? 'them' : 'it'}.`);
+  },
+
+  // F-5(1): the recycle bin — list what's deleted, restore one, or empty the trash.
+  // Read-only list runs unguarded like system.notes.list; restore/empty mutate only the
+  // trash + notes files (never reminders), so no confirm gate is needed.
+  'system.notes.trash': async (ws, action, input, project) => {
+    const text = (input || '').trim();
+    if (/^empty\s+(?:the\s+)?(?:recycle bin|trash)\s*[.?!]*$/i.test(text)) {
+      const result = await emptyTrash(project.path);
+      answer(ws, result.count === 0
+        ? 'The recycle bin is already empty.'
+        : `🗑️ Emptied the recycle bin — ${result.count} deleted note${result.count === 1 ? '' : 's'} permanently removed.`);
+      return;
+    }
+    const rm = text.match(/^restore\s+(?:the\s+)?(?:deleted\s+)?notes?\s*:?\s*(.+?)\s*[.?!]*$/i);
+    if (rm) {
+      const result = await restoreTrash(project.path, rm[1].trim());
+      answer(ws, result.success ? `♻️ Restored note: ${result.data}` : result.error);
+      return;
+    }
+    if (/^(?:show|list|open|what(?:'s| is) in)\s+(?:my\s+|the\s+)?(?:recycle bin|trash|deleted notes?)\s*[.?!]*$/i.test(text)) {
+      const trashed = await listTrash(project.path);
+      if (trashed.length === 0) {
+        answer(ws, 'The recycle bin is empty — deleted notes land here before they are gone for good.');
+        return;
+      }
+      const rows = trashed.slice().reverse().map((n, i) => `${i + 1}. ${n.text}${n.date ? ` — ${n.date}` : ''}`);
+      answer(ws, `### Recycle bin (${trashed.length})\n\n${rows.join('\n')}\n\nRestore one with \`restore note: <text>\`, or empty the bin with \`empty the trash\`.`);
+      return;
+    }
+    answer(ws, 'The recycle bin holds your deleted notes. Try `show deleted notes`, `restore note: <text>`, or `empty the trash`.');
   },
 };

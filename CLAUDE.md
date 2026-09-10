@@ -769,8 +769,18 @@ Verified: check-handlers 287/287, check-ws-cases clean, npm test 602/602, tsc cl
   drill-in on click/Enter/double-click with accurate "Enter to open folder" titles plus
   breadcrumb/back/forward to get back, so the spec's fallback condition (remove the
   misleading affordance) is already satisfied; a genuine inline tree is a bigger feature
-  than this pass and stays open. Still open: F-5(1)/F-6/
-  F-8/F-10-rest. F-8 done (2026-09-09, opencode): new `server/osApps.js` discovers real
+   than this pass and stays open. F-5(1) done (2026-09-10, opencode): recycle bin —
+   deletes move the raw line to `.console/notes.trash.md` (same format, no migration) via
+   a shared twin-safe `findNoteIndex()` (delete + restore use one contract; the F-5(2)
+   ambiguity message is byte-identical); new `system.notes.trash` intent (registry +
+   3 pins + 6 examples) for list/restore/empty; new REST `GET .../notes/trash`,
+   `POST .../notes/restore`, `POST .../notes/trash/empty`; panel Recycle section with
+   per-row Restore + Empty + count badge. Stable IDs deliberately NOT introduced (the
+   append-only text format is the store contract; twins already handled). Verified:
+   check-handlers 337/337 (+7), check-matcher 429/429 (+4), check-intents baseline
+   unchanged, check-docs 81+142, tsc + vite build clean, live HTTP round-trip through
+   the real routes (create→delete→trash→restore→notes→empty). Still open: F-6/
+   F-10-rest. F-8 done (2026-09-09, opencode): new `server/osApps.js` discovers real
   OS handlers per extension on Windows (UserChoice ProgId → assoc/ftype chain, plus
   Explorer OpenWithList exes via `where`; AppX ids and stale ProgIds skipped, `%VAR%`
   expanded, quoted `"%L"` substituted bare — spawn passes argv literally), merged into

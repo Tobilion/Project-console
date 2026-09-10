@@ -351,6 +351,12 @@ export const PRE_SEMANTIC_OVERRIDES = [
   // deletes-with-no-noun phrases ("delete the note") stay with general.files* / file_delete;
   // only the explicit note nouns route here so we never steal bare delete commands.
   { intent: 'system.notes.delete', pattern: /^(?:delete|remove|erase|clear)\s+(?:the\s+)?(?:my\s+)?notes?\s*:|^(?:delete|remove|erase)\s+(?:the\s+)?(?:my\s+)?note\s+(?:about|on|for)\s+\S/i },
+  // Recycle bin (F-5(1)): trash/recycle/deleted-notes nouns are unambiguous — none of
+  // the plain list/search/delete shapes ever name the trash, and "empty the trash" must
+  // not reach file_delete. Restore takes "restore (the) note(:) <text>" with free text.
+  { intent: 'system.notes.trash', pattern: /^(?:show|list|open|what(?:'s| is) in)\s+(?:my\s+|the\s+)?(?:recycle bin|trash|deleted notes?)\s*[.?!]*$/i },
+  { intent: 'system.notes.trash', pattern: /^restore\s+(?:the\s+)?(?:deleted\s+)?notes?\s*:?\s*\S/i },
+  { intent: 'system.notes.trash', pattern: /^empty\s+(?:the\s+)?(?:recycle bin|trash)\s*[.?!]*$/i },
   // Typo tolerance (2026-08-28 audit): the most common typo/mangled forms of high-traffic
   // intents that repeatedly drifted onto the wrong cluster in the live audit. The embedding
   // stage treats a 1-2 char typo as a different token and the fuzzy stage's floor (0.55) is

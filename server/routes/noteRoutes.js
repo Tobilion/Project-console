@@ -6,7 +6,7 @@
 // (including the delete path's linked-reminder cleanup), so switching the panel over changes
 // latency, not behavior. The chat commands themselves are untouched and still work
 // identically for the CLI and for typed natural-language phrasing.
-import { listNotes, appendNote, deleteNote } from '../notesStore.js';
+import { listNotes, appendNote, deleteNote, listTrash, restoreTrash, emptyTrash } from '../notesStore.js';
 import { getSchedules, removeScheduleById } from '../schedules/scheduleStore.js';
 import { readProfile } from './profileRoutes.js';
 import { resolveProject } from '../state.js';
@@ -53,5 +53,29 @@ export function registerNoteRoutes(app) {
       return res.json({ ...result, removedReminders: linkedReminders.length, linkedKept: 0 });
     }
     res.json({ ...result, removedReminders: 0, linkedKept: linkedReminders.length });
+  }));
+
+  // F-5(1) recycle bin: list what's deleted, restore one back to the live list, or
+  // empty the trash permanently. Same D-7 direct-REST pattern as create/delete (no
+  // chat round-trip); the chat `system.notes.trash` handler calls the same store
+  // functions, so panel and chat can never diverge. `{ ok: false }` at HTTP 200 on
+  // failure (apiFetchJson discards non-2xx bodies — the FileToolsPanel lesson).
+  app.get('/api/projects/:id/notes/trash', asyncHandler(async (req, res) => {
+    const project = resolveProject(req.params.id, req.query.tab);
+    if (!project) return res.status(404).json({ error: 'Project not found' });
+    res.json({ trash: await listTrash(project.path) });
+  }));
+
+  app.post('/api/projects/:id/notes/restore', asyncHandler(async (req, res) => {
+    const project = resolveProject(req.params.id, req.query.tab);
+    if (!project) return res.status(404).json({ error: 'Project not found' });
+    const { text } = req.body || {};
+    res.json(await restoreTrash(project.path, text));
+  }));
+
+  app.post('/api/projects/:id/notes/trash/empty', asyncHandler(async (req, res) => {
+    const project = resolveProject(req.params.id, req.query.tab);
+    if (!project) return res.status(404).json({ error: 'Project not found' });
+    res.json(await emptyTrash(project.path));
   }));
 }

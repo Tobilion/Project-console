@@ -925,6 +925,38 @@ const twinSingle = await deleteNote(twinRoot, 'call dentist');
 eq('notes delete: single-match flow unchanged', twinSingle.success === true && twinSingle.data === 'call dentist', true);
 fs.rmSync(twinRoot, { recursive: true, force: true });
 
+// F-5(1) (2026-09-10): recycle bin — deletes move to notes.trash.md (same line format),
+// restores move back (twin-safe, refuses live twins), emptying drops them permanently.
+// The chat `system.notes.trash` handler and the REST routes share these store functions.
+const { listTrash, restoreTrash, emptyTrash } = await import(pathToFileURL(base + 'notesStore.js').href);
+const trashRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'console-notestrash-'));
+const trashProj = {
+  id: 'trash-p', name: 'TrashProj', path: trashRoot, workspaceType: 'general',
+  config: { projectName: 'TrashProj', entries: [] }, contextFiles: [],
+  parsedKnowledge: {}, codebaseIndex: { languages: [], keyFiles: {} },
+};
+await appendNote(trashRoot, 'buy milk');
+await appendNote(trashRoot, 'call dentist');
+const delForTrash = await deleteNote(trashRoot, 'buy milk');
+eq('notes trash: delete still succeeds', delForTrash.success === true, true);
+eq('notes trash: live list loses the line', (await listNotes(trashRoot)).length === 1, true);
+const trashed = await listTrash(trashRoot);
+eq('notes trash: deleted line waits in the bin', trashed.length === 1 && trashed[0].text === 'buy milk', true);
+sent.length = 0;
+await handleBuiltinIntent(ws, 'system.notes.trash', 'show deleted notes', trashProj, {});
+eq('notes trash: list names the deleted note', ws.sent.length === 1 && ws.sent[0].type === 'answer' && /buy milk/.test(ws.sent[0].data), true);
+sent.length = 0;
+await handleBuiltinIntent(ws, 'system.notes.trash', 'restore note: buy milk', trashProj, {});
+eq('notes trash: restore answers + moves back', ws.sent.length === 1 && /Restored note/.test(ws.sent[0].data) && (await listNotes(trashRoot)).length === 2 && (await listTrash(trashRoot)).length === 0, true);
+await deleteNote(trashRoot, 'buy milk');
+sent.length = 0;
+await handleBuiltinIntent(ws, 'system.notes.trash', 'empty the trash', trashProj, {});
+eq('notes trash: empty drops permanently', ws.sent.length === 1 && /Emptied the recycle bin/.test(ws.sent[0].data) && (await listTrash(trashRoot)).length === 0, true);
+sent.length = 0;
+await handleBuiltinIntent(ws, 'system.notes.trash', 'show deleted notes', trashProj, {});
+eq('notes trash: empty bin says so', /recycle bin is empty/i.test(ws.sent[0].data), true);
+fs.rmSync(trashRoot, { recursive: true, force: true });
+
 // F-11 (2026-09-09): the list/search answers carry an additive `notes` card (text/date/
 // projectId per item, same slice the markdown rows show) alongside the unchanged markdown.
 const cardRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'console-notescard-'));

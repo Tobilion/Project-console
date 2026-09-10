@@ -148,6 +148,7 @@ export const BUILTIN_INTENTS = new Set([
   // Phase 5 (UPGRADE-ROADMAP.md, 2026-08-12): user-authored scratch notes (builtinNotes.js +
   // notesStore.js — .console/notes.md). Personal, not project assets, so NOT dev-only.
   'system.notes.create', 'system.notes.list', 'system.notes.search', 'system.notes.delete',
+  'system.notes.trash',
   // Phase 7 (UPGRADE-ROADMAP.md, 2026-08-12): deterministic CSV queries (builtinCsvTools.js +
   // csvTools.js) — read-only sum/average/count/filter over project CSV files. General-mode
   // by design, usable anywhere (a dev project can have data files too).

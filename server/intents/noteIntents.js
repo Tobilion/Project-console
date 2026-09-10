@@ -30,4 +30,14 @@ export const NOTE_INTENTS = {
       'delete note: remember the wifi password',
     ],
   },
+  // F-5(1) (2026-09-10): the recycle bin — every example names the trash explicitly
+  // (trash/recycle/deleted notes) so these shapes can never near-dupe the plain
+  // list/search/delete clusters.
+  'system.notes.trash': {
+    opensPanel: 'notes',
+    examples: [
+      'show deleted notes', 'show my recycle bin', 'what is in the trash',
+      'restore note: buy milk', 'restore the deleted note about wifi', 'empty the trash',
+    ],
+  },
 };

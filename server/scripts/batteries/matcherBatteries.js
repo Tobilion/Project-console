@@ -667,6 +667,10 @@ const BATTERIES = [
       ['delete note: buy milk', 'BUILTIN=system.notes.delete'],
       ['remove the note about the trip', 'BUILTIN=system.notes.delete'],
       ['delete my note about wifi', 'BUILTIN=system.notes.delete'],
+      ['show deleted notes', 'BUILTIN=system.notes.trash'],
+      ['show my recycle bin', 'BUILTIN=system.notes.trash'],
+      ['restore note: buy milk', 'BUILTIN=system.notes.trash'],
+      ['empty the trash', 'BUILTIN=system.notes.trash'],
     ],
   },
   {
