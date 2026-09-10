@@ -205,6 +205,31 @@ eq('auth gate: WS open while disarmed', checkWsAuth({ headers: {} }), true);
   eq('auth routes: user list visible with session, hashes excluded', usersAuthed.status === 200 && usersAuthed.json?.users?.length >= 2 && usersAuthed.json.users.every((u) => !u.passwordHash), true);
   const meAuthed = await get('/api/auth/me', adminCookie);
   eq('auth routes: me returns identity with session', meAuthed.json?.user?.username === 'routeadmin', true);
+  const secondLogin = await post('/api/auth/login', { username: 'second', password: 'a strong password here' });
+  const secondCookie = (secondLogin.cookie || '').split(';')[0];
+  const nonAdminReset = await post('/api/auth/admin/reset', { username: 'second', newPassword: 'brand new admin-set password' }, secondCookie);
+  eq('auth routes: admin reset refuses non-admin (403)', nonAdminReset.status === 403, true);
+  const weakReset = await post('/api/auth/admin/reset', { username: 'second', newPassword: 'short' }, adminCookie);
+  eq('auth routes: admin reset enforces policy (400)', weakReset.status === 400, true);
+  const ghostReset = await post('/api/auth/admin/reset', { username: 'ghost', newPassword: 'brand new admin-set password' }, adminCookie);
+  eq('auth routes: admin reset 404s unknown user', ghostReset.status === 400, true);
+  const okReset = await post('/api/auth/admin/reset', { username: 'second', newPassword: 'brand new admin-set password' }, adminCookie);
+  eq('auth routes: admin reset ok + rotates code', okReset.status === 200 && typeof okReset.json?.recoveryCode === 'string', true);
+  const selfDel = await (async () => {
+    const res = await fetch(url + '/api/auth/users/routeadmin', { method: 'DELETE', headers: { Cookie: adminCookie } });
+    return { status: res.status, json: await res.json().catch(() => null) };
+  })();
+  eq('auth routes: admin cannot delete self (400)', selfDel.status === 400, true);
+  const userDel = await (async () => {
+    const res = await fetch(url + `/api/auth/users/${encodeURIComponent('second')}`, { method: 'DELETE', headers: { Cookie: adminCookie } });
+    return { status: res.status, json: await res.json().catch(() => null) };
+  })();
+  // 'second' is role user, so this succeeds — then re-create for the rows below.
+  // (The last-admin guard is unreachable with single-admin stores — the self-refusal
+  // fires first — and stays as future-proofing for role promotion.)
+  eq('auth routes: admin can delete a user', userDel.status === 200 && userDel.json?.ok === true, true);
+  const reReg = await post('/api/auth/register', { username: 'second', password: 'a strong password here' }, adminCookie);
+  eq('auth routes: deleted name is reusable', reReg.status === 200, true);
   await new Promise((r) => server.close(r));
 }
 

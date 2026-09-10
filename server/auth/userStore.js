@@ -163,6 +163,18 @@ export async function adminResetPassword(username, newPassword) {
   return { user: { username: user.username, role: user.role }, recoveryCode: nextCode };
 }
 
+/** Delete a user (admin console action). Returns true when someone was removed.
+ *  Their sessions are the caller's job (destroyUserSessions) — orphaned chats stay on
+ *  disk but become admin-visible-only, same as any other foreign-owned session. */
+export function deleteUser(username) {
+  const name = String(username || '').trim().toLowerCase();
+  const at = users.findIndex((u) => u.username === name);
+  if (at === -1) return false;
+  users.splice(at, 1);
+  persist();
+  return true;
+}
+
 /** Test hook — drop the in-memory list (the harness points USERS_FILE at a temp file). */
 export function clearUsersForTests() {
   users = [];

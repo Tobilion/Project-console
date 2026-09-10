@@ -4,7 +4,7 @@
 // cannot change single-user behavior). Status codes are real HTTP semantics (400/401/409,
 // not {ok:false}-at-200 — auth failures are not business-logic results), so the login UI
 // uses raw fetch, never apiFetchJson (which discards non-2xx bodies).
-import { registerUser, verifyUser, resetPassword, listUsers, hasUsers } from '../auth/userStore.js';
+import { registerUser, verifyUser, resetPassword, adminResetPassword, deleteUser, listUsers, hasUsers } from '../auth/userStore.js';
 import {
   createSession,
   validateSession,
@@ -85,4 +85,44 @@ export function registerAuthRoutes(app) {
     }
     res.json({ users: listUsers() });
   });
+
+  // Admin password reset (web console counterpart to the local CLI reset). Same
+  // adminResetPassword machinery, same rotated-code response — the fresh recovery code
+  // is returned once so the UI can show it. Never anonymous, never non-admin.
+  app.post(
+    '/api/auth/admin/reset',
+    asyncHandler(async (req, res) => {
+      if (req.authUser?.role !== 'admin') {
+        return res.status(403).json({ ok: false, error: 'Admin only.' });
+      }
+      const { username, newPassword } = req.body || {};
+      const result = await adminResetPassword(username, newPassword);
+      if (result.error) return res.status(400).json({ ok: false, error: result.error });
+      destroyUserSessions(result.user.username);
+      res.json({ ok: true, user: result.user, recoveryCode: result.recoveryCode });
+    }),
+  );
+
+  // Admin account removal. Refuses self-deletion and removing the last admin (both
+  // would brick administration with live sessions still running). The removed user's
+  // chats stay on disk and become admin-visible-only, like any foreign-owned session.
+  app.delete(
+    '/api/auth/users/:username',
+    asyncHandler(async (req, res) => {
+      if (req.authUser?.role !== 'admin') {
+        return res.status(403).json({ ok: false, error: 'Admin only.' });
+      }
+      const name = String(req.params.username || '').trim().toLowerCase();
+      if (!name || name === req.authUser.username) {
+        return res.status(400).json({ ok: false, error: 'You cannot delete your own account.' });
+      }
+      if (listUsers().filter((u) => u.role === 'admin').length <= 1 &&
+          listUsers().some((u) => u.username === name && u.role === 'admin')) {
+        return res.status(400).json({ ok: false, error: 'Cannot delete the last admin.' });
+      }
+      if (!deleteUser(name)) return res.status(404).json({ ok: false, error: 'Unknown user.' });
+      destroyUserSessions(name);
+      res.json({ ok: true });
+    }),
+  );
 }
