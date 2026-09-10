@@ -45,6 +45,8 @@
       "installerIcon": "build/icon.ico",
       "uninstallerIcon": "build/icon.ico",
       "installerHeaderIcon": "build/icon.ico",
+      "installerHeader": "build/installerHeader.bmp",
+      "installerSidebar": "build/installerSidebar.bmp",
       "license": "../LICENSE",
       "artifactName": "Project Console Setup ${version}.${ext}",
       "deleteAppDataOnUninstall": false,
