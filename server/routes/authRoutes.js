@@ -27,8 +27,8 @@ export function registerAuthRoutes(app) {
       if (hasUsers() && req.authUser?.role !== 'admin') {
         return res.status(403).json({ ok: false, error: 'Registration is closed — ask your admin to create an account.' });
       }
-      const { username, password } = req.body || {};
-      const result = await registerUser(username, password);
+      const { username, password, role } = req.body || {};
+      const result = await registerUser(username, password, role);
       if (result.error) {
         // 409 only for the taken-name case; everything else is a 400 validation failure.
         const status = /already taken/.test(result.error) ? 409 : 400;

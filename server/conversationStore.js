@@ -23,6 +23,22 @@ import { log as logger } from './logger.js';
 
 export { getSession, linkSessionToProject, ensureGitignored } from './sessionMigration.js';
 
+/** Single writer for the project-scoped session meta file (the shape getSession() reads
+ *  back). Every mutation path funnels through here so owner/sharedWith can never drift
+ *  between the file and the index. Best-effort like all meta writes (logs, never throws). */
+async function writeProjectMetaFile(meta) {
+  if (!meta?.projectPath) return;
+  const fileMeta = {
+    id: meta.id, title: meta.title, projectId: meta.projectId, projectName: meta.projectName,
+    projectPath: meta.projectPath, workspacePath: meta.workspacePath, messageCount: meta.messageCount,
+    createdAt: meta.createdAt, updatedAt: meta.updatedAt, owner: meta.owner || null,
+    sharedWith: Array.isArray(meta.sharedWith) ? meta.sharedWith : [],
+  };
+  await writeFileAtomic(projectSessionMetaFile(meta.projectPath, meta.id), JSON.stringify(fileMeta, null, 2)).catch((err) => {
+    logger.error('[conversationStore] meta write failed:', err.message);
+  });
+}
+
 export async function listSessions({ forUser } = {}) {
   await ensureLegacyDir();
   const idx = await readIndex();
@@ -51,13 +67,15 @@ export async function listSessions({ forUser } = {}) {
 
   const fresh = await readIndex();
   // Portal (2026-09-10): each user's chats are theirs. Unowned (legacy/pre-portal)
-  // sessions stay visible to everyone; owned ones only to their owner or an admin.
-  // No forUser (every pre-existing caller) = unfiltered, byte-identical to before.
+  // sessions stay visible to everyone; owned ones only to their owner, users they were
+  // shared with, or an admin. No forUser (every pre-existing caller) = unfiltered,
+  // byte-identical to before.
   const visible = ([, meta]) =>
     forUser == null ||
     !meta.owner ||
     meta.owner === forUser.username ||
-    forUser.role === 'admin';
+    forUser.role === 'admin' ||
+    (Array.isArray(meta.sharedWith) && meta.sharedWith.includes(forUser.username));
   const sessions = Object.entries(fresh)
     .filter(visible)
     .map(([id, meta]) => ({
@@ -97,6 +115,7 @@ export async function createSession(projectId, projectName, projectPath, workspa
       // Portal (2026-09-10): verified owner username, or null (disarmed single-user —
       // and every legacy session — stay unowned and visible to all).
       owner: owner || null,
+      sharedWith: [],
     };
 
     if (projectPath) {
@@ -229,10 +248,7 @@ export async function appendMessage(sessionId, message) {
     // Write updated meta file if project-scoped (atomic — a torn meta file used to make the
     // whole session unrecoverable from the sidebar; audit 2026-08-06, Phase 2)
     if (meta.projectPath) {
-      const sessionMeta = { id: sessionId, title: meta.title, projectId: meta.projectId, projectName: meta.projectName, projectPath: meta.projectPath, workspacePath: meta.workspacePath, messageCount: meta.messageCount, createdAt: meta.createdAt, updatedAt: meta.updatedAt, owner: meta.owner || null };
-      await writeFileAtomic(projectSessionMetaFile(meta.projectPath, sessionId), JSON.stringify(sessionMeta, null, 2)).catch((err) => {
-        logger.error('[conversationStore] appendMessage: meta write failed:', err.message);
-      });
+      await writeProjectMetaFile({ ...meta, id: sessionId });
       // Append to human-readable chat log
       await appendChatLogEntry({
         logPath: projectChatLog(meta.projectPath),
@@ -254,9 +270,54 @@ export async function appendMessage(sessionId, message) {
       createdAt: meta.createdAt,
       updatedAt: meta.updatedAt,
       owner: meta.owner || null,
+      sharedWith: Array.isArray(meta.sharedWith) ? meta.sharedWith : [],
     });
 
     return { id: sessionId, title: meta.title, messageCount: meta.messageCount, messages: [entry] };
+  });
+}
+
+/** Share one chat with another user (portal). Only the owner or an admin may share;
+ *  the target must be a real account, never the owner themselves. Returns the updated
+ *  sharedWith list, or { error }. Shared users can read and chat — only the owner or
+ *  an admin may delete, rename, or change sharing. */
+export async function shareSession(id, username, requester) {
+  const name = String(username || '').trim().toLowerCase();
+  if (!name) return { error: 'Username is required.' };
+  return serializePersistence(async () => {
+    const idx = await readIndex();
+    const meta = idx[id];
+    if (!meta) return { error: 'Session not found.' };
+    const me = requester || {};
+    const isOwner = meta.owner && me.username === meta.owner;
+    if (meta.owner && !isOwner && me.role !== 'admin') return { error: 'Only the owner or an admin can share this chat.' };
+    if (meta.owner && name === meta.owner) return { error: 'That user already owns this chat.' };
+    const shared = Array.isArray(meta.sharedWith) ? [...meta.sharedWith] : [];
+    if (!shared.includes(name)) shared.push(name);
+    meta.sharedWith = shared;
+    meta.updatedAt = Date.now();
+    await writeIndex(idx);
+    // The project meta file is getSession()'s source of truth (the WS guard reads it).
+    await writeProjectMetaFile({ ...meta, id });
+    return { sharedWith: shared };
+  });
+}
+
+/** Remove one user from a chat's share list (owner or admin only). */
+export async function unshareSession(id, username, requester) {
+  const name = String(username || '').trim().toLowerCase();
+  return serializePersistence(async () => {
+    const idx = await readIndex();
+    const meta = idx[id];
+    if (!meta) return { error: 'Session not found.' };
+    const me = requester || {};
+    const isOwner = meta.owner && me.username === meta.owner;
+    if (meta.owner && !isOwner && me.role !== 'admin') return { error: 'Only the owner or an admin can change sharing.' };
+    meta.sharedWith = (Array.isArray(meta.sharedWith) ? meta.sharedWith : []).filter((u) => u !== name);
+    meta.updatedAt = Date.now();
+    await writeIndex(idx);
+    await writeProjectMetaFile({ ...meta, id });
+    return { sharedWith: meta.sharedWith };
   });
 }
 

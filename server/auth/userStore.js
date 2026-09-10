@@ -88,10 +88,14 @@ function newRecoveryCode() {
   return [...bytes].map((b) => alphabet[b % alphabet.length]).join('');
 }
 
-/** Register a new user. First user becomes admin. Returns { user } or { error }.
+/** Register a new user. Returns { user } or { error }.
  *  The recovery code is returned IN THE CLEAR exactly once (shown to the registering
- *  user, who must store it) — only its bcrypt hash is persisted. */
-export async function registerUser(username, password) {
+ *  user, who must store it) — only its bcrypt hash is persisted.
+ *  Roles: the FIRST user is always admin (requested role ignored — otherwise the
+ *  world's first registrant could pick 'user' and brick administration, or an armed
+ *  server's open-registration window could mint admins). Afterwards only an admin
+ *  session may register (route-enforced), and may request 'admin' or 'user'. */
+export async function registerUser(username, password, requestedRole) {
   const name = String(username || '').trim().toLowerCase();
   if (!validUsername(username)) {
     return { error: 'Username must be 3–32 chars of letters, numbers, _ or -.' };
@@ -99,6 +103,8 @@ export async function registerUser(username, password) {
   const pwErr = passwordError(password);
   if (pwErr) return { error: pwErr };
   if (findUser(name)) return { error: `Username "${name}" is already taken.` };
+  const first = users.length === 0;
+  const role = first ? 'admin' : (requestedRole === 'admin' ? 'admin' : 'user');
   const passwordHash = await bcrypt.hash(password, SALT_ROUNDS);
   const recoveryCode = newRecoveryCode();
   const recoveryHash = await bcrypt.hash(recoveryCode, SALT_ROUNDS);
@@ -106,7 +112,7 @@ export async function registerUser(username, password) {
     username: name,
     passwordHash,
     recoveryHash,
-    role: users.length === 0 ? 'admin' : 'user',
+    role,
     createdAt: Date.now(),
   };
   users.push(user);

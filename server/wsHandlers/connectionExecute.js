@@ -133,12 +133,13 @@ async function handleExecuteBody(ws, parsed, sessionContext) {
       // Portal (2026-09-10): each user's chats are theirs — an armed connection
       // carrying another user's (or someone else's) session id gets a clear refusal,
       // not silent cross-talk. Disarmed servers carry no authUser, so single-user
-      // behavior is byte-identical; admins can run against any session.
+      // behavior is byte-identical; admins and explicitly shared-with users may run it.
       if (session && session.owner && sessionContext.authUser &&
-          session.owner !== sessionContext.authUser.username && sessionContext.authUser.role !== 'admin') {
+          session.owner !== sessionContext.authUser.username && sessionContext.authUser.role !== 'admin' &&
+          !(Array.isArray(session.sharedWith) && session.sharedWith.includes(sessionContext.authUser.username))) {
         ws.send(JSON.stringify({
           type: 'error_output',
-          data: `This chat belongs to @${session.owner} — switch to that account or create a new chat of your own.\n`,
+          data: `This chat belongs to @${session.owner} — switch to that account, ask them to share it with you, or create a new chat of your own.\n`,
         }));
         ws.send(JSON.stringify({ type: 'end' }));
         return;

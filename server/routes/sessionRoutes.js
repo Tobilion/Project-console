@@ -1,4 +1,5 @@
-﻿import { listSessions, getSession, createSession, deleteSession, renameSession, linkSessionToProject } from '../conversationStore.js';
+﻿import { listSessions, getSession, createSession, deleteSession, renameSession, linkSessionToProject, shareSession, unshareSession } from '../conversationStore.js';
+import { findUser } from '../auth/userStore.js';
 import { readIndex } from '../sessionIndex.js';
 import { readFullSessionHistory, formatExportMarkdown, formatExportJson } from '../sessionExport.js';
 import { resolveProject, getTabWorkspace, state } from '../state.js';
@@ -29,17 +30,21 @@ export function registerSessionRoutes(app) {
   }));
 
   // Portal ownership gate shared by the single-session routes below: 404 when missing,
-  // 403 when owned by someone else (non-admin). Disarmed traffic only ever meets
-  // unowned sessions, so behavior there is unchanged.
-  async function sessionAccess(req) {
+  // 403 when owned by someone else (non-admin, not shared-with). Disarmed traffic only
+  // ever meets unowned sessions, so behavior there is unchanged. Shared users may read
+  // and chat; only the owner or an admin may rename, delete, link, or change sharing.
+  const canSee = (meta, me) =>
+    !meta.owner || (me && (me.username === meta.owner || me.role === 'admin')) ||
+    (me && Array.isArray(meta.sharedWith) && meta.sharedWith.includes(me.username));
+  async function sessionAccess(req, { write = false } = {}) {
     const idx = await readIndex();
     const meta = idx[req.params.id];
     if (!meta) return { status: 404 };
     const me = req.authUser;
-    if (meta.owner && (!me || (me.username !== meta.owner && me.role !== 'admin'))) {
-      return { status: 403 };
-    }
-    return { meta };
+    if (!meta.owner) return { meta };
+    if (canSee(meta, me) && !write) return { meta };
+    if (me && (me.username === meta.owner || me.role === 'admin')) return { meta };
+    return { status: 403 };
   }
 
   app.get('/api/sessions/:id', asyncHandler(async (req, res) => {
@@ -82,7 +87,7 @@ export function registerSessionRoutes(app) {
 
   // Rename a chat (manual title; the auto-title from the first message never clobbers it)
   app.patch('/api/sessions/:id', asyncHandler(async (req, res) => {
-    const access = await sessionAccess(req);
+    const access = await sessionAccess(req, { write: true });
     if (access.status === 404) return res.status(400).json({ error: 'Invalid title or session not found' });
     if (access.status === 403) return res.status(403).json({ error: 'That chat belongs to another user.' });
     const { title } = req.body || {};
@@ -93,7 +98,7 @@ export function registerSessionRoutes(app) {
 
   // Link an orphan session to a project (e.g. after New Chat then selecting a project)
   app.patch('/api/sessions/:id/link', asyncHandler(async (req, res) => {
-    const access = await sessionAccess(req);
+    const access = await sessionAccess(req, { write: true });
     if (access.status) return res.status(access.status).json({ error: access.status === 404 ? 'Session not found' : 'That chat belongs to another user.' });
     const { projectId } = req.body || {};
     if (!projectId) return res.status(400).json({ error: 'projectId is required' });
@@ -103,11 +108,34 @@ export function registerSessionRoutes(app) {
   }));
 
   app.delete('/api/sessions/:id', asyncHandler(async (req, res) => {
-    const access = await sessionAccess(req);
+    const access = await sessionAccess(req, { write: true });
     if (access.status === 404) return res.status(404).json({ error: 'Session not found' });
     if (access.status === 403) return res.status(403).json({ error: 'That chat belongs to another user.' });
     const ok = await deleteSession(req.params.id);
     if (!ok) return res.status(404).json({ error: 'Session not found' });
     res.json({ success: true });
+  }));
+
+  // Share a chat with another account (owner or admin only; target must exist).
+  // Shared users can read and chat in it; rename/delete/link/sharing stay with the
+  // owner and admins. Unowned (legacy) chats need no sharing — everyone sees them.
+  app.post('/api/sessions/:id/share', asyncHandler(async (req, res) => {
+    const access = await sessionAccess(req, { write: true });
+    if (access.status === 404) return res.status(404).json({ error: 'Session not found' });
+    if (access.status === 403) return res.status(403).json({ error: 'Only the owner or an admin can share this chat.' });
+    const { username } = req.body || {};
+    if (!username || !findUser(username)) return res.status(404).json({ error: 'Unknown user.' });
+    const result = await shareSession(req.params.id, username, req.authUser);
+    if (result.error) return res.status(400).json({ ok: false, error: result.error });
+    res.json({ ok: true, sharedWith: result.sharedWith });
+  }));
+
+  app.delete('/api/sessions/:id/share/:username', asyncHandler(async (req, res) => {
+    const access = await sessionAccess(req, { write: true });
+    if (access.status === 404) return res.status(404).json({ error: 'Session not found' });
+    if (access.status === 403) return res.status(403).json({ error: 'Only the owner or an admin can change sharing.' });
+    const result = await unshareSession(req.params.id, req.params.username, req.authUser);
+    if (result.error) return res.status(400).json({ ok: false, error: result.error });
+    res.json({ ok: true, sharedWith: result.sharedWith });
   }));
 }

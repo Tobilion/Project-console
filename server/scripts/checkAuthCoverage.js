@@ -381,6 +381,90 @@ eq('auth gate: WS open while disarmed', checkWsAuth({ headers: {} }), true);
   await new Promise((r) => server.close(r));
 }
 
+// --- Roles on register + chat sharing (portal admin UI) --------------------------
+// Role forcing needs an empty store, so this runs last (after every fixture login):
+// clearing users disarms the server, the first registrant is forced admin even when
+// requesting 'user', and that admin can then mint both roles over HTTP.
+{
+  const { clearUsersForTests } = await import(pathToFileURL(base + 'auth/userStore.js').href);
+  const { clearSessionsForTests } = await import(pathToFileURL(base + 'auth/authSessions.js').href);
+  clearUsersForTests();
+  clearSessionsForTests();
+  const expressMod = await import('express');
+  const express = expressMod.default || expressMod;
+  const { registerAuthRoutes } = await import(pathToFileURL(base + 'routes/authRoutes.js').href);
+  const { registerSessionRoutes } = await import(pathToFileURL(base + 'routes/sessionRoutes.js').href);
+  const { requireAuth } = await import(pathToFileURL(base + 'auth/authGate.js').href);
+  const { createSession, deleteSession } = await import(pathToFileURL(base + 'conversationStore.js').href);
+  const app = express();
+  app.use(express.json());
+  app.use('/api', requireAuth);
+  registerAuthRoutes(app);
+  registerSessionRoutes(app);
+  const server = app.listen(0, '127.0.0.1');
+  await new Promise((r) => server.on('listening', r));
+  const url = `http://127.0.0.1:${server.address().port}`;
+  const post = async (p, body, cookie) => {
+    const res = await fetch(url + p, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...(cookie ? { Cookie: cookie } : {}) },
+      body: JSON.stringify(body || {}),
+    });
+    return { status: res.status, json: await res.json().catch(() => null), cookie: res.headers.get('set-cookie') };
+  };
+  const get = async (p, cookie) => {
+    const res = await fetch(url + p, { headers: cookie ? { Cookie: cookie } : {} });
+    return { status: res.status, json: await res.json().catch(() => null) };
+  };
+  const del = async (p, cookie) => {
+    const res = await fetch(url + p, { method: 'DELETE', headers: cookie ? { Cookie: cookie } : {} });
+    return { status: res.status, json: await res.json().catch(() => null) };
+  };
+  const first = await post('/api/auth/register', { username: 'founder', password: 'a strong founder password', role: 'user' });
+  eq('roles: first registrant forced admin despite requesting user', first.status === 200 && first.json?.user?.role === 'admin', true);
+  const founderCookie = ((await post('/api/auth/login', { username: 'founder', password: 'a strong founder password' })).cookie || '').split(';')[0];
+  const mintedAdmin = await post('/api/auth/register', { username: 'coadmin', password: 'a strong coadmin password', role: 'admin' }, founderCookie);
+  eq('roles: admin can mint another admin', mintedAdmin.status === 200 && mintedAdmin.json?.user?.role === 'admin', true);
+  const mintedUser = await post('/api/auth/register', { username: 'member', password: 'a strong member password', role: 'user' }, founderCookie);
+  eq('roles: admin can mint a plain user', mintedUser.status === 200 && mintedUser.json?.user?.role === 'user', true);
+  const memberCookie = ((await post('/api/auth/login', { username: 'member', password: 'a strong member password' })).cookie || '').split(';')[0];
+  const memberMint = await post('/api/auth/register', { username: 'sneaky', password: 'a strong sneaky password', role: 'admin' }, memberCookie);
+  eq('roles: non-admin cannot mint accounts while armed (403)', memberMint.status === 403, true);
+  // Sharing: founder owns a chat; member cannot see it until shared, then read-only
+  // actions pass while rename/delete stay 403; unsharing revokes again.
+  const httpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'console-share-'));
+  const owned = await createSession(null, 'T', httpRoot, null, 'founder');
+  const listBefore = await get('/api/sessions', memberCookie);
+  eq('share: unshared chat hidden from member list', listBefore.status === 200 && !listBefore.json?.sessions?.some((s) => s.id === owned.id), true);
+  const shareGhost = await post(`/api/sessions/${owned.id}/share`, { username: 'ghost' }, founderCookie);
+  eq('share: unknown target refused (404)', shareGhost.status === 404, true);
+  const shareSelf = await post(`/api/sessions/${owned.id}/share`, { username: 'founder' }, founderCookie);
+  eq('share: sharing with owner refused (400)', shareSelf.status === 400, true);
+  const shareMember = await post(`/api/sessions/${owned.id}/share`, { username: 'member' }, memberCookie);
+  eq('share: non-owner cannot share (403)', shareMember.status === 403, true);
+  const shareOk = await post(`/api/sessions/${owned.id}/share`, { username: 'member' }, founderCookie);
+  eq('share: owner shares with member', shareOk.status === 200 && shareOk.json?.sharedWith?.includes('member'), true);
+  const listAfter = await get('/api/sessions', memberCookie);
+  eq('share: shared chat appears in member list', listAfter.json?.sessions?.some((s) => s.id === owned.id), true);
+  const sharedRead = await get(`/api/sessions/${owned.id}`, memberCookie);
+  eq('share: shared user may read', sharedRead.status === 200, true);
+  const sharedRename = await (async () => {
+    const res = await fetch(url + `/api/sessions/${owned.id}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json', Cookie: memberCookie },
+      body: JSON.stringify({ title: 'hijack' }),
+    });
+    return { status: res.status };
+  })();
+  eq('share: shared user may not rename (403)', sharedRename.status === 403, true);
+  const unshare = await del(`/api/sessions/${owned.id}/share/member`, founderCookie);
+  eq('unshare: owner revokes', unshare.status === 200 && !unshare.json?.sharedWith?.includes('member'), true);
+  const listRevoked = await get('/api/sessions', memberCookie);
+  eq('share: revoked chat disappears again', !listRevoked.json?.sessions?.some((s) => s.id === owned.id), true);
+  await deleteSession(owned.id);
+  fs.rmSync(httpRoot, { recursive: true, force: true });
+  await new Promise((r) => server.close(r));
+}
+
 try { fs.unlinkSync(process.env.USERS_FILE); } catch {}delete process.env.USERS_FILE;
 
 console.log(`\ncheck-auth: ${pass + fail} checks, ${fail} failed`);
