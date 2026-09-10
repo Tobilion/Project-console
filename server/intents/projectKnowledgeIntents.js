@@ -25,7 +25,14 @@ export const PROJECT_KNOWLEDGE_INTENTS = {
       // pins them now; these examples keep the embedding cluster honest for variants).
       'what is the site about', 'what is this site about', 'what does this site do',
       'what is the site for', 'what is the details of the site',
-    ],
+    
+      'hey, why does this project exist asap',
+      'what me is hey, this project for',
+      'pleasse overview asap',
+      'lease overview',
+      'yo describg',
+      'a give summary me'
+      ],
   },
   'project.knowledge.stack': {
     examples: [
@@ -44,7 +51,22 @@ export const PROJECT_KNOWLEDGE_INTENTS = {
       'give me the tech stack', 'stack breakdown', 'what powers this project',
       'what packages does it rely on', 'core technologies used',
       'main technologies', 'primary stack',
-    ],
+    
+      'are please heer quickly what used technologies!!',
+      'Hey what asap used are languages',
+      'the is hey, stack what',
+      'what is this built with aspa!!',
+      'it hey, use does what runtime!!',
+      'heey, what is the architecture...',
+      'bbuilt this is how so',
+      'Yo dose quickly run on it what',
+      'what used languages are yo :)',
+      'does it use hey, what tools!',
+      'how is this buil',
+      'CUOLD YOU WHAT FRAMEWORK',
+      'FOR ME STACK TEHC HEY',
+      'So what ptwers this project...'
+      ],
   },
   'project.knowledge.commands': {
     examples: [
@@ -61,7 +83,28 @@ export const PROJECT_KNOWLEDGE_INTENTS = {
       'what can i trigger', 'list of things i can ask', 'commands available here',
       'what triggers are set up', 'show configured commands',
       'what shortcuts are there', 'available shortcuts',
-    ],
+    
+      'the me commands show',
+      'now hi, here commands available',
+      'LIT AVAILABLE COMMANDS',
+      'the run projetc to how',
+      'um how project the run to!',
+      'hey what can i launch',
+      'What csripts are available!!',
+      'how to get thanks started',
+      'COULD YOU NOW COMMANDS TEL ME THE',
+      'what can execute i you can',
+      'CAN YOU WHAT CAN I START',
+      'COUMANDS YOU CAN USE CAN WHAT I!!',
+      'could you project commads tell me',
+      'please what can i launch please',
+      'Are the what commands',
+      'this wich do i please can what!',
+      'what can i start',
+      'Commands for can asap this you list project',
+      'Hey, what commands can use i :p',
+      'this commands list project hey for'
+      ],
   },
   'project.knowledge.gotchas': {
     examples: [
@@ -169,7 +212,27 @@ export const PROJECT_KNOWLEDGE_INTENTS = {
       'command to start the site', 'what is the command to start the site',
       'how do i launch the site', 'how do i launch the app',
       'how to serve the site', 'how do i serve the app',
-    ],
+    
+      'supposed this project how be is please to launch',
+      'Hey for need thanks do i what project tols this',
+      'please how do i get this project launchning',
+      'how to the start server',
+      'Please need i do what to this run',
+      'The to command asap site start',
+      'i this set do project how up...',
+      'do for how run i me this go project',
+      'HOW PROJECT LAUNCH TO IS THIS BE SUPPOSED :)',
+      'steps instal the summarize um',
+      'this running for instructions yo!',
+      'um how do i build this',
+      'This run rust i how project do',
+      'DOES THE README SAY HOW TO START THIS :)',
+      'can execute i this do project you how 🙏',
+      'whats the corerct way to start this',
+      'explain how to execute this proect',
+      'explain how this to launch project',
+      'um how do you run the server thanks 🙏'
+      ],
   },
   // Phase 7 (2026-08-11): semantic code search — "where do we handle X" answered from the
   // persisted code-content index with real file:line citations (see codeIndexSearch.js).
@@ -188,7 +251,11 @@ export const PROJECT_KNOWLEDGE_INTENTS = {
       'where do we call the database', 'where is the database code',
       'find the implementation of the retry logic', 'search for the token refresh logic',
       'where is the upload code', 'find code related to uploads', 'where is the upload handler',
-    ],
+    
+      'logging the where handled in hey, code is',
+      'where do we call the databse thanks',
+      'loigc hi, where retry is the'
+      ],
   },
   // Phase 16 (2026-08-12): knowledge-base search over DOCUMENTS (PDFs, .docx, notes/.md/.txt)
   // — "what did I write about X", "search my documents for Z". Same retrieval-only contract

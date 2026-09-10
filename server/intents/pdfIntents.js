@@ -23,7 +23,16 @@ export const PDF_INTENTS = {
       'split the pdf at page 3', 'split my pdf into separate pages',
       'split the document into one file per page', 'split a pdf per page',
       'split this pdf into single pages',
-    ],
+    
+      'per pdf one so this vnto page file split please',
+      'Pdf please split pages my into separate',
+      'pdf split yo per a page :p',
+      'pdf my pages split separate hi, into',
+      'this pdf you into can now one per split file page!!',
+      'PDF SPLIT THIS PAGES SINGLLE INTO',
+      'SEPARATE INTO PDF MY SPLIT PLEASE PAGES',
+      'ONE PAGE PDF FILE PLEASE PER SPLIT THIS INTO'
+      ],
   },
   'pdf.extract_text': {
     opensPanel: 'pdf-tools',
@@ -32,7 +41,16 @@ export const PDF_INTENTS = {
       'extract text from the pdf', 'extract text from a pdf',
       'get the text from document.pdf', 'pull the text out of this pdf',
       'extract all text from the pdf',
-    ],
+    
+      'from hey, a me extract for text pdf 🙏',
+      'text extract from the pdf',
+      'me for pdf the from text extract',
+      'yo extract etxt from the pdf 🙏',
+      'so extract a from texj pdf',
+      'the could from pdf you extract text',
+      'text extract me for a can pdf you from',
+      'texk this pdf the can you from extract'
+      ],
   },
   'pdf.extract_pages': {
     opensPanel: 'pdf-tools',
