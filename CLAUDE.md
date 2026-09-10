@@ -336,7 +336,11 @@ Verified: check-handlers 287/287, check-ws-cases clean, npm test 602/602, tsc cl
    (2026-09-10, opencode): pure date helpers + `ReminderInfo`/`ReminderView` types into
    `reminders/schedule.ts`, root 455→402, byte-identical bodies, no external importers;
    `NotificationsPanel.tsx` rule leaf done (2026-09-10, opencode): rule/history/test
-   types + event maps + sentence helpers into `notifications/rules.ts`, root 499→423; `FolderExplorerPanel.tsx` footer done
+   types + event maps + sentence helpers into `notifications/rules.ts`, root 499→423;
+   `CommandDeck.tsx` ranking leaf done (2026-09-10, opencode): usage tracking +
+   Levenshtein + tokenized matchScore into `commandDeck/ranking.ts`, root 486→396
+   (back under the ceiling), behavior locked by direct leaf asserts (exact 75 / typo
+   fuzzy / miss -1 / lev 3); `FolderExplorerPanel.tsx` footer done
    (2026-09-10, opencode): bottom bar (view toggle/grid-size/read-only/count) extracted verbatim
    into `folderExplorer/footer.tsx` (`ExplorerFooter`, same props-down pattern as the existing
    header/views/menus leaves), root 717→642 lines — note commit 3e8de10's message claimed this
