@@ -1001,6 +1001,22 @@ unification, explorer create/delete ops, CSV editing vs rename, PDF unlock (erro
 already graceful), C-5 auto-advance, Hello biometrics,
 installed-app smoke test.
 
+**Second unattended session (2026-09-10, opencode — user-directed: E-4, F-9, J, I,
+glass rework, user-dropdown, full portal):** 10 commits, all pushed: liquid-glass
+rework (Chromium-safe blur+tint, intensity slider, scope select, theme tint, dead
+SVG mount removed), shadcn dropdown/avatar/badge primitives + adapted UserDropdown
+(lucide, typed, app-real actions), portal admin endpoints (web reset + delete),
+portal header menu + Users admin section + first-run portal setup, portal session
+ownership (per-user chats + 403 guards + 12 auth rows), E-4 anchored popup (blind),
+F-9 one-level inline tree, J PDF unlock (panel-gated, lib-limitation documented) +
+explorer create/delete/duplicate (+journal/undo) + CSV export + drive roots.
+Final sweep green: test 606/606, lint, matcher 429/429, handlers 358/358, auth
+85/85, tools 182/182, indexer 103/103, ws-cases 137/137, intents 1/17/137,
+docs 81+142, vite build clean.
+**Still deferred:** E-4 visual click-through, all browser renders, matcher naming,
+remaining interwoven splits, executor error-style, CSV full editing, reminders
+subtasks, Hello biometrics, installed-app smoke test.
+
 **Native verification baseline (2026-09-09, opencode on Windows — supersedes the bridged-shell
 caveat below)**: full suite green at commit e0bc8ed before any new work — npm test 602/602,
 `npm run lint` clean, check-matcher 425/425 (incl. the A-15 MULTI-INTENT and K-11 TROUBLESHOOT
