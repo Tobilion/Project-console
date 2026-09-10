@@ -22,6 +22,20 @@ function isValidBrowsePath(p) {
 }
 
 export function registerBrowseRoutes(app) {
+  // Drive roots for the explorer's empty state (J, 2026-09-10): Windows A–Z roots that
+  // exist, POSIX just '/'. Synchronous existsSync probes, no shell — same trust model
+  // as the listing below.
+  app.get('/api/browse/drives', (req, res) => {
+    if (process.platform !== 'win32') return res.json({ drives: [{ path: '/', label: '/' }] });
+    const drives = [];
+    for (let c = 65; c <= 90; c++) {
+      const root = `${String.fromCharCode(c)}:\\`;
+      try {
+        if (fs.existsSync(root)) drives.push({ path: root, label: root });
+      } catch {}
+    }
+    res.json({ drives });
+  });
   // Directory listing of any absolute path. Entries are sorted folders-first then by name
   // (same convention as fileToolsRoutes listEntries); dotfiles are included (the explorer
   // panel shows everything, unlike the project-scoped file browser which skips them).

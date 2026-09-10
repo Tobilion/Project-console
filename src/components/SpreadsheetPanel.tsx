@@ -331,14 +331,40 @@ export function SpreadsheetPanel({ project, onSendMessage, tabId = null }: Sprea
 
         {/* Filter result table */}
         {table && (
-          <ResultTable
-            headers={table.headers}
-            rows={sortedRows}
-            sortCol={sortCol}
-            sortAsc={sortAsc}
-            onToggleSort={toggleSort}
-            footer={`${sortedRows.length} matching row${sortedRows.length === 1 ? '' : 's'} — click a header to sort.`}
-          />
+          <>
+            <div className="flex justify-end mb-1.5">
+              <button
+                onClick={() => {
+                  // J (CSV export): download the filtered view as a .csv file — pure
+                  // client-side serialization of the already-fetched rows, so the source
+                  // file is never touched (read-only guarantee intact, no confirm/journal
+                  // needed). Properly quotes fields containing commas, quotes, or newlines.
+                  const q = (v: string) => (/[",\n\r]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v);
+                  const csv = [table.headers, ...sortedRows].map((r) => r.map(q).join(',')).join('\r\n');
+                  const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+                  const a = document.createElement('a');
+                  a.href = url;
+                  a.download = `${selectedFile.replace(/\.csv$/i, '')}-filtered.csv`;
+                  document.body.appendChild(a);
+                  a.click();
+                  a.remove();
+                  setTimeout(() => URL.revokeObjectURL(url), 5000);
+                }}
+                className="px-2.5 py-1.5 rounded-lg text-[11px] font-semibold text-accent-blue hover:bg-accent-blue/10 transition-colors"
+                title="Download these filtered rows as a new .csv file (the source file is untouched)"
+              >
+                Download filtered CSV
+              </button>
+            </div>
+            <ResultTable
+              headers={table.headers}
+              rows={sortedRows}
+              sortCol={sortCol}
+              sortAsc={sortAsc}
+              onToggleSort={toggleSort}
+              footer={`${sortedRows.length} matching row${sortedRows.length === 1 ? '' : 's'} — click a header to sort.`}
+            />
+          </>
         )}
 
         {/* Phase 5: file preview — first N rows render before any query runs, with a

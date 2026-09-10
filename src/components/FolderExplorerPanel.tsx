@@ -592,6 +592,15 @@ export function FolderExplorerPanel({ onSendMessage, tabId = null, project = nul
     setChildCache((prev) => ({ ...prev, [entry.path]: kids }));
   }, [expandedPaths, childCache]);
 
+  // J (drive roots): offered in the empty state so browsing starts by tapping instead
+  // of pasting. Fetched once on mount; a failure just hides the buttons (paste still works).
+  const [drives, setDrives] = useState<{ path: string; label: string }[]>([]);
+  useEffect(() => {
+    apiFetchJson<{ drives: { path: string; label: string }[] }>('/api/browse/drives').then((d) => {
+      if (d?.drives) setDrives(d.drives);
+    }).catch(() => { });
+  }, []);
+
   // Shared props for the row/tile renderers (2026-08-24 split).
   const entryViewProps = {
     cursor,
@@ -723,8 +732,22 @@ export function FolderExplorerPanel({ onSendMessage, tabId = null, project = nul
       {/* Main area: list or grid */}
       <div className="flex-1 min-h-0 overflow-y-auto bg-panel">
         {entries.length === 0 && !loading ? (
-          <div className="h-full flex items-center justify-center">
+          <div className="h-full flex flex-col items-center justify-center gap-3 px-4">
             <p className="text-sm text-fg-muted">Paste a folder path above to browse it.</p>
+            {!path.trim() && drives.length > 0 && (
+              <div className="flex flex-wrap items-center justify-center gap-1.5">
+                {drives.map((d) => (
+                  <button
+                    key={d.path}
+                    onClick={() => browse(d.path)}
+                    className="px-2.5 py-1.5 rounded-lg text-xs font-mono text-fg-dim hover:text-fg-strong bg-scrim-faint border border-border-soft hover:border-border-strong transition-colors"
+                    title={`Browse ${d.path}`}
+                  >
+                    {d.label}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         ) : filteredEntries.length === 0 ? (
           <div className="h-full flex items-center justify-center">
