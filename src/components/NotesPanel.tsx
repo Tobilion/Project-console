@@ -255,6 +255,62 @@ export function NotesPanel({ project, onSendMessage, tabId = null }: NotesPanelP
   const titleOf = (n: NoteInfo) => n.text.split('\n')[0];
   const previewOf = (n: NoteInfo) => n.text.split('\n').slice(1).join(' ');
 
+  // J (notes parity): checklist + tag support is pure render over the plain-text store —
+  // `- [ ]`/`- [x]` markers toggle through the existing in-place PUT (F-6), `#tag`
+  // tokens filter through the existing substring filter. No store format change.
+  const taskOf = (text: string) => text.match(/^\s*- \[([ xX])\]\s?([\s\S]*)$/);
+  const toggleTaskText = (text: string) => {
+    const m = taskOf(text);
+    if (!m) return null;
+    const done = m[1].toLowerCase() === 'x';
+    return `- [${done ? ' ' : 'x'}] ${m[2]}`;
+  };
+  const tagsOf = (text: string) => {
+    const out: string[] = [];
+    for (const m of text.matchAll(/#([A-Za-z0-9_-]{2,32})/g)) {
+      if (!out.includes(m[1])) out.push(m[1]);
+    }
+    return out;
+  };
+  const allTags = useMemo(() => {
+    const out: string[] = [];
+    for (const n of notes) for (const t of tagsOf(n.text)) if (!out.includes(t)) out.push(t);
+    return out.sort();
+  }, [notes]);
+
+  const handleToggleTask = async (note: NoteInfo) => {
+    if (!project?.id) return;
+    const next = toggleTaskText(note.text);
+    if (!next) return;
+    // Dated key when known (unambiguous for twins), same as restore.
+    const key = note.date ? `${note.text} (${note.date})` : note.text;
+    const result = await apiFetchJson<{ success: boolean; data?: string; error?: string }>(
+      projectApi(`/api/projects/${encodeURIComponent(project.id)}/notes`, tabId),
+      { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ oldText: key, newText: next }) }
+    );
+    if (!result) { setError('Could not reach the server.'); return; }
+    if (!result.success) { setError(result.error || 'Could not update the checklist.'); return; }
+    setError(null);
+    setSelectedText(next);
+    flashSent(result.data === 'No changes.' ? 'No changes.' : 'Updated.');
+    fetchNotes();
+  };
+
+  // J: highlight the active filter term inside rail rows so a search visibly lands.
+  const highlight = (text: string, term: string) => {
+    const q = term.trim();
+    if (!q) return text;
+    const idx = text.toLowerCase().indexOf(q.toLowerCase());
+    if (idx === -1) return text;
+    return (
+      <>
+        {text.slice(0, idx)}
+        <mark className="bg-accent-blue/25 text-inherit rounded-sm px-px">{text.slice(idx, idx + q.length)}</mark>
+        {text.slice(idx + q.length)}
+      </>
+    );
+  };
+
   return (
     <div className="notes-panel h-full flex flex-col">
       {/* Header row */}
@@ -316,6 +372,30 @@ export function NotesPanel({ project, onSendMessage, tabId = null }: NotesPanelP
             </div>
             {/* F-5(1): recycle bin toggle — deleted notes wait here until restored or
                 the bin is emptied, instead of vanishing on delete. */}
+            {/* J: tag chips — one tap filters to that tag (the filter is already a
+                substring match, so `#tag` just works; tapping the active tag clears it). */}
+            {!showTrash && allTags.length > 0 && (
+              <div className="mt-2 flex flex-wrap gap-1 px-1">
+                {allTags.map((t) => {
+                  const active = filter.trim() === `#${t}`;
+                  return (
+                    <button
+                      key={t}
+                      onClick={() => setFilter(active ? '' : `#${t}`)}
+                      className={cn(
+                        'px-2 py-0.5 rounded-full text-[10px] transition-colors border',
+                        active
+                          ? 'bg-accent-blue/15 text-accent-blue border-accent-blue/30 font-semibold'
+                          : 'text-fg-dim border-border-faint hover:text-fg-strong hover:border-border-soft',
+                      )}
+                      title={active ? 'Clear tag filter' : `Filter to #${t}`}
+                    >
+                      #{t}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
             <button
               onClick={() => { const next = !showTrash; setShowTrash(next); if (next) fetchTrash(); }}
               className={cn(
@@ -394,16 +474,30 @@ export function NotesPanel({ project, onSendMessage, tabId = null }: NotesPanelP
                   <button
                     onClick={() => setSelectedText(n.text)}
                     className={cn(
-                      'w-full text-left px-3 py-2.5 min-h-[48px] transition-colors',
+                      'w-full text-left px-3 py-2.5 min-h-[48px] transition-colors flex items-start gap-2',
                       n.text === selected?.text ? 'bg-panel-strong' : 'hover:bg-panel-strong/60',
                     )}
                   >
-                    <div className="text-[13px] font-semibold leading-snug truncate text-fg-strong">
-                      {titleOf(n)}
-                    </div>
-                    <div className="text-[11px] text-fg-muted truncate mt-0.5">
-                      {previewOf(n) || n.date || ''}
-                    </div>
+                    {/* J: checklist toggle — stops the row-select click, flips the
+                        marker through the in-place PUT, selection follows the text. */}
+                    {taskOf(n.text) && (
+                      <input
+                        type="checkbox"
+                        checked={taskOf(n.text)![1].toLowerCase() === 'x'}
+                        onChange={() => void handleToggleTask(n)}
+                        onClick={(e) => e.stopPropagation()}
+                        className="mt-1 shrink-0 accent-accent-blue"
+                        title="Toggle done"
+                      />
+                    )}
+                    <span className="flex-1 min-w-0">
+                      <div className="text-[13px] font-semibold leading-snug truncate text-fg-strong">
+                        {highlight(titleOf(n), filter)}
+                      </div>
+                      <div className="text-[11px] text-fg-muted truncate mt-0.5">
+                        {highlight(previewOf(n) || n.date || '', filter)}
+                      </div>
+                    </span>
                   </button>
                   {i < filtered.length - 1 && (
                     <div className="border-b border-border-faint mx-3" />

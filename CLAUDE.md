@@ -874,8 +874,8 @@ Verified: check-handlers 287/287, check-ws-cases clean, npm test 602/602, tsc cl
    (`rounded-2xl` marketplace/palette/modals, `rounded-xl` panels), small controls on
    `rounded-md` (6px pills/inputs/kbd — appropriately tighter than cards, not a scale
    violation); larger radii anywhere would be a taste call needing eyes, not a mechanical
-   fix. G-7 moot (no ported components need cva/slot). Still open: G-4's loading-screen
-   reuse (H).
+   fix. G-7 moot (no ported components need cva/slot). G-4's loading-screen reuse done
+   via Phase H below (the web BootScreen sits over the same GlowOrbs ambient layer).
 - **Phase I: started** (2026-09-09, opencode — per user direction, all remaining phases
   stay in scope). I-1 done: local accounts with zero enforcement yet (nothing can lock
   out; single-user behavior byte-identical). New `server/auth/` leaves —
@@ -931,7 +931,30 @@ Verified: check-handlers 287/287, check-ws-cases clean, npm test 602/602, tsc cl
    LoginScreen lockout hint points at it. 6 new check-auth rows (66/66) + live CLI loop
    verified against an isolated store (old dead, new works, printed code works + rotates).
    Still open: H, J, L (Phase I itself is now complete).
-- Phases H, J, L: **not started.**
+- **Phase H: done** (2026-09-10, opencode). New `SandBlocks.tsx` canvas block field
+  (blue/red/white, pointer-distance displacement + color blend, DPR cap, offscreen/
+  hidden pause, reduced-motion static — window-level tracking, since the host is
+  pointer-events-none) backs a new web `BootScreen.tsx` (wordmark + made-by credit top
+  half, progress + status + elapsed bottom half, 400ms flash guard) rendered by `App`
+  while `!profileLoaded` (always resolves — cannot trap). Desktop splash (`main.cjs`
+  `buildSplashHtml`) restyled to the same brief as a dependency-free data URL with a
+  compact vanilla mirror of the sand field; the `[boot-state]` mechanism and the
+  `executeJavaScript` #boot-state/#boot-time contract are byte-identical (verified by a
+  throwaway harness: data URL, IDs exactly once, embedded script parses standalone).
+  H-3 evaluated with no change (electron-updater blockmap differentials already on).
+  Verified: tsc + vite build clean, node --check on main.cjs. Electron-window render +
+  browser animation still outstanding (no browser/Electron here).
+- **Phase J started — notes slice** (2026-09-10, opencode): checklists + tags +
+  search highlighting, all render over the unchanged plain-text store (no migration):
+  `- [ ]`/`- [x]` rows get an inline checkbox flipping the marker through the existing
+  F-6 in-place PUT (dated key for twins, selection follows); `#tag` tokens render as
+  filter chips (the substring filter already matches them, tap toggles); the active
+  filter term highlights inside rail rows. No new deps (plain react-markdown already
+  renders bold/italic/code; task-list plugin deliberately NOT added — the rail checkbox
+  is the interactive surface, matching the terminal's literal rendering). Verified:
+  tsc + vite build clean. Browser click-through still outstanding. Pin/favorite and
+  note-linking/attachments stay deferred (need store fields, not render).
+- Phase L: **not started.**
 
 **Native verification baseline (2026-09-09, opencode on Windows — supersedes the bridged-shell
 caveat below)**: full suite green at commit e0bc8ed before any new work — npm test 602/602,
