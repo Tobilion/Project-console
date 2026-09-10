@@ -828,9 +828,16 @@ Verified: check-handlers 287/287, check-ws-cases clean, npm test 602/602, tsc cl
   to more precise anchors); the attribute itself is untouched in `AppHeader.tsx`. Still open:
   the rest of C-4 (permissionMode, Dashboard/dock sub-tabs, scanAllFolders,
   per-category Settings, FirstRunSetup, CLI/desktop coverage — the AI model picker half
-  is now done: `ai-model-picker`/`ai-mode-picker` attributes on the TerminalInput
-  dropdowns + a "Model & Mode Pickers" step documenting the AI-on precondition), C-5
-  (progress/auto-advance/reduced-motion). C-5 partially done (2026-09-09, opencode): step-progress
+   is now done: `ai-model-picker`/`ai-mode-picker` attributes on the TerminalInput
+   dropdowns + a "Model & Mode Pickers" step documenting the AI-on precondition), C-4
+   remainder done (2026-09-10, opencode): new `dock-logs-tab`/`dock-projects-tab`/
+   `dock-history-tab` anchors on the dock strip + a "Dock Tabs" ring step,
+   a "Dashboard Sub-Tabs" ring step (`dashboard-live-tab`; projects tab was already
+   covered), card-only "Scan-All & Permission Mode" (modal internals can't spotlight —
+   both toggles gained stable `data-tour` anchors for future use), "First-Run Setup"
+   and "CLI, Daemon & Desktop App" cards. Tour cross-check 35 targets, 0 missing
+   (panel `*-panel` targets resolve via the dynamic ToolsPanel shell). C-5
+   (progress/auto-advance/reduced-motion). C-5 partially done (2026-09-09, opencode): step-progress
   ("Step X of Y" + dot strip) and completion badges already existed — verified, no change;
   reduced-motion is now respected (`MotionConfig reducedMotion="user"` kills the modal
   tweens, spotlight ring loses its transition, scroll jumps are instant). Auto-advance on

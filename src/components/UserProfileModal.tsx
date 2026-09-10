@@ -471,7 +471,7 @@ export function UserProfileModal({ open, profile, onClose, onSave, initialCatego
                 </div>
               </div>
 
-              <div className={sectionCls} data-setting="permissionMode">
+              <div className={sectionCls} data-setting="permissionMode" data-tour="setting-permission-mode">
                 <FieldLabel label="Permission mode" hint="In Ask mode, mutating tools are declined with an explanation — no confirm prompts, no auto-runs.">
                   <div className="flex gap-2">
                     <button type="button" onClick={() => setPermissionMode('default')}
@@ -498,7 +498,7 @@ export function UserProfileModal({ open, profile, onClose, onSave, initialCatego
                 <h3 className="text-lg font-bold text-fg-strong">Advanced</h3>
               </div>
 
-              <div className={sectionCls}>
+              <div className={sectionCls} data-tour="setting-scan-all">
                 <div className="flex items-start gap-3">
                   <Toggle enabled={scanAllFolders} onToggle={() => setScanAllFolders(!scanAllFolders)}
                     title={scanAllFolders ? 'Every folder included' : 'Only recognized projects shown'} />

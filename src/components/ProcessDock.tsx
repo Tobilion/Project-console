@@ -251,6 +251,7 @@ export function ProcessDock({
 
           <div className="flex items-center gap-1.5 px-2 py-1.5 overflow-x-auto min-w-0 [scrollbar-width:thin]">
             <button
+              data-tour="dock-logs-tab"
               onClick={() => {
                 onSetDockTab?.('logs');
                 onToggleExpanded();
@@ -264,6 +265,7 @@ export function ProcessDock({
             </button>
 
             <button
+              data-tour="dock-projects-tab"
               onClick={() => {
                 // Phase 15: re-clicking Projects while it's the active expanded view collapses
                 // the dock (toggle), matching the "N running" button — before, it was a no-op.
@@ -286,6 +288,7 @@ export function ProcessDock({
             </button>
 
             <button
+              data-tour="dock-history-tab"
               onClick={() => {
                 // Phase 4: same toggle behavior as Projects — re-clicking while active collapses.
                 if (expanded && dockTab === 'history') {

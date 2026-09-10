@@ -92,6 +92,11 @@ export const TOUR_SECTIONS: TourSection[] = [
         title: "You Are Offline-First",
         body: 'Everything you just saw works without internet: discovery, file tools, PDFs, the matcher, and local Ollama models. The only features that need network are web search/deep research, cloud models (suffix :cloud), and remote pack installs — and they all proxy through your local daemon. Shortcuts: “?” shows all shortcuts, Ctrl+K opens the command palette from anywhere.',
       },
+      {
+        icon: '◐',
+        title: 'First-Run Setup',
+        body: 'The very first launch shows a short setup wizard: your display name (used for chat attribution and greetings), the default workspace type (Developer or General — the same pill from the header), and a note about the optional Ollama install for AI mode. Skipping keeps neutral defaults and never nags again. The wizard only mounts on a fresh profile so this step is a card, not a spotlight — once setup is complete it never reappears.',
+      },
     ],
   },
   {
@@ -493,6 +498,20 @@ export const TOUR_SECTIONS: TourSection[] = [
         target: 'process-dock',
       },
       {
+        icon: '☷',
+        title: 'Dock Tabs: Logs, Projects, History',
+        body: 'The dock strip has three tab buttons. Logs shows the selected process output (re-clicking the running-count button collapses the dock). Projects lists every discovered project with running-vs-idle state — “View logs” jumps straight to that project’s log. History lists journaled actions with per-row Revert (file restores confirm first, then undo exactly what the action did). Re-clicking the active tab collapses the dock, same as the running-count button.',
+        view: 'chat',
+        target: 'dock-history-tab',
+      },
+      {
+        icon: '◫',
+        title: 'Dashboard Sub-Tabs: Projects vs Live Sites',
+        body: 'The Dashboard has two tabs. Projects shows every discovered project card (filter field, dirty/running-first sort — expand a card for Open in chat, Commit & push or Push, Open site, Copy path). Live Sites shows only currently-serving dev URLs: “live now” means a tracked process or a fresh probe answered; “recorded — not currently answering” means the URL is remembered but nothing responds. Polls every 5s plus immediate refresh on dashboard_update broadcasts.',
+        view: 'dashboard',
+        target: 'dashboard-live-tab',
+      },
+      {
         icon: '⌖',
         title: 'Command Deck (Ctrl+K) & Command Reference',
         body: 'Ctrl+K deck is Raycast-style: Navigation (Home/Dashboard/New Chat/Fullscreen/Sidebar), Actions (theme, profile, workspace pill, AI toggle, exports, dock tabs), every Tool panel, every chat intent (curated + auto-generated via commandCatalog — canned chit-chat excluded), Sessions, Projects. Tokenized relevance (label > hint > keywords > group) + Levenshtein typo + space-stripped concatenation (“gitstatus”), Recent/Frequent/Time-decayed frequency caps, two panes (rows = grouped headers + right-aligned category, preview = metadata panel). Command Reference (book icon) is the same catalog as a category sidebar + searchable list with shell copy buttons.',
@@ -520,6 +539,16 @@ export const TOUR_SECTIONS: TourSection[] = [
         body: 'Press “?” outside an input to see the shortcuts overlay (from ShortcutsOverlay, discoverable instead of memorized). “health check / is my console healthy” probes Ollama reachability, embedding state, disk space, and zombie processes. “check for updates / update console” hits registry.npmjs.org with a 4s abort (offline → silent null); desktop app skips it (electron-updater is the channel). The guided tour completion badges (localStorage console.toursTaken) and the “Reset onboarding / retake tour” button in Profile are the only tour persistence.',
         view: 'chat',
         target: 'settings-button',
+      },
+      {
+        icon: '◍',
+        title: 'Scan-All Folders & Permission Mode',
+        body: 'Two Advanced-settings toggles worth knowing. “Include every folder as a project” (off by default) makes the scanner list every immediate subfolder, even ones with no code or config — for inbox-style folders where everything counts. “Permission mode: Ask” makes the AI tool layer read-only: mutating tools answer “blocked” with an explanation instead of prompting — it only ever strengthens safety, and trigger-mode typed commands keep their normal confirm cards. Both live under Gear → Profile → Advanced; both need a rescan-free, restart-free apply.',
+      },
+      {
+        icon: '▣',
+        title: 'CLI, Daemon & Desktop App',
+        body: 'The same console runs three ways. Terminal: `node bin/cli.js cli` (or the W/C/Q launcher) starts the server in-process and hands you the text chat — every WS message type the web renders has a CLI rendering, thinking traces aside. Background: `scripts/start-daemon.ps1` (or daemon.mjs) hides the server with a port file; stop kills by verified port, never by PID guess. Desktop: the Electron shell reuses the same port rule (never a duplicate instance), shows the loading screen while the server cold-boots, and updates through electron-updater — the in-app “update console” command is disabled there on purpose. There is no visual spotlight for these, so this step is a card.',
       },
     ],
   },
