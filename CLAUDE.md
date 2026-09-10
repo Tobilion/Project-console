@@ -899,9 +899,21 @@ Verified: check-handlers 287/287, check-ws-cases clean, npm test 602/602, tsc cl
   every later fetch + the WS upgrade, non-TTY fails fast with a pointer (verified live:
   2s, exit 1, no 90s burn); `unexpected-response` 401 handlers on both WS paths.
   7 new check-auth rows (51/51). Live-verified the full loop against a booted armed
-  server. tsc + vite build clean, check-ws-cases 137/137. Still open: per-user data
-  sharding (I-4), OS-auth reset UX (I-5: recovery codes work everywhere via UI+API, the
-  safeStorage/Hello upgrade is future), plus H, J, L.
+   server. tsc + vite build clean, check-ws-cases 137/137. I-4b done (2026-09-10,
+   opencode): per-user profile sharding — `GET/POST /api/profile` scope through
+   `req.authUser` (global file stays the defaults layer, `data/users/<name>/profile.json`
+   overrides per key through the same sanitizers; all ~20 server-internal `readProfile()`
+   callers unchanged, machine posture stays global; `PROFILE_FILE` env-overridable for the
+   harness). 9 new check-auth rows over real HTTP (defaults-first, A/B isolation both
+   ways, global untouched, hostile-name fallback — 60/60). I-5 done (2026-09-10, opencode):
+   local-machine `node bin/cli.js auth reset-password <user> [--password]` via a new
+   `adminResetPassword()` (no recovery code needed — filesystem access to `users.json` IS
+   the machine-ownership proof, same trust as the existing delete-users.json hatch, and the
+   reason true Windows Hello/safeStorage stays future: the server is plain Node with no
+   Electron API); never over HTTP by design; prints a fresh rotated recovery code;
+   LoginScreen lockout hint points at it. 6 new check-auth rows (66/66) + live CLI loop
+   verified against an isolated store (old dead, new works, printed code works + rotates).
+   Still open: H, J, L (Phase I itself is now complete).
 - Phases H, J, L: **not started.**
 
 **Native verification baseline (2026-09-09, opencode on Windows — supersedes the bridged-shell

@@ -28,7 +28,7 @@ function eq(name, actual, expected) {
   }
 }
 
-const { registerUser, verifyUser, resetPassword, listUsers, hasUsers, findUser, clearUsersForTests } =
+const { registerUser, verifyUser, resetPassword, adminResetPassword, listUsers, hasUsers, findUser, clearUsersForTests } =
   await import(pathToFileURL(base + 'auth/userStore.js').href);
 const sessions =
   await import(pathToFileURL(base + 'auth/authSessions.js').href);
@@ -84,6 +84,18 @@ eq('auth: second rotation ok', !!r4.user, true);
 sessions.destroyUserSessions('tobi');
 eq('auth: reset destroys live sessions', sessions.validateSession(t1) === null && sessions.validateSession(t2) === null, true);
 
+// --- local-machine admin reset (I-5: OS-auth equivalent, never over HTTP) -----
+const noUser = await adminResetPassword('ghost-user', 'a valid new password here');
+eq('auth: admin reset refuses unknown user', !!noUser.error, true);
+const weakAdmin = await adminResetPassword('tobi', 'short');
+eq('auth: admin reset enforces password policy', !!weakAdmin.error, true);
+const codeBefore = r4.recoveryCode;
+const adm = await adminResetPassword('tobi', 'local operator password here');
+eq('auth: admin reset ok + rotates code', !!adm.user && typeof adm.recoveryCode === 'string' && adm.recoveryCode !== codeBefore, true);
+eq('auth: pre-reset password dead after admin reset', await verifyUser('tobi', 'yet another password here'), null);
+eq('auth: admin-reset password works', (await verifyUser('tobi', 'local operator password here'))?.username, 'tobi');
+eq('auth: rotated code from admin reset is live', !!(await resetPassword('tobi', adm.recoveryCode, 'post-admin password here')).user, true);
+
 // --- public shape + disk hygiene ---------------------------------------------
 const listed = listUsers();
 eq('auth: listUsers exposes names+roles only', listed.length === 2 && listed.every((u) => u.username && u.role && !u.passwordHash && !u.recoveryHash), true);
@@ -127,7 +139,7 @@ eq('auth gate: armed once users exist', authArmed(), true);
   requireAuth(fakeReq('/auth/login', null), fakeRes(), () => { nexted = true; });
   eq('auth gate: auth routes pass while armed', nexted, true);
 }
-const gateLogin = await verifyUser('tobi', 'yet another password here');
+const gateLogin = await verifyUser('tobi', 'post-admin password here');
 const gateToken = sessions.createSession(gateLogin.username, gateLogin.role);
 {
   let nexted = false;

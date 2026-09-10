@@ -158,8 +158,11 @@ export function LoginScreen() {
         )}
 
         <p className="text-[11px] text-fg-dim mt-5 leading-relaxed">
-          Locked out with no recovery code? Deleting <code className="font-mono">data/users.json</code> on
-          the server machine resets auth entirely (the server returns to open mode).
+          Locked out with no recovery code? On the server machine itself, run{' '}
+          <code className="font-mono">node bin/cli.js auth reset-password &lt;username&gt;</code> to set a
+          new password (proves machine ownership via file access), or delete{' '}
+          <code className="font-mono">data/users.json</code> to reset auth entirely (the server
+          returns to open mode).
         </p>
       </div>
     </div>

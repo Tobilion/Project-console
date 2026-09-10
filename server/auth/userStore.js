@@ -145,6 +145,24 @@ export async function resetPassword(username, recoveryCode, newPassword) {
   return { user: { username: user.username, role: user.role }, recoveryCode: nextCode };
 }
 
+/** Local-machine admin reset (I-5): set a password WITHOUT a recovery code, and
+ *  rotate the recovery code (returned in the clear, once). This MUST only ever be
+ *  called from a local-operator path (the bin/cli.js `auth` subcommand) — the caller
+ *  proves machine ownership through filesystem access to USERS_FILE itself, the same
+ *  trust already behind the "delete users.json to reset auth" escape hatch. Never
+ *  expose over HTTP: anyone who can reach it remotely can take any account. */
+export async function adminResetPassword(username, newPassword) {
+  const user = findUser(username);
+  if (!user) return { error: `Unknown user "${String(username || '').trim()}".` };
+  const pwErr = passwordError(newPassword);
+  if (pwErr) return { error: pwErr };
+  user.passwordHash = await bcrypt.hash(newPassword, SALT_ROUNDS);
+  const nextCode = newRecoveryCode();
+  user.recoveryHash = await bcrypt.hash(nextCode, SALT_ROUNDS);
+  persist();
+  return { user: { username: user.username, role: user.role }, recoveryCode: nextCode };
+}
+
 /** Test hook — drop the in-memory list (the harness points USERS_FILE at a temp file). */
 export function clearUsersForTests() {
   users = [];

@@ -232,6 +232,55 @@ async function main() {
     process.exit(doctorExitCode(checks));
   }
 
+  // Phase I (local accounts): `node bin/cli.js auth reset-password <username>`.
+  // The local-machine password reset — the OS-auth equivalent the spec calls for.
+  // There is no email/reset-link flow (offline-first desktop app); instead, running
+  // this command PROVES machine ownership through filesystem access to data/users.json
+  // itself — the same trust already behind the "delete users.json to reset auth"
+  // escape hatch, and the same mechanism as Electron safeStorage/DPAPI without a new
+  // native dependency. Never starts the server (works when it can't boot) and is
+  // deliberately NOT exposed over HTTP. Prints a fresh recovery code on success.
+  if (process.argv[2] === 'auth' && process.argv[3] === 'reset-password') {
+    const username = process.argv[4];
+    if (!username) {
+      console.error('Usage: node bin/cli.js auth reset-password <username> [--password <new-password>]');
+      process.exit(1);
+    }
+    const { loadUsers, hasUsers, adminResetPassword } = await import(
+      pathToFileURL(path.join(rootDir, 'server', 'auth', 'userStore.js')).href
+    );
+    loadUsers();
+    if (!hasUsers()) {
+      console.error('Auth is not armed (no users registered) — nothing to reset.');
+      process.exit(1);
+    }
+    let password = null;
+    const flagAt = process.argv.indexOf('--password');
+    if (flagAt !== -1) password = process.argv[flagAt + 1] || null;
+    if (!password) {
+      if (!process.stdin.isTTY) {
+        console.error('No TTY — pass the new password with --password <new-password>.');
+        process.exit(1);
+      }
+      password = await new Promise((resolve) => {
+        // crlfDelay: Infinity — Windows ConPTY can otherwise double-fire 'line' events.
+        const rl = readline.createInterface({ input: process.stdin, output: process.stdout, crlfDelay: Infinity });
+        rl.question('  New password (typing is visible): ', (answer) => {
+          rl.close();
+          resolve(answer);
+        });
+      });
+    }
+    const result = await adminResetPassword(username, password);
+    if (result.error) {
+      console.error(`Reset failed: ${result.error}`);
+      process.exit(1);
+    }
+    console.log(`\n  Password reset for "${result.user.username}".`);
+    console.log(`  New recovery code (store it somewhere safe — it is shown once): ${result.recoveryCode}\n`);
+    process.exit(0);
+  }
+
   const port = await startServer();
 
   const url = `http://127.0.0.1:${port}`;
