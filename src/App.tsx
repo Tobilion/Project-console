@@ -411,14 +411,56 @@ function App() {
     return <BootScreen />;
   }
 
+  // Portal accounts for the header switcher (usernames + roles only — the endpoint
+  // never returns hashes, and it 401s anonymously while armed). Fetched once the lock
+  // check resolves to armed+user; disarmed servers skip it entirely.
+  const [accounts, setAccounts] = useState<{ username: string; role: string }[]>([]);
+  useEffect(() => {
+    if (!authState?.armed || !authState.user) return;
+    let cancelled = false;
+    fetch('/api/auth/users')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (!cancelled && Array.isArray(data?.users)) setAccounts(data.users);
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [authState?.armed, authState?.user?.username]);
+
+  // Portal account actions from the header avatar menu. Logout/switch both end in a
+  // reload (post-auth state is only ever built fresh at boot); switch pre-fills the
+  // picked name on the login screen via a consumed-once hint.
+  const handleAccountAction = useCallback(async (action: string, account?: string) => {
+    if (action === 'profile' || action === 'settings') {
+      setProfileOpen(true);
+    } else if (action === 'appearance') {
+      handleOpenSettings('appearance');
+    } else if (action === 'notifications') {
+      handleOpenNotifications();
+    } else if (action === 'logout' || action === 'switch') {
+      try {
+        await fetch('/api/auth/logout', { method: 'POST' });
+      } catch {}
+      if (action === 'switch' && account) {
+        try { localStorage.setItem('console.loginHint', account); } catch {}
+      }
+      window.location.reload();
+    }
+  }, [handleOpenNotifications, handleOpenSettings]);
+
   // Phase I lock screen — armed server, anonymous browser. Rendered instead of the whole
   // console (placed after all hooks, so hook order is unaffected).
   if (authState && authState.armed && !authState.user) {
+    let loginHint = '';
+    try {
+      loginHint = localStorage.getItem('console.loginHint') || '';
+      localStorage.removeItem('console.loginHint');
+    } catch {}
     return (
       <div className="h-screen relative flex flex-col">
         <GlowOrbs followMouse={profile.colorFollowsMouse} />
         <div className="relative z-10 flex-1 min-h-0">
-          <LoginScreen />
+          <LoginScreen prefillUsername={loginHint} />
         </div>
       </div>
     );
@@ -448,6 +490,9 @@ function App() {
           onOpenTourPicker={() => setTourPickerOpen(true)}
           folderInputRef={folderInputRef}
           onFolderPick={handleFolderPick}
+          authUser={authState?.user ?? null}
+          accounts={accounts}
+          onAccountAction={handleAccountAction}
         />
       )}
 

@@ -61,6 +61,18 @@
   --color-scrim-faint: #00000033;
   --color-scrim-strong: #00000099;
   --color-overlay: #161618;
+  /* shadcn alias tokens (user-dropdown 2026-09-10): the shadcn primitive convention
+     (bg-popover, text-accent-foreground, ...) aliased onto this palette so present and
+     future shadcn-installed components resolve. No new hues — every alias points at an
+     existing rung above. */
+  --color-popover: #1C1C1E;
+  --color-popover-foreground: #FFFFFF;
+  --color-card: #1C1C1E;
+  --color-card-foreground: #FFFFFF;
+  --color-primary-foreground: #FAFAFA;
+  --color-secondary-foreground: #E4E4E7;
+  --color-accent-foreground: #FFFFFF;
+  --color-destructive-foreground: #FFFFFF;
   /* G-5 liquid glass: edge highlight + deep shadow for glass-lens surfaces. Values are a
      judgment call pending eyes-on review (see the G-5 commit) — the toggle exists so any
      over-strong treatment is one click off. */
@@ -113,6 +125,15 @@
   --color-scrim-faint: rgba(24, 24, 27, 0.03);
   --color-scrim-strong: rgba(24, 24, 27, 0.08);
   --color-overlay: #E5E5EA;
+  /* shadcn aliases, light variants (same mapping, light rungs). */
+  --color-popover: #FFFFFF;
+  --color-popover-foreground: #000000;
+  --color-card: #FFFFFF;
+  --color-card-foreground: #000000;
+  --color-primary-foreground: #18181B;
+  --color-secondary-foreground: #27272A;
+  --color-accent-foreground: #000000;
+  --color-destructive-foreground: #FFFFFF;
   /* G-5 liquid glass, light variant: softer shadow, stronger edge (light glass reads
      through brighter backdrops). */
   --color-glass-border: rgba(255, 255, 255, 0.5);
@@ -197,6 +218,14 @@
   --color-scrim-faint: var(--color-scrim-faint);
   --color-scrim-strong: var(--color-scrim-strong);
   --color-overlay: var(--color-overlay);
+  --color-popover: var(--color-popover);
+  --color-popover-foreground: var(--color-popover-foreground);
+  --color-card: var(--color-card);
+  --color-card-foreground: var(--color-card-foreground);
+  --color-primary-foreground: var(--color-primary-foreground);
+  --color-secondary-foreground: var(--color-secondary-foreground);
+  --color-accent-foreground: var(--color-accent-foreground);
+  --color-destructive-foreground: var(--color-destructive-foreground);
   --color-glass-border: var(--color-glass-border);
   --shadow-glass: var(--shadow-glass);
 }

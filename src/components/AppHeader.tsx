@@ -7,6 +7,8 @@ import React from 'react';
 import { Home, LayoutDashboard, LayoutGrid, Search, Settings, Loader2, BookOpen, HelpCircle, Bell } from 'lucide-react';
 import { TextScramble } from './TextScramble';
 import { ThemeToggle } from './ui/ThemeToggle';
+import { UserDropdown } from './ui/user-dropdown';
+import type { DropdownAccount, UserDropdownAction } from './ui/user-dropdown';
 
 export interface AppHeaderProps {
   workspaceTab: 'dev' | 'general';
@@ -27,6 +29,11 @@ export interface AppHeaderProps {
   onOpenTourPicker: () => void;
   folderInputRef: React.RefObject<HTMLInputElement | null>;
   onFolderPick: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  /** Portal (2026-09-10): verified session user + known accounts. Absent while disarmed —
+    nothing extra renders, the header stays byte-identical to single-user mode. */
+  authUser?: { username: string; role: string } | null;
+  accounts?: DropdownAccount[];
+  onAccountAction?: (action: UserDropdownAction, account?: string) => void;
 }
 
 export function AppHeader(props: AppHeaderProps) {
@@ -35,6 +42,7 @@ export function AppHeader(props: AppHeaderProps) {
     showCommandRef, toolsOpen, showDashboard, unreadNotificationsCount = 0,
     onHome, onToggleDeck, onToggleCommandRef, onToggleDashboard, onToggleTools,
     onOpenNotifications, onOpenProfile, onOpenTourPicker, folderInputRef, onFolderPick,
+    authUser = null, accounts = [], onAccountAction,
   } = props;
 
   return (
@@ -114,6 +122,15 @@ export function AppHeader(props: AppHeaderProps) {
           <HelpCircle size={18} />
         </button>
         <ThemeToggle />
+        {authUser && onAccountAction && (
+          <UserDropdown
+            displayName={authUser.username}
+            username={authUser.username}
+            role={authUser.role}
+            accounts={accounts}
+            onAction={onAccountAction}
+          />
+        )}
       </div>
       <input
         ref={folderInputRef}

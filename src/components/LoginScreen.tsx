@@ -21,9 +21,12 @@ async function postJson(path: string, body: object) {
 const inputCls =
   'w-full bg-surface border border-border-soft rounded-lg px-3 py-2 text-sm text-fg placeholder:text-fg-dim focus:outline-none focus:border-accent-blue transition-colors';
 
-export function LoginScreen() {
+export function LoginScreen({ prefillUsername = '' }: { prefillUsername?: string }) {
   const [tab, setTab] = useState<Tab>('login');
-  const [username, setUsername] = useState('');
+  // Portal account switching pre-fills the picked name (consumed-once hint set by App
+  // before reloading into this screen) — the password is always re-typed, there is no
+  // passwordless hop between accounts.
+  const [username, setUsername] = useState(prefillUsername);
   const [password, setPassword] = useState('');
   const [code, setCode] = useState('');
   const [newPassword, setNewPassword] = useState('');
