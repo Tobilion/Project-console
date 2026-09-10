@@ -76,6 +76,7 @@ export const DIAGNOSTICS_INTENTS = {
       'test coverage percentage', 'check my coverage numbers',
       'how much coverage do we have', 'how much coverage do i have',
       'whats my coverage', 'what is the coverage',
+      'hey list tst coverage', 'list tst coverage', 'show tst coverage', 'hey check test coverage please',
     ],
   },
   'project.diagnostics.bundle_size_analysis': {

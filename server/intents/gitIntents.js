@@ -37,6 +37,7 @@ export const GIT_INTENTS = {
       'create a git commit', 'commit project', 'commit current state',
       'lock in these changes', 'checkpoint my work', 'save this checkpoint',
       'commit whats staged', 'finalize this commit', 'commit right now',
+      'hey create a commit', 'hey, create a committ', 'create a committ', 'please create a commit for me',
     ],
   },
   'git_commit_push': {
@@ -274,6 +275,7 @@ export const GIT_INTENTS = {
       'checkout a new branch', 'create and switch to a new branch',
       'spin up a new branch', 'set up a new branch called hotfix',
       'create a branch for this feature', 'branch this off',
+      'can you make a new branch', 'please make a new branch', 'hey make a new branch',
     ],
   },
   'git_remote_info': {

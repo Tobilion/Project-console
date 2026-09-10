@@ -17,6 +17,7 @@ export const NOTE_INTENTS = {
   'system.notes.list': {
     examples: [
       'show my notes', 'read my notes', 'show me my notes', 'what are my notes', 'read my notes back to me',
+      'can you show my notes', 'show my notes please', 'can you show me my notes', 'please show my notes', 'hey show my notes', 'show my notes asap',
     ],
   },
   'system.notes.search': {

@@ -22,6 +22,10 @@ export const basicHandlers = {
       `Welcome back to [${project.name}] — ${timeOfDay} edition.`,
       `${timeOfDay.charAt(0).toUpperCase() + timeOfDay.slice(1)}! [${project.name}] is standing by.`,
       `Hi again — [${project.name}] is still here.`,
+      `Yo — [${project.name}] is awake and listening.`,
+      `Morning! [${project.name}] is ready when you are.`,
+      `Hey hey — [${project.name}] is good to go.`,
+      `Back at it — [${project.name}] is loaded. What’s next?`,
     ]));
     let responseText = `${opener}\n\n` +
       `• Location: ${project.path}\n` +
@@ -130,6 +134,10 @@ export const basicHandlers = {
         `Good stuff. Ready for the next one.`,
         `Awesome. What are we doing next?`,
         `Cool. Let me know what you need.`,
+        `Sweet — what’s next?`,
+        `Got it. Anything else?`,
+        `Haha, love it. What’s next on [${project.name}]?`,
+        `Lol — noted. What do you want to tackle?`,
       ])),
     }));
   },
@@ -148,6 +156,9 @@ export const basicHandlers = {
         `That's fair. Rest up a bit — just say the word when you want to pick [${project.name}] back up.`,
         `I hear you. If it helps, I can run a quick "git status" to catch you up when you're back.`,
         `Hydrate and take a breather. [${project.name}] will be waiting.`,
+        `Totally get it — we all hit that wall. [${project.name}] will be here.`,
+        `No worries. Grab some air and ping me when you’re ready to jump back in.`,
+        `Burnout is real. [${project.name}] isn’t going anywhere — take your time.`,
       ])),
     }));
   },

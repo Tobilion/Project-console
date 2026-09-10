@@ -116,6 +116,8 @@ export const CHIT_CHAT_INTENTS = {
       'blank the screen', 'flush the console', 'reset terminal',
       'wipe terminal', 'empty the chat', 'clear out the chat',
       'get rid of all this text', 'start over', 'restart the chat view',
+      'hey clear please', 'clear please', 'hey clear', 'clear this please',
+      'please clear the console', 'hey, clear the chat',
     ],
   },
   'system.chit_chat.help': {
@@ -168,6 +170,7 @@ export const CHIT_CHAT_INTENTS = {
       'have i changed anything', 'anything to commit', 'is the working tree clean',
       'is my working directory clean', 'do i have unsaved changes',
       'is there anything uncommitted', 'show working tree status',
+      'can you check unstaaged changes', 'unstaged chasges', 'check unstaged changes please',
       // 2026-08-26 live crosscheck: yes/no state questions about pushing/committing — the
       // pre-semantic pin routes them here; the examples keep the embedding/fuzzy tiers
       // aligned with the pin so a marginal phrasing doesn't drift back to the action intents.
@@ -281,6 +284,7 @@ export const CHIT_CHAT_INTENTS = {
       'what is the current time', 'current time', 'tell me the time',
       'whats the current time', 'what time is it now', 'give me the time',
       'do you know what time it is', 'what is the time right now',
+      'can you tell me what time it is', 'hey what time is it', 'please tell me the time',
     ],
   },
   'system.chit_chat.date': {
@@ -335,6 +339,7 @@ export const CHIT_CHAT_INTENTS = {
       'how can i change projects', 'how do i see the dashboard',
       'how can i see the dashboard', 'how do i view running processes',
       'how can i check running processes',
+      'could you how do you push to github', 'can you how do you push to github', 'how do you push to github please',
       // Phase 9 question shapes (catalog answers carry command + phrases + run chip):
       'how do you push to github', 'how to push to github',
       'what is the command to push', 'command to push to github',
@@ -361,6 +366,7 @@ export const CHIT_CHAT_INTENTS = {
       'use the ai assistant', 'ask the ai', 'let the ai handle it',
       'activate ai mode', 'can the ai do this', 'use ai for this',
       'do it with ai', 'ask the ai model', 'use ai',
+      'can you fix this file', 'do the thing with file', 'urgent: fix this file', 'can u create file for me', 'please do the thing', 'fix the bug in my code', 'make me a todo app', 'build a landing page for me', 'create a todo app with ai',
     ],
   },
   'system.chit_chat.ack': {

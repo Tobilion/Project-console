@@ -312,7 +312,7 @@ eq('chitchat leaf: needs_ai_mode guidance names the AI dock with a concrete inst
 
 sent.length = 0;
 await handleBuiltinIntent(ws, 'system.chit_chat.empathy', 'Ugh I am tired', proj, {});
-eq('chitchat leaf: empathy answers tired small talk with no side effects', ws.sent.length === 1 && ws.sent[0].type === 'answer' && /(Take a break|Long days|No rush|That's fair|I hear you|Hydrate)/.test(ws.sent[0].data), true);
+eq('chitchat leaf: empathy answers tired small talk with no side effects', ws.sent.length === 1 && ws.sent[0].type === 'answer' && /(Take a break|Long days|No rush|That's fair|I hear you|Hydrate|Totally get it|No worries|Burnout is real)/.test(ws.sent[0].data), true);
 
 sent.length = 0;
 await handleBuiltinIntent(ws, 'system.chit_chat.needs_ai_mode', 'make me a landing page', proj, { client: 'cli' });
