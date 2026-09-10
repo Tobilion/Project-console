@@ -195,14 +195,24 @@ export function useConsoleTabs(projects: ReturnType<typeof useProjects>) {
       // it skips the re-scan — its workspace resolves to the global root anyway. Tabs with
       // custom roots must each scan (per-tab workspaces are server-side per tab), so the
       // remaining calls run in parallel.
-      const globalFetch = await projects.fetchProjects(null).catch(() => null);
+      // K-6: genuine failures log instead of vanishing — a dead server or a deleted
+      // folder during restore used to be indistinguishable from "no projects". Matches
+      // useProjects.ts's own console.error convention; restores still continue tab by tab.
+      const globalFetch = await projects.fetchProjects(null).catch((err) => {
+        console.error('restoreTabs: global fetch failed:', err);
+        return null;
+      });
       const serverRoot = globalFetch?.scanPath || '';
       const nonDefault = persisted.filter((t) => t.id !== null);
       await Promise.all(nonDefault.map(async (tab) => {
         if (!tab.scanPath || tab.scanPath === serverRoot) {
-          await projects.fetchProjects(tab.id).catch(() => {});
+          await projects.fetchProjects(tab.id).catch((err) => {
+            console.error(`restoreTabs: fetch failed for tab ${tab.id}:`, err);
+          });
         } else {
-          await projects.scanNewPath(tab.scanPath, tab.id).catch(() => {});
+          await projects.scanNewPath(tab.scanPath, tab.id).catch((err) => {
+            console.error(`restoreTabs: scan failed for tab ${tab.id} (${tab.scanPath}):`, err);
+          });
         }
       }));
       await projects.fetchProjects(targetId);
@@ -279,7 +289,12 @@ export function useConsoleTabs(projects: ReturnType<typeof useProjects>) {
     beginTabSwitch();
     try {
       if (tab.scanPath) {
-        await projects.scanNewPath(tab.scanPath, id).catch(() => {});
+        // K-6: same logging as restoreTabs above (the fetchProjects right below already
+        // logs internally via useProjects.ts). Deliberately NOT fatal — the duplicate
+        // tab still opens on the fetched list either way.
+        await projects.scanNewPath(tab.scanPath, id).catch((err) => {
+          console.error(`duplicateTab: scan failed for ${tab.scanPath}:`, err);
+        });
       }
       await projects.fetchProjects(id);
       viewSyncRef.current.restore({ view: tab.view, activeToolPanel: tab.activeToolPanel });
@@ -312,6 +327,9 @@ export function useConsoleTabs(projects: ReturnType<typeof useProjects>) {
     try {
       // A folder that no longer exists must not strand the user on a broken tab — the scan
       // error is swallowed (the chat still opens from its own session files either way).
+      // K-6 triage: this stays silent ON PURPOSE (expected "folder gone" case, and the
+      // chat opening is the real success) — unlike the restore/duplicate paths above,
+      // where a failure means genuinely missing data worth logging.
       await projects.scanNewPath(scanPath, id).catch(() => {});
       await projects.fetchProjects(id);
       viewSyncRef.current.restore({ view: tab.view, activeToolPanel: tab.activeToolPanel });
