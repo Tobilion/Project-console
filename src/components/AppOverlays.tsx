@@ -33,6 +33,8 @@ export interface AppOverlaysProps {
   setProfileOpen: (v: boolean) => void;
   profile: UserProfile;
   updateProfile: (p: Partial<UserProfile>) => void;
+  authArmed: boolean;
+  authRole: string | null;
   profileSettingsCategory?: string;
   profileScrollToField?: string;
   firstRun: React.ComponentProps<typeof FirstRunSetup>;
@@ -51,7 +53,7 @@ export function AppOverlays(props: AppOverlaysProps) {
     chatViewActive, pendingConfirm, handleConfirm, pendingToolConfirm, handleToolConfirm,
     handleApproveTask, pendingMemorySuggestion, handleMemorySuggestionRespond,
     deckOpen, setDeckOpen, deck, chatHistoryOpen, setChatHistoryOpen, history,
-    profileOpen, setProfileOpen, profile, updateProfile, profileSettingsCategory, profileScrollToField, firstRun,
+    profileOpen, setProfileOpen, profile, updateProfile, authArmed, authRole, profileSettingsCategory, profileScrollToField, firstRun,
     tourPickerOpen, setTourPickerOpen, tourSection, setTourSection, tourMode, setTourMode,
     shortcutsOpen, setShortcutsOpen,
   } = props;
@@ -91,6 +93,8 @@ export function AppOverlays(props: AppOverlaysProps) {
         onSave={updateProfile}
         initialCategory={profileSettingsCategory}
         scrollToField={profileScrollToField}
+        authArmed={authArmed}
+        authRole={authRole}
       />
 
       <FirstRunSetup {...firstRun} />

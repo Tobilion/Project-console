@@ -9,6 +9,9 @@ interface FirstRunSetupProps {
   setScanPath: (v: string) => void;
   handleScan: (e: React.FormEvent<HTMLFormElement>) => void;
   onFinish: (updates: Partial<UserProfile>) => Promise<boolean> | boolean;
+  /** Portal (2026-09-10): whether accounts already exist. The user-portal choice only
+    makes sense on a fresh (disarmed) server — hide it when armed. */
+  accountsArmed?: boolean;
 }
 
 /**
@@ -24,10 +27,20 @@ interface FirstRunSetupProps {
  * the app. Reuses the exact same `/api/scan-path` form-submit handler the sidebar's scan box
  * uses (`handleScan`) rather than re-implementing scan logic here.
  */
-export function FirstRunSetup({ open, scanPath, setScanPath, handleScan, onFinish }: FirstRunSetupProps) {
+export function FirstRunSetup({ open, scanPath, setScanPath, handleScan, onFinish, accountsArmed = false }: FirstRunSetupProps) {
   const [name, setName] = useState('');
   const [workspaceType, setWorkspaceType] = useState<'dev' | 'general'>('dev');
   const [showDev, setShowDev] = useState(false);
+  // Portal choice (2026-09-10): "use the site normally" (default, today's open
+  // behavior) vs "set up user accounts" (creates the first admin inline, arming login
+  // for this install). Only offered while disarmed — once accounts exist the choice
+  // is moot and the toggle hides entirely.
+  const [wantPortal, setWantPortal] = useState(false);
+  const [portalUser, setPortalUser] = useState('');
+  const [portalPass, setPortalPass] = useState('');
+  const [portalCreated, setPortalCreated] = useState<{ username: string; code: string } | null>(null);
+  const [portalAck, setPortalAck] = useState(false);
+  const [portalBusy, setPortalBusy] = useState(false);
   // A failed profile save must be VISIBLE — an optimistic close with a console-only error left
   // users thinking their settings saved (the wizard just reappeared on the next load instead;
   // 2026-08-26). Inline error + retry keeps the wizard open until the save actually lands.
@@ -37,14 +50,70 @@ export function FirstRunSetup({ open, scanPath, setScanPath, handleScan, onFinis
   // given." error into a chat that may not even exist yet; audit 2026-08-17).
   const initialPathRef = useRef(scanPath);
 
+  const createPortalAdmin = async () => {
+    if (!portalUser.trim() || !portalPass || portalBusy) return;
+    setPortalBusy(true);
+    setSaveError(null);
+    try {
+      const res = await fetch('/api/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: portalUser.trim(), password: portalPass }),
+      });
+      const data = await res.json().catch(() => null);
+      if (res.ok && data?.ok) {
+        // Keep the password in state (never storage) for the one-tap login below.
+        setPortalCreated({ username: data.user.username, code: data.recoveryCode });
+      } else {
+        setSaveError(data?.error || 'Account creation failed.');
+      }
+    } catch {
+      setSaveError('Could not reach the server.');
+    } finally {
+      setPortalBusy(false);
+    }
+  };
+
   const handleContinue = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setSaveError(null);
+    // Portal gate: choosing accounts means finishing WITH an admin — continuing without
+    // one would arm nothing and silently drop the choice. Skipping bypasses the portal
+    // entirely (documented under the toggle).
+    if (wantPortal && !accountsArmed) {
+      if (!portalCreated) {
+        setSaveError('Create the admin account above first — or turn user accounts off to use the site normally.');
+        return;
+      }
+      if (!portalAck) {
+        setSaveError('Save your recovery code first — it is shown once, and it is the only way back in if you forget the password.');
+        return;
+      }
+    }
     const pathChanged = scanPath.trim() && scanPath.trim() !== (initialPathRef.current || '').trim();
     if (pathChanged) handleScan(e);
     const ok = await onFinish({ name: name.trim(), setupComplete: true, defaultWorkspaceType: workspaceType });
     if (ok === false) {
       setSaveError("Couldn't save your settings — the server didn't accept them. Check that the console is running, then try again.");
+      return;
+    }
+    // Portal landing: log the fresh admin straight in (in-memory password, one tap, no
+    // retype) and reload into the armed app — post-auth state is only built at boot.
+    if (wantPortal && portalCreated && !accountsArmed) {
+      try {
+        const res = await fetch('/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username: portalCreated.username, password: portalPass }),
+        });
+        if (res.ok) {
+          window.location.reload();
+          return;
+        }
+        setSaveError('Account created — please log in with it on the next screen.');
+      } catch {
+        setSaveError('Account created — please log in with it on the next screen.');
+      }
     }
   };
 
@@ -119,6 +188,76 @@ export function FirstRunSetup({ open, scanPath, setScanPath, handleScan, onFinis
             </div>
             <p className="text-[11px] text-fg-dim mt-1">Used as the default when a project isn't auto-classified — switch any project anytime from the header tabs.</p>
           </div>
+
+          {!accountsArmed && (
+            <div className="rounded-lg border border-border-soft px-3 py-2.5">
+              <label className="flex items-start gap-2.5 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={wantPortal}
+                  onChange={(e) => setWantPortal(e.target.checked)}
+                  className="mt-0.5 accent-accent-blue"
+                />
+                <span>
+                  <span className="block text-sm text-fg">Set up user accounts (login)</span>
+                  <span className="block text-[11px] text-fg-dim mt-0.5">
+                    Off (default) = use the site normally, open to anyone on this machine. On = create
+                    the first admin now; the console will require login afterwards, with per-user
+                    chats and profiles. Skipping the wizard skips this too.
+                  </span>
+                </span>
+              </label>
+              {wantPortal && (
+                <div className="mt-2.5 space-y-2">
+                  {portalCreated ? (
+                    <div className="rounded-lg bg-accent-orange/10 border border-accent-orange/30 px-3 py-2.5 space-y-2">
+                      <p className="text-xs text-fg-strong">
+                        Admin <span className="font-mono">@{portalCreated.username}</span> created. Save
+                        this recovery code — shown <span className="font-bold">once</span>:
+                      </p>
+                      <p className="font-mono text-sm text-accent-orange font-bold tracking-wider">{portalCreated.code}</p>
+                      <label className="flex items-start gap-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={portalAck}
+                          onChange={(e) => setPortalAck(e.target.checked)}
+                          className="mt-0.5 accent-accent-blue"
+                        />
+                        <span className="text-[11px] text-fg-dim">I saved the recovery code</span>
+                      </label>
+                    </div>
+                  ) : (
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        value={portalUser}
+                        onChange={(e) => setPortalUser(e.target.value)}
+                        placeholder="Admin username"
+                        autoComplete="username"
+                        className="flex-1 bg-surface border border-border-soft rounded-lg px-3 py-2 text-sm text-fg placeholder:text-fg-dim focus:outline-none focus:border-accent-blue transition-colors"
+                      />
+                      <input
+                        type="password"
+                        value={portalPass}
+                        onChange={(e) => setPortalPass(e.target.value)}
+                        placeholder="Password (8+)"
+                        autoComplete="new-password"
+                        className="flex-1 bg-surface border border-border-soft rounded-lg px-3 py-2 text-sm text-fg placeholder:text-fg-dim focus:outline-none focus:border-accent-blue transition-colors"
+                      />
+                      <button
+                        type="button"
+                        disabled={portalBusy || !portalUser.trim() || !portalPass}
+                        onClick={createPortalAdmin}
+                        className="shrink-0 px-3 py-2 rounded-lg text-xs font-bold bg-accent-blue text-white hover:opacity-90 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed"
+                      >
+                        {portalBusy ? '…' : 'Create'}
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
 
           <div className="rounded-lg bg-scrim-faint border border-border-soft px-3 py-2">
             <p className="text-[11px] text-fg-muted">

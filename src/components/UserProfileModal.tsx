@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { UserProfile } from '../hooks/useUserProfile';
-import { Settings, X, LayoutGrid, List, Compass, User, Palette, Shield, Bell, Sparkles, HelpCircle } from 'lucide-react';
+import { Settings, X, LayoutGrid, List, Compass, User, Users, Palette, Shield, Bell, Sparkles, HelpCircle } from 'lucide-react';
 import { ModalShell } from './ui/ModalShell';
+import { UsersSection } from './profile/UsersSection';
 import { EditorsSection } from './profile/EditorsSection';
 import { TuningSection } from './profile/TuningSection';
 import { TOUR_GROUPS, TOUR_SECTIONS } from '../tours';
@@ -14,6 +15,11 @@ interface UserProfileModalProps {
   /** Phase 4.1: when set, opens the modal at a specific category and scrolls to the target field. */
   initialCategory?: string;
   scrollToField?: string;
+  /** Portal (2026-09-10): drives the Users category — visible when disarmed (first-admin
+    onboarding) or to admins; hidden for armed non-admins. Defaults keep every existing
+    caller (none pass these) on today's category set. */
+  authArmed?: boolean;
+  authRole?: string | null;
 }
 
 const CATEGORIES = [
@@ -23,6 +29,7 @@ const CATEGORIES = [
   { id: 'privacy', label: 'Privacy & Security', icon: Shield },
   { id: 'advanced', label: 'Advanced', icon: Sparkles },
   { id: 'help', label: 'Help & Tours', icon: HelpCircle },
+  { id: 'users', label: 'Users', icon: Users },
 ] as const;
 
 type CategoryId = typeof CATEGORIES[number]['id'];
@@ -62,7 +69,9 @@ const FieldLabel = ({ label, hint, children }: { label: string; hint?: string; c
 /** Gear-triggered settings editor with Windows Settings-style left category sidebar.
  *  Phase 2.1 (2026-09-07): restructured from a flat list into categorized sections so users
  *  don't get lost scrolling through 20+ toggles and fields. Identity is the hero. */
-export function UserProfileModal({ open, profile, onClose, onSave, initialCategory, scrollToField }: UserProfileModalProps) {
+export function UserProfileModal({ open, profile, onClose, onSave, initialCategory, scrollToField, authArmed = false, authRole = null }: UserProfileModalProps) {
+  // Portal Users category: everyone while disarmed (onboarding), admins once armed.
+  const showUsers = !authArmed || authRole === 'admin';
   const [name, setName] = useState(profile.name);
   const [title, setTitle] = useState(profile.title);
   const [customRole, setCustomRole] = useState(profile.customRole);
@@ -178,7 +187,7 @@ export function UserProfileModal({ open, profile, onClose, onSave, initialCatego
             <Settings size={16} className="text-fg-dim" />
             <span className="text-xs font-bold tracking-wider uppercase text-fg-dim">Settings</span>
           </div>
-          {CATEGORIES.map((cat) => {
+          {CATEGORIES.filter((cat) => cat.id !== 'users' || showUsers).map((cat) => {
             const Icon = cat.icon;
             return (
               <button
@@ -583,6 +592,24 @@ export function UserProfileModal({ open, profile, onClose, onSave, initialCatego
                     </div>
                   );
                 })()}
+              </div>
+            </>
+          )}
+
+          {/* ─── USERS (portal) ──────────────────────────────────────────── */}
+          {category === 'users' && showUsers && (
+            <>
+              <div className="flex items-center gap-2 mb-1">
+                <Users size={18} className="text-accent-blue" />
+                <h3 className="text-lg font-bold text-fg-strong">Users</h3>
+              </div>
+              <p className="text-[11px] text-fg-dim mb-3">
+                {authArmed
+                  ? 'Accounts on this server — chats and profiles are per-user.'
+                  : 'No accounts yet — create the first admin to require login.'}
+              </p>
+              <div className={sectionCls}>
+                <UsersSection authArmed={authArmed} authRole={authRole} />
               </div>
             </>
           )}

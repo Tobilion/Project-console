@@ -718,6 +718,8 @@ function App() {
         setProfileOpen={setProfileOpen}
         profile={profile}
         updateProfile={updateProfile}
+        authArmed={authState?.armed ?? false}
+        authRole={authState?.user?.role ?? null}
         profileSettingsCategory={settingsNavigation?.category}
         profileScrollToField={settingsNavigation?.field}
         firstRun={{
@@ -726,6 +728,7 @@ function App() {
           setScanPath,
           handleScan,
           onFinish: updateProfile,
+          accountsArmed: authState?.armed ?? false,
         }}
         tourPickerOpen={tourPickerOpen}
         setTourPickerOpen={setTourPickerOpen}
