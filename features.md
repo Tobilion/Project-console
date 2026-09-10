@@ -318,11 +318,23 @@ Trigger-mode only, zero AI dependency, usable in every workspace type:
 - Fires to the open chat (creator's session first), any session, or `data/schedule-log.md`.
   Plain text — reminders never execute commands, so they bypass the read-only intent check.
 - `list my reminders` / `cancel reminder s2` (bare numbers accepted too).
+- Completing sets a persisted `completed` flag (skipped by the scheduler, shown struck-through
+  in a Completed section) instead of deleting; a separate per-row Delete removes for good
+  (Undo reopens). Chat: `mark <n> as done` / `mark all as done`. REST: `POST
+  /api/reminders/:id/complete`, `POST /api/reminders/:id/snooze` (defers one oneshot copy).
+  Fired-reminder toasts carry a Snooze action; in-chat reminder lists render as interactive
+  cards (same endpoints as the panel).
 
 **Notes** (`note: buy milk`):
 - User-authored scratch notes to `<project>/.console/notes.md` — immediate, no confirmation.
   The AI never writes them and they're never injected into the system prompt. Capped 200 entries,
   exact-normalized dedupe, per-project write lock. `show/search my notes` + the Notes panel.
+- Deletes move to `.console/notes.trash.md` (recycle bin, same line format) — restore from the
+  panel, `restore note: <text>`, or REST; `empty the trash` drops them permanently. Twin-safe
+  matching everywhere (dated key disambiguates same-text notes).
+- Panel: Markdown Preview toggle (same renderer as chat), true in-place edit (PUT, suffix
+  preserved), `- [ ]`/`- [x]` checklist checkboxes, `#tag` filter chips, search-term
+  highlighting. In-chat note lists render as cards with per-row delete.
 
 **Clipboard & snippets** (`show clipboard history`):
 - **Two separate opt-in** profile settings: `clipboardHistory` (poll the OS clipboard into an
@@ -378,7 +390,9 @@ Trigger-mode only, zero AI dependency, usable in every workspace type:
   best-effort) and/or webhooks (SSRF-guarded — no localhost/private at send time; URLs are bearer
   secrets in gitignored `data/notifications.json`).
 - `notify me when X` / `stop notifying me about X` / `list notifications` / `webhook add/remove` /
-  `test notification`.
+  `test notification`. Quiet-hours profile setting silences desktop/webhook pushes overnight
+  (history + in-app toasts continue); fired-reminder toasts carry a Snooze action. Routine
+  chat confirmations (notes/reminders/schedules/mode-switch) additionally toast on web.
 
 **File-watch rules** — notification-only, NEVER a command trigger (a separate store from schedules
 on purpose, so a watch rule can't become a backdoor to running commands):
@@ -565,15 +579,25 @@ Layered, defense-in-depth — don't weaken without discussion:
 
 ---
 
-## 14. Multi-user / LAN attribution
+## 14. Local accounts & multi-user (Phase I)
 
-Phase 19 (opt-in via `HOST=0.0.0.0`): each WS connection may claim a display name
-(`set_display_name` — web auto-claims the profile name; CLI prompts). The label feeds `createdBy`
-on action-history entries, notes (`· by <name>`), and reminders; `GET /api/connected-users` powers
-a Dashboard "who's connected" row when 2+ users are connected. **This is attribution, not auth** —
-no passwords, no permissions, and one LAN user can still read another's action history (a real
-security boundary between users is explicitly out of scope). Default single-user installs
-(127.0.0.1) never prompt and everything stays `"local"`.
+Optional local accounts (bcryptjs hashes in gitignored `data/users.json`, first user is admin).
+While no users exist the server behaves exactly as before (open, single-user, everything
+`"local"`); the moment the first user registers, `/api` + `/stream` require login (opaque
+`HttpOnly` cookie, 30d sliding sessions). Register is open only for first-admin setup, then
+admin-only. Recovery codes (rotated on every use) reset passwords via UI/API; a locked-out
+machine owner can run `node bin/cli.js auth reset-password <user>` locally instead
+(filesystem access is the proof — never exposed over HTTP). True Windows Hello stays future
+(the server is plain Node with no Electron API).
+
+Authenticated identity is verified server-side (WS upgrade cookie → context; self-claimed
+display names are ignored when armed) and stamps `createdBy` on notes/reminders/history.
+Profiles shard per user (`data/users/<name>/profile.json` overrides the global defaults —
+theme, accent, workspace prefs); machine posture (sandbox, clipboard polling, scan defaults)
+stays global. `GET /api/connected-users` powers the Dashboard row when 2+ are connected.
+Project data (notes, reminders, sessions) stays shared-but-attributed — per-user access
+control beyond login gating is still out of scope. `HOST=0.0.0.0` LAN mode now warns
+login-required instead of open-shell when armed.
 
 ---
 
@@ -631,13 +655,22 @@ only `accent-blue` is wired to the Settings accent picker).
   delete; opening a row switches to the tab that owns its folder.
 - **FirstRunSetup** — one-time onboarding wizard (name, scan path, default workspace type, Ollama
   note); skip-able; CLI mirrors it.
-- **Tour system** — 7 sectioned tours (card or guided mode); guided steps spotlight real controls
-  via `data-tour` attributes and can switch the main view.
+- **BootScreen** — full-screen loading state (web equivalent of the desktop splash): wordmark +
+  made-by credit, live elapsed time, sand-block canvas reacting to the pointer; shows only
+  while the profile fetch is in flight (never traps) with a 400ms flash guard.
+- **Tour system** — 10 sectioned tours (card or guided mode); guided steps spotlight real controls
+  via `data-tour` attributes and can switch the main view. Covers dashboard sub-tabs, dock
+  tabs, marketplace, model pickers, settings toggles, first-run, and CLI/desktop (cards).
+- **LoginScreen** — shown instead of everything when the server is login-armed and anonymous
+  (login + recovery-code reset tabs, lockout hint pointing at the local CLI reset).
 - **UserProfileModal** — name/title/role, accent-color picker, sandbox/clipboard/scanAllFolders
   toggles, Folder Explorer default view, Editors & IDEs registry, Tours, Developer/Advanced tuning
   editor (live knobs via `/api/tuning`).
 - **Theme** — dark-first zinc tokens in `:root`, light override in `[data-theme="light"]`, no
   `dark:` utilities; module-level pub/sub `useTheme` so the header toggle and Ctrl+K never drift.
+  Settings → Appearance: accent picker (drives `--color-accent-blue`), color-follows-mouse
+  ambient glow (default on, frozen under reduced-motion), liquid-glass overlay treatment
+  (default on, clean plain-blur fallback when off).
 
 ---
 
@@ -676,9 +709,14 @@ All 23 route modules, mounted in `server/index.js`. Project-scoped routes accept
   detection). `?tab=`
 
 **Profile, tuning, workspace**
-- `GET/POST /api/profile` — user profile (sanitized; `syncClipboardPolling` on save).
+- `GET/POST /api/profile` — user profile (sanitized; `syncClipboardPolling` on save;
+  per-user overlay when login-armed).
 - `GET/POST/DELETE /api/tuning` — runtime knob overrides (bounds-validated, Fuse index rebuilt).
 - `GET /api/workspace/export?file=<name>` — download a workspace bundle (newest when no file given).
+- **Auth**: `POST /api/auth/register|login|logout|reset`, `GET /api/auth/me|users`
+  (401/403-gated as documented in section 14).
+- **Diagnostics**: `GET /api/doctor`, `POST /api/doctor/fix` (tmp sweep, JSON mode, tmp-file
+  auto-fix).
 
 **Panels & tools**
 - `GET /api/tool-panels` — the 12-entry panel registry.
@@ -686,10 +724,12 @@ All 23 route modules, mounted in `server/index.js`. Project-scoped routes accept
   /api/projects/:id/reveal`, `POST /api/projects/:id/pdf-upload` (50MB, never overwrites).
 - CSV: `GET /api/projects/:id/csv-files`, `csv-headers`, `csv-preview`, `csv-filter`,
   `csv-aggregate`, `POST csv-upload` (2MB, never overwrites).
-- Notes: `GET /api/projects/:id/notes`.
+- Notes: `GET /api/projects/:id/notes`, `POST`, `PUT` (in-place edit), `DELETE`,
+  `GET .../notes/trash`, `POST .../notes/restore`, `POST .../notes/trash/empty`.
 - Clipboard: `GET /api/clipboard-history` (empty when opt-in off), `GET /api/snippets`.
 - Backup: `GET /api/projects/:id/backups`, `folders`, `backup-file?name=`.
-- Reminders: `GET /api/reminders`.
+- Reminders: `GET /api/reminders`, `POST`, `DELETE /api/reminders/:id`,
+  `POST /api/reminders/:id/complete`, `POST /api/reminders/:id/snooze`.
 - Notifications: `GET /api/notifications` (rules/events/desktop/webhooks).
 - Documents: `GET /api/projects/:id/documents?q=`, `GET /api/projects/:id/documents/ask?q=`
   (optional AI synthesis).
@@ -699,7 +739,9 @@ All 23 route modules, mounted in `server/index.js`. Project-scoped routes accept
 - **Calculate**: `POST /api/calculate` — same engine as the chat calculator.
 - **Command docs**: `GET /api/command-docs` — curated + auto-generated intent catalog.
 - **Browse (Folder Explorer)**: `GET /api/browse?path=` (any absolute path, 2000-entry cap),
-  `POST /api/browse/reveal`, `POST /api/browse/open` (OS default app).
+  `POST /api/browse/reveal`, `POST /api/browse/open` (OS default app),
+  `POST /api/browse/open-with` (curated editors + real OS handlers via `osApp`),
+  `GET /api/browse/apps?path=` (associated-app names for an extension).
 - **Repo Map (round-6 audit)**: `GET /api/projects/:id/repo-map` — the whole-project symbol map
   (repoMap + apiRoutes + languages/frameworks/entryPoints/subPackages), built from the project's
   cached codebase index on demand.
@@ -865,13 +907,16 @@ npm run build             # vite build + esbuild server bundle -> dist/
 **Desktop shell** (`desktop/`): a self-contained Electron wrapper with its own package.json (the
 root install never pulls Electron). It reuses the launchers' port rule (3000–3019, attaches instead
 of starting a duplicate), spawns the server as a child process, waits for the bound port, shows the
-console in its OWN native Electron window (a splash page covers the server's cold-boot, then the
-window loads the console — external https links opened from the UI go to the system browser, the
-console itself never does), and adds a tray icon whose Quit stops the server child cleanly. Closing
-the window quits the app (which stops the server). `npm install &&
-npm start` runs it; `npm run dist` builds an NSIS Windows installer; `.dmg` (macOS) and `.AppImage`
-(Linux) build in CI (`.github/workflows/desktop-build.yml`, macos-latest + ubuntu-latest matrix,
-`CSC_IDENTITY_AUTO_DISCOVERY=false`, artifacts uploaded per OS).
+console in its OWN native Electron window (a full-bleed loading screen covers the server's
+cold-boot — wordmark + credit, live boot-state text + elapsed timer, pointer-reactive sand
+blocks — then the window loads the console; external https links opened from the UI go to
+the system browser, the console itself never does), and adds a tray icon whose Quit stops
+the server child cleanly. Closing the window quits the app (which stops the server).
+`npm install && npm start` runs it; `npm run dist` builds an NSIS Windows installer; `.dmg`
+(macOS) and `.AppImage` (Linux) build in CI (`.github/workflows/desktop-build.yml`,
+macos-latest + ubuntu-latest matrix, `CSC_IDENTITY_AUTO_DISCOVERY=false`, artifacts
+uploaded per OS). Updates download as blockmap differentials via electron-updater
+(fresh installs always need the full package).
 
 **Packaging architecture (round-5 audit, 2026-08-24 — the original packaging could never work)**:
 - `desktop/scripts/stage-server.mjs` stages a runnable server runtime into `desktop/stage/`: the

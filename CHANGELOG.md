@@ -18,6 +18,17 @@ independently; desktop releases are tagged against the desktop package.
   conversation open ("Any other questions?"), and closes politely on
   "no thank you". "how do i push to production" answers the git entry
   directly.
+- Local accounts (Phase I): optional login (bcryptjs, cookie sessions) arming the
+  server on first registration; per-user profiles; recovery-code reset plus a local
+  `node bin/cli.js auth reset-password <user>` machine-owner reset.
+- Notes recycle bin (`restore note:`, `empty the trash`, panel Recycle section),
+  Markdown preview + true in-place editing, checklists, `#tag` chips, search
+  highlighting; reminders gain completed-state, delete, snooze, and chat cards.
+- Loading screens: web BootScreen + restyled desktop splash (wordmark, live status,
+  elapsed time, pointer-reactive sand blocks); Appearance gains color-follows-mouse
+  and liquid-glass toggles; quiet-hours notification setting.
+- Tours cover dashboard sub-tabs, dock tabs, marketplace, model pickers, settings
+  toggles, first-run, and CLI/desktop; Folder Explorer shows real OS apps in Open With.
 
 ## [1.0.9] — 2026-08-26
 

@@ -80,6 +80,7 @@ The result is a console that behaves identically offline and online — same com
 - **`note: buy milk`** / **`add a note: remember the wifi password`** — jots a user-authored scratch note to `<project>/.console/notes.md` (immediate, no confirmation — your own text, not a risky action).
 - **`show my notes`** / **`read my notes`** / **`search my notes for wifi`** — lists notes most-recent-first or substring-searches them. A Notes panel (Apple Notes-style flat feed with instant filter) is available from the Tools card grid; `open notes` opens it directly.
 - Notes are never written by the AI and are not injected into the AI system prompt — they're your scratch space, separate from AI memory (`memory.md`).
+- Deletes go to a recycle bin (restore with `restore note: <text>` or from the panel); the panel adds a Markdown preview, true in-place editing, `- [ ]` checklists, `#tag` chips, and search highlighting.
 
 ### Spreadsheet (CSV)
 
@@ -157,7 +158,10 @@ The result is a console that behaves identically offline and online — same com
 - **Blocklist + allowlist**: dangerous patterns (`rm -rf /`, force-push, `shutdown`, fork bombs) are rejected outright; commands run through the tool layer (chips, AI tool calls, manifest entries) must start with an approved executable (`npm`, `node`, `git`, `python`, `npx`, `vite`, plus the framework CLIs: `ng`, `flutter`, `dart`, `cargo`, `go`, `mvn`, `dotnet`, `ruby`, `php`, ...). Typed command lines in chat are more lenient: a well-formed multi-token command whose executable resolves on PATH (or in the project's own `node_modules/.bin`) runs directly — the strict allowlist governs everything that is not hand-typed.
 - **WebSocket origin check**: non-local origins are rejected.
 - **SSRF protection**: web search/deep research only reach safe external hosts; `probeUrl` is restricted to localhost/private http(s).
-- **Host binding**: defaults to `127.0.0.1` (local only). Set `HOST=0.0.0.0` for LAN access — there is no authentication, so don't do that on an untrusted network.
+- **Host binding**: defaults to `127.0.0.1` (local only). Set `HOST=0.0.0.0` for LAN access.
+  Optional local accounts protect it: register once and the server requires login (cookie sessions,
+  per-user profiles); a locked-out owner resets via `node bin/cli.js auth reset-password <user>`
+  on the machine itself. Don't expose an unarmed server on an untrusted network.
 
 ---
 
@@ -242,7 +246,7 @@ npm run launcher   # same W/C/Q menu as start.bat — probes for a running serve
 
 ### Web UI
 
-The UI is dark-first with an additive light theme — a sliding sun/moon pill in the header, following your OS preference on first load and remembered in `localStorage`. First open lands on a welcome screen with a 4-step guided tour (Take the Tour) covering project selection, AI mode, and the key commands. The header keeps a live dev-server count; the Dashboard button opens a per-project status grid (uncommitted files, recent commits, dev URLs, running commands). When a non-dev folder is active, a Developer/General tab switcher and a **Tools** button (the interactive tool panels) appear next to the header.
+The UI is dark-first with an additive light theme — a sliding sun/moon pill in the header, following your OS preference on first load and remembered in `localStorage`. Cold loads show a full-screen boot screen (wordmark, live status, elapsed time, pointer-reactive sand blocks); first open then lands on a welcome screen with a guided tour (Take the Tour) covering project selection, AI mode, and the key commands. Settings → Appearance holds the accent picker, the color-follows-mouse glow, and the liquid-glass toggle. The header keeps a live dev-server count; the Dashboard button opens a per-project status grid (uncommitted files, recent commits, dev URLs, running commands). When a non-dev folder is active, a Developer/General tab switcher and a **Tools** button (the interactive tool panels) appear next to the header.
 
 ### CLI chat (no browser)
 

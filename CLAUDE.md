@@ -1970,18 +1970,23 @@ collapsed header.
   deliberate conservative asks) — writes go through the same confirm flow as risky commands;
   reads are unguarded. Anything open-ended still needs AI mode.
 - File tools cannot resolve outside the active project's directory. Server binds to
-  `127.0.0.1` by default (`HOST=0.0.0.0` env var to change — it executes shell commands with
-  no auth, so don't do that on an untrusted network).
-- **Identity/attribution (Phase 19, 2026-08-12)**: when the server is LAN-bound
-  (`HOST=0.0.0.0` — the user's explicit trusted-network opt-in), each WS connection may
-  claim a display name via the `set_display_name` message (web: the profile name is claimed
-  automatically; CLI: a @clack prompt on connect). That label feeds `createdBy` on
-  action-history entries, notes (`· by <name>` suffix), and reminders, plus a
-  `GET /api/connected-users` endpoint the Dashboard renders when 2+ users are connected.
-  **This is attribution, not auth** — no passwords, no permissions, no per-user AI grants,
-  and one LAN user can still read another's action history (a real security boundary between
-  users is explicitly OUT of scope and would be its own phase). Default single-user installs
-  (127.0.0.1) never prompt and everything stays `"local"` — zero behavior change.
+  `127.0.0.1` by default (`HOST=0.0.0.0` env var to change — it executes shell commands, so
+  don't expose it on an untrusted network unarmed; see local accounts below).
+- **Local accounts (Phase I, 2026-09-09/10 — supersedes the old "attribution, not auth"
+  model)**: optional login via `server/auth/` (bcryptjs hashes in gitignored
+  `data/users.json`, first user is admin, opaque HttpOnly cookie sessions). No users =
+  open single-user server, byte-identical to before (everything `"local"`). First
+  registration arms enforcement (`authGate.js` on `/api` + the `/stream` upgrade);
+  identity is verified server-side (self-claimed display names ignored when armed) and
+  stamps `createdBy` on notes/reminders/history. Profiles shard per user (global file =
+  defaults layer). Recovery codes rotate on use; machine-owner reset via
+  `node bin/cli.js auth reset-password <user>` (never over HTTP). Project data stays
+  shared-but-attributed — per-user access control beyond login gating is still out of
+  scope. LAN mode (`HOST=0.0.0.0`) now logs login-required when armed.
+- **Identity/attribution (Phase 19, 2026-08-12 — pre-auth behavior, still true while
+  disarmed)**: each WS connection may claim a display name via `set_display_name`
+  (web auto-claims the profile name; CLI prompts). Plus a `GET /api/connected-users`
+  endpoint the Dashboard renders when 2+ users are connected.
 - **`sandboxRiskyCommands` (Phase 3, 2026-08-10)**: opt-in global setting (default `false`,
   persisted in `data/user-profile.json` via `profileRoutes.js`, toggled in `UserProfileModal.tsx`).
   When ON, commands that went through the confirm gate because they're `risky: true` /
