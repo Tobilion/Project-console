@@ -347,6 +347,15 @@ export function UserProfileModal({ open, profile, onClose, onSave, initialCatego
                 </FieldLabel>
               </div>
 
+              <div className={sectionCls} data-setting="defaultAiModel">
+                <FieldLabel label="Default AI model" hint="The model picker in chat saves here — the next boot reselects it. Leave empty for auto (cloud-first, else first local).">
+                  <input value={profile.defaultAiModel || ''} readOnly
+                    placeholder="auto"
+                    className="w-full bg-surface border border-border-soft rounded-lg px-3 py-2 text-xs font-mono text-fg-dim placeholder:text-fg-faint" />
+                  <p className="text-[10px] text-fg-dim mt-1">Pick a model from the chat header's model dropdown — it persists here automatically.</p>
+                </FieldLabel>
+              </div>
+
               <div className={sectionCls} data-setting="generalToolsFirst">
                 <div className="flex items-start gap-3">
                   <Toggle enabled={generalToolsFirst} onToggle={() => setGeneralToolsFirst(!generalToolsFirst)}
