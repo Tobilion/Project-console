@@ -130,6 +130,19 @@ async function handleExecuteBody(ws, parsed, sessionContext) {
         ws.send(JSON.stringify({ type: 'end' }));
         return;
       }
+      // Portal (2026-09-10): each user's chats are theirs — an armed connection
+      // carrying another user's (or someone else's) session id gets a clear refusal,
+      // not silent cross-talk. Disarmed servers carry no authUser, so single-user
+      // behavior is byte-identical; admins can run against any session.
+      if (session && session.owner && sessionContext.authUser &&
+          session.owner !== sessionContext.authUser.username && sessionContext.authUser.role !== 'admin') {
+        ws.send(JSON.stringify({
+          type: 'error_output',
+          data: `This chat belongs to @${session.owner} — switch to that account or create a new chat of your own.\n`,
+        }));
+        ws.send(JSON.stringify({ type: 'end' }));
+        return;
+      }
       // Phase T (2026-08-14): two tabs scanning different roots can contain same-named folders
       // (folder-name slug ids collide), so the slug check alone passes for the WRONG folder.
       // The session records its project's path at creation — compare paths too, so a chat

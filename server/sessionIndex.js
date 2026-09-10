@@ -234,6 +234,8 @@ export async function setIndexEntry(session) {
     createdAt: session.createdAt,
     updatedAt: session.updatedAt,
     messageCount: session.messageCount || 0,
+    // Portal (2026-09-10): verified owner username, or null for legacy/shared chats.
+    owner: session.owner || null,
   };
   await writeIndex(idx);
 }

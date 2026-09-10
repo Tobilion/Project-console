@@ -268,6 +268,94 @@ eq('auth gate: WS open while disarmed', checkWsAuth({ headers: {} }), true);
   delete process.env.PROFILE_FILE;
 }
 
+// --- Portal sessions: each user's chats are theirs (store + HTTP) ----------------
+// Store-level: owner stamped at create, list filters per user, legacy unowned stays
+// visible to all, admin sees everything, unfiltered default preserved. Session files
+// live in a temp project dir; index entries are removed via the honest deleteSession
+// (asserted), so the real data/conversations/index.json is left exactly as found.
+{
+  const { listSessions, createSession, deleteSession } =
+    await import(pathToFileURL(base + 'conversationStore.js').href);
+  const sessRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'console-sessowner-'));
+  const sAlice = await createSession(null, 'T', sessRoot, null, 'routeadmin');
+  const sBob = await createSession(null, 'T', sessRoot, null, 'second');
+  const sLegacy = await createSession(null, 'T', sessRoot, null);
+  eq('sessions: owner stamped at create', sAlice.owner === 'routeadmin' && sBob.owner === 'second' && sLegacy.owner === null, true);
+  const seenBy = async (u, role) => (await listSessions({ forUser: { username: u, role } })).map((s) => s.id);
+  const aliceIds = await seenBy('routeadmin', 'admin');
+  eq('sessions: admin sees all', aliceIds.includes(sAlice.id) && aliceIds.includes(sBob.id) && aliceIds.includes(sLegacy.id), true);
+  const bobIds = await seenBy('second', 'user');
+  eq('sessions: user sees own + legacy, not others', bobIds.includes(sBob.id) && bobIds.includes(sLegacy.id) && !bobIds.includes(sAlice.id), true);
+  const allIds = (await listSessions()).map((s) => s.id);
+  eq('sessions: unfiltered default preserved', allIds.includes(sAlice.id) && allIds.includes(sBob.id) && allIds.includes(sLegacy.id), true);
+  eq('sessions: honest deletes clean files + index',
+    (await deleteSession(sAlice.id)) === true &&
+    (await deleteSession(sBob.id)) === true &&
+    (await deleteSession(sLegacy.id)) === true, true);
+  const afterIds = (await listSessions()).map((s) => s.id);
+  eq('sessions: no test residue in index', !afterIds.includes(sAlice.id) && !afterIds.includes(sBob.id) && !afterIds.includes(sLegacy.id), true);
+  fs.rmSync(sessRoot, { recursive: true, force: true });
+}
+
+// --- Portal sessions over real HTTP: list isolation + cross-user 403 ---------------
+{
+  const expressMod = await import('express');
+  const express = expressMod.default || expressMod;
+  const { registerAuthRoutes } = await import(pathToFileURL(base + 'routes/authRoutes.js').href);
+  const { registerSessionRoutes } = await import(pathToFileURL(base + 'routes/sessionRoutes.js').href);
+  const { requireAuth } = await import(pathToFileURL(base + 'auth/authGate.js').href);
+  const { createSession, deleteSession } = await import(pathToFileURL(base + 'conversationStore.js').href);
+  const app = express();
+  app.use(express.json());
+  app.use('/api', requireAuth);
+  registerAuthRoutes(app);
+  registerSessionRoutes(app);
+  const server = app.listen(0, '127.0.0.1');
+  await new Promise((r) => server.on('listening', r));
+  const url = `http://127.0.0.1:${server.address().port}`;
+  const post = async (p, body, cookie) => {
+    const res = await fetch(url + p, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...(cookie ? { Cookie: cookie } : {}) },
+      body: JSON.stringify(body || {}),
+    });
+    return { status: res.status, json: await res.json().catch(() => null), cookie: res.headers.get('set-cookie') };
+  };
+  const get = async (p, cookie) => {
+    const res = await fetch(url + p, { headers: cookie ? { Cookie: cookie } : {} });
+    return { status: res.status, json: await res.json().catch(() => null) };
+  };
+  const del = async (p, cookie) => {
+    const res = await fetch(url + p, { method: 'DELETE', headers: cookie ? { Cookie: cookie } : {} });
+    return { status: res.status, json: await res.json().catch(() => null) };
+  };
+  const loginA = await post('/api/auth/login', { username: 'routeadmin', password: 'a strong route password' });
+  const cookieA = (loginA.cookie || '').split(';')[0];
+  const loginB = await post('/api/auth/login', { username: 'second', password: 'a strong password here' });
+  const cookieB = (loginB.cookie || '').split(';')[0];
+  const httpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'console-sesshttp-'));
+  // Created directly (the POST create route stamps the caller's name the same way —
+  // covered by the owner-stamped assertion above, so no need to repeat it over HTTP).
+  const owned = await createSession(null, 'T', httpRoot, null, 'second');
+  const listedB = await get('/api/sessions', cookieB);
+  const listedA = await get('/api/sessions', cookieA);
+  eq('sessions http: owner lists own chat', listedB.status === 200 && listedB.json?.sessions?.some((s) => s.id === owned.id), true);
+  eq('sessions http: admin lists it too', listedA.status === 200 && listedA.json?.sessions?.some((s) => s.id === owned.id), true);
+  const crossRead = await get(`/api/sessions/${owned.id}`, cookieA);
+  eq('sessions http: admin may read', crossRead.status === 200, true);
+  const other = await createSession(null, 'T', httpRoot, null, 'routeadmin');
+  const crossRead2 = await get(`/api/sessions/${other.id}`, cookieB);
+  eq('sessions http: cross-user read refused (403)', crossRead2.status === 403, true);
+  const crossDel = await del(`/api/sessions/${other.id}`, cookieB);
+  eq('sessions http: cross-user delete refused (403)', crossDel.status === 403, true);
+  const anonRead = await get(`/api/sessions/${other.id}`);
+  eq('sessions http: anonymous read refused (401)', anonRead.status === 401, true);
+  await deleteSession(owned.id);
+  await deleteSession(other.id);
+  fs.rmSync(httpRoot, { recursive: true, force: true });
+  await new Promise((r) => server.close(r));
+}
+
 try { fs.unlinkSync(process.env.USERS_FILE); } catch {}delete process.env.USERS_FILE;
 
 console.log(`\ncheck-auth: ${pass + fail} checks, ${fail} failed`);

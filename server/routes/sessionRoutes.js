@@ -5,8 +5,11 @@ import { resolveProject, getTabWorkspace, state } from '../state.js';
 import { asyncHandler } from '../asyncHandler.js';
 
 export function registerSessionRoutes(app) {
+  // Portal (2026-09-10): each user's chats are theirs — the list filters to
+  // unowned (legacy) + own sessions, admins see everything. req.authUser rides the
+  // auth gate (undefined while disarmed → unfiltered, byte-identical to before).
   app.get('/api/sessions', asyncHandler(async (req, res) => {
-    const sessions = await listSessions();
+    const sessions = await listSessions({ forUser: req.authUser || undefined });
     res.json({ sessions });
   }));
 
@@ -21,9 +24,23 @@ export function registerSessionRoutes(app) {
     // have no projectPath to route by.
     const ws = req.query.tab ? getTabWorkspace(req.query.tab) : null;
     const workspacePath = ws?.scanDirectory || state.currentScanDirectory || null;
-    const session = await createSession(projectId, projectName, project?.path, workspacePath);
+    const session = await createSession(projectId, projectName, project?.path, workspacePath, req.authUser?.username || null);
     res.json({ session });
   }));
+
+  // Portal ownership gate shared by the single-session routes below: 404 when missing,
+  // 403 when owned by someone else (non-admin). Disarmed traffic only ever meets
+  // unowned sessions, so behavior there is unchanged.
+  async function sessionAccess(req) {
+    const idx = await readIndex();
+    const meta = idx[req.params.id];
+    if (!meta) return { status: 404 };
+    const me = req.authUser;
+    if (meta.owner && (!me || (me.username !== meta.owner && me.role !== 'admin'))) {
+      return { status: 403 };
+    }
+    return { meta };
+  }
 
   app.get('/api/sessions/:id', asyncHandler(async (req, res) => {
     // Phase 6 (2026-08-17): pagination — ?before=<N> skips the N newest messages (the page
@@ -33,6 +50,9 @@ export function registerSessionRoutes(app) {
     // maintained on every append (sessionIndex.js), so no extra file read is needed.
     const before = Math.max(0, parseInt(req.query.before ?? '0', 10) || 0);
     const limit = Math.min(Math.max(parseInt(req.query.limit ?? '200', 10) || 200, 1), 500);
+    const access = await sessionAccess(req);
+    if (access.status === 404) return res.status(404).json({ error: 'Session not found' });
+    if (access.status === 403) return res.status(403).json({ error: 'That chat belongs to another user.' });
     const session = await getSession(req.params.id, { limit, before });
     if (!session) return res.status(404).json({ error: 'Session not found' });
     const idx = await readIndex();
@@ -45,9 +65,11 @@ export function registerSessionRoutes(app) {
   // the server just serves the formatted text (no temp file, nothing for Vite's watcher to see).
   app.get('/api/sessions/:id/export', asyncHandler(async (req, res) => {
     const sessionId = req.params.id;
+    const access = await sessionAccess(req);
+    if (access.status === 404) return res.status(404).json({ error: 'Session not found' });
+    if (access.status === 403) return res.status(403).json({ error: 'That chat belongs to another user.' });
     const idx = await readIndex();
     const meta = idx[sessionId];
-    if (!meta) return res.status(404).json({ error: 'Session not found' });
     const entries = await readFullSessionHistory(sessionId) || [];
     if (req.query.format === 'json') {
       res.set('Content-Type', 'application/json; charset=utf-8');
@@ -60,6 +82,9 @@ export function registerSessionRoutes(app) {
 
   // Rename a chat (manual title; the auto-title from the first message never clobbers it)
   app.patch('/api/sessions/:id', asyncHandler(async (req, res) => {
+    const access = await sessionAccess(req);
+    if (access.status === 404) return res.status(400).json({ error: 'Invalid title or session not found' });
+    if (access.status === 403) return res.status(403).json({ error: 'That chat belongs to another user.' });
     const { title } = req.body || {};
     const session = await renameSession(req.params.id, title);
     if (!session) return res.status(400).json({ error: 'Invalid title or session not found' });
@@ -68,6 +93,8 @@ export function registerSessionRoutes(app) {
 
   // Link an orphan session to a project (e.g. after New Chat then selecting a project)
   app.patch('/api/sessions/:id/link', asyncHandler(async (req, res) => {
+    const access = await sessionAccess(req);
+    if (access.status) return res.status(access.status).json({ error: access.status === 404 ? 'Session not found' : 'That chat belongs to another user.' });
     const { projectId } = req.body || {};
     if (!projectId) return res.status(400).json({ error: 'projectId is required' });
     const session = await linkSessionToProject(req.params.id, projectId);
@@ -76,6 +103,9 @@ export function registerSessionRoutes(app) {
   }));
 
   app.delete('/api/sessions/:id', asyncHandler(async (req, res) => {
+    const access = await sessionAccess(req);
+    if (access.status === 404) return res.status(404).json({ error: 'Session not found' });
+    if (access.status === 403) return res.status(403).json({ error: 'That chat belongs to another user.' });
     const ok = await deleteSession(req.params.id);
     if (!ok) return res.status(404).json({ error: 'Session not found' });
     res.json({ success: true });

@@ -23,7 +23,7 @@ import { log as logger } from './logger.js';
 
 export { getSession, linkSessionToProject, ensureGitignored } from './sessionMigration.js';
 
-export async function listSessions() {
+export async function listSessions({ forUser } = {}) {
   await ensureLegacyDir();
   const idx = await readIndex();
 
@@ -50,7 +50,17 @@ export async function listSessions() {
   ]);
 
   const fresh = await readIndex();
-  const sessions = Object.entries(fresh).map(([id, meta]) => ({
+  // Portal (2026-09-10): each user's chats are theirs. Unowned (legacy/pre-portal)
+  // sessions stay visible to everyone; owned ones only to their owner or an admin.
+  // No forUser (every pre-existing caller) = unfiltered, byte-identical to before.
+  const visible = ([, meta]) =>
+    forUser == null ||
+    !meta.owner ||
+    meta.owner === forUser.username ||
+    forUser.role === 'admin';
+  const sessions = Object.entries(fresh)
+    .filter(visible)
+    .map(([id, meta]) => ({
     id,
     title: meta.title,
     projectId: meta.projectId,
@@ -72,7 +82,7 @@ export async function listSessions() {
   return sessions;
 }
 
-export async function createSession(projectId, projectName, projectPath, workspacePath) {
+export async function createSession(projectId, projectName, projectPath, workspacePath, owner = null) {
   return serializePersistence(async () => {
     const session = {
       id: crypto.randomUUID(),
@@ -84,6 +94,9 @@ export async function createSession(projectId, projectName, projectPath, workspa
       messageCount: 0,
       createdAt: Date.now(),
       updatedAt: Date.now(),
+      // Portal (2026-09-10): verified owner username, or null (disarmed single-user —
+      // and every legacy session — stay unowned and visible to all).
+      owner: owner || null,
     };
 
     if (projectPath) {
@@ -216,7 +229,7 @@ export async function appendMessage(sessionId, message) {
     // Write updated meta file if project-scoped (atomic — a torn meta file used to make the
     // whole session unrecoverable from the sidebar; audit 2026-08-06, Phase 2)
     if (meta.projectPath) {
-      const sessionMeta = { id: sessionId, title: meta.title, projectId: meta.projectId, projectName: meta.projectName, projectPath: meta.projectPath, workspacePath: meta.workspacePath, messageCount: meta.messageCount, createdAt: meta.createdAt, updatedAt: meta.updatedAt };
+      const sessionMeta = { id: sessionId, title: meta.title, projectId: meta.projectId, projectName: meta.projectName, projectPath: meta.projectPath, workspacePath: meta.workspacePath, messageCount: meta.messageCount, createdAt: meta.createdAt, updatedAt: meta.updatedAt, owner: meta.owner || null };
       await writeFileAtomic(projectSessionMetaFile(meta.projectPath, sessionId), JSON.stringify(sessionMeta, null, 2)).catch((err) => {
         logger.error('[conversationStore] appendMessage: meta write failed:', err.message);
       });
@@ -240,6 +253,7 @@ export async function appendMessage(sessionId, message) {
       messageCount: meta.messageCount,
       createdAt: meta.createdAt,
       updatedAt: meta.updatedAt,
+      owner: meta.owner || null,
     });
 
     return { id: sessionId, title: meta.title, messageCount: meta.messageCount, messages: [entry] };
