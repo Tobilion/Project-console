@@ -3,6 +3,7 @@ import { X } from 'lucide-react';
 import { GlowOrbs } from './components/GlowOrbs';
 import { GlassFilter } from './components/ui/GlassFilter';
 import { LoginScreen } from './components/LoginScreen';
+import { BootScreen } from './components/BootScreen';
 import { AppHeader } from './components/AppHeader';
 import { AppMainView } from './components/AppMainView';
 import { AppOverlays } from './components/AppOverlays';
@@ -393,6 +394,14 @@ function App() {
   // When it is, confirm cards render inline in the thread; the fixed overlay below
   // exists solely for the non-chat views where this thread is unmounted.
   const chatViewActive = !showCommandRef && !toolsOpen && !showDashboard && !(showWelcome && !chatFullscreen);
+
+  // Phase H boot screen — the web equivalent of the desktop splash. profileLoaded
+  // always resolves (useUserProfile settles in .finally), so this can never trap;
+  // BootScreen itself waits 400ms before painting so fast loads never flash it.
+  // Placed after all hooks, so hook order is unaffected.
+  if (!profileLoaded) {
+    return <BootScreen />;
+  }
 
   // Phase I lock screen — armed server, anonymous browser. Rendered instead of the whole
   // console (placed after all hooks, so hook order is unaffected).
