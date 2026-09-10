@@ -3,6 +3,8 @@
  * Asserts against the REAL modules (auth/userStore.js, auth/authSessions.js) with the
  * store redirected to a temp file (USERS_FILE env, read at import time — set before the
  * imports below, same pattern as SCHEDULES_FILE/WATCH_RULES_FILE). No server, no network.
+ * The I-4b profile-sharding block additionally redirects PROFILE_FILE at a temp dir the
+ * same way, before its own lazy import of profileRoutes.js.
  *
  * Run:  npm run check-auth
  */
@@ -192,6 +194,66 @@ eq('auth gate: WS open while disarmed', checkWsAuth({ headers: {} }), true);
   const meAuthed = await get('/api/auth/me', adminCookie);
   eq('auth routes: me returns identity with session', meAuthed.json?.user?.username === 'routeadmin', true);
   await new Promise((r) => server.close(r));
+}
+
+// --- I-4b: per-user profile sharding over real HTTP ------------------------------
+// Same throwaway-app pattern: profile routes mounted behind the real gate, store
+// files redirected into a temp dir. Asserts the overlay contract — global stays the
+// defaults layer, authed writes land per-user, users can't see each other's prefs.
+{
+  const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'console-profile-'));
+  process.env.PROFILE_FILE = path.join(tmpRoot, 'user-profile.json');
+  const expressMod = await import('express');
+  const express = expressMod.default || expressMod;
+  const { registerAuthRoutes } = await import(pathToFileURL(base + 'routes/authRoutes.js').href);
+  const { registerProfileRoutes, readProfile } = await import(pathToFileURL(base + 'routes/profileRoutes.js').href);
+  const { requireAuth } = await import(pathToFileURL(base + 'auth/authGate.js').href);
+  const app = express();
+  app.use(express.json());
+  app.use('/api', requireAuth);
+  registerAuthRoutes(app);
+  registerProfileRoutes(app);
+  const server = app.listen(0, '127.0.0.1');
+  await new Promise((r) => server.on('listening', r));
+  const url = `http://127.0.0.1:${server.address().port}`;
+  const post = async (p, body, cookie) => {
+    const res = await fetch(url + p, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...(cookie ? { Cookie: cookie } : {}) },
+      body: JSON.stringify(body || {}),
+    });
+    return { status: res.status, json: await res.json().catch(() => null), cookie: res.headers.get('set-cookie') };
+  };
+  const get = async (p, cookie) => {
+    const res = await fetch(url + p, { headers: cookie ? { Cookie: cookie } : {} });
+    return { status: res.status, json: await res.json().catch(() => null) };
+  };
+  const loginA = await post('/api/auth/login', { username: 'routeadmin', password: 'a strong route password' });
+  const cookieA = (loginA.cookie || '').split(';')[0];
+  const loginB = await post('/api/auth/login', { username: 'second', password: 'a strong password here' });
+  const cookieB = (loginB.cookie || '').split(';')[0];
+  eq('profiles: both fixture logins still work', loginA.status === 200 && loginB.status === 200, true);
+  const base1 = await get('/api/profile', cookieA);
+  eq('profiles: authed read serves global defaults first', base1.status === 200 && base1.json?.userProfile?.accentColor === 'auto', true);
+  const setA = await post('/api/profile', { userProfile: { accentColor: '#112233' } }, cookieA);
+  eq('profiles: user A write accepted', setA.status === 200 && setA.json?.userProfile?.accentColor === '#112233', true);
+  const readA = await get('/api/profile', cookieA);
+  eq('profiles: user A read sees own override', readA.json?.userProfile?.accentColor === '#112233', true);
+  const readB = await get('/api/profile', cookieB);
+  eq('profiles: user B unaffected by A (isolation)', readB.json?.userProfile?.accentColor === 'auto', true);
+  await post('/api/profile', { userProfile: { accentColor: '#445566' } }, cookieB);
+  const readA2 = await get('/api/profile', cookieA);
+  eq('profiles: user A unaffected by B (isolation both ways)', readA2.json?.userProfile?.accentColor === '#112233', true);
+  let globalAccent = 'absent';
+  try {
+    globalAccent = JSON.parse(fs.readFileSync(process.env.PROFILE_FILE, 'utf8'))?.userProfile?.accentColor;
+  } catch { /* never written in this block — that IS the assertion */ }
+  eq('profiles: global file untouched by authed writes', globalAccent === undefined || globalAccent === 'absent', true);
+  eq('profiles: hostile username shape falls back to global', readProfile('../nope')?.accentColor === 'auto', true);
+  eq('profiles: no-arg read stays global (server-internal callers)', readProfile()?.accentColor === 'auto', true);
+  await new Promise((r) => server.close(r));
+  fs.rmSync(tmpRoot, { recursive: true, force: true });
+  delete process.env.PROFILE_FILE;
 }
 
 try { fs.unlinkSync(process.env.USERS_FILE); } catch {}delete process.env.USERS_FILE;

@@ -8,7 +8,24 @@ import { log } from '../logger.js';
 // Lives in data/ — the app's own runtime-state home — so writes never trigger the
 // per-project console.config.json file watcher or Vite's watch (data/ is excluded
 // from both in server/index.js).
-const PROFILE_FILE = resolveData('user-profile.json');
+//
+// Phase I (per-user sharding): while auth is disarmed this file is the whole story.
+// Once armed, it stays the DEFAULTS layer and each authenticated user gets an override
+// file at data/users/<username>/profile.json (same shape, same sanitizers). Reads merge
+// global-then-user; writes from an authenticated session land on the user file only, so
+// one LAN user's theme/accent can never clobber another's. Server-internal callers
+// (executor sandbox, clipboard polling, scan defaults) keep reading the global file —
+// those are machine posture, not personal taste.
+const PROFILE_FILE = process.env.PROFILE_FILE || resolveData('user-profile.json');
+
+// Usernames are already narrow by construction (userStore: 3–32 chars of a-z0-9_-),
+// which is path-safe — this re-checks the shape here so a caller can never smuggle a
+// separator into the per-user path even if the store's policy ever widens.
+function userProfileFile(username) {
+  const name = String(username || '').trim().toLowerCase();
+  if (!/^[a-z0-9_-]{3,32}$/.test(name)) return null;
+  return path.join(path.dirname(PROFILE_FILE), 'users', name, 'profile.json');
+}
 
 // Neutral defaults for a fresh install — `data/user-profile.json` isn't published with the npm
 // package (see package.json's "files" list) and is only ever created once a user sets their own
@@ -134,12 +151,18 @@ function sanitizeAccentColor(value) {
   return 'auto';
 }
 
-function readProfile() {
+function readRawFile(file) {
   try {
-    const raw = fs.readFileSync(PROFILE_FILE, 'utf-8');
-    const parsed = JSON.parse(raw);
-    const p = parsed?.userProfile || parsed || {};
-    return {
+    const parsed = JSON.parse(fs.readFileSync(file, 'utf-8'));
+    return parsed?.userProfile || parsed || {};
+  } catch {
+    // Missing or corrupt file — treated as "no overrides", never fatal.
+    return {};
+  }
+}
+
+function shapeProfile(p) {
+  return {
       name: sanitizeField(p.name, DEFAULT_PROFILE.name),
       title: sanitizeField(p.title, DEFAULT_PROFILE.title),
       customRole: sanitizeField(p.customRole, DEFAULT_PROFILE.customRole),
@@ -164,11 +187,20 @@ function readProfile() {
       quietHoursEnd: sanitizeQuietHour(p.quietHoursEnd),
       colorFollowsMouse: sanitizeBool(p.colorFollowsMouse, DEFAULT_PROFILE.colorFollowsMouse),
       liquidGlass: sanitizeBool(p.liquidGlass, DEFAULT_PROFILE.liquidGlass),
-    };
-  } catch {
-    // Missing or corrupt file — serve defaults without touching disk.
-    return { ...DEFAULT_PROFILE };
-  }
+  };
+}
+
+// Effective profile for a caller. No username (every server-internal caller, plus all
+// disarmed traffic) → the global file, exactly as before. With a username (the profile
+// routes when armed) → global as the defaults layer, per-user file overriding per key,
+// shaped through the same sanitizers so a corrupt user file can only fall back, never
+// crash or smuggle keys.
+function readProfile(username) {
+  const base = readRawFile(PROFILE_FILE);
+  if (username == null) return shapeProfile(base);
+  const file = userProfileFile(username);
+  if (!file) return shapeProfile(base);
+  return shapeProfile({ ...base, ...readRawFile(file) });
 }
 
 // Exported for the executor's per-command check (executor.js only consults it when a caller
@@ -176,11 +208,15 @@ function readProfile() {
 export { readProfile };
 
 // Single write path for the profile — used by the POST route AND the Phase 6 workspace
-// import, so the import overwrites the file exactly the way a UI save would.
-export function writeProfile(profile) {
+// import, so the import overwrites the file exactly the way a UI save would. With a
+// username the write lands on that user's override file and the global defaults are left
+// untouched; without one it targets the global file, as before.
+export function writeProfile(profile, username) {
+  const file = username == null ? PROFILE_FILE : userProfileFile(username);
+  if (!file) return new Error('Invalid username for profile write.');
   try {
-    fs.mkdirSync(path.dirname(PROFILE_FILE), { recursive: true });
-    fs.writeFileSync(PROFILE_FILE, JSON.stringify({ userProfile: profile }, null, 2), 'utf-8');
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, JSON.stringify({ userProfile: profile }, null, 2), 'utf-8');
     return null;
   } catch (err) {
     return err;
@@ -224,14 +260,16 @@ export function sanitizeProfile(body, current) {
 
 export function registerProfileRoutes(app) {
   app.get('/api/profile', (req, res) => {
-    res.json({ userProfile: readProfile() });
+    // req.authUser is set by the auth gate when armed (undefined while disarmed).
+    res.json({ userProfile: readProfile(req.authUser?.username) });
   });
 
   app.post('/api/profile', (req, res) => {
     const body = req.body?.userProfile || req.body || {};
-    const current = readProfile();
+    const username = req.authUser?.username;
+    const current = readProfile(username);
     const updated = sanitizeProfile(body, current);
-    const err = writeProfile(updated);
+    const err = writeProfile(updated, username);
     if (err) {
       res.status(500).json({ error: `Failed to save profile: ${err.message}` });
       return;
