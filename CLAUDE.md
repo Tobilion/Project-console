@@ -779,8 +779,15 @@ Verified: check-handlers 287/287, check-ws-cases clean, npm test 602/602, tsc cl
    append-only text format is the store contract; twins already handled). Verified:
    check-handlers 337/337 (+7), check-matcher 429/429 (+4), check-intents baseline
    unchanged, check-docs 81+142, tsc + vite build clean, live HTTP round-trip through
-   the real routes (create→delete→trash→restore→notes→empty). Still open: F-6/
-   F-10-rest. F-8 done (2026-09-09, opencode): new `server/osApps.js` discovers real
+   the real routes (create→delete→trash→restore→notes→empty). F-6 done (2026-09-10,
+   opencode): formatting feedback via a Preview toggle rendering the draft through the
+   same `react-markdown` + theme-token `.prose` the terminal uses (zero new deps), and
+   save-on-blur is now a true in-place replace (`replaceNoteText` + `PUT .../notes` —
+   twin-safe, cross-line-dupes refuse, date/author suffix preserved) instead of an
+   append orphaning the old version; selection follows the new text. Verified:
+   check-handlers 343/343 (+6), tsc + vite build clean, live PUT seam over real HTTP
+   (edit swaps in place, trash untouched). Still open: F-10-rest. F-8 done (2026-09-09,
+   opencode): new `server/osApps.js` discovers real
   OS handlers per extension on Windows (UserChoice ProgId → assoc/ftype chain, plus
   Explorer OpenWithList exes via `where`; AppX ids and stale ProgIds skipped, `%VAR%`
   expanded, quoted `"%L"` substituted bare — spawn passes argv literally), merged into

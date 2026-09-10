@@ -6,7 +6,7 @@
 // (including the delete path's linked-reminder cleanup), so switching the panel over changes
 // latency, not behavior. The chat commands themselves are untouched and still work
 // identically for the CLI and for typed natural-language phrasing.
-import { listNotes, appendNote, deleteNote, listTrash, restoreTrash, emptyTrash } from '../notesStore.js';
+import { listNotes, appendNote, deleteNote, replaceNoteText, listTrash, restoreTrash, emptyTrash } from '../notesStore.js';
 import { getSchedules, removeScheduleById } from '../schedules/scheduleStore.js';
 import { readProfile } from './profileRoutes.js';
 import { resolveProject } from '../state.js';
@@ -31,6 +31,16 @@ export function registerNoteRoutes(app) {
     const { text } = req.body || {};
     const result = await appendNote(project.path, text, 'local');
     res.json(result);
+  }));
+
+  // F-6 in-place edit: replace a note's text without appending a fresh line (the old
+  // panel saveEdit appended, orphaning the previous version). Same twin-safe contract
+  // as delete/restore — ambiguity and cross-line dupes refuse, nothing is removed.
+  app.put('/api/projects/:id/notes', asyncHandler(async (req, res) => {
+    const project = resolveProject(req.params.id, req.query.tab);
+    if (!project) return res.status(404).json({ error: 'Project not found' });
+    const { oldText, newText } = req.body || {};
+    res.json(await replaceNoteText(project.path, oldText, newText));
   }));
 
   // Delete by exact note text (same normalized-match contract as deleteNote itself). Mirrors

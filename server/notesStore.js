@@ -110,6 +110,59 @@ export async function listTrash(projectPath) {
   return parseNoteLines(content).map(({ text, date }) => ({ text, date }));
 }
 
+/** Replace one note's text in place (F-6: the panel's save-on-blur used to APPEND
+ *  the edited text as a fresh line, orphaning the old version). Twin-safe via
+ *  findNoteIndex (ambiguity refuses, same as delete/restore); refuses when the new
+ *  text duplicates ANOTHER line (appendNote would skip it as a dupe) and no-ops when
+ *  nothing changed. The line's date/author suffix is preserved — only the text body
+ *  is swapped. Returns { success, data } with the new text on success. */
+export async function replaceNoteText(projectPath, oldText, newText) {
+  const target = normalize(oldText || '');
+  const trimmed = (newText || '').trim();
+  if (!target) return { success: false, error: 'Nothing to replace — pick a note first.' };
+  if (!trimmed) return { success: false, error: 'The replacement text is empty — nothing saved.' };
+  if (trimmed.length > MAX_ENTRY_CHARS) {
+    return { success: false, error: `Note is too long (${MAX_ENTRY_CHARS} char max) — split it up.` };
+  }
+
+  return withNoteLock(projectPath, async () => {
+    const filePath = notesPath(projectPath);
+    let content = '';
+    try {
+      content = await fs.readFile(filePath, 'utf-8');
+    } catch (err) {
+      if (err.code === 'ENOENT') return { success: false, error: 'No notes here yet.' };
+      throw err;
+    }
+    const lines = content.split('\n').filter((l) => l.trim());
+    const found = findNoteIndex(lines, target);
+    if (found.ambiguous) {
+      const options = found.ambiguous.map((s) => `"${s}"`).join(', ');
+      return { success: false, error: `${found.ambiguous.length} notes match (${options}) — include the date to edit just one.` };
+    }
+    if (found.removeIdx === -1) return { success: false, error: 'No note matched that text.' };
+
+    const stripAuthor = (l) => l.replace(/^- /, '').replace(/\s*· by .+$/, '');
+    const stripDate = (l) => l.replace(/\s*\(\d{4}-\d{2}-\d{2}\)\s*$/, '');
+    const textOf = (l) => normalize(stripDate(stripAuthor(l)));
+    if (textOf(lines[found.removeIdx]) === normalize(trimmed)) {
+      return { success: true, data: 'No changes.' };
+    }
+    if (lines.some((l, idx) => idx !== found.removeIdx && textOf(l) === normalize(trimmed))) {
+      return { success: false, error: 'That text already exists as another note — nothing changed.' };
+    }
+
+    const raw = lines[found.removeIdx];
+    const m = raw.match(/^(- )(.*?)((?:\s+\(\d{4}-\d{2}-\d{2}\))?(?:\s*· by .+)?)$/);
+    lines[found.removeIdx] = m ? `- ${trimmed}${m[3]}` : `- ${trimmed} (${new Date().toISOString().slice(0, 10)})`;
+
+    await fs.mkdir(path.dirname(filePath), { recursive: true });
+    await ensureGitignored(projectPath);
+    await fs.writeFile(filePath, lines.join('\n') + '\n', 'utf-8');
+    return { success: true, data: trimmed };
+  });
+}
+
 /** Permanently drop every trashed note. Returns { success, count }. */
 export async function emptyTrash(projectPath) {
   return withNoteLock(projectPath, async () => {

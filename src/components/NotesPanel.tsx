@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { StickyNote, RefreshCw, Send, Search, FileText, Trash2, Bold, Italic, List, Code } from 'lucide-react';
+import { StickyNote, RefreshCw, Send, Search, FileText, Trash2, Bold, Italic, List, Code, Eye } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
 import { apiFetchJson } from '../utils/apiFetch';
 import { projectApi } from '../utils/projectApi';
 import { usePanelPolling, useFlashMessage } from '../hooks/usePanelPolling';
@@ -207,14 +208,31 @@ export function NotesPanel({ project, onSendMessage, tabId = null }: NotesPanelP
     }, 10);
   };
 
-  // Phase 5: save the edited note (blur or Cmd/Ctrl+Enter) through the same trigger path —
-  // unchanged text is a no-op server-side (exact dedupe), so this only fires on real edits.
-  const saveEdit = () => {
-    if (editDraft === null) return;
+  // F-6: preview mode — the toolbar inserts markdown syntax, so the editor gets a
+  // rendered preview alongside the raw textarea (same react-markdown + theme-token
+  // .prose the terminal uses), making "Bold" visibly bold instead of bare asterisks.
+  const [showPreview, setShowPreview] = useState(false);
+
+  // Phase 5: save the edited note (blur or Cmd/Ctrl+Enter) as a true IN-PLACE replace
+  // (PUT .../notes → replaceNoteText) — F-6: the old path appended the edited text as
+  // a fresh line via createNote, orphaning the previous version. Unchanged text is a
+  // server-side no-op; twin/duplicate collisions refuse with the reason shown.
+  const saveEdit = async () => {
+    if (editDraft === null || !selected || !project?.id) return;
     const trimmed = editDraft.trim();
+    if (!trimmed || trimmed === selected.text) { setEditDraft(null); return; }
+    const result = await apiFetchJson<{ success: boolean; data?: string; error?: string }>(
+      projectApi(`/api/projects/${encodeURIComponent(project.id)}/notes`, tabId),
+      { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ oldText: selected.text, newText: trimmed }) }
+    );
+    if (!result) { setError('Could not reach the server.'); return; }
+    if (!result.success) { setError(result.error || 'Could not save the note.'); return; }
+    setError(null);
     setEditDraft(null);
-    if (!trimmed || trimmed === selected?.text) return;
-    createNote(trimmed);
+    // Selection is keyed by text — follow the note to its new text.
+    setSelectedText(trimmed);
+    flashSent('Saved.');
+    fetchNotes();
   };
 
   // Search is already a live client-side filter over the fetched list (see `filtered`
@@ -435,11 +453,25 @@ export function NotesPanel({ project, onSendMessage, tabId = null }: NotesPanelP
                   <Code size={13} />
                 </button>
                 <span className="text-[9px] text-fg-dim ml-2">Markdown formatting</span>
+                <button
+                  onClick={() => setShowPreview((v) => !v)}
+                  className={cn('ml-auto flex items-center gap-1 px-2 py-1 rounded text-[10px] transition-colors', showPreview ? 'text-accent-blue bg-accent-blue/10' : 'text-fg-dim hover:text-fg-strong hover:bg-scrim-faint')}
+                  title={showPreview ? 'Back to editing' : 'Preview rendered formatting'}
+                >
+                  <Eye size={12} /> {showPreview ? 'Edit' : 'Preview'}
+                </button>
               </div>
+              {showPreview ? (
+                <div className="flex-1 overflow-y-auto px-5 py-3">
+                  <div className="prose prose-sm max-w-none">
+                    <ReactMarkdown>{editDraft ?? selected.text}</ReactMarkdown>
+                  </div>
+                </div>
+              ) : (
               <textarea
                 value={editDraft ?? selected.text}
                 onChange={(e) => setEditDraft(e.target.value)}
-                onBlur={saveEdit}
+                onBlur={() => void saveEdit()}
                 onKeyDown={(e) => {
                   if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
                     e.preventDefault();
@@ -458,6 +490,7 @@ export function NotesPanel({ project, onSendMessage, tabId = null }: NotesPanelP
                 className="flex-1 w-full bg-transparent border-none outline-none resize-none px-5 py-3 text-[13px] leading-[18px] text-fg-subtle"
                 spellCheck={false}
               />
+              )}
               <div className="px-5 pb-3 shrink-0 flex items-center justify-between text-[10px] text-fg-dim">
                 <span>Editable — changes save on blur (or Cmd/Ctrl+Enter). Use the toolbar for formatting.</span>
                 <button

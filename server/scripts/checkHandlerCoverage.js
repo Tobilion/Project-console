@@ -957,6 +957,26 @@ await handleBuiltinIntent(ws, 'system.notes.trash', 'show deleted notes', trashP
 eq('notes trash: empty bin says so', /recycle bin is empty/i.test(ws.sent[0].data), true);
 fs.rmSync(trashRoot, { recursive: true, force: true });
 
+// F-6 (2026-09-10): in-place replace — edits swap the text body, never append; the
+// date/author suffix survives; twins and cross-line dupes refuse instead of forking.
+const { replaceNoteText } = await import(pathToFileURL(base + 'notesStore.js').href);
+const editRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'console-notesedit-'));
+await appendNote(editRoot, 'buy milk');
+await appendNote(editRoot, 'call dentist');
+const rep = await replaceNoteText(editRoot, 'buy milk', 'buy **oat** milk');
+const repListed = await listNotes(editRoot);
+eq('notes edit: replace swaps text in place', rep.success === true && repListed.length === 2 && repListed[0].text === 'buy **oat** milk' && repListed[0].date !== null, true);
+eq('notes edit: untouched twin keeps its line', repListed[1].text === 'call dentist', true);
+const repSame = await replaceNoteText(editRoot, 'buy **oat** milk', 'buy **oat** milk');
+eq('notes edit: identical text is a no-op', repSame.success === true && /No changes/.test(repSame.data), true);
+const repDupe = await replaceNoteText(editRoot, 'buy **oat** milk', 'call dentist');
+eq('notes edit: cross-line duplicate refused', repDupe.success === false && /already exists/.test(repDupe.error), true);
+const repMissing = await replaceNoteText(editRoot, 'no such note', 'whatever');
+eq('notes edit: miss refuses', repMissing.success === false && /No note matched/.test(repMissing.error), true);
+const repEmpty = await replaceNoteText(editRoot, 'buy **oat** milk', '   ');
+eq('notes edit: empty replacement refused', repEmpty.success === false && /empty/.test(repEmpty.error), true);
+fs.rmSync(editRoot, { recursive: true, force: true });
+
 // F-11 (2026-09-09): the list/search answers carry an additive `notes` card (text/date/
 // projectId per item, same slice the markdown rows show) alongside the unchanged markdown.
 const cardRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'console-notescard-'));
