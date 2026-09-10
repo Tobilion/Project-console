@@ -971,6 +971,25 @@ Verified: check-handlers 287/287, check-ws-cases clean, npm test 602/602, tsc cl
   note-linking/attachments stay deferred (need store fields, not render).
 - Phase L: **not started.**
 
+**Unattended execution session (2026-09-10, opencode — user stepped away):**
+12 commits, all pushed (`af4f956..791398e`): Phase I complete (I-4b per-user
+profiles, I-5 CLI reset), F-5(1) recycle bin, F-6 preview + in-place edit, H web
+BootScreen + desktop splash restyle (+H-3 delta confirmed by a real blockmap build),
+J notes slice (checklists/tags/highlight), C-4 remainder (dock/dash/FirstRun/CLI
+tours), K-6 tab-error logging, B.1 splits (FolderExplorer footer — the REAL one,
+commit 3e8de10 only changed whitespace; RemindersPanel schedule, NotificationsPanel
+rules, CommandDeck ranking), L docs (README/features/changelog/safety-model).
+Final sweep green: test 606/606, lint, matcher 429/429, handlers 343/343, auth
+66/66, tools 182/182, indexer 103/103, ws-cases 137/137, intents 1/17/137,
+docs 81+142, vite build, `doctor` (2 known env warnings), desktop NSIS
+`Project Console Setup 1.0.2.exe` + blockmap built successfully.
+**Honestly deferred** (need a browser/Electron/human or judged churn-negative):
+E-4 anchored popup, all browser click-throughs, matcher.js split/naming,
+PdfTools/UserProfileModal/useConsole/Terminal splits, executor error-style
+unification, explorer create/delete ops, CSV editing vs rename, PDF unlock (error
+already graceful), C-5 auto-advance, F-9 inline tree, Hello biometrics,
+installed-app smoke test.
+
 **Native verification baseline (2026-09-09, opencode on Windows — supersedes the bridged-shell
 caveat below)**: full suite green at commit e0bc8ed before any new work — npm test 602/602,
 `npm run lint` clean, check-matcher 425/425 (incl. the A-15 MULTI-INTENT and K-11 TROUBLESHOOT
