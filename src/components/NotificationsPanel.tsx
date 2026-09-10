@@ -5,17 +5,8 @@ import { usePanelPolling, useFlashMessage } from '../hooks/usePanelPolling';
 import { PANEL_POLL_NOTIFICATIONS_MS } from '../constants';
 import { cn } from '../lib/utils';
 import type { Project } from '../types';
-
-interface NotificationHistoryItem {
-  id: string;
-  projectId: string;
-  projectName: string;
-  event: string;
-  title: string;
-  body: string;
-  timestamp: number;
-  dismissed: boolean;
-}
+import { EVENT_COLORS, ruleSentence, lastFiredText } from './notifications/rules';
+import type { NotificationHistoryItem, WatchRule, TestResult } from './notifications/rules';
 
 // Phase 15 (UPGRADE-ROADMAP.md, 2026-08-12): the Notifications panel — IFTTT/Zapier-style
 // rule cards ("When <event> in <folder>, notify me"): colored icon circle per event type,
@@ -26,25 +17,9 @@ interface NotificationHistoryItem {
 // Channels / Webhooks) with the main area switching per section, and the Webhooks section
 // carries a request builder: URL + Send -> a response panel showing status/time/size from
 // POST /api/notifications/test-webhook (the same SSRF-guarded fetch a real send uses).
-
-interface WatchRule {
-  id: string;
-  folder: string;
-  event: 'file-changed' | 'file-added' | 'folder-stale';
-  days: number | null;
-  projectName: string | null;
-  createdAt: number;
-  enabled: boolean;
-  lastFiredAt?: number;
-}
-
-interface TestResult {
-  ok: boolean;
-  status: number | null;
-  timeMs: number;
-  sizeBytes: number;
-  reason: string | null;
-}
+//
+// 2026-09-10 split: rule model + sentence helpers live in notifications/rules.ts; this
+// file owns panel state, polling, and layout.
 
 interface NotificationsPanelProps {
   project: Project | null;
@@ -52,30 +27,6 @@ interface NotificationsPanelProps {
 }
 
 const POLL_MS = PANEL_POLL_NOTIFICATIONS_MS;
-
-const EVENT_COLORS: Record<string, string> = {
-  'file-changed': 'var(--color-accent-blue)',
-  'file-added': 'var(--color-accent-green)',
-  'folder-stale': 'var(--color-accent-orange)',
-};
-
-const EVENT_LABEL: Record<string, string> = {
-  'file-changed': 'file changes',
-  'file-added': 'a new file appears',
-  'folder-stale': 'no changes for N days',
-};
-
-function ruleSentence(r: WatchRule): string {
-  if (r.event === 'folder-stale') {
-    return `When ${r.folder} hasn't changed in ${r.days} days, notify me`;
-  }
-  return `When ${EVENT_LABEL[r.event]} in ${r.folder}, notify me`;
-}
-
-function lastFiredText(r: WatchRule): string {
-  if (!r.lastFiredAt) return 'never fired';
-  return `last fired ${new Date(r.lastFiredAt).toLocaleString()}`;
-}
 
 const cardCls = 'bg-panel rounded-xl border border-border-faint p-4';
 const inputCls = 'text-xs bg-panel-strong border border-border-soft rounded-lg px-2.5 py-2 text-fg-strong focus:outline-none focus:border-accent-blue/50';
