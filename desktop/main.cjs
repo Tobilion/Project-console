@@ -73,34 +73,64 @@ try { appVersion = require('./package.json').version || appVersion; } catch {}
 try { if (app.isPackaged) appVersion = app.getVersion() || appVersion; } catch {}
 
 function buildSplashHtml() {
+  // Phase H (2026-09-10): full-bleed loading screen per the user's design brief — large
+  // "Project Console" wordmark + "made by Tobiloba Jagun" credit across the top half,
+  // live status + elapsed time in the bottom half, blue/red/black/white palette, with a
+  // canvas sand-block field behind it all (compact vanilla mirror of SandBlocks.tsx:
+  // pointer-distance displacement + color blend, Canvas 2D, frozen under
+  // prefers-reduced-motion). Still a data: URL (dependency-free, sandbox-safe) and the
+  // live-wiring contract is unchanged: main.js drives #boot-state / #boot-time via
+  // executeJavaScript, so those two IDs must stay exactly as they are.
   return (
     'data:text/html;charset=utf-8,' +
     encodeURIComponent(
       '<!doctype html><html><head><meta charset="utf-8"><style>' +
-      '*{box-sizing:border-box}html,body{height:100%;margin:0}' +
-      'body{display:flex;align-items:center;justify-content:center;background:#0D0D0E;color:#E5E5EA;font-family:Inter,Segoe UI,system-ui,sans-serif;}' +
-      '.card{width:420px;padding:36px 32px 28px;background:#161618;border:1px solid #2C2C2E;border-radius:18px;box-shadow:0 20px 40px rgba(0,0,0,0.5);text-align:center}' +
-      '.icon{width:56px;height:56px;margin:0 auto 16px;border-radius:50%;background:#0D2A4A;border:1px solid #1a3a5c;display:flex;align-items:center;justify-content:center;font-size:22px;color:#64D2FF}' +
-      '.title{font-size:19px;font-weight:700;letter-spacing:-0.02em;color:#FFFFFF;margin:0}' +
-      '.subtitle{font-size:11px;letter-spacing:0.18em;text-transform:uppercase;color:#86868B;margin:6px 0 18px;font-weight:600}' +
-      '.bar{height:3px;background:#2C2C2E;border-radius:999px;overflow:hidden;margin:18px 0 14px}' +
-      '.fill{height:100%;width:38%;background:linear-gradient(90deg,#0071E3,#64D2FF);border-radius:999px;animation:load 1.1s ease-in-out infinite}' +
-      '@keyframes load{0%{transform:translateX(-60%)}50%{transform:translateX(70%)}100%{transform:translateX(160%)}}' +
-      '.hint{font-size:12px;color:#A1A1AA;line-height:1.5;margin:0}' +
-      '#boot-state{font-size:12px;color:#64D2FF;margin:8px 0 0;min-height:18px;transition:opacity 0.3s}' +
-      '#boot-time{font-size:11px;color:#48484A;margin:6px 0 0;min-height:16px}' +
-      '.ver{margin-top:16px;font-size:10px;letter-spacing:0.14em;text-transform:uppercase;color:#48484A}' +
-      '@keyframes p{50%{transform:scale(.6);opacity:.4}}' +
-      '</style></head><body><div class="card">' +
-      '<div class="icon">&#62;_</div>' +
-      '<h1 class="title">Project Console</h1>' +
-      '<p class="subtitle">Local Project Engine &middot; v' + appVersion + '</p>' +
-      '<div class="bar"><div class="fill"></div></div>' +
+      '*{box-sizing:border-box}html,body{height:100%;margin:0;overflow:hidden}' +
+      'body{background:#0D0D0E;color:#E5E5EA;font-family:Inter,Segoe UI,system-ui,sans-serif;}' +
+      '#sand{position:fixed;inset:0;width:100%;height:100%}' +
+      '.wrap{position:relative;z-index:1;height:100%;display:flex;flex-direction:column}' +
+      '.top{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:0 24px}' +
+      '.wordmark{font-size:64px;font-weight:800;letter-spacing:-0.02em;color:#FFFFFF;margin:0;line-height:1.05}' +
+      '.credit{font-size:11px;letter-spacing:0.22em;text-transform:uppercase;color:#86868B;margin:12px 0 0;font-weight:600}' +
+      '.bottom{padding:0 24px 44px;display:flex;flex-direction:column;align-items:center;gap:6px}' +
+      '.bar{height:3px;width:224px;background:#2C2C2E;border-radius:999px;overflow:hidden}' +
+      '.fill{height:100%;width:40%;background:linear-gradient(90deg,#0071E3,#FF453A,#FFFFFF);border-radius:999px;animation:load 1.2s ease-in-out infinite}' +
+      '@keyframes load{0%{transform:translateX(-90%)}100%{transform:translateX(260%)}}' +
+      '.hint{font-size:12px;color:#A1A1AA;margin:10px 0 0}' +
+      '#boot-state{font-size:12px;color:#64D2FF;margin:0;min-height:18px}' +
+      '#boot-time{font-size:11px;color:#48484A;margin:0;min-height:16px}' +
+      '.ver{font-size:10px;letter-spacing:0.14em;text-transform:uppercase;color:#48484A;margin:10px 0 0}' +
+      '</style></head><body><canvas id="sand"></canvas><div class="wrap">' +
+      '<div class="top"><h1 class="wordmark">Project Console</h1>' +
+      '<p class="credit">Made by Tobiloba Jagun &middot; v' + appVersion + '</p></div>' +
+      '<div class="bottom"><div class="bar"><div class="fill"></div></div>' +
       '<p class="hint">Starting the local server…</p>' +
       '<p id="boot-state"></p>' +
       '<p id="boot-time"></p>' +
-      '<p class="ver">Made by Tobiloba Jagun &middot; github.com/Tobilion</p>' +
-      '</div></body></html>'
+      '<p class="ver">Local Project Engine</p></div></div>' +
+      '<script>(function(){var c=document.getElementById("sand");if(!c)return;var x=c.getContext("2d");if(!x)return;' +
+      'var BLUE=[0,113,227],RED=[255,69,58],WHITE=[255,255,255];var W=0,H=0,raf=0,vis=true;' +
+      'var px=null,py=null,tx=null,ty=null;var rm=window.matchMedia&&window.matchMedia("(prefers-reduced-motion: reduce)");' +
+      'function h2(i,j){var h=(i*374761393+j*668265263)|0;h=(h^(h>>13))|0;h=(h*1274126177)|0;return((h^(h>>16))>>>0)/4294967295;}' +
+      'function draw(){var S=26,B=11;if(px!==null&&tx!==null){px+=(tx-px)*0.18;py+=(ty-py)*0.18;}' +
+      'x.clearRect(0,0,W,H);var cols=Math.ceil(W/S)+1,rows=Math.ceil(H/S)+1;' +
+      'var ox=(W-(cols-1)*S)/2,oy=(H-(rows-1)*S)/2;' +
+      'for(var i=0;i<cols;i++){for(var j=0;j<rows;j++){var cx=ox+i*S,cy=oy+j*S;var hh=h2(i,j);' +
+      'var b=hh<0.55?BLUE:(hh<0.75?RED:WHITE);var f=0,dx=0,dy=0;' +
+      'if(px!==null){dx=cx-px;dy=cy-py;var d=Math.sqrt(dx*dx+dy*dy);' +
+      'if(d<190&&d>0.01){var t=1-d/190;f=t*t*(3-2*t);var push=f*16/d;dx*=push;dy*=push;}else{dx=0;dy=0;}}' +
+      'var r=Math.round(b[0]+(255-b[0])*f*0.65),g=Math.round(b[1]+(255-b[1])*f*0.65),bl=Math.round(b[2]+(255-b[2])*f*0.65);' +
+      'var s=B*(1+f*0.7);x.fillStyle="rgba("+r+","+g+","+bl+","+(0.55+0.45*f).toFixed(3)+")";' +
+      'x.fillRect(cx+dx-s/2,cy+dy-s/2,s,s);}}}' +
+      'function tick(){raf=0;if(!vis||document.hidden)return;draw();raf=requestAnimationFrame(tick);}' +
+      'function wake(){if(!raf&&!(rm&&rm.matches))raf=requestAnimationFrame(tick);}' +
+      'function size(){var r=c.getBoundingClientRect();W=Math.max(1,Math.round(r.width));H=Math.max(1,Math.round(r.height));' +
+      'var dpr=Math.min(window.devicePixelRatio||1,1.5);c.width=Math.round(W*dpr);c.height=Math.round(H*dpr);' +
+      'x.setTransform(dpr,0,0,dpr,0,0);draw();wake();}' +
+      'window.addEventListener("pointermove",function(e){if(rm&&rm.matches)return;var r=c.getBoundingClientRect();' +
+      'tx=e.clientX-r.left;ty=e.clientY-r.top;if(px===null){px=tx;py=ty;}wake();});' +
+      'document.addEventListener("visibilitychange",function(){if(!document.hidden)size();});' +
+      'window.addEventListener("resize",size);size();})();</script></body></html>'
     )
   );
 }
