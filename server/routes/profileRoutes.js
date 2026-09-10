@@ -122,6 +122,8 @@ const DEFAULT_PROFILE = {
   // buttons|cards|all (default cards). Clamped/sanitized like every other knob.
   glassIntensity: 65,
   glassScope: 'cards',
+  // Glass tint toggle (default true) — off = pure frosted blur, no accent wash.
+  glassTint: true,
 };
 
 // Only plain, trimmed strings up to a sane length — mirrors the conservative
@@ -193,6 +195,7 @@ function shapeProfile(p) {
       liquidGlass: sanitizeBool(p.liquidGlass, DEFAULT_PROFILE.liquidGlass),
       glassIntensity: typeof p.glassIntensity === 'number' ? Math.max(0, Math.min(100, Math.round(p.glassIntensity))) : DEFAULT_PROFILE.glassIntensity,
       glassScope: ['buttons', 'cards', 'all'].includes(p.glassScope) ? p.glassScope : DEFAULT_PROFILE.glassScope,
+      glassTint: sanitizeBool(p.glassTint, DEFAULT_PROFILE.glassTint),
   };
 }
 
@@ -263,6 +266,7 @@ export function sanitizeProfile(body, current) {
     liquidGlass: sanitizeBool(body.liquidGlass, current.liquidGlass),
     glassIntensity: typeof body.glassIntensity === 'number' ? Math.max(0, Math.min(100, Math.round(body.glassIntensity))) : current.glassIntensity,
     glassScope: ['buttons', 'cards', 'all'].includes(body.glassScope) ? body.glassScope : current.glassScope,
+    glassTint: sanitizeBool(body.glassTint, current.glassTint),
   };
 }
 

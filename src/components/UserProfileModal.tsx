@@ -96,6 +96,7 @@ export function UserProfileModal({ open, profile, onClose, onSave, initialCatego
     typeof profile.glassIntensity === 'number' ? profile.glassIntensity : 65);
   const [glassScope, setGlassScope] = useState<'buttons' | 'cards' | 'all'>(
     profile.glassScope === 'buttons' || profile.glassScope === 'all' ? profile.glassScope : 'cards');
+  const [glassTint, setGlassTint] = useState(profile.glassTint !== false);
   const [generalToolsFirst, setGeneralToolsFirst] = useState(profile.generalToolsFirst);
   const [category, setCategory] = useState<CategoryId>((initialCategory as CategoryId) || 'identity');
 
@@ -129,6 +130,7 @@ export function UserProfileModal({ open, profile, onClose, onSave, initialCatego
       setLiquidGlass(profile.liquidGlass);
       setGlassIntensity(typeof profile.glassIntensity === 'number' ? profile.glassIntensity : 65);
       setGlassScope(profile.glassScope === 'buttons' || profile.glassScope === 'all' ? profile.glassScope : 'cards');
+      setGlassTint(profile.glassTint !== false);
       setGeneralToolsFirst(profile.generalToolsFirst);
       if (initialCategory) setCategory(initialCategory as CategoryId);
     }
@@ -164,6 +166,7 @@ export function UserProfileModal({ open, profile, onClose, onSave, initialCatego
       liquidGlass,
       glassIntensity,
       glassScope,
+      glassTint,
     });
     onClose();
   };
@@ -384,7 +387,7 @@ export function UserProfileModal({ open, profile, onClose, onSave, initialCatego
                     title={liquidGlass ? 'Liquid glass on' : 'Plain blur'} />
                   <div className="flex-1 min-w-0">
                     <p className="text-sm text-fg">Liquid glass overlays</p>
-                    <p className="text-[11px] text-fg-dim mt-0.5">When on, modals, palette and tour cards blur the background with an accent-color tint that follows your theme. When off, they render exactly as before.</p>
+                    <p className="text-[11px] text-fg-dim mt-0.5">When on, modals, palette and tour cards blur the background. The tint below adds your theme color on top of the frost. When off, they render exactly as before.</p>
                     <div className={`mt-2 space-y-2 ${liquidGlass ? '' : 'opacity-40 pointer-events-none'}`}>
                       <label className="flex items-center gap-2 text-[11px] text-fg-dim">
                         Intensity
@@ -394,6 +397,10 @@ export function UserProfileModal({ open, profile, onClose, onSave, initialCatego
                           className="flex-1 accent-accent-blue" title="Glass blur + tint strength"
                         />
                         <span className="w-8 text-right tabular-nums">{glassIntensity}</span>
+                      </label>
+                      <label className="flex items-center gap-2 text-[11px] text-fg-dim cursor-pointer">
+                        <input type="checkbox" checked={glassTint} onChange={(e) => setGlassTint(e.target.checked)} className="accent-accent-blue" />
+                        Color tint (theme color wash)
                       </label>
                       <div className="flex items-center gap-1" role="group" aria-label="Glass reach">
                         {(['buttons', 'cards', 'all'] as const).map((s) => (
@@ -408,6 +415,7 @@ export function UserProfileModal({ open, profile, onClose, onSave, initialCatego
                           </button>
                         ))}
                       </div>
+                      {!liquidGlass && <p className="text-[10px] text-fg-faint">Turn liquid glass on to see intensity, tint and scope.</p>}
                     </div>
                   </div>
                 </div>

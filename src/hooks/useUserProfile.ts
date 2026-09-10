@@ -66,6 +66,11 @@ export interface UserProfile {
   // Glass reach (default 'cards'): 'buttons' = primary buttons only, 'cards' = buttons +
   // cards/palette/modals, 'all' = additionally whole panel shells tagged glass-panel.
   glassScope: 'buttons' | 'cards' | 'all';
+  // Glass tint toggle (default true) — when off, glass is pure frosted blur with no
+  // accent-color wash, so a color mismatch can never hide the effect. Added 2026-09-10
+  // after the user reported glass invisible everywhere (the old url(#filter) path had
+  // dropped the whole rule, and the new blur+tint path's tint could still mask it).
+  glassTint: boolean;
 }
 
 // Neutral defaults, not a hardcoded person's name/title — matches server/routes/profileRoutes.js's
@@ -101,6 +106,7 @@ const DEFAULT_PROFILE: UserProfile = {
   liquidGlass: true,
   glassIntensity: 65,
   glassScope: 'cards',
+  glassTint: true,
 };
 
 /** Client state for the user profile persisted to the server (GET/POST /api/profile).

@@ -96,10 +96,11 @@ function App() {
     }
   }, [profile.accentColor]);
 
-  // Liquid-glass switch + reach + strength. Mirrors the data-theme attribute pattern
-  // (off/absent leaves every glass surface exactly as its own utilities render it).
-  // Intensity 0–100 maps to 4–32px blur and 4–16% accent tint; scope gates which
-  // surfaces light up (see index.css).
+  // Liquid-glass switch + reach + strength + tint. Mirrors the data-theme attribute
+  // pattern (off/absent leaves every glass surface exactly as its own utilities render
+  // it). Intensity 0–100 maps to 4–32px blur and 4–16% accent tint; scope gates which
+  // surfaces light up (see index.css). Tint off forces 0% so glass is pure frosted
+  // blur — a color mismatch can never hide the effect.
   useEffect(() => {
     const root = document.documentElement;
     root.dataset.liquidGlass = profile.liquidGlass === false ? 'off' : 'on';
@@ -108,8 +109,9 @@ function App() {
     const intensity = typeof profile.glassIntensity === 'number'
       ? Math.max(0, Math.min(100, Math.round(profile.glassIntensity))) : 65;
     root.style.setProperty('--glass-blur', `${Math.round(4 + intensity * 0.28)}px`);
-    root.style.setProperty('--glass-tint', `${Math.round(4 + intensity * 0.12)}%`);
-  }, [profile.liquidGlass, profile.glassScope, profile.glassIntensity]);
+    const tintOff = profile.glassTint === false;
+    root.style.setProperty('--glass-tint', tintOff ? '0%' : `${Math.round(4 + intensity * 0.12)}%`);
+  }, [profile.liquidGlass, profile.glassScope, profile.glassIntensity, profile.glassTint]);
 
   const {
     projects, activeProject, scanPath, setScanPath, scanPaths, handleAddScanPath, messages,
