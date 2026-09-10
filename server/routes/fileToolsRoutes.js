@@ -8,7 +8,7 @@ import path from 'path';
 import { resolveProject } from '../state.js';
 import { walkDir, isTextFile } from '../toolScan.js';
 import { createResolveSafe } from '../toolSandbox.js';
-import { findDuplicates, planTidy, performTidy, performDuplicateDeletes, planDuplicateDeletes, performRename, performMove } from '../wsHandlers/builtinGeneralFiles.js';
+import { findDuplicates, planTidy, performTidy, performDuplicateDeletes, planDuplicateDeletes, performRename, performMove, performCreate, performDelete, performCopy } from '../wsHandlers/builtinGeneralFiles.js';
 import { createCheckpoint } from '../gitSafety.js';
 import { asyncHandler } from '../asyncHandler.js';
 
@@ -248,6 +248,44 @@ export function registerFileToolsRoutes(app) {
     if (!file || !targetDir) return res.status(400).json({ error: 'Missing file/targetDir.' });
     await createCheckpoint(project.path, `move ${file} into ${targetDir}`);
     const result = await performMove(project.path, file, targetDir);
+    res.json(result);
+  }));
+
+  // J (explorer file ops, 2026-09-10): create-file/folder, delete, and copy/duplicate —
+  // the Folder Explorer's missing half (it could only rename/move). Project-scoped like
+  // rename/move above (the panel's relOf() containment check gates the buttons), same
+  // checkpoint + perform + appendAction journal sequence, same never-overwrite rule, so
+  // `revert action <id>` undoes every op here. Panel REST only, never chat.
+  app.post('/api/projects/:id/files/create', asyncHandler(async (req, res) => {
+    const project = findProject(req);
+    if (!project) return res.status(404).json({ error: 'Project not found' });
+    const dir = typeof req.body?.dir === 'string' ? req.body.dir : '';
+    const name = typeof req.body?.name === 'string' ? req.body.name : '';
+    const isDir = req.body?.isDir === true;
+    if (!name) return res.status(400).json({ error: 'Missing name.' });
+    await createCheckpoint(project.path, `create ${isDir ? 'folder' : 'file'} ${name}`);
+    const result = await performCreate(project.path, dir, name, isDir);
+    res.json(result);
+  }));
+
+  app.post('/api/projects/:id/files/delete', asyncHandler(async (req, res) => {
+    const project = findProject(req);
+    if (!project) return res.status(404).json({ error: 'Project not found' });
+    const paths = Array.isArray(req.body?.paths) ? req.body.paths : [];
+    if (paths.length === 0) return res.status(400).json({ error: 'Missing paths[].' });
+    await createCheckpoint(project.path, `delete ${paths.length} item(s)`);
+    const result = await performDelete(project.path, paths);
+    res.json(result);
+  }));
+
+  app.post('/api/projects/:id/files/copy', asyncHandler(async (req, res) => {
+    const project = findProject(req);
+    if (!project) return res.status(404).json({ error: 'Project not found' });
+    const from = typeof req.body?.from === 'string' ? req.body.from : '';
+    const toDir = typeof req.body?.toDir === 'string' ? req.body.toDir : '';
+    if (!from) return res.status(400).json({ error: 'Missing from.' });
+    await createCheckpoint(project.path, `copy ${from}`);
+    const result = await performCopy(project.path, from, toDir);
     res.json(result);
   }));
 }

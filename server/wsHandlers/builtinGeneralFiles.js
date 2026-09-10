@@ -28,6 +28,8 @@ export { performRename } from './generalFiles/rename.js';
 import { handleMove } from './generalFiles/move.js';
 export { performMove } from './generalFiles/move.js';
 
+export { performCreate, performDelete, performCopy } from './generalFiles/ops.js';
+
 export const generalFileHandlers = {
   'general.files.find': handleFind,
   'general.files.tidy': handleTidy,

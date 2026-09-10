@@ -94,6 +94,87 @@ export function FolderExplorerPanel({ onSendMessage, tabId = null, project = nul
     return abs.slice(root.length).replace(/^[\\/]+/, '').replace(/\\/g, '/') || null;
   }, [project]);
 
+  // J (explorer file ops): the browsed FOLDER itself as a relative dir ('.' at the project
+  // root, where relOf's strict containment returns null). Mutations stay inside the
+  // project — null disables every create/delete/duplicate affordance.
+  const dirRel = useCallback((absPath: string): string | null => {
+    if (!project) return null;
+    const root = project.path.replace(/[\\/]+$/, '').toLowerCase();
+    const abs = absPath.replace(/[\\/]+$/, '');
+    if (abs.toLowerCase() === root) return '.';
+    return relOf(absPath);
+  }, [project, relOf]);
+
+  // Inline notice line for op confirmations (create/duplicate/delete) — the panel has no
+  // chat bubble to carry the undo id, so the `revert action <id>` hint renders here.
+  const [notice, setNotice] = useState<string | null>(null);
+  // Pending two-click delete arm: relative paths awaiting the explicit Delete press.
+  const [pendingDelete, setPendingDelete] = useState<string[] | null>(null);
+  // Inline create row: which kind is being named, plus the draft name.
+  const [creating, setCreating] = useState<'file' | 'folder' | null>(null);
+  const [createName, setCreateName] = useState('');
+
+  const undoHint = (actionIds?: string[]) =>
+    actionIds && actionIds.length > 0 ? ` Undo with "revert action ${actionIds[0]}".` : '';
+
+  const doCreate = async () => {
+    const dir = dirRel(path);
+    const name = createName.trim();
+    if (!dir || !name || !project?.id) return;
+    const isDir = creating === 'folder';
+    const result = await apiFetchJson<{ ok: boolean; path?: string; error?: string; actionIds?: string[] }>(
+      projectApi(`/api/projects/${encodeURIComponent(project.id)}/files/create`, tabId),
+      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ dir, name, isDir }) }
+    );
+    if (!result) { setError('Could not reach the server.'); return; }
+    if (!result.ok) { setError(result.error || 'Create failed.'); return; }
+    setError(null);
+    setNotice(`Created ${result.path}.${undoHint(result.actionIds)}`);
+    setCreating(null);
+    setCreateName('');
+    browse(path, false);
+  };
+
+  const doDelete = async () => {
+    if (!pendingDelete || pendingDelete.length === 0 || !project?.id) return;
+    const result = await apiFetchJson<{ ok: boolean; deleted?: number; skippedJournal?: number; error?: string; actionIds?: string[] }>(
+      projectApi(`/api/projects/${encodeURIComponent(project.id)}/files/delete`, tabId),
+      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ paths: pendingDelete }) }
+    );
+    if (!result) { setError('Could not reach the server.'); return; }
+    if (!result.ok) { setError(result.error || 'Delete failed.'); return; }
+    setError(null);
+    const skip = result.skippedJournal ? ` (${result.skippedJournal} too large to journal — unrevertable)` : '';
+    setNotice(`Deleted ${result.deleted} item(s)${skip}.${undoHint(result.actionIds)}`);
+    setPendingDelete(null);
+    setSelectedPaths(new Set());
+    browse(path, false);
+  };
+
+  const doDuplicate = async (entry: BrowseEntry) => {
+    const rel = relOf(entry.path);
+    if (!rel || !project?.id) return;
+    const result = await apiFetchJson<{ ok: boolean; path?: string; error?: string; actionIds?: string[] }>(
+      projectApi(`/api/projects/${encodeURIComponent(project.id)}/files/copy`, tabId),
+      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ from: rel, toDir: '' }) }
+    );
+    if (!result) { setError('Could not reach the server.'); return; }
+    if (!result.ok) { setError(result.error || 'Duplicate failed.'); return; }
+    setError(null);
+    setNotice(`Duplicated as ${result.path}.${undoHint(result.actionIds)}`);
+    browse(path, false);
+  };
+
+  // Arming target: the row itself, or the whole multi-selection when the row is in it.
+  const armDelete = (entry: BrowseEntry) => {
+    const rel = relOf(entry.path);
+    if (!rel) return;
+    const multi = selectedPaths.has(entry.path) && selectedPaths.size > 1
+      ? [...selectedPaths].map((p) => relOf(p)).filter((r): r is string => !!r)
+      : [rel];
+    setPendingDelete(multi);
+  };
+
   const startRename = (entry: BrowseEntry) => {
     if (!relOf(entry.path)) return;
     renameCommittedRef.current = false;
@@ -220,6 +301,12 @@ export function FolderExplorerPanel({ onSendMessage, tabId = null, project = nul
     setExpandedPaths({});
     setChildCache({});
     setChildErr({});
+    // Pending file-op UI never survives navigation either — an armed delete or a
+    // half-typed name belongs to the folder it was started in.
+    setPendingDelete(null);
+    setCreating(null);
+    setCreateName('');
+    setNotice(null);
     if (pushHistory) {
       const prev = historyRef.current;
       const idx = historyIndexRef.current;
@@ -532,6 +619,8 @@ export function FolderExplorerPanel({ onSendMessage, tabId = null, project = nul
     onSendMessage,
     onOpenWith: setOpenWithFor,
     onOpenWithEditor: openWithEditor,
+    onDuplicate: doDuplicate,
+    onDelete: armDelete,
   };
 
   return (
@@ -556,7 +645,80 @@ export function FolderExplorerPanel({ onSendMessage, tabId = null, project = nul
         onClearSelection={() => setSelectedPaths(new Set())}
       />
 
+      {/* J (explorer file ops): New file/folder here, scoped to the active project like
+          rename/move (dirRel() containment — null outside the project disables the row). */}
+      {dirRel(path) !== null && (
+        <div className="flex items-center gap-2 px-4 py-1.5 border-b border-border-faint shrink-0">
+          {creating === null && pendingDelete === null && (
+            <>
+              <button
+                onClick={() => { setCreating('file'); setCreateName(''); }}
+                className="px-2 py-1 rounded-md text-[11px] text-fg-dim hover:text-fg-strong hover:bg-scrim-faint transition-colors"
+                title="Create an empty file in this folder"
+              >
+                + File
+              </button>
+              <button
+                onClick={() => { setCreating('folder'); setCreateName(''); }}
+                className="px-2 py-1 rounded-md text-[11px] text-fg-dim hover:text-fg-strong hover:bg-scrim-faint transition-colors"
+                title="Create a folder inside this folder"
+              >
+                + Folder
+              </button>
+            </>
+          )}
+          {creating !== null && (
+            <div className="flex items-center gap-2 flex-1">
+              <input
+                value={createName}
+                onChange={(e) => setCreateName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') { e.preventDefault(); void doCreate(); }
+                  else if (e.key === 'Escape') { setCreating(null); setCreateName(''); }
+                }}
+                placeholder={creating === 'folder' ? 'New folder name…' : 'New file name…'}
+                autoFocus
+                className="flex-1 text-xs font-mono bg-panel-strong border border-accent-blue/50 rounded px-2 py-1 text-fg-strong focus:outline-none"
+              />
+              <button
+                onClick={() => void doCreate()}
+                disabled={!createName.trim()}
+                className="px-2.5 py-1 rounded-md text-[11px] font-bold bg-accent-blue text-white hover:opacity-90 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                Create
+              </button>
+              <button
+                onClick={() => { setCreating(null); setCreateName(''); }}
+                className="px-2 py-1 rounded-md text-[11px] text-fg-dim hover:text-fg-strong transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          )}
+          {pendingDelete !== null && (
+            <div className="flex items-center gap-2 flex-1">
+              <span className="flex-1 text-[11px] text-accent-red truncate">
+                Delete {pendingDelete.length} item{pendingDelete.length === 1 ? '' : 's'} permanently? ({pendingDelete.slice(0, 2).join(', ')}{pendingDelete.length > 2 ? ', …' : ''})
+              </span>
+              <button
+                onClick={() => void doDelete()}
+                className="px-2.5 py-1 rounded-md text-[11px] font-bold bg-accent-red text-white hover:opacity-90 transition-opacity"
+              >
+                Delete
+              </button>
+              <button
+                onClick={() => setPendingDelete(null)}
+                className="px-2 py-1 rounded-md text-[11px] text-fg-dim hover:text-fg-strong transition-colors"
+              >
+                Keep
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
       {error && <p className="text-xs text-accent-red px-4 py-1.5">{error}</p>}
+      {notice && <p className="text-xs text-accent-green px-4 py-1.5">{notice}</p>}
 
       {/* Main area: list or grid */}
       <div className="flex-1 min-h-0 overflow-y-auto bg-panel">
@@ -598,6 +760,7 @@ export function FolderExplorerPanel({ onSendMessage, tabId = null, project = nul
                       dropTargetPath={dropTarget}
                       renaming={renamingPath === e.path}
                       canRename={!!relOf(e.path)}
+                      canMutate={!!relOf(e.path)}
                       expandable={e.isDir}
                       expanded={!!expandedPaths[e.path]}
                       onToggleExpand={() => void toggleExpand(e)}
@@ -625,6 +788,7 @@ export function FolderExplorerPanel({ onSendMessage, tabId = null, project = nul
                         dropTargetPath={dropTarget}
                         renaming={renamingPath === k.path}
                         canRename={!!relOf(k.path)}
+                        canMutate={!!relOf(k.path)}
                         {...entryViewProps}
                         // Pointer-only nested rows: an impossible cursor pair keeps the
                         // flat-list keyboard cursor (and its scroll-into-view) off them.
@@ -702,13 +866,19 @@ export function FolderExplorerPanel({ onSendMessage, tabId = null, project = nul
             {canMutate && (
               <MenuItem label="Rename…" onClick={() => { close(); startRename(ctxEntry); }} />
             )}
+            {canMutate && (
+              <MenuItem label="Duplicate" onClick={() => { void doDuplicate(ctxEntry); close(); }} />
+            )}
+            {canMutate && (
+              <MenuItem label="Delete…" onClick={() => { armDelete(ctxEntry); close(); }} />
+            )}
             <MenuItem label={multi ? `Copy ${selectedPaths.size} paths` : 'Copy path'} onClick={() => {
               if (multi) { void copySelectedPaths(); } else { onSendMessage(`copy path of ${ctxEntry.path}`); }
               close();
             }} />
             {!canMutate && (
               <div className="px-3 py-1.5 text-[10px] text-fg-faint">
-                Rename/move only work inside the active project.
+                Rename/move/create/delete/duplicate only work inside the active project.
               </div>
             )}
           </div>

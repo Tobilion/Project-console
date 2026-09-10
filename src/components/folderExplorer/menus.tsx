@@ -11,7 +11,7 @@ import type { BrowseEntry, EditorDef } from './utils';
 /** Per-entry action menu — opens via chat commands (terminal stays the source of truth);
  *  "Open (default app)" is the one direct endpoint (browse/open) — the double-click
  *  equivalent, same trust level as reveal. */
-export function EntryMenu({ entry, editors, onSendMessage, onOpenWith, onOpenWithEditor, onOpenDefault, onRename, canRename }: {
+export function EntryMenu({ entry, editors, onSendMessage, onOpenWith, onOpenWithEditor, onOpenDefault, onRename, canRename, canMutate, onDuplicate, onDelete }: {
   entry: BrowseEntry;
   editors: EditorDef[];
   onSendMessage: (text: string) => void;
@@ -20,6 +20,10 @@ export function EntryMenu({ entry, editors, onSendMessage, onOpenWith, onOpenWit
   onOpenDefault: () => void;
   onRename: () => void;
   canRename: boolean;
+  /** J (explorer file ops): inside the active project — gates Duplicate/Delete. */
+  canMutate?: boolean;
+  onDuplicate?: () => void;
+  onDelete?: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -75,6 +79,12 @@ export function EntryMenu({ entry, editors, onSendMessage, onOpenWith, onOpenWit
           <MenuItem label="Reveal in folder" onClick={() => { onSendMessage(`open ${name} in the folder`); setOpen(false); }} />
           {canRename && (
             <MenuItem label="Rename…" onClick={() => { setOpen(false); onRename(); }} />
+          )}
+          {canMutate && (
+            <>
+              <MenuItem label="Duplicate" onClick={() => { setOpen(false); onDuplicate?.(); }} />
+              <MenuItem label="Delete…" onClick={() => { setOpen(false); onDelete?.(); }} />
+            </>
           )}
           <MenuItem label="Copy path" onClick={() => {
             // Phase 8 pattern: copy_to_clipboard WS event is display-only; the panel uses

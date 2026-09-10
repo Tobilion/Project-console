@@ -51,7 +51,7 @@ const { projectActionHandlers } = await import(pathToFileURL(base + 'wsHandlers/
 const { normalizeGithubPageUrl } = await import(pathToFileURL(base + 'wsHandlers/builtinProjectActions.js').href);
 const { extractAbsolutePath } = await import(pathToFileURL(base + 'wsHandlers/projectFileOpen.js').href);
 const { diagnosticsHandlers } = await import(pathToFileURL(base + 'wsHandlers/builtinDiagnostics.js').href);
-const { generalFileHandlers, performTidy, planDuplicateDeletes, performDuplicateDeletes, extractFindQuery, performRename, performMove } = await import(pathToFileURL(base + 'wsHandlers/builtinGeneralFiles.js').href);
+const { generalFileHandlers, performTidy, planDuplicateDeletes, performDuplicateDeletes, extractFindQuery, performRename, performMove, performCreate, performDelete, performCopy } = await import(pathToFileURL(base + 'wsHandlers/builtinGeneralFiles.js').href);
 const { toolsHandlers } = await import(pathToFileURL(base + 'wsHandlers/builtinTools.js').href);
 const { pdfHandlers } = await import(pathToFileURL(base + 'wsHandlers/builtinPdfTools.js').href);
 const { reminderHandlers } = await import(pathToFileURL(base + 'wsHandlers/builtinReminders.js').href);
@@ -628,6 +628,35 @@ fs.writeFileSync(path.join(gRoot, 'diary.txt'), 'occupied');
 const refuseOverwrite = await performRename(gRoot, 'unique.txt', 'diary.txt');
 eq('rename: existing target refused (never overwrite)', !refuseOverwrite.ok && fs.existsSync(path.join(gRoot, 'unique.txt')), true);
 fs.rmSync(gRoot, { recursive: true, force: true });
+
+// J (explorer file ops, 2026-09-10): create-file/folder, delete (journaled + revert),
+// copy/duplicate with auto-numbering, and the guard rails (bad names, existing targets,
+// non-empty folders, console-metadata dirs, outside-root escapes).
+const opsRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'console-fileops-'));
+const mkFile = await performCreate(opsRoot, '.', 'hello.txt', false);
+eq('ops: create file', mkFile.ok === true && fs.existsSync(path.join(opsRoot, 'hello.txt')), true);
+const mkDir = await performCreate(opsRoot, '.', 'docs', true);
+eq('ops: create folder', mkDir.ok === true && fs.statSync(path.join(opsRoot, 'docs')).isDirectory(), true);
+const mkDup = await performCreate(opsRoot, '.', 'hello.txt', false);
+eq('ops: existing name refused (never overwrite)', mkDup.ok === false && /already exists/.test(mkDup.error), true);
+const mkBad = await performCreate(opsRoot, '.', '../evil.txt', false);
+eq('ops: path-separator name refused', mkBad.ok === false, true);
+const mkEsc = await performCreate(opsRoot, '..', 'escape.txt', false);
+eq('ops: outside-root dir refused', mkEsc.ok === false, true);
+fs.writeFileSync(path.join(opsRoot, 'docs', 'inner.txt'), 'inner');
+const delNonEmpty = await performDelete(opsRoot, ['docs']);
+eq('ops: non-empty folder refused (no blind recursion)', delNonEmpty.ok === false && /not empty/.test(delNonEmpty.error) && fs.existsSync(path.join(opsRoot, 'docs', 'inner.txt')), true);
+const cp = await performCopy(opsRoot, 'hello.txt', '');
+eq('ops: copy duplicates with auto-name', cp.ok === true && cp.path === 'hello copy.txt' && fs.existsSync(path.join(opsRoot, 'hello copy.txt')), true);
+const cp2 = await performCopy(opsRoot, 'hello.txt', '');
+eq('ops: second copy auto-numbers', cp2.ok === true && cp2.path === 'hello copy 2.txt', true);
+const delMeta = await performDelete(opsRoot, ['.console/notes.md']);
+eq('ops: console metadata off-limits', delMeta.ok === false && /metadata/.test(delMeta.error), true);
+const del = await performDelete(opsRoot, ['hello.txt']);
+eq('ops: delete removes + journals', del.ok === true && !fs.existsSync(path.join(opsRoot, 'hello.txt')) && del.actionIds.length === 1, true);
+const delRevert = await revertAction(opsRoot, del.actionIds[0]);
+eq('ops: revert restores the deleted file', delRevert.ok === true && fs.readFileSync(path.join(opsRoot, 'hello.txt'), 'utf-8') === '', true);
+fs.rmSync(opsRoot, { recursive: true, force: true });
 
 // Phase 2 audit: the panel's move-preview table sends an explicit file list after a colon —
 // "tidy this folder: pic.jpg" must confirm only that file, not the whole plan.

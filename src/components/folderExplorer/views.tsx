@@ -35,6 +35,10 @@ export interface EntryRowProps {
   onSendMessage: (text: string) => void;
   onOpenWith: (path: string) => void;
   onOpenWithEditor: (path: string, editorId?: string) => void;
+  /** J (explorer file ops): inside the active project — gates Duplicate/Delete rows. */
+  canMutate?: boolean;
+  onDuplicate?: (entry: BrowseEntry) => void;
+  onDelete?: (entry: BrowseEntry) => void;
   // F-9 inline tree (2026-09-10): optional in-place expansion. Nested rows render with
   // cursor -1 (the panel's flat-list keyboard cursor never lands on them — pointer only)
   // and an indent; all callbacks are absolute-path based so they work at any depth.
@@ -50,6 +54,7 @@ export function EntryRow(props: EntryRowProps) {
     editors, canRename, onBrowse, onOpenDefault, onToggleSelect, onDragStart, onDrop,
     onSetDropTarget, onContextMenu, onStartRename, onCommitRename, onCancelRename,
     onBlurRename, onRenameValue, onSendMessage, onOpenWith, onOpenWithEditor,
+    canMutate = false, onDuplicate, onDelete,
     indent = 0, expandable = false, expanded = false, onToggleExpand,
   } = props;
 
@@ -151,6 +156,9 @@ export function EntryRow(props: EntryRowProps) {
           onOpenDefault={() => { if (!e.isDir) onOpenDefault(e.path); }}
           onRename={() => onStartRename(e)}
           canRename={canRename}
+          canMutate={canMutate}
+          onDuplicate={() => onDuplicate?.(e)}
+          onDelete={() => onDelete?.(e)}
         />
       </td>
     </tr>
