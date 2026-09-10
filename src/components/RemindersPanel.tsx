@@ -8,6 +8,8 @@ import { EmptyState } from './ui/EmptyState';
 import { addToast, reminderToastDuration } from './ui/toastStore';
 import { ReminderComposer } from './ReminderComposer';
 import type { Project } from '../types';
+import { END_OF_TODAY, isOverdue, nextFireAt } from './reminders/schedule';
+import type { ReminderInfo, ReminderView } from './reminders/schedule';
 import './RemindersPanel.css';
 
 // Phase 4 (UPGRADE-ROADMAP.md, 2026-08-12): the Reminders panel — Apple Reminders reference
@@ -20,78 +22,19 @@ import './RemindersPanel.css';
 // (Today / Upcoming / All / No Date) are now genuinely separate switchable sections per the
 // Apple Reminders/Todoist pattern — no item repeats across views.
 
-interface ReminderInfo {
-  id: string;
-  text: string;
-  label: string;
-  type: string;
-  fireAt: number | null;
-  weekday: number | null;
-  hour: number | null;
-  minute: number | null;
-  everyMs: number | null;
-  projectName: string;
-  projectId: string;
-  lastFiredAt: number | null;
-  createdAt: number | null;
-  linkedNoteText: string | null;
-  /** F-4: persisted completed flag — completed reminders live in the Completed section
-   *  instead of being deleted (older servers omit it; treat as active). */
-  completed?: boolean;
-}
-
 interface RemindersPanelProps {
   project: Project | null;
   onSendMessage: (text: string, opts?: { source?: string; tool?: string }) => void;
 }
 
 const POLL_MS = PANEL_POLL_SLOW_MS;
-const END_OF_TODAY = () => {
-  const d = new Date();
-  d.setHours(23, 59, 59, 999);
-  return d.getTime();
-};
-
-function isOverdue(fireAt: number): boolean {
-  return fireAt < Date.now();
-}
-
-// Phase 5: recurring reminders (daily/weekly/interval) get a concrete NEXT fire time so the
-// panel can classify them into Today/Upcoming instead of hiding them in All — mirrors the
-// scheduler's isDue() semantics (scheduler.js) for display purposes only.
-function nextFireAt(r: ReminderInfo): number | null {
-  if (r.type === 'oneshot' || r.type === 'todo') return r.fireAt;
-  const now = new Date();
-  if (r.type === 'daily' && r.hour !== null && r.minute !== null) {
-    const d = new Date(now.getFullYear(), now.getMonth(), now.getDate(), r.hour, r.minute, 0, 0);
-    if (d.getTime() > now.getTime()) return d.getTime();
-    d.setDate(d.getDate() + 1);
-    return d.getTime();
-  }
-  if (r.type === 'weekly' && r.weekday !== null && r.hour !== null && r.minute !== null) {
-    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate(), r.hour, r.minute, 0, 0);
-    const daysAhead = (r.weekday - today.getDay() + 7) % 7;
-    const occ = today.getTime() + daysAhead * 86400000;
-    if (occ > now.getTime()) return occ;
-    return occ + 7 * 86400000;
-  }
-  if (r.type === 'interval' && r.everyMs) {
-    const base = r.lastFiredAt ?? r.fireAt ?? 0;
-    let next = base + r.everyMs;
-    while (next <= now.getTime()) next += r.everyMs;
-    return next;
-  }
-  return null;
-}
-
-type View = 'today' | 'upcoming' | 'all' | 'nodate' | 'completed';
 
 export function RemindersPanel({ project, onSendMessage }: RemindersPanelProps) {
   const [reminders, setReminders] = useState<ReminderInfo[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [newInput, setNewInput] = useState('');
-  const [view, setView] = useState<View>('all');
+  const [view, setView] = useState<ReminderView>('all');
   const [lastSent, flashSent] = useFlashMessage();
   const [completing, setCompleting] = useState<Set<string>>(new Set());
   // Reminder composer popup state — prefilled text + the id being edited (null = new).
@@ -256,7 +199,7 @@ export function RemindersPanel({ project, onSendMessage }: RemindersPanelProps) 
     return { today: t, upcoming: u, all: a, nodate: n, completed: c };
   }, [reminders]);
 
-  const viewItems: Record<View, ReminderInfo[]> = {
+  const viewItems: Record<ReminderView, ReminderInfo[]> = {
     today, upcoming, all, nodate, completed,
   };
   const shown = viewItems[view];
@@ -370,7 +313,7 @@ export function RemindersPanel({ project, onSendMessage }: RemindersPanelProps) 
     <div className="border-b mx-2" style={{ borderColor: 'var(--rm-sep)', ...style }} />
   );
 
-  const tabBtn = (v: View, label: string, count: number) => (
+  const tabBtn = (v: ReminderView, label: string, count: number) => (
     <button
       onClick={() => setView(v)}
       className={cn(

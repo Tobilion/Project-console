@@ -331,8 +331,10 @@ Verified: check-handlers 287/287, check-ws-cases clean, npm test 602/602, tsc cl
   SLOW_MS`; every cadence is byte-identical to the old literal, only the duplication is gone
   — deliberately left out of tuningStore, which stays backend-numbers-with-bounds-only). The
    rest of B.1 (the remaining oversized files — `matcher.js` 429, plus
-   `NotificationsPanel.tsx`/`PdfToolsPanel.tsx`/`RemindersPanel.tsx` and the rest of the
-   frontend panel list — see the spec's per-file notes; `FolderExplorerPanel.tsx` footer done
+   `NotificationsPanel.tsx`/`PdfToolsPanel.tsx` and the rest of the frontend panel
+   list — see the spec's per-file notes; `RemindersPanel.tsx` schedule leaf done
+   (2026-09-10, opencode): pure date helpers + `ReminderInfo`/`ReminderView` types into
+   `reminders/schedule.ts`, root 455→402, byte-identical bodies, no external importers; `FolderExplorerPanel.tsx` footer done
    (2026-09-10, opencode): bottom bar (view toggle/grid-size/read-only/count) extracted verbatim
    into `folderExplorer/footer.tsx` (`ExplorerFooter`, same props-down pattern as the existing
    header/views/menus leaves), root 717→642 lines — note commit 3e8de10's message claimed this
