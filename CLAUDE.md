@@ -772,12 +772,13 @@ Verified: check-handlers 287/287, check-ws-cases clean, npm test 602/602, tsc cl
   now completes instead of deleting — its "session-lifetime visual" comment updated).
   Panel Completed section takes flagged items first (fired-past oneshots still land there
   too). Verified: 5 new check-handlers rows (308/308), npm test 602/602, tsc + vite build
-  clean. Browser confirmation still outstanding. F-9 verified no-change-needed
-  (2026-09-09, opencode): no tree-implying expand affordance exists anymore — folders
-  drill-in on click/Enter/double-click with accurate "Enter to open folder" titles plus
-  breadcrumb/back/forward to get back, so the spec's fallback condition (remove the
-  misleading affordance) is already satisfied; a genuine inline tree is a bigger feature
-   than this pass and stays open. F-5(1) done (2026-09-10, opencode): recycle bin —
+  clean. Browser confirmation still outstanding. F-9 done (2026-09-10, opencode):
+  one-level inline expansion — folder rows in list view gained a chevron expanding
+  immediate children in place (fetched once via /api/browse, cached, per-folder inline
+  loading/error rows, cleared on navigate); nested rows are pointer-only (impossible
+  cursor pair keeps the flat keyboard cursor off them) and nested folders drill in
+  rather than expanding again; grid view untouched. Drill-in behavior is unchanged, so
+  the old no-change fallback still holds if the chevron ever regresses. F-5(1) done (2026-09-10, opencode): recycle bin —
    deletes move the raw line to `.console/notes.trash.md` (same format, no migration) via
    a shared twin-safe `findNoteIndex()` (delete + restore use one contract; the F-5(2)
    ambiguity message is byte-identical); new `system.notes.trash` intent (registry +
@@ -997,7 +998,7 @@ docs 81+142, vite build, `doctor` (2 known env warnings), desktop NSIS
 E-4 anchored popup, all browser click-throughs, matcher.js split/naming,
 PdfTools/UserProfileModal/useConsole/Terminal splits, executor error-style
 unification, explorer create/delete ops, CSV editing vs rename, PDF unlock (error
-already graceful), C-5 auto-advance, F-9 inline tree, Hello biometrics,
+already graceful), C-5 auto-advance, Hello biometrics,
 installed-app smoke test.
 
 **Native verification baseline (2026-09-09, opencode on Windows — supersedes the bridged-shell

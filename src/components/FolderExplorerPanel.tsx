@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, Fragment } from 'react';
 import { Folder, Code, AppWindow } from 'lucide-react';
 import { apiFetchJson } from '../utils/apiFetch';
 import { projectApi } from '../utils/projectApi';
@@ -216,6 +216,10 @@ export function FolderExplorerPanel({ onSendMessage, tabId = null, project = nul
     // Selection is per-folder — navigating away drops it (Windows Explorer behavior).
     setSelectedPaths(new Set());
     selectPivotRef.current = null;
+    // Inline expansion is per-folder too — stale child rows must never linger.
+    setExpandedPaths({});
+    setChildCache({});
+    setChildErr({});
     if (pushHistory) {
       const prev = historyRef.current;
       const idx = historyIndexRef.current;
@@ -455,6 +459,52 @@ export function FolderExplorerPanel({ onSendMessage, tabId = null, project = nul
   const tileSize = gridSize === 'lg' ? 72 : gridSize === 'md' ? 56 : 44;
   const tileIcon = gridSize === 'lg' ? 28 : gridSize === 'md' ? 22 : 16;
 
+  // F-9 inline tree (2026-09-10, list view only): one-level in-place expansion.
+  // expandedPaths toggles chevrons; childCache holds each folder's immediate children
+  // (null = loading, undefined = never fetched); childErr carries a graceful per-folder
+  // failure ("Couldn't list this folder") instead of a toast or a crash. Navigating
+  // clears all of it (same as selection). Nested rows are pointer-only: they render
+  // with an impossible cursor pair so the flat-list keyboard cursor never lands on
+  // them, and nested folders drill in on click rather than expanding again.
+  const [expandedPaths, setExpandedPaths] = useState<Record<string, boolean>>({});
+  const [childCache, setChildCache] = useState<Record<string, BrowseEntry[] | null>>({});
+  const [childErr, setChildErr] = useState<Record<string, string>>({});
+
+  const toggleExpand = useCallback(async (entry: BrowseEntry) => {
+    if (!entry.isDir) return;
+    if (expandedPaths[entry.path]) {
+      setExpandedPaths((prev) => {
+        const next = { ...prev };
+        delete next[entry.path];
+        return next;
+      });
+      return;
+    }
+    setExpandedPaths((prev) => ({ ...prev, [entry.path]: true }));
+    if (entry.path in childCache) return;
+    setChildCache((prev) => ({ ...prev, [entry.path]: null }));
+    const data = await apiFetchJson<{ path: string; entries: BrowseEntry[]; error?: string }>(
+      `/api/browse?path=${encodeURIComponent(entry.path)}`
+    );
+    if (!data || data.error) {
+      setChildErr((prev) => ({ ...prev, [entry.path]: data?.error || 'Could not reach the server.' }));
+      setChildCache((prev) => {
+        const next = { ...prev };
+        delete next[entry.path];
+        return next;
+      });
+      return;
+    }
+    setChildErr((prev) => {
+      const next = { ...prev };
+      delete next[entry.path];
+      return next;
+    });
+    const kids = [...(data.entries || [])].sort((a, b) =>
+      a.isDir !== b.isDir ? (a.isDir ? -1 : 1) : a.name.toLowerCase() < b.name.toLowerCase() ? -1 : 1);
+    setChildCache((prev) => ({ ...prev, [entry.path]: kids }));
+  }, [expandedPaths, childCache]);
+
   // Shared props for the row/tile renderers (2026-08-24 split).
   const entryViewProps = {
     cursor,
@@ -535,19 +585,58 @@ export function FolderExplorerPanel({ onSendMessage, tabId = null, project = nul
               </tr>
             </thead>
             <tbody>
-              {sortedEntries.map((e, i) => (
-                <EntryRow
-                  key={e.path}
-                  entry={e}
-                  index={i}
-                  cursor={cursor}
-                  selected={selectedPaths.has(e.path)}
-                  dropTargetPath={dropTarget}
-                  renaming={renamingPath === e.path}
-                  canRename={!!relOf(e.path)}
-                  {...entryViewProps}
-                />
-              ))}
+              {sortedEntries.map((e, i) => {
+                const kids = e.isDir && expandedPaths[e.path] ? childCache[e.path] : undefined;
+                const err = e.isDir ? childErr[e.path] : undefined;
+                return (
+                  <Fragment key={e.path}>
+                    <EntryRow
+                      entry={e}
+                      index={i}
+                      cursor={cursor}
+                      selected={selectedPaths.has(e.path)}
+                      dropTargetPath={dropTarget}
+                      renaming={renamingPath === e.path}
+                      canRename={!!relOf(e.path)}
+                      expandable={e.isDir}
+                      expanded={!!expandedPaths[e.path]}
+                      onToggleExpand={() => void toggleExpand(e)}
+                      {...entryViewProps}
+                    />
+                    {err && (
+                      <tr>
+                        <td colSpan={4} className="px-4 py-1.5 pl-10 text-[11px] text-accent-red">
+                          Couldn&apos;t list this folder: {err}
+                        </td>
+                      </tr>
+                    )}
+                    {kids === null && (
+                      <tr>
+                        <td colSpan={4} className="px-4 py-1.5 pl-10 text-[11px] text-fg-dim animate-pulse">
+                          Loading…
+                        </td>
+                      </tr>
+                    )}
+                    {(kids ?? []).map((k) => (
+                      <EntryRow
+                        key={k.path}
+                        entry={k}
+                        selected={selectedPaths.has(k.path)}
+                        dropTargetPath={dropTarget}
+                        renaming={renamingPath === k.path}
+                        canRename={!!relOf(k.path)}
+                        {...entryViewProps}
+                        // Pointer-only nested rows: an impossible cursor pair keeps the
+                        // flat-list keyboard cursor (and its scroll-into-view) off them.
+                        // Explicit AFTER the spread — entryViewProps carries the live cursor.
+                        index={-1}
+                        cursor={-2}
+                        indent={1}
+                      />
+                    ))}
+                  </Fragment>
+                );
+              })}
             </tbody>
           </table>
         ) : (

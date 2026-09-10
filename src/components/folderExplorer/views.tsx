@@ -2,7 +2,7 @@
 // FolderExplorerPanel.tsx). Pure presentational components: every interaction is a callback
 // prop, so the parent keeps all state.
 
-import { Folder } from 'lucide-react';
+import { Folder, ChevronRight } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { fileIcon, formatSize, formatDate, extOf } from './utils';
 import type { BrowseEntry, EditorDef } from './utils';
@@ -35,6 +35,13 @@ export interface EntryRowProps {
   onSendMessage: (text: string) => void;
   onOpenWith: (path: string) => void;
   onOpenWithEditor: (path: string, editorId?: string) => void;
+  // F-9 inline tree (2026-09-10): optional in-place expansion. Nested rows render with
+  // cursor -1 (the panel's flat-list keyboard cursor never lands on them — pointer only)
+  // and an indent; all callbacks are absolute-path based so they work at any depth.
+  indent?: number;
+  expandable?: boolean;
+  expanded?: boolean;
+  onToggleExpand?: () => void;
 }
 
 export function EntryRow(props: EntryRowProps) {
@@ -43,6 +50,7 @@ export function EntryRow(props: EntryRowProps) {
     editors, canRename, onBrowse, onOpenDefault, onToggleSelect, onDragStart, onDrop,
     onSetDropTarget, onContextMenu, onStartRename, onCommitRename, onCancelRename,
     onBlurRename, onRenameValue, onSendMessage, onOpenWith, onOpenWithEditor,
+    indent = 0, expandable = false, expanded = false, onToggleExpand,
   } = props;
 
   const dropTarget = dropTargetPath === e.path;
@@ -76,6 +84,35 @@ export function EntryRow(props: EntryRowProps) {
             aria-label={`Rename ${e.name}`}
             className="w-full text-xs font-mono bg-panel-strong border border-accent-blue/50 rounded px-1.5 py-0.5 text-fg-strong focus:outline-none"
           />
+        ) : expandable && e.isDir ? (
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              aria-label={expanded ? `Collapse ${e.name}` : `Expand ${e.name} in place`}
+              aria-expanded={expanded}
+              title={expanded ? 'Collapse (folder stays open here)' : 'Expand in place (clicking the name still navigates)'}
+              onClick={() => onToggleExpand?.()}
+              className="shrink-0 p-0.5 rounded text-fg-dim hover:text-fg-strong hover:bg-scrim-faint transition-colors"
+            >
+              <ChevronRight size={13} className={`transition-transform ${expanded ? 'rotate-90' : ''}`} />
+            </button>
+            <button
+              draggable={false}
+              onClick={(ev) => {
+                if (ev.ctrlKey || ev.metaKey || ev.shiftKey) { onToggleSelect(e, ev); return; }
+                onBrowse(e.path);
+              }}
+              onDoubleClick={() => {}}
+              onKeyDown={(ev) => {
+                if (ev.key === 'Enter') { ev.preventDefault(); onBrowse(e.path); }
+              }}
+              title="Enter to open folder · right-click for more"
+              className="flex items-center gap-2 text-left flex-1 min-w-0 cursor-pointer"
+            >
+              <Folder size={14} className="shrink-0 text-accent-blue" />
+              <span className="text-fg-strong font-mono truncate">{e.name}</span>
+            </button>
+          </div>
         ) : (
           <button
             draggable={!e.isDir}
@@ -95,6 +132,7 @@ export function EntryRow(props: EntryRowProps) {
             }}
             title={e.isDir ? 'Enter to open folder · right-click for more' : 'Double-click or Enter to open in its default app · Ctrl+click to multi-select · drag onto a folder to move'}
             className="flex items-center gap-2 text-left w-full cursor-pointer"
+            style={indent > 0 ? { paddingLeft: indent * 18 } : undefined}
           >
             {e.isDir ? <Folder size={14} className="shrink-0 text-accent-blue" /> : fileIcon(e.name)}
             <span className="text-fg-strong font-mono truncate">{e.name}</span>
