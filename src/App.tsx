@@ -3,6 +3,7 @@ import { X } from 'lucide-react';
 import { GlowOrbs } from './components/GlowOrbs';
 import { LoginScreen } from './components/LoginScreen';
 import { BootScreen } from './components/BootScreen';
+import { NotificationsPopup } from './components/NotificationsPopup';
 import { AppHeader } from './components/AppHeader';
 import { AppMainView } from './components/AppMainView';
 import { AppOverlays } from './components/AppOverlays';
@@ -172,6 +173,9 @@ function App() {
       .catch(() => {});
     return () => { cancelled = true; };
   }, []);
+  // E-4 (2026-09-10): the header bell opens the anchored popup, not the Tools grid.
+  // The full panel stays one click away inside the popup (same endpoints either way).
+  const [notifPopupOpen, setNotifPopupOpen] = useState(false);
   const handleOpenNotifications = useCallback(() => {
     // Prefetch the registry so the panel shell has names/icons on first paint — the panel
     // itself renders from the static view map regardless (see ToolsPanel).
@@ -485,7 +489,7 @@ function App() {
           onToggleCommandRef={() => { setShowDashboard(false); setToolsOpen(false); setShowCommandRef(v => !v); }}
           onToggleDashboard={() => { setToolsOpen(false); setShowDashboard(v => !v); }}
           onToggleTools={() => { setShowDashboard(false); setShowCommandRef(false); setToolsOpen(v => !v); }}
-          onOpenNotifications={handleOpenNotifications}
+          onOpenNotifications={() => setNotifPopupOpen(true)}
           onOpenProfile={() => setProfileOpen(true)}
           onOpenTourPicker={() => setTourPickerOpen(true)}
           folderInputRef={folderInputRef}
@@ -495,6 +499,12 @@ function App() {
           onAccountAction={handleAccountAction}
         />
       )}
+      <NotificationsPopup
+        open={notifPopupOpen}
+        onClose={() => setNotifPopupOpen(false)}
+        onOpenFullPanel={handleOpenNotifications}
+        onRead={() => setUnreadNotificationsCount(0)}
+      />
 
       {updateNotice && (
         <div className="relative z-10 flex-shrink-0 mb-3 flex items-center gap-3 px-4 py-2 text-xs text-fg-strong bg-accent-blue/10 border border-accent-blue/20 rounded-lg">
