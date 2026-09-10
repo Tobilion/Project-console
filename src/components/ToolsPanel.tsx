@@ -78,7 +78,7 @@ const PANEL_VIEWS: Record<string, (p: PanelProps) => React.ReactElement> = {
 function PanelShell({ onClose, children }: { onClose: () => void; children: React.ReactNode }) {
   return (
     <motion.div
-      className="h-full flex flex-col"
+      className="h-full flex flex-col glass glass-panel"
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.18, ease: 'easeOut' }}

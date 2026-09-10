@@ -60,6 +60,12 @@ export interface UserProfile {
   // G-5 (2026-09-09): liquid-glass treatment on overlay shells (default on; Settings →
   // Appearance; off is pixel-identical to before).
   liquidGlass: boolean;
+  // Glass intensity 0–100 (default 65) → blur radius + accent tint strength (Settings →
+  // Appearance slider; 0 is near-invisible but still on, the toggle is the off switch).
+  glassIntensity: number;
+  // Glass reach (default 'cards'): 'buttons' = primary buttons only, 'cards' = buttons +
+  // cards/palette/modals, 'all' = additionally whole panel shells tagged glass-panel.
+  glassScope: 'buttons' | 'cards' | 'all';
 }
 
 // Neutral defaults, not a hardcoded person's name/title — matches server/routes/profileRoutes.js's
@@ -93,6 +99,8 @@ const DEFAULT_PROFILE: UserProfile = {
   quietHoursEnd: null,
   colorFollowsMouse: true,
   liquidGlass: true,
+  glassIntensity: 65,
+  glassScope: 'cards',
 };
 
 /** Client state for the user profile persisted to the server (GET/POST /api/profile).

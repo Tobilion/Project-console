@@ -182,11 +182,11 @@ export function TourOverlay({ section, mode, onClose }: TourOverlayProps) {
                 </button>
               )}
               {step < total - 1 ? (
-                <button onClick={() => setStep((s) => s + 1)} className="flex items-center gap-1.5 px-4 py-2 bg-accent-teal/20 text-accent-teal rounded-lg text-xs font-bold tracking-wider uppercase hover:bg-accent-teal/30 transition-colors">
+                <button onClick={() => setStep((s) => s + 1)} className="flex items-center gap-1.5 px-4 py-2 bg-accent-teal/20 text-accent-teal rounded-lg text-xs font-bold tracking-wider uppercase hover:bg-accent-teal/30 transition-colors glass glass-btn">
                   Next <ChevronRight size={14} />
                 </button>
               ) : (
-                <button onClick={finish} className="flex items-center gap-1.5 px-4 py-2 bg-accent-blue text-white rounded-lg text-xs font-bold tracking-wider uppercase hover:opacity-90 transition-opacity">
+                <button onClick={finish} className="flex items-center gap-1.5 px-4 py-2 bg-accent-blue text-white rounded-lg text-xs font-bold tracking-wider uppercase hover:opacity-90 transition-opacity glass glass-btn">
                   Done <Check size={14} />
                 </button>
               )}

@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { X } from 'lucide-react';
 import { GlowOrbs } from './components/GlowOrbs';
-import { GlassFilter } from './components/ui/GlassFilter';
 import { LoginScreen } from './components/LoginScreen';
 import { BootScreen } from './components/BootScreen';
 import { AppHeader } from './components/AppHeader';
@@ -96,11 +95,20 @@ function App() {
     }
   }, [profile.accentColor]);
 
-  // G-5: liquid-glass switch. Mirrors the data-theme attribute pattern (off/absent leaves
-  // every .glass-lens surface exactly as its own utilities render it).
+  // Liquid-glass switch + reach + strength. Mirrors the data-theme attribute pattern
+  // (off/absent leaves every glass surface exactly as its own utilities render it).
+  // Intensity 0–100 maps to 4–32px blur and 4–16% accent tint; scope gates which
+  // surfaces light up (see index.css).
   useEffect(() => {
-    document.documentElement.dataset.liquidGlass = profile.liquidGlass === false ? 'off' : 'on';
-  }, [profile.liquidGlass]);
+    const root = document.documentElement;
+    root.dataset.liquidGlass = profile.liquidGlass === false ? 'off' : 'on';
+    const scope = profile.glassScope === 'buttons' || profile.glassScope === 'all' ? profile.glassScope : 'cards';
+    root.dataset.glassScope = scope;
+    const intensity = typeof profile.glassIntensity === 'number'
+      ? Math.max(0, Math.min(100, Math.round(profile.glassIntensity))) : 65;
+    root.style.setProperty('--glass-blur', `${Math.round(4 + intensity * 0.28)}px`);
+    root.style.setProperty('--glass-tint', `${Math.round(4 + intensity * 0.12)}%`);
+  }, [profile.liquidGlass, profile.glassScope, profile.glassIntensity]);
 
   const {
     projects, activeProject, scanPath, setScanPath, scanPaths, handleAddScanPath, messages,
@@ -409,7 +417,6 @@ function App() {
     return (
       <div className="h-screen relative flex flex-col">
         <GlowOrbs followMouse={profile.colorFollowsMouse} />
-        <GlassFilter />
         <div className="relative z-10 flex-1 min-h-0">
           <LoginScreen />
         </div>
@@ -420,7 +427,6 @@ function App() {
   return (
     <div className="h-screen relative flex flex-col">
       <GlowOrbs followMouse={profile.colorFollowsMouse} />
-      <GlassFilter />
 
       {!chatFullscreen && (
         <AppHeader

@@ -880,10 +880,20 @@ Verified: check-handlers 287/287, check-ws-cases clean, npm test 602/602, tsc cl
   `liquidGlass` profile toggle default ON (Settings → Appearance, mirrored on `<html>`
   like `data-theme`), and `glass-lens` on the already-translucent overlay shells
   (ModalShell, CommandDeck, both TourOverlay cards — opaque panels/cards deliberately
-  untouched, glass on opaque paint is invisible). Off (or a missing filter mount, which
-  must stay unconditional per the invariant comment) renders exactly as before.
-   Verified: profile default/off round-trip, tsc + vite build clean; the refraction
-   strength/edge values are judgment calls pending a real screen. G-6 audited
+  untouched, glass on opaque paint is invisible). Off renders exactly as before.
+   G-5 reworked (2026-09-10, opencode — the user reported glass invisible everywhere):
+   root cause was `backdrop-filter: url(#...)`, which Chromium rejects as an invalid
+   value, dropping the whole declaration including the blur. The rule now uses only
+   universally-supported functions — `blur(var(--glass-blur)) saturate(180%)` plus an
+   accent-tinted gradient overlay (`color-mix` with `--color-accent-blue`, iOS-style,
+   so glass follows the chosen theme color) — and the dead SVG mount is removed
+   (`GlassFilter.tsx` deleted, no references remain). New `glassIntensity` (0–100 →
+   4–32px blur + 4–16% tint) slider and `glassScope` (buttons/cards/all) segmented
+   control in Settings → Appearance (both profile fields, sanitized server-side);
+   `glass glass-btn` tagged on 5 primary CTAs, `glass glass-panel` on the Notes/Tools
+   panel shells for scope=all (default scope cards). Verified: profile clamp/fallback
+   round-trip via direct sanitize asserts, tsc + vite build clean; how the tint reads
+   over real content still needs eyes on a screen. G-6 audited
    no-change-needed (2026-09-09, opencode): grepped every `rounded-*` utility — no
    one-off/arbitrary values anywhere; cards sit on the 18px/12px scale
    (`rounded-2xl` marketplace/palette/modals, `rounded-xl` panels), small controls on

@@ -81,6 +81,10 @@ export function UserProfileModal({ open, profile, onClose, onSave, initialCatego
   const [quietEnd, setQuietEnd] = useState(profile.quietHoursEnd === null ? 'off' : String(profile.quietHoursEnd));
   const [colorFollowsMouse, setColorFollowsMouse] = useState(profile.colorFollowsMouse);
   const [liquidGlass, setLiquidGlass] = useState(profile.liquidGlass);
+  const [glassIntensity, setGlassIntensity] = useState(
+    typeof profile.glassIntensity === 'number' ? profile.glassIntensity : 65);
+  const [glassScope, setGlassScope] = useState<'buttons' | 'cards' | 'all'>(
+    profile.glassScope === 'buttons' || profile.glassScope === 'all' ? profile.glassScope : 'cards');
   const [generalToolsFirst, setGeneralToolsFirst] = useState(profile.generalToolsFirst);
   const [category, setCategory] = useState<CategoryId>((initialCategory as CategoryId) || 'identity');
 
@@ -110,6 +114,8 @@ export function UserProfileModal({ open, profile, onClose, onSave, initialCatego
       setQuietEnd(profile.quietHoursEnd === null ? 'off' : String(profile.quietHoursEnd));
       setColorFollowsMouse(profile.colorFollowsMouse);
       setLiquidGlass(profile.liquidGlass);
+      setGlassIntensity(typeof profile.glassIntensity === 'number' ? profile.glassIntensity : 65);
+      setGlassScope(profile.glassScope === 'buttons' || profile.glassScope === 'all' ? profile.glassScope : 'cards');
       setGeneralToolsFirst(profile.generalToolsFirst);
       if (initialCategory) setCategory(initialCategory as CategoryId);
     }
@@ -143,6 +149,8 @@ export function UserProfileModal({ open, profile, onClose, onSave, initialCatego
       quietHoursEnd: quietEnd === 'off' ? null : Number(quietEnd),
       colorFollowsMouse,
       liquidGlass,
+      glassIntensity,
+      glassScope,
     });
     onClose();
   };
@@ -326,9 +334,33 @@ export function UserProfileModal({ open, profile, onClose, onSave, initialCatego
                 <div className="flex items-start gap-3">
                   <Toggle enabled={liquidGlass} onToggle={() => setLiquidGlass(!liquidGlass)}
                     title={liquidGlass ? 'Liquid glass on' : 'Plain blur'} />
-                  <div>
+                  <div className="flex-1 min-w-0">
                     <p className="text-sm text-fg">Liquid glass overlays</p>
-                    <p className="text-[11px] text-fg-dim mt-0.5">When on, modal and palette shells refract the background instead of plain-blurring it. When off, they render exactly as before.</p>
+                    <p className="text-[11px] text-fg-dim mt-0.5">When on, modals, palette and tour cards blur the background with an accent-color tint that follows your theme. When off, they render exactly as before.</p>
+                    <div className={`mt-2 space-y-2 ${liquidGlass ? '' : 'opacity-40 pointer-events-none'}`}>
+                      <label className="flex items-center gap-2 text-[11px] text-fg-dim">
+                        Intensity
+                        <input
+                          type="range" min={0} max={100} step={1} value={glassIntensity}
+                          onChange={(e) => setGlassIntensity(Number(e.target.value))}
+                          className="flex-1 accent-accent-blue" title="Glass blur + tint strength"
+                        />
+                        <span className="w-8 text-right tabular-nums">{glassIntensity}</span>
+                      </label>
+                      <div className="flex items-center gap-1" role="group" aria-label="Glass reach">
+                        {(['buttons', 'cards', 'all'] as const).map((s) => (
+                          <button
+                            key={s}
+                            type="button"
+                            onClick={() => setGlassScope(s)}
+                            className={`px-2 py-1 rounded-md text-[10px] font-bold uppercase transition-colors ${glassScope === s ? 'bg-accent-blue/15 text-accent-blue' : 'text-fg-dim hover:text-fg-strong'}`}
+                            title={s === 'buttons' ? 'Glass primary buttons only' : s === 'cards' ? 'Glass buttons, modals, palette and tour cards' : 'Glass everything above plus whole panel shells'}
+                          >
+                            {s === 'buttons' ? 'Buttons' : s === 'cards' ? 'Buttons + cards' : 'Everything'}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>

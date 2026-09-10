@@ -230,14 +230,34 @@ html, body {
   opacity: 0.5;
 }
 
-/* G-5 liquid glass: `.glass-lens` surfaces gain SVG-filter refraction + a glass edge when
-   <html data-liquid-glass="on"> (profile toggle, default on). Toggle off (or no attribute)
-   leaves every surface exactly as its own utilities render it — zero visual change. The
-   url(#container-glass) reference resolves against the GlassFilter SVG App mounts once;
-   that mount must stay unconditional (see GlassFilter.tsx). */
-[data-liquid-glass="on"] .glass-lens {
-  backdrop-filter: url(#container-glass) blur(20px);
-  -webkit-backdrop-filter: url(#container-glass) blur(20px);
+/* Liquid glass (profile toggle, default on). Root cause of the 2026-09-09 "invisible
+   glass" report: the old rule used `backdrop-filter: url(#...)`, which Chromium (and
+   therefore Electron) rejects as an invalid value — the whole declaration, blur
+   included, was dropped, so the toggle visibly did nothing. This system uses only
+   universally-supported filter functions: blur radius comes from --glass-blur, the
+   iOS-style accent tint from --glass-tint (both set from the profile by App, so the
+   glass always follows the user's chosen accent color), plus the glass edge/shadow
+   tokens. Toggle off (or no attribute) leaves every surface exactly as its own
+   utilities render it — zero visual change.
+   Reach is gated by data-glass-scope: buttons lights .glass-btn only, cards adds
+   .glass-lens (modals/palette/tour cards), all additionally lights .glass-panel
+   (whole panel shells). */
+:root {
+  --glass-blur: 22px;
+  --glass-tint: 11%;
+}
+[data-liquid-glass="on"][data-glass-scope="buttons"] .glass-btn,
+[data-liquid-glass="on"][data-glass-scope="cards"] .glass-btn,
+[data-liquid-glass="on"][data-glass-scope="cards"] .glass-lens,
+[data-liquid-glass="on"][data-glass-scope="all"] .glass-btn,
+[data-liquid-glass="on"][data-glass-scope="all"] .glass-lens,
+[data-liquid-glass="on"][data-glass-scope="all"] .glass-panel {
+  backdrop-filter: blur(var(--glass-blur)) saturate(180%);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(180%);
+  background-image: linear-gradient(
+    color-mix(in srgb, var(--color-accent-blue) var(--glass-tint), transparent),
+    color-mix(in srgb, var(--color-accent-blue) var(--glass-tint), transparent)
+  );
   border-color: var(--color-glass-border);
   box-shadow: var(--shadow-glass);
 }

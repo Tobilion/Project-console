@@ -312,7 +312,7 @@ export function NotesPanel({ project, onSendMessage, tabId = null }: NotesPanelP
   };
 
   return (
-    <div className="notes-panel h-full flex flex-col">
+    <div className="notes-panel h-full flex flex-col glass glass-panel">
       {/* Header row */}
       <div className="flex items-center justify-between px-4 py-2 border-b border-border-faint shrink-0">
         <div className="flex items-center gap-2">

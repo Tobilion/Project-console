@@ -170,7 +170,7 @@ npm run dist</pre>
           </button>
           <button
             type="submit"
-            className="flex items-center gap-1.5 px-4 py-2 bg-accent-blue text-white rounded-lg text-xs font-bold tracking-wider uppercase hover:opacity-90 transition-opacity"
+            className="flex items-center gap-1.5 px-4 py-2 bg-accent-blue text-white rounded-lg text-xs font-bold tracking-wider uppercase hover:opacity-90 transition-opacity glass glass-btn"
           >
             Get Started <ArrowRight size={14} />
           </button>

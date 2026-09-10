@@ -117,7 +117,7 @@ export function LoginScreen() {
             <button
               type="submit"
               disabled={busy || !username.trim() || !password}
-              className="w-full px-3 py-2 text-sm font-bold rounded-xl bg-accent-blue text-white hover:opacity-90 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed"
+              className="w-full px-3 py-2 text-sm font-bold rounded-xl bg-accent-blue text-white hover:opacity-90 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed glass glass-btn"
             >
               {busy ? 'Logging in…' : 'Log in'}
             </button>
@@ -150,7 +150,7 @@ export function LoginScreen() {
             <button
               type="submit"
               disabled={busy || !username.trim() || !code.trim() || !newPassword}
-              className="w-full px-3 py-2 text-sm font-bold rounded-xl bg-accent-blue text-white hover:opacity-90 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed"
+              className="w-full px-3 py-2 text-sm font-bold rounded-xl bg-accent-blue text-white hover:opacity-90 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed glass glass-btn"
             >
               {busy ? 'Resetting…' : 'Reset password & log in'}
             </button>
