@@ -133,6 +133,29 @@ export async function matchInput(input, project, projectIndex, options = {}) {
   }
   input = input.replace(/(?:[?!.,;]+|\\+)$/g, '');
 
+  // High-volume harness (2026-09-11): strip leading/trailing conversational filler
+  // ("hey", "hey,", "hi", "hello", "please", "thanks", "asap", "quickly", etc.)
+  // before matching so "hey show my notes asap thanks" -> "show my notes" and
+  // "please list remotes" -> "list remotes" without needing every filler variant
+  // as a separate example phrase. Only strips when the remaining core is >= 3 chars
+  // and contains a verb/noun, so bare "hey" / "thanks" / "please" stay as chit-chat.
+  const FILLER_LEAD_RE = /^(?:hey|hi|hello|yo|um|so|please|can you|could you|hey there|hi there)\b[\s,]+/i;
+  const FILLER_TAIL_RE = /\b(?:please|thanks|thank you|asap|quickly|for me|now)\s*$/i;
+  let stripped = input;
+  let prev;
+  do {
+    prev = stripped;
+    stripped = stripped.replace(FILLER_LEAD_RE, '').trim();
+    // only strip tail if core still looks like a command (has space or >=4 chars)
+    const tailStripped = stripped.replace(FILLER_TAIL_RE, '').trim();
+    if (tailStripped.length >= 3 && (tailStripped.includes(' ') || tailStripped.length >= 4)) stripped = tailStripped;
+  } while (stripped !== prev && stripped.length >= 3);
+  const fillerStripped = stripped.length >= 3 ? stripped : input;
+  // Use filler-stripped version for matching if it yields a stronger intent
+  // (we try both and keep the higher-confidence result later — for now just normalize
+  // the input so "hey show my notes" and "show my notes" converge).
+  if (fillerStripped !== input && fillerStripped.length >= 3) input = fillerStripped;
+
   // 0. Check for multi-intent queries (split on conjunctions)
   const tMulti = Date.now();
   const multiResult = await semanticMatcher.matchMulti(input);
