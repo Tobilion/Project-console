@@ -42,6 +42,11 @@ export function UsersSection({ authArmed, authRole }: { authArmed: boolean; auth
   const [addPass, setAddPass] = useState('');
   const [addRole, setAddRole] = useState<'user' | 'admin'>('user');
   const [addedCode, setAddedCode] = useState<{ username: string; code: string } | null>(null);
+  const [changeOld, setChangeOld] = useState('');
+  const [changeNew, setChangeNew] = useState('');
+  const [changeCode, setChangeCode] = useState<string | null>(null);
+  const [changeOpen, setChangeOpen] = useState(false);
+  const [disableArm, setDisableArm] = useState(false);
 
   const createUser = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -164,6 +169,53 @@ export function UsersSection({ authArmed, authRole }: { authArmed: boolean; auth
     }
   };
 
+  const doChangeOwn = async () => {
+    if (!changeOld || !changeNew || busy) return;
+    setBusy(true);
+    setError(null);
+    setChangeCode(null);
+    try {
+      const { status, data } = await rawFetch('/api/auth/change-password', {
+        method: 'POST',
+        body: JSON.stringify({ currentPassword: changeOld, newPassword: changeNew }),
+      });
+      if (status === 200 && data?.ok) {
+        setChangeCode(data.recoveryCode);
+        setChangeOld('');
+        setChangeNew('');
+      } else {
+        setError(data?.error || 'Password change failed.');
+      }
+    } catch {
+      setError('Could not reach the server.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const doDisable = async () => {
+    if (busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const { status, data } = await rawFetch('/api/auth/disable', {
+        method: 'POST',
+        body: JSON.stringify({ confirm: true }),
+      });
+      if (status === 200 && data?.ok) {
+        window.location.reload();
+        return;
+      }
+      setError(data?.error || 'Could not disable login.');
+      setDisableArm(false);
+    } catch {
+      setError('Could not reach the server.');
+      setDisableArm(false);
+    } finally {
+      setBusy(false);
+    }
+  };
+
   // Not armed yet: first-admin onboarding (also reachable post-setup — the server keeps
   // registration open exactly until the first account exists).
   if (!authArmed) {
@@ -225,7 +277,27 @@ export function UsersSection({ authArmed, authRole }: { authArmed: boolean; auth
   }
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-3">
+      {/* Self-service password change — every logged-in user, not just admins resetting others */}
+      <div className="rounded-lg bg-surface border border-border-soft px-3 py-2.5">
+        <div className="flex items-center justify-between">
+          <p className="text-xs font-bold text-fg-strong">My password</p>
+          <button type="button" onClick={() => setChangeOpen(!changeOpen)} className="text-[11px] font-bold text-accent-blue hover:opacity-80 transition-opacity">
+            {changeOpen ? 'Cancel' : 'Change…'}
+          </button>
+        </div>
+        {changeOpen && (
+          <div className="mt-2 space-y-2">
+            <div className="flex gap-2">
+              <input value={changeOld} onChange={(e) => setChangeOld(e.target.value)} placeholder="Current password" type="password" autoComplete="current-password" className="flex-1 min-w-0 bg-background border border-border-soft rounded-lg px-2.5 py-1.5 text-xs text-fg placeholder:text-fg-dim focus:outline-none focus:border-accent-blue transition-colors" />
+              <input value={changeNew} onChange={(e) => setChangeNew(e.target.value)} placeholder="New password (8+)" type="password" autoComplete="new-password" className="flex-1 min-w-0 bg-background border border-border-soft rounded-lg px-2.5 py-1.5 text-xs text-fg placeholder:text-fg-dim focus:outline-none focus:border-accent-blue transition-colors" />
+              <button type="button" disabled={busy || !changeOld || !changeNew} onClick={() => void doChangeOwn()} className="px-2.5 py-1.5 rounded-lg text-[11px] font-bold bg-accent-blue text-white hover:opacity-90 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed">{busy ? '…' : 'Save'}</button>
+            </div>
+            {changeCode && <p className="text-[11px] text-accent-orange">Password changed — new recovery code (shown once): <span className="font-mono font-bold">{changeCode}</span></p>}
+          </div>
+        )}
+      </div>
+
       <div className="flex items-center justify-between">
         <p className="text-[11px] text-fg-dim">{users.length} account{users.length === 1 ? '' : 's'} — chats and profiles are per-user.</p>
         <div className="flex items-center gap-1">
@@ -291,6 +363,23 @@ export function UsersSection({ authArmed, authRole }: { authArmed: boolean; auth
           </div>
         </form>
       )}
+      {/* Danger zone — disable login entirely (site + app share the same server/auth, so this disables both by design) */}
+      <div className="rounded-lg border border-accent-red/30 bg-accent-red/5 px-3 py-2.5">
+        <p className="text-xs font-bold text-accent-red">Danger zone — disable login</p>
+        <p className="text-[11px] text-fg-dim mt-1 leading-relaxed">
+          Removes every account and returns the console to open mode — anyone who can reach the server (web or desktop app) can use it again without a password. The site and the app share one server, so disabling here disables both. You can re-enable anytime by creating a new admin in Settings → Users.
+        </p>
+        {!disableArm ? (
+          <button type="button" onClick={() => setDisableArm(true)} className="mt-2 px-2.5 py-1.5 rounded-lg text-[11px] font-bold bg-accent-red text-white hover:opacity-90 transition-opacity">Disable login…</button>
+        ) : (
+          <div className="mt-2 flex items-center gap-2">
+            <p className="flex-1 text-[11px] text-fg-dim">Delete all {users.length} account{users.length === 1 ? '' : 's'} and disable login?</p>
+            <button type="button" disabled={busy} onClick={() => void doDisable()} className="px-2.5 py-1.5 rounded-lg text-[11px] font-bold bg-accent-red text-white hover:opacity-90 transition-opacity disabled:opacity-40">{busy ? '…' : 'Yes, disable'}</button>
+            <button type="button" onClick={() => setDisableArm(false)} className="px-2.5 py-1.5 rounded-lg text-[11px] text-fg-dim hover:text-fg-strong transition-colors">Keep login</button>
+          </div>
+        )}
+      </div>
+
       {users.map((u) => (
         <div key={u.username} className="rounded-lg bg-surface border border-border-soft px-3 py-2">
           <div className="flex items-center gap-2">

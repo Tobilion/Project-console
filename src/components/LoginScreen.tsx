@@ -6,7 +6,7 @@
 // is only ever built fresh at boot, and a reload is one line versus re-driving it all.
 import { useState } from 'react';
 
-type Tab = 'login' | 'reset';
+type Tab = 'login' | 'register' | 'reset';
 
 async function postJson(path: string, body: object) {
   const res = await fetch(path, {
@@ -28,6 +28,9 @@ export function LoginScreen({ prefillUsername = '' }: { prefillUsername?: string
   // passwordless hop between accounts.
   const [username, setUsername] = useState(prefillUsername);
   const [password, setPassword] = useState('');
+  const [regUser, setRegUser] = useState('');
+  const [regPass, setRegPass] = useState('');
+  const [regSuccess, setRegSuccess] = useState<{ username: string; code: string } | null>(null);
   const [code, setCode] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -45,6 +48,33 @@ export function LoginScreen({ prefillUsername = '' }: { prefillUsername?: string
         return;
       }
       setError(data?.error || 'Login failed.');
+    } catch {
+      setError('Could not reach the server.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const submitRegister = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!regUser.trim() || !regPass || busy) return;
+    setBusy(true);
+    setError(null);
+    setRegSuccess(null);
+    try {
+      const { status, data } = await postJson('/api/auth/register', { username: regUser.trim(), password: regPass });
+      if (status === 200 && data?.ok) {
+        setRegSuccess({ username: data.user.username, code: data.recoveryCode });
+        // Auto-log in with the new credentials so the user lands straight in the app
+        const login = await postJson('/api/auth/login', { username: regUser.trim(), password: regPass });
+        if (login.status === 200 && login.data?.ok) {
+          window.location.reload();
+          return;
+        }
+        setError(null);
+        return;
+      }
+      setError(data?.error || 'Registration failed.');
     } catch {
       setError('Could not reach the server.');
     } finally {
@@ -83,17 +113,17 @@ export function LoginScreen({ prefillUsername = '' }: { prefillUsername?: string
           This console requires login.
         </p>
 
-        <div className="flex gap-1.5 mb-5 p-1 rounded-xl bg-surface">
-          {(['login', 'reset'] as Tab[]).map((t) => (
+        <div className="flex gap-1 mb-5 p-1 rounded-xl bg-surface">
+          {(['login', 'register', 'reset'] as Tab[]).map((t) => (
             <button
               key={t}
               type="button"
-              onClick={() => { setTab(t); setError(null); }}
-              className={`flex-1 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${
+              onClick={() => { setTab(t); setError(null); setRegSuccess(null); }}
+              className={`flex-1 px-2 py-1.5 rounded-lg text-[11px] font-bold transition-colors ${
                 tab === t ? 'bg-accent-blue/15 text-accent-blue' : 'text-fg-muted hover:text-fg-strong'
               }`}
             >
-              {t === 'login' ? 'Log in' : 'Reset password'}
+              {t === 'login' ? 'Log in' : t === 'register' ? 'Create account' : 'Reset password'}
             </button>
           ))}
         </div>
@@ -124,7 +154,53 @@ export function LoginScreen({ prefillUsername = '' }: { prefillUsername?: string
             >
               {busy ? 'Logging in…' : 'Log in'}
             </button>
+            <p className="text-[11px] text-fg-dim text-center">
+              No account yet? Switch to <button type="button" onClick={() => { setTab('register'); setError(null); }} className="text-accent-blue underline">Create account</button>.
+            </p>
           </form>
+        ) : tab === 'register' ? (
+          regSuccess ? (
+            <div className="space-y-3">
+              <div className="rounded-lg bg-accent-orange/10 border border-accent-orange/30 px-3 py-2.5 space-y-2">
+                <p className="text-xs text-fg-strong">
+                  Account <span className="font-mono">@{regSuccess.username}</span> created. Save this recovery code — shown <span className="font-bold">once</span>:
+                </p>
+                <p className="font-mono text-sm text-accent-orange font-bold tracking-wider">{regSuccess.code}</p>
+                <p className="text-[11px] text-fg-dim">You are being logged in… if nothing happens, switch to Log in and sign in with your new password.</p>
+              </div>
+              <button type="button" onClick={() => { setTab('login'); setUsername(regSuccess.username); setRegSuccess(null); }} className="w-full px-3 py-2 text-sm font-bold rounded-xl bg-accent-blue text-white hover:opacity-90 transition-opacity glass glass-btn">Go to Log in</button>
+            </div>
+          ) : (
+            <form onSubmit={submitRegister} className="space-y-3">
+              <input
+                value={regUser}
+                onChange={(e) => setRegUser(e.target.value)}
+                placeholder="Choose a username (3–32 chars)"
+                autoComplete="username"
+                autoFocus
+                className={inputCls}
+              />
+              <input
+                value={regPass}
+                onChange={(e) => setRegPass(e.target.value)}
+                placeholder="Choose a password (8+ characters)"
+                type="password"
+                autoComplete="new-password"
+                className={inputCls}
+              />
+              {error && <p className="text-xs text-accent-red">{error}</p>}
+              <p className="text-[11px] text-fg-dim leading-relaxed">
+                On a fresh console this creates the first admin. Once login is armed, only an admin can create accounts — you will see "Registration is closed — ask your admin" if self-registration is not allowed.
+              </p>
+              <button
+                type="submit"
+                disabled={busy || !regUser.trim() || !regPass}
+                className="w-full px-3 py-2 text-sm font-bold rounded-xl bg-accent-blue text-white hover:opacity-90 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed glass glass-btn"
+              >
+                {busy ? 'Creating…' : 'Create account'}
+              </button>
+            </form>
+          )
         ) : (
           <form onSubmit={submitReset} className="space-y-3">
             <input

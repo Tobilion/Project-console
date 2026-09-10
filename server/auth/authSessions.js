@@ -88,6 +88,13 @@ export function clearAuthCookie() {
 
 export { COOKIE_NAME };
 
+/** Destroy every session (used when login is disabled entirely). */
+export function destroyAllSessions() {
+  const n = sessions.size;
+  sessions.clear();
+  return n;
+}
+
 /** Test hook — drop all sessions. */
 export function clearSessionsForTests() {
   sessions.clear();

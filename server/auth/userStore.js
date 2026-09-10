@@ -181,6 +181,15 @@ export function deleteUser(username) {
   return true;
 }
 
+/** Remove every user and persist the empty list (admin "disable login" action).
+ *  Returns the count removed. Sessions are the caller's job (destroyAllSessions). */
+export function clearAllUsers() {
+  const n = users.length;
+  users = [];
+  persist();
+  return n;
+}
+
 /** Test hook — drop the in-memory list (the harness points USERS_FILE at a temp file). */
 export function clearUsersForTests() {
   users = [];

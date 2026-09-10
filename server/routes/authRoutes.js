@@ -4,12 +4,13 @@
 // cannot change single-user behavior). Status codes are real HTTP semantics (400/401/409,
 // not {ok:false}-at-200 — auth failures are not business-logic results), so the login UI
 // uses raw fetch, never apiFetchJson (which discards non-2xx bodies).
-import { registerUser, verifyUser, resetPassword, adminResetPassword, deleteUser, listUsers, hasUsers } from '../auth/userStore.js';
+import { registerUser, verifyUser, resetPassword, adminResetPassword, deleteUser, listUsers, hasUsers, clearAllUsers } from '../auth/userStore.js';
 import {
   createSession,
   validateSession,
   destroySession,
   destroyUserSessions,
+  destroyAllSessions,
   tokenFromCookieHeader,
   authCookie,
   clearAuthCookie,
@@ -123,6 +124,62 @@ export function registerAuthRoutes(app) {
       if (!deleteUser(name)) return res.status(404).json({ ok: false, error: 'Unknown user.' });
       destroyUserSessions(name);
       res.json({ ok: true });
+    }),
+  );
+
+  // Self-service password change (logged-in user, old password required). Every user
+  // — including non-admins — can change their own password without a recovery code.
+  app.post(
+    '/api/auth/change-password',
+    asyncHandler(async (req, res) => {
+      if (!req.authUser) return res.status(401).json({ ok: false, error: 'Login required.' });
+      const { currentPassword, newPassword } = req.body || {};
+      const user = await verifyUser(req.authUser.username, currentPassword);
+      if (!user) return res.status(401).json({ ok: false, error: 'Current password is wrong.' });
+      const result = await adminResetPassword(req.authUser.username, newPassword);
+      if (result.error) return res.status(400).json({ ok: false, error: result.error });
+      // Keep the current session alive — only kill *other* sessions of this user so
+      // a stolen session elsewhere is invalidated but this browser stays logged in.
+      const currentToken = tokenFromCookieHeader(req.headers.cookie);
+      let killed = 0;
+      if (currentToken) {
+        // destroyUserSessions kills all — re-create the current one so the caller
+        // does not get logged out immediately after changing their own password.
+        const kept = validateSession(currentToken);
+        destroyUserSessions(req.authUser.username);
+        if (kept) {
+          // validateSession already refreshed lastSeen; re-inserting keeps the token valid
+          // for this response. The simplest path: mint a fresh token for the caller.
+          const fresh = createSession(req.authUser.username, req.authUser.role);
+          res.setHeader('Set-Cookie', authCookie(fresh));
+        }
+      } else {
+        destroyUserSessions(req.authUser.username);
+      }
+      res.json({ ok: true, recoveryCode: result.recoveryCode });
+    }),
+  );
+
+  // Admin: disable login entirely (clear every account, destroy all sessions).
+  // Returns the server to open mode — the site AND the desktop app share the same
+  // server and the same data/users.json, so disabling in one place disables both
+  // by design (there is no separate "site auth" vs "app auth" — the app is a
+  // wrapper around the same local server). Requires admin and a double-confirm
+  // body flag so a stray click cannot wipe auth.
+  app.post(
+    '/api/auth/disable',
+    asyncHandler(async (req, res) => {
+      if (req.authUser?.role !== 'admin') {
+        return res.status(403).json({ ok: false, error: 'Admin only.' });
+      }
+      if (req.body?.confirm !== true) {
+        return res.status(400).json({ ok: false, error: 'Send { confirm: true } to disable login.' });
+      }
+      const removed = clearAllUsers();
+      destroyAllSessions();
+      // Expire the caller's cookie too — they will land on the open console next reload.
+      res.setHeader('Set-Cookie', clearAuthCookie());
+      res.json({ ok: true, removed });
     }),
   );
 }
