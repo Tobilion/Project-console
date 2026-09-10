@@ -1,14 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Folder, List, LayoutGrid, Lock, Code, AppWindow } from 'lucide-react';
+import { Folder, Code, AppWindow } from 'lucide-react';
 import { apiFetchJson } from '../utils/apiFetch';
 import { projectApi } from '../utils/projectApi';
-import { cn } from '../lib/utils';
 import type { Project } from '../types';
 import { formatSize, formatDate, fileIcon, extOf } from './folderExplorer/utils';
 import type { BrowseEntry, EditorDef, ViewMode, GridSize } from './folderExplorer/utils';
 import { EntryRow, EntryTile } from './folderExplorer/views';
 import { EntryMenu, MenuItem, SortHeader } from './folderExplorer/menus';
 import { ExplorerHeader } from './folderExplorer/header';
+import { ExplorerFooter } from './folderExplorer/footer';
 
 // Phase T2 (2026-08-14): the Folder Explorer — a standalone panel that browses ANY absolute
 // path on disk (not project-scoped; works in General mode with no project at all). Windows/
@@ -570,49 +570,15 @@ export function FolderExplorerPanel({ onSendMessage, tabId = null, project = nul
       </div>
 
       {/* Bottom bar: view toggle (lines vs objects) + grid size — Windows/macOS style */}
-      <div className="flex items-center gap-2 px-4 py-1.5 border-t border-border-faint shrink-0 bg-overlay">
-        <div className="flex items-center gap-0.5 bg-panel-strong rounded-lg p-0.5 border border-border-soft">
-          <button
-            onClick={() => setView('list')}
-            className={cn('flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] transition-colors', view === 'list' ? 'bg-accent-blue/15 text-accent-blue font-semibold' : 'text-fg-dim hover:text-fg-strong')}
-            title="List view — lines"
-          >
-            <List size={12} /> Lines
-          </button>
-          <button
-            onClick={() => setView('grid')}
-            className={cn('flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] transition-colors', view === 'grid' ? 'bg-accent-blue/15 text-accent-blue font-semibold' : 'text-fg-dim hover:text-fg-strong')}
-            title="Grid view — objects"
-          >
-            <LayoutGrid size={12} /> Objects
-          </button>
-        </div>
-        {view === 'grid' && (
-          <div className="flex items-center gap-0.5 bg-panel-strong rounded-lg p-0.5 border border-border-soft">
-            {(['sm', 'md', 'lg'] as GridSize[]).map((s) => (
-              <button
-                key={s}
-                onClick={() => setGridSize(s)}
-                className={cn('px-2 py-1 rounded-md text-[10px] font-bold uppercase transition-colors', gridSize === s ? 'bg-accent-blue/15 text-accent-blue' : 'text-fg-dim hover:text-fg-strong')}
-                title={`${s} tiles`}
-              >
-                {s}
-              </button>
-            ))}
-          </div>
-        )}
-        <span className="ml-auto flex items-center gap-1 text-[10px] text-fg-faint" title="Browsing is read-only — files are opened via the OS, never modified here">
-          <Lock size={10} /> read-only
-        </span>
-        <span className="text-[10px] text-fg-dim">
-          {entries.length} item{entries.length === 1 ? '' : 's'}
-          {/* Round-6 audit (2026-08-24): VS Code status-bar pattern — a multi-select shows
-              its own count instead of only the folder total, so the selection state is
-              visible while you work. */}
-          {selectedPaths.size > 0 && <span className="text-accent-blue"> · {selectedPaths.size} selected</span>}
-          {loading && ' — loading…'}
-        </span>
-      </div>
+      <ExplorerFooter
+        view={view}
+        gridSize={gridSize}
+        onViewChange={setView}
+        onGridSizeChange={setGridSize}
+        itemCount={entries.length}
+        selectedCount={selectedPaths.size}
+        loading={loading}
+      />
 
       {/* Right-click context menu (2026-08-24) — same chat-command actions as the ⋯ menu;
           with a multi-selection active it offers copying the whole selection. */}

@@ -332,7 +332,12 @@ Verified: check-handlers 287/287, check-ws-cases clean, npm test 602/602, tsc cl
   — deliberately left out of tuningStore, which stays backend-numbers-with-bounds-only). The
    rest of B.1 (the remaining oversized files — `matcher.js` 429, plus
    `NotificationsPanel.tsx`/`PdfToolsPanel.tsx`/`RemindersPanel.tsx` and the rest of the
-   frontend panel list — see the spec's per-file notes; `server/index.js` 443 is now DONE,
+   frontend panel list — see the spec's per-file notes; `FolderExplorerPanel.tsx` footer done
+   (2026-09-10, opencode): bottom bar (view toggle/grid-size/read-only/count) extracted verbatim
+   into `folderExplorer/footer.tsx` (`ExplorerFooter`, same props-down pattern as the existing
+   header/views/menus leaves), root 717→642 lines — note commit 3e8de10's message claimed this
+   same extraction but changed only whitespace (verified via `git show`), so this is the real
+   one; context-menu overlay + open-with modal leaves still open; `server/index.js` 443 is now DONE,
    commit 25ffc0d extracted its boot phases into `server/boot/` leaves `portBind.js`/
    `projectDiscovery.js`/`mlStartup.js`/`viteSetup.js`/`configWatcher.js`, leaving index.js a
    genuine thin orchestrator; `preSemanticOverrides.js` 471 is now DONE — commit
