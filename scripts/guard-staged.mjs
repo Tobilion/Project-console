@@ -18,8 +18,11 @@
 //   codeIndex/**/codebase*   -> check-indexer
 //   auth/**, authRoutes, checkAuthCoverage -> check-auth (Phase I accounts)
 //   server/test/**           -> the safety + matcher test suites (npm test)
-// Anything else (frontend src/, scripts/, desktop/) -> no battery (tsc in the hook already
-// covers types; CI runs the full set).
+//   src/**/*.tsx             -> check-hooks (rules-of-hooks structural guard — tsc can't
+//                               see hook-order bugs; added 2026-09-10 after a real blank-page
+//                               crash from hooks placed after an early return in App.tsx)
+// Anything else (other frontend files, scripts/, desktop/) -> no battery (tsc in the hook
+// already covers types; CI runs the full set).
 
 import { spawnSync } from 'child_process';
 import fs from 'fs';
@@ -86,6 +89,7 @@ const has = {
   auth: (f) => f.startsWith('server/auth/') || f.includes('authRoutes') || f.includes('checkAuthCoverage'),
   tests: (f) => f.startsWith('server/test/'),
   encoding: (f) => /\.(js|ts|tsx|css|json|md)$/.test(f),
+  hooks: (f) => f.startsWith('src/') && f.endsWith('.tsx'),
 };
 
 const toRun = [];
@@ -99,6 +103,7 @@ if (wanted([has.indexer])) toRun.push('check-indexer');
 if (wanted([has.auth])) toRun.push('check-auth');
 if (wanted([has.tests])) toRun.push('test');
 if (wanted([has.encoding])) toRun.push('check-encoding');
+if (wanted([has.hooks])) toRun.push('check-hooks');
 
 if (toRun.length === 0) {
   console.log('[guard-staged] No server batteries needed for the staged files.');

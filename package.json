@@ -37,6 +37,7 @@
     "check-docs": "node --import tsx server/scripts/checkDocsSync.js",
     "check-auth": "node --import tsx server/scripts/checkAuthCoverage.js",
     "check-encoding": "node server/scripts/checkEncoding.js",
+    "check-hooks": "node server/scripts/checkHooksOrder.js",
     "daemon": "node scripts/daemon.mjs",
     "daemon:start": "node scripts/daemon.mjs start",
     "daemon:stop": "node scripts/daemon.mjs stop",

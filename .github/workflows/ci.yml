@@ -58,3 +58,6 @@ jobs:
 
       - name: Encoding hygiene (mojibake guard)
         run: npm run check-encoding
+
+      - name: React hooks order (rules-of-hooks structural guard)
+        run: npm run check-hooks
