@@ -26,6 +26,11 @@ updates:
       # pdf-parse v2 is load-guarded against a pdfjs-dist DOMMatrix crash when
       # the native canvas binding is missing (round-6 P0, server/pdfKit.js).
       - dependency-name: "pdf-parse"
+      # express stays on v4 by design (2026-09-10): server/asyncHandler.js exists
+      # because v4 drops async rejections, and route patterns use v4 wildcards —
+      # a v5 migration is its own audited phase, never a bot bump (CI #47 proved it).
+      - dependency-name: "express"
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: npm
     directory: "/desktop"

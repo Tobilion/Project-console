@@ -94,11 +94,11 @@ export function TerminalInput({
       )}
 
       {aiEnabled ? (
-        <div className={`${centerCol} p-3 bg-panel border border-border-strong rounded-xl`}>
+        <div className={`${centerCol} p-3 bg-panel border border-border-strong rounded-xl glass-lens`}>
            <AIAssistantInterface onSend={onAISend} onSearch={(q) => { onSearch?.(q); }} onDeepResearch={(q) => { onDeepResearch?.(q); }} disabled={aiThinking || isBlocked || !connected} placeholder={isBlocked ? 'Resolve the pending confirmation first (Esc to cancel)...' : aiThinking ? 'AI is thinking...' : !connected ? 'Reconnecting…' : chatPrompt} getHistory={getHistory} />
         </div>
       ) : (
-        <form onSubmit={onSubmit} className={`${centerCol} p-3 bg-panel border border-border-strong rounded-xl`}>
+        <form onSubmit={onSubmit} className={`${centerCol} p-3 bg-panel border border-border-strong rounded-xl glass-lens`}>
           <div className="relative flex items-center">
             <input
               ref={inputRef}
@@ -115,7 +115,7 @@ export function TerminalInput({
               type="submit"
                disabled={!input.trim() || aiThinking || isBlocked || !connected}
                title={!connected ? 'WebSocket disconnected — reconnecting…' : isBlocked ? 'Resolve the pending confirmation first (Esc to cancel)' : undefined}
-              className="absolute right-1.5 w-11 h-11 rounded-lg bg-accent-blue text-white hover:opacity-90 flex items-center justify-center disabled:opacity-50 transition-opacity"
+              className="absolute right-1.5 w-11 h-11 rounded-lg bg-accent-blue text-white hover:opacity-90 flex items-center justify-center disabled:opacity-50 transition-opacity glass glass-btn"
             >
               <Send size={18} />
             </button>

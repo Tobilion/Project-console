@@ -81,8 +81,11 @@ data/editors.json
 data/snippets.json
 data/learned-intents.json
 # Phase I: local user accounts — bcrypt password + recovery hashes (bearer-equivalent
-# secrets, never git-tracked, see server/auth/userStore.js)
+# secrets, never git-tracked, see server/auth/userStore.js). data/users/ holds the
+# per-user profile overrides (I-4b) — same never-commit rule (a real user's prefs
+# were showing as untracked until this entry, 2026-09-10).
 data/users.json
+data/users/
 # Persisted intent-embedding cache (Phase D-4, 2026-09-08) — recomputed automatically
 # whenever the intent corpus or embedding model changes; see intentVectorCache.js.
 data/.cache/
