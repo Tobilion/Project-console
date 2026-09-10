@@ -95,6 +95,10 @@ export async function listSessions({ forUser } = {}) {
     messageCount: meta.messageCount || 0,
     createdAt: meta.createdAt,
     updatedAt: meta.updatedAt,
+    // Portal: ownership rides the list so the UI can badge shared chats and offer
+    // share controls only where allowed (additive — old clients ignore the fields).
+    owner: meta.owner || null,
+    sharedWith: Array.isArray(meta.sharedWith) ? meta.sharedWith : [],
   }));
   sessions.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
   return sessions;

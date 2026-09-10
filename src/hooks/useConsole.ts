@@ -427,6 +427,7 @@ export function useConsole() {
     switchSession: handleSwitchSession,
     deleteSession: sessions.deleteSession,
     renameSession: sessions.renameSession,
+    refreshSessions: sessions.fetchSessions,
     // Phase 6: session-history pagination ("load earlier").
     historyTotal: sessions.historyTotal,
     loadedHistory: sessions.loadedHistory,

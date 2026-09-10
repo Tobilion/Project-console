@@ -137,6 +137,10 @@ export interface ChatSession {
   messageCount: number;
   createdAt: number;
   updatedAt: number;
+  // Portal (2026-09-10): verified owner (null = legacy/shared) + share list, served by
+  // GET /api/sessions so the UI can badge shared chats and gate share controls.
+  owner?: string | null;
+  sharedWith?: string[];
 }
 
 export interface StoredSession {

@@ -120,7 +120,7 @@ function App() {
     handleSendMessage, handleCancel, handleConfirm, handleToolConfirm, handleApproveTask, handleAIToggle,
     handleSetModel, handleSetMode, handleSelectProject, handleSelectProjectReuse, setDisplayName,
     handleSearch, handleDeepResearch, handleNewChat, handleQuickStart, handleScan,
-    createSession, switchSession, deleteSession, renameSession, handleSwitchToProject,
+    createSession, switchSession, deleteSession, renameSession, refreshSessions, handleSwitchToProject,
     toolHistory, showToolHistory, setShowToolHistory, rerunToolCall,
     exportAsMarkdown, exportAsJson, exportAsPdf, exportProjectChatLog,
     handleDirectCommand, activeServers, knownDevUrls, dashboardUpdateSignal,
@@ -728,6 +728,37 @@ function App() {
           onNewChat: handleNewChat,
           onDeleteSession: deleteSession,
           onRenameSession: renameSession,
+          // Portal sharing (2026-09-10): only wired when login-armed (the overlay hides
+          // the share affordance otherwise). Resolve to an error string or null.
+          onShareSession: authState?.armed ? async (id: string, username: string) => {
+            try {
+              const res = await fetch(`/api/sessions/${encodeURIComponent(id)}/share`, {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username }),
+              });
+              const data = await res.json().catch(() => null);
+              if (res.ok && data?.ok) {
+                refreshSessions();
+                return null;
+              }
+              return data?.error || 'Share failed.';
+            } catch {
+              return 'Could not reach the server.';
+            }
+          } : undefined,
+          onUnshareSession: authState?.armed ? async (id: string, username: string) => {
+            try {
+              const res = await fetch(`/api/sessions/${encodeURIComponent(id)}/share/${encodeURIComponent(username)}`, { method: 'DELETE' });
+              const data = await res.json().catch(() => null);
+              if (res.ok && data?.ok) {
+                refreshSessions();
+                return null;
+              }
+              return data?.error || 'Unshare failed.';
+            } catch {
+              return 'Could not reach the server.';
+            }
+          } : undefined,
         }}
         profileOpen={profileOpen}
         setProfileOpen={setProfileOpen}

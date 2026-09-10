@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { ChatSession } from '../types';
 import { GENERAL_PROJECT_ID } from '../types';
-import { MessageSquare, Search, Plus, X, Pencil, Trash2, FolderGit2, MessagesSquare } from 'lucide-react';
+import { MessageSquare, Search, Plus, X, Pencil, Trash2, FolderGit2, MessagesSquare, Share2 } from 'lucide-react';
 import { ModalShell } from './ui/ModalShell';
 import { EmptyState } from './ui/EmptyState';
 import { cn } from '../lib/utils';
@@ -23,6 +23,10 @@ interface ChatHistoryOverlayProps {
   onNewChat: () => void;
   onDeleteSession: (id: string) => void;
   onRenameSession: (id: string, title: string) => void;
+  /** Portal sharing (2026-09-10): present only when the server is login-armed (App
+    passes these exactly then). Resolve to null on success or an error string. */
+  onShareSession?: (id: string, username: string) => Promise<string | null>;
+  onUnshareSession?: (id: string, username: string) => Promise<string | null>;
 }
 
 type HistoryTab = 'general' | 'projects';
@@ -49,11 +53,26 @@ function timeAgo(ms: number): string {
 export function ChatHistoryOverlay({
   open, onClose, sessions, activeSessionId,
   onSwitchSession, onNewChat, onDeleteSession, onRenameSession,
+  onShareSession, onUnshareSession,
 }: ChatHistoryOverlayProps) {
   const [tab, setTab] = useState<HistoryTab>('general');
   const [query, setQuery] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draftTitle, setDraftTitle] = useState('');
+  const [sharingId, setSharingId] = useState<string | null>(null);
+  const [shareName, setShareName] = useState('');
+  const [shareError, setShareError] = useState<string | null>(null);
+  const [shareBusy, setShareBusy] = useState(false);
+
+  const submitShare = async (id: string) => {
+    if (!onShareSession || !shareName.trim() || shareBusy) return;
+    setShareBusy(true);
+    setShareError(null);
+    const err = await onShareSession(id, shareName.trim());
+    setShareBusy(false);
+    if (err) setShareError(err);
+    else setShareName('');
+  };
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -93,6 +112,7 @@ export function ChatHistoryOverlay({
       ? (s.workspacePath ? folderLabel(s.workspacePath) : 'General')
       : (s.projectName || 'Project chat');
     return (
+      <>
       <div
         role="button"
         tabIndex={0}
@@ -134,10 +154,69 @@ export function ChatHistoryOverlay({
             <Pencil size={12} />
           </button>
         )}
+        {onShareSession && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              setSharingId(sharingId === s.id ? null : s.id);
+              setShareName('');
+              setShareError(null);
+            }}
+            className="opacity-100 md:opacity-0 md:group-hover:opacity-100 text-fg-dim hover:text-accent-green transition-all flex-shrink-0"
+            title={s.sharedWith?.length ? `Shared with ${s.sharedWith.join(', ')} — manage sharing` : 'Share this chat with another user'}
+          >
+            <Share2 size={12} />
+          </button>
+        )}
         <button onClick={(e) => { e.stopPropagation(); onDeleteSession(s.id); }} className="opacity-100 md:opacity-0 md:group-hover:opacity-100 text-fg-dim hover:text-accent-red transition-all flex-shrink-0" title="Delete chat">
           <Trash2 size={12} />
         </button>
       </div>
+      {sharingId === s.id && onShareSession && (
+        <div className="ml-7 mb-1 rounded-lg bg-panel-strong/60 border border-border-faint px-2.5 py-2 space-y-1.5" onClick={(e) => e.stopPropagation()}>
+          {(s.sharedWith?.length ?? 0) > 0 ? (
+            <div className="flex flex-wrap gap-1">
+              {s.sharedWith!.map((u) => (
+                <span key={u} className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-accent-green/10 border border-accent-green/30 text-[10px] text-accent-green">
+                  @{u}
+                  {onUnshareSession && (
+                    <button
+                      type="button"
+                      onClick={() => void onUnshareSession(s.id, u).then((err) => { if (err) setShareError(err); })}
+                      className="hover:text-accent-red transition-colors"
+                      title={`Stop sharing with @${u}`}
+                    >
+                      <X size={10} />
+                    </button>
+                  )}
+                </span>
+              ))}
+            </div>
+          ) : (
+            <p className="text-[10px] text-fg-dim">Only you can see this chat. Sharing lets another user read and chat in it (never rename, delete, or re-share).</p>
+          )}
+          <div className="flex gap-1.5">
+            <input
+              value={shareName}
+              onChange={(e) => setShareName(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') void submitShare(s.id); }}
+              placeholder="Username to share with…"
+              autoComplete="off"
+              className="flex-1 min-w-0 bg-surface border border-border-soft rounded-md px-2 py-1 text-[11px] text-fg placeholder:text-fg-dim focus:outline-none focus:border-accent-blue transition-colors"
+            />
+            <button
+              type="button"
+              disabled={shareBusy || !shareName.trim()}
+              onClick={() => void submitShare(s.id)}
+              className="px-2 py-1 rounded-md text-[11px] font-bold bg-accent-blue text-white hover:opacity-90 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              {shareBusy ? '…' : 'Share'}
+            </button>
+          </div>
+          {shareError && <p className="text-[10px] text-accent-red">{shareError}</p>}
+        </div>
+      )}
+    </>
     );
   };
 

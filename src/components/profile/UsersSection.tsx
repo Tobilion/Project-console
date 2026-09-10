@@ -37,6 +37,37 @@ export function UsersSection({ authArmed, authRole }: { authArmed: boolean; auth
   const [resetPass, setResetPass] = useState('');
   const [resetCode, setResetCode] = useState<string | null>(null);
   const [deleteArm, setDeleteArm] = useState<string | null>(null);
+  const [addOpen, setAddOpen] = useState(false);
+  const [addName, setAddName] = useState('');
+  const [addPass, setAddPass] = useState('');
+  const [addRole, setAddRole] = useState<'user' | 'admin'>('user');
+  const [addedCode, setAddedCode] = useState<{ username: string; code: string } | null>(null);
+
+  const createUser = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!addName.trim() || !addPass || busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const { status, data } = await rawFetch('/api/auth/register', {
+        method: 'POST',
+        body: JSON.stringify({ username: addName.trim(), password: addPass, role: addRole }),
+      });
+      if (status === 200 && data?.ok) {
+        setAddedCode({ username: data.user.username, code: data.recoveryCode });
+        setAddName('');
+        setAddPass('');
+        setAddOpen(false);
+        void refresh();
+      } else {
+        setError(data?.error || 'Could not create the account.');
+      }
+    } catch {
+      setError('Could not reach the server.');
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const refresh = async () => {
     setLoading(true);
@@ -197,15 +228,69 @@ export function UsersSection({ authArmed, authRole }: { authArmed: boolean; auth
     <div className="space-y-2">
       <div className="flex items-center justify-between">
         <p className="text-[11px] text-fg-dim">{users.length} account{users.length === 1 ? '' : 's'} — chats and profiles are per-user.</p>
-        <button
-          type="button"
-          onClick={() => void refresh()}
-          className="text-[11px] text-fg-dim hover:text-fg-strong transition-colors"
-        >
-          {loading ? 'Loading…' : 'Refresh'}
-        </button>
+        <div className="flex items-center gap-1">
+          <button
+            type="button"
+            onClick={() => { setAddOpen(!addOpen); setAddedCode(null); }}
+            className="text-[11px] font-bold text-accent-blue hover:opacity-80 transition-opacity"
+          >
+            {addOpen ? 'Cancel' : '+ Add user'}
+          </button>
+          <button
+            type="button"
+            onClick={() => void refresh()}
+            className="text-[11px] text-fg-dim hover:text-fg-strong transition-colors"
+          >
+            {loading ? 'Loading…' : 'Refresh'}
+          </button>
+        </div>
       </div>
       {error && <p className="text-xs text-accent-red">{error}</p>}
+      {addedCode && (
+        <p className="rounded-lg bg-accent-orange/10 border border-accent-orange/30 px-3 py-2 text-[11px] text-accent-orange">
+          <span className="font-mono">@{addedCode.username}</span> created — recovery code (shown once):{' '}
+          <span className="font-mono font-bold">{addedCode.code}</span>
+        </p>
+      )}
+      {addOpen && (
+        <form onSubmit={createUser} className="rounded-lg bg-surface border border-border-soft px-3 py-2.5 space-y-2">
+          <div className="flex gap-2">
+            <input
+              value={addName}
+              onChange={(e) => setAddName(e.target.value)}
+              placeholder="Username (3–32 chars)"
+              autoComplete="off"
+              className="flex-1 min-w-0 bg-background border border-border-soft rounded-lg px-2.5 py-1.5 text-xs text-fg placeholder:text-fg-dim focus:outline-none focus:border-accent-blue transition-colors"
+            />
+            <select
+              value={addRole}
+              onChange={(e) => setAddRole(e.target.value === 'admin' ? 'admin' : 'user')}
+              title="Account type"
+              className="bg-background border border-border-soft rounded-lg px-2 py-1.5 text-xs text-fg focus:outline-none focus:border-accent-blue transition-colors"
+            >
+              <option value="user">User</option>
+              <option value="admin">Admin</option>
+            </select>
+          </div>
+          <div className="flex gap-2">
+            <input
+              value={addPass}
+              onChange={(e) => setAddPass(e.target.value)}
+              placeholder="Password (8+ characters)"
+              type="password"
+              autoComplete="new-password"
+              className="flex-1 min-w-0 bg-background border border-border-soft rounded-lg px-2.5 py-1.5 text-xs text-fg placeholder:text-fg-dim focus:outline-none focus:border-accent-blue transition-colors"
+            />
+            <button
+              type="submit"
+              disabled={busy || !addName.trim() || !addPass}
+              className="px-2.5 py-1.5 rounded-lg text-[11px] font-bold bg-accent-blue text-white hover:opacity-90 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              {busy ? '…' : 'Create'}
+            </button>
+          </div>
+        </form>
+      )}
       {users.map((u) => (
         <div key={u.username} className="rounded-lg bg-surface border border-border-soft px-3 py-2">
           <div className="flex items-center gap-2">
