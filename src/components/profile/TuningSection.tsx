@@ -49,6 +49,12 @@ const TUNING_GROUPS: { label: string; keys: { name: string; hint: string; descri
     ],
   },
   {
+    label: 'Clipboard',
+    keys: [
+      { name: 'CLIPBOARD_POLL_MS', hint: 'clipboard poll interval, ms', describe: 'How often the console checks the OS clipboard when clipboard tracking is on. Takes effect on the next poll cycle.' },
+    ],
+  },
+  {
     label: 'Storage caps',
     keys: [
       { name: 'MAX_NOTES_ENTRIES', hint: 'max notes per project', describe: 'How many scratch notes a project keeps before the oldest are dropped. Applies uniformly to every project.' },

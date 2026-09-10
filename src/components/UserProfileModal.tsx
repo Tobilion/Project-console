@@ -80,6 +80,8 @@ export function UserProfileModal({ open, profile, onClose, onSave, initialCatego
   const [clipboardPersist, setClipboardPersist] = useState(profile.clipboardPersist);
   const [scanAllFolders, setScanAllFolders] = useState(profile.scanAllFolders);
   const [explorerViewMode, setExplorerViewMode] = useState<'list' | 'grid'>(profile.explorerViewMode);
+  const [defaultWorkspaceType, setDefaultWorkspaceType] = useState<'dev' | 'general'>(profile.defaultWorkspaceType === 'general' ? 'general' : 'dev');
+  const [locale, setLocale] = useState(profile.locale === 'de' ? 'de' : 'en');
   const [permissionMode, setPermissionMode] = useState<'default' | 'ask'>(profile.permissionMode === 'ask' ? 'ask' : 'default');
   const [persistRemindersAcrossRestart, setPersistRemindersAcrossRestart] = useState(profile.persistRemindersAcrossRestart);
   const [reminderToastDurationMs, setReminderToastDurationMs] = useState(profile.reminderToastDurationMs);
@@ -113,6 +115,8 @@ export function UserProfileModal({ open, profile, onClose, onSave, initialCatego
       setClipboardPersist(profile.clipboardPersist);
       setScanAllFolders(profile.scanAllFolders);
       setExplorerViewMode(profile.explorerViewMode === 'grid' ? 'grid' : 'list');
+      setDefaultWorkspaceType(profile.defaultWorkspaceType === 'general' ? 'general' : 'dev');
+      setLocale(profile.locale === 'de' ? 'de' : 'en');
       setPermissionMode(profile.permissionMode === 'ask' ? 'ask' : 'default');
       setPersistRemindersAcrossRestart(profile.persistRemindersAcrossRestart);
       setReminderToastDurationMs(profile.reminderToastDurationMs);
@@ -151,7 +155,7 @@ export function UserProfileModal({ open, profile, onClose, onSave, initialCatego
     onSave({
       name: name.trim(), title: title.trim(), customRole: customRole.trim(),
       sandboxRiskyCommands, clipboardHistory, clipboardPersist, scanAllFolders,
-      explorerViewMode, permissionMode, persistRemindersAcrossRestart,
+      explorerViewMode, defaultWorkspaceType, locale, permissionMode, persistRemindersAcrossRestart,
       reminderToastDurationMs, reminderToastPosition, askBeforeDeleteLinkedNote,
       aiRedirectDelayMs, generalToolsFirst,
       quietHoursStart: quietStart === 'off' ? null : Number(quietStart),
@@ -313,6 +317,32 @@ export function UserProfileModal({ open, profile, onClose, onSave, initialCatego
                       <LayoutGrid size={14} className="text-accent-blue" />
                       <span className="text-sm text-fg">Objects</span>
                     </button>
+                  </div>
+                </FieldLabel>
+              </div>
+
+              <div className={sectionCls} data-setting="defaultWorkspaceType">
+                <FieldLabel label="Default workspace type" hint="New projects land here until classified. Switch any project anytime from the header tabs.">
+                  <div className="flex gap-2">
+                    {(['dev', 'general'] as const).map((w) => (
+                      <button key={w} type="button" onClick={() => setDefaultWorkspaceType(w)}
+                        className={`flex-1 px-3 py-2 rounded-lg border text-sm capitalize transition-colors ${defaultWorkspaceType === w ? 'border-accent-blue bg-accent-blue/10 text-fg' : 'border-border-soft bg-surface text-fg-dim hover:border-border-strong'}`}>
+                        {w === 'dev' ? 'Developer' : 'General'}
+                      </button>
+                    ))}
+                  </div>
+                </FieldLabel>
+              </div>
+
+              <div className={sectionCls} data-setting="locale">
+                <FieldLabel label="Command language" hint="Phrase matching understands these languages on top of English — answers stay English.">
+                  <div className="flex gap-2">
+                    {(['en', 'de'] as const).map((l) => (
+                      <button key={l} type="button" onClick={() => setLocale(l)}
+                        className={`flex-1 px-3 py-2 rounded-lg border text-sm transition-colors ${locale === l ? 'border-accent-blue bg-accent-blue/10 text-fg' : 'border-border-soft bg-surface text-fg-dim hover:border-border-strong'}`}>
+                        {l === 'en' ? 'English' : 'Deutsch'}
+                      </button>
+                    ))}
                   </div>
                 </FieldLabel>
               </div>

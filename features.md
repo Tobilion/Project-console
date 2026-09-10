@@ -664,8 +664,11 @@ only `accent-blue` is wired to the Settings accent picker).
 - **LoginScreen** — shown instead of everything when the server is login-armed and anonymous
   (login + recovery-code reset tabs, lockout hint pointing at the local CLI reset).
 - **UserProfileModal** — name/title/role, accent-color picker, sandbox/clipboard/scanAllFolders
-  toggles, Folder Explorer default view, Editors & IDEs registry, Tours, Developer/Advanced tuning
-  editor (live knobs via `/api/tuning`).
+  toggles, Folder Explorer default view, default workspace type, command language (en/de),
+  permission mode, quiet hours, toast duration/position, Editors & IDEs registry, Users
+  (first-admin onboarding while disarmed; admin list/reset/delete with roles once armed),
+  Tours, Developer/Advanced tuning editor (live knobs via `/api/tuning`, incl. clipboard
+  poll interval).
 - **Theme** — dark-first zinc tokens in `:root`, light override in `[data-theme="light"]`, no
   `dark:` utilities; module-level pub/sub `useTheme` so the header toggle and Ctrl+K never drift.
   Settings → Appearance: accent picker (drives `--color-accent-blue`), color-follows-mouse
