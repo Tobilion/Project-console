@@ -247,20 +247,21 @@ export function generateDistillationSuggestions(projectId) {
 }
 
 /**
- * Auto-apply high-confidence distillation suggestions (Step 8).
+ * Queue high-confidence distillation suggestions for review (Step 8).
  * When AI mode resolves a query that trigger mode missed, high-confidence
- * suggestions (occurrences >= 2 or confidence === 'high') are auto-applied
- * to console.config.json without requiring manual `review distillations`.
- * Returns the list of applied distillations.
+ * suggestions (occurrences >= 2 or confidence === 'high') are queued for
+ * manual review via `review distillations` / `apply distillation <n>`.
+ * Returns the list of suggestions that were queued for review.
  */
 export async function autoApplyDistillations(projectId, projectsCache) {
   const suggestions = generateDistillationSuggestions(projectId);
   const highConfidence = suggestions.filter(s =>
     s.confidence === 'high' || s.occurrences >= 2
   );
-  if (highConfidence.length === 0) return { applied: 0, total: suggestions.length };
-  const added = await applyDistillation(projectId, highConfidence.map(s => s.id), projectsCache);
-  return { applied: added.length, total: suggestions.length };
+  if (highConfidence.length === 0) return { queued: 0, total: suggestions.length };
+  // Queue for review instead of auto-applying — distillations must be explicitly approved
+  // via `review distillations` / `apply distillation <n>` before reaching config.
+  return { queued: highConfidence.length, total: suggestions.length };
 }
 
 /**
@@ -293,7 +294,33 @@ export async function applyDistillation(projectId, suggestionIds, projectsCache)
 
     const added = [];
 
-    for (const s of approved) {
+// Helper: cosine novelty check (held-out filter, 0.92 threshold, cap)
+  async function isNovelAndAllowed(trigger) {
+    const { kept: heldOutKept, blocked } = filterHeldOut([trigger]);
+    if (blocked > 0) console.warn(`[distillation] skipped ${blocked} held-out eval phrase(s)`);
+    if (heldOutKept.length === 0) return false;
+
+    // Cosine novelty check against existing INTENTS examples
+    try {
+      const candidateVec = (await semanticMatcher.embedInput(trigger))?.data;
+      if (!candidateVec) return true; // model unavailable -> allow
+      let maxSim = 0;
+      for (const [, cfg] of Object.entries(INTENTS)) {
+        for (const ex of cfg.examples || []) {
+          const exVec = (await semanticMatcher.embedInput(ex))?.data;
+          if (exVec) {
+            const sim = cosineSimilarity(candidateVec, exVec);
+            if (sim > maxSim) maxSim = sim;
+          }
+        }
+      }
+      return maxSim < 0.92;
+    } catch {
+      return true; // model unavailable -> allow as fallback
+    }
+  }
+
+  for (const s of approved) {
       if (s.type === 'command_entry') {
         // Check if this action already exists
         const exists = config.entries.some(
@@ -343,4 +370,99 @@ export async function applyDistillation(projectId, suggestionIds, projectsCache)
 
     return added;
   });
+}
+
+/**
+ * Apply approved distillation suggestions through the same gates as learningEngine:
+ * evalGuard held-out filter, cosine novelty check (0.92), MAX_EXAMPLES_PER_INTENT cap.
+ * Only called after explicit approval via `apply distillation <n>`.
+ * Returns the list of distillations actually added.
+ */
+export async function applyApprovedDistillations(projectId, suggestionIds, projectsCache) {
+  const suggestions = generateDistillationSuggestions(projectId);
+  const approved = suggestions.filter(s => suggestionIds.includes(s.id));
+
+  if (approved.length === 0) return [];
+
+  // Find the project in the cache to get its path
+  const project = projectsCache.find(p => p.id === projectId);
+  if (!project) return [];
+
+  // Import gates dynamically to avoid circular deps at module load
+  const { filterHeldOut } = await import('./evalGuard.js');
+  const { INTENTS } = await import('./intentsData.js');
+  const { MAX_EXAMPLES_PER_INTENT } = await import('./learningEngine.js');
+  const { cosineSimilarity } = await import('./intentVectorScan.js');
+  const { semanticMatcher } = await import('./semanticMatcher.js');
+
+  const added = [];
+  let redundantRejected = 0;
+
+  for (const s of approved) {
+    if (s.type === 'command_entry') {
+      const action = s.action;
+      const trigger = s.trigger || `run ${action?.split(' ').pop() || 'script'}`;
+
+      if (!(await isNovelAndAllowed(trigger))) continue;
+
+      // Write to config
+      await withConfigLock(project.path, () => {
+        const configPath = path.join(project.path, 'console.config.json');
+        let config = { entries: [] };
+        try {
+          if (fs.existsSync(configPath)) config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+        } catch {}
+        if (!Array.isArray(config.entries)) config.entries = [];
+        const exists = config.entries.some(e => e.type === 'command' && e.action?.trim() === action?.trim());
+        if (!exists) {
+          config.entries.push({
+            triggers: [trigger],
+            type: 'command',
+            action,
+            risky: /deploy|publish|release|--prod|force/i.test(action || ''),
+            auto: true,
+          });
+          writeFileAtomicSync(configPath, JSON.stringify(config, null, 2));
+        }
+      });
+      added.push({ type: 'command_entry', action, trigger });
+
+    } else if (s.type === 'knowledge_entry') {
+      const trigger = s.trigger;
+
+      if (!(await isNovelAndAllowed(trigger))) continue;
+
+      // Write to config
+      await withConfigLock(project.path, () => {
+        const configPath = path.join(project.path, 'console.config.json');
+        let config = { entries: [] };
+        try {
+          if (fs.existsSync(configPath)) config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+        } catch {}
+        if (!Array.isArray(config.entries)) config.entries = [];
+        const exists = config.entries.some(e => e.type === 'knowledge' && e.triggers?.includes(trigger));
+        if (!exists) {
+          config.entries.push({
+            triggers: [trigger],
+            type: 'knowledge',
+            answer: s.answer || 'Information derived from AI analysis.',
+            auto: true,
+          });
+          writeFileAtomicSync(configPath, JSON.stringify(config, null, 2));
+        }
+      });
+      added.push({ type: 'knowledge_entry', trigger });
+    }
+  }
+
+  // Mark records as applied in distillations log
+  if (added.length > 0) {
+    const allRecords = readDistillations(projectId);
+    for (const record of allRecords) {
+      if (suggestionIds.includes(record.id)) record.status = 'applied';
+    }
+    writeFileAtomicSync(filePath(projectId), allRecords.map(r => JSON.stringify(r)).join('\n') + '\n');
+  }
+
+  return added;
 }

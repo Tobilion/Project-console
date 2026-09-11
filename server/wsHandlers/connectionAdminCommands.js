@@ -1,4 +1,4 @@
-import { generateDistillationSuggestions, applyDistillation, clearDistillations } from '../distillation.js';
+import { generateDistillationSuggestions, applyApprovedDistillations, clearDistillations } from '../distillation.js';
 import { getMemorySummary } from '../projectMemory.js';
 import { generateSuggestions, applySuggestions } from '../learningEngine.js';
 import { state } from '../state.js';
@@ -41,7 +41,7 @@ export async function handleDistillationCommand(ws, project, lowerInput) {
     if (!ids.length) {
       ws.send(JSON.stringify({ type: 'answer', data: 'No valid distillation suggestions to apply.\n' }));
     } else {
-      const added = await applyDistillation(project.id, ids, state.activeProjectsCache);
+      const added = await applyApprovedDistillations(project.id, ids, state.activeProjectsCache);
       if (added.length > 0) {
         const types = [...new Set(added.map(a => a.type === 'command_entry' ? 'commands' : 'knowledge entries'))];
         ws.send(JSON.stringify({
