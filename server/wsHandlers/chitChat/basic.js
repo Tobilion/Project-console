@@ -1,5 +1,5 @@
 import { injectContext } from '../../contextInjector.js';
-import { pickRandom, chatReplyPool, smartChitchatReply, enrichWithIndex } from '../builtinHelpers.js';
+import { pickRandom, chatReplyPool, smartChitchatReply, paraphrasePoolReply, enrichWithIndex } from '../builtinHelpers.js';
 import { buildLiveStateLine, buildMemoryBlock } from '../builtinLiveState.js';
 import { aiDockInstruction } from '../../aiDockHints.js';
 import { state } from '../../state.js';
@@ -47,6 +47,10 @@ export const basicHandlers = {
       `Still here, still watching **[${project.name}]**. What's next?`,
       `Running smoothly on **[${project.name}]** — what can I do?`,
       `Yep, I'm listening — **[${project.name}]** is active.`,
+      `Online and idle on **[${project.name}]** — say the word.`,
+      `All systems nominal on **[${project.name}]**. What's the task?`,
+      `Here and healthy on **[${project.name}]** — what are we doing?`,
+      `Standing by on **[${project.name}]** — ready when you are.`,
     ]));
     let statusMsg = enrichWithIndex(opener, project.codebaseIndex);
     statusMsg += await buildLiveStateLine(project);
@@ -56,15 +60,22 @@ export const basicHandlers = {
   },
 
   'system.chit_chat.gratitude': async (ws, action, input, project, sessionContext) => {
+    // Step 7: AI-on paraphrase of the chosen template (verbatim pool when AI is off or the
+    // model call fails) — same pattern in farewell/ack/empathy below.
+    const template = pickRandom(chatReplyPool('gratitude', project, [
+      `You're welcome! Ready for your next command on [${project.name}].`,
+      `Anytime! What's next for [${project.name}]?`,
+      `Happy to help — let me know what's next on [${project.name}].`,
+      `No problem at all. What else can I do on [${project.name}]?`,
+      `Glad that helped. Ready when you are.`,
+      `My pleasure — [${project.name}] is all yours. What's next?`,
+      `Don't mention it. Ready for the next one on [${project.name}].`,
+      `Always happy to help out on [${project.name}].`,
+      `You got it. What else do you need?`,
+    ]));
     ws.send(JSON.stringify({
       type: 'answer',
-      data: pickRandom(chatReplyPool('gratitude', project, [
-        `You're welcome! Ready for your next command on [${project.name}].`,
-        `Anytime! What's next for [${project.name}]?`,
-        `Happy to help — let me know what's next on [${project.name}].`,
-        `No problem at all. What else can I do on [${project.name}]?`,
-        `Glad that helped. Ready when you are.`,
-      ])),
+      data: await paraphrasePoolReply(project, sessionContext, template) || template,
     }));
   },
 
@@ -72,15 +83,20 @@ export const basicHandlers = {
     // New intent (2026-07-30, requested directly — "richer canned chit-chat"): the chit-chat set
     // had no goodbye at all before, so "bye"/"see you later" either fell through to a no-match
     // fallback or got misclassified onto something else entirely.
+    const template = pickRandom(chatReplyPool('farewell', project, [
+      `See you later! [${project.name}] will be here when you're back.`,
+      `Bye for now — come back anytime.`,
+      `Catch you later. [${project.name}] stays as you left it.`,
+      `Goodbye! Nothing lost — just say hi when you're back.`,
+      `Take care! I'll be right here on [${project.name}].`,
+      `Later! [${project.name}] keeps ticking without you.`,
+      `Off you go — I'll hold down [${project.name}] till you're back.`,
+      `Adios! Your spot on [${project.name}] is saved.`,
+      `See you soon — nothing here moves unless you say so.`,
+    ]));
     ws.send(JSON.stringify({
       type: 'answer',
-      data: pickRandom(chatReplyPool('farewell', project, [
-        `See you later! [${project.name}] will be here when you're back.`,
-        `Bye for now — come back anytime.`,
-        `Catch you later. [${project.name}] stays as you left it.`,
-        `Goodbye! Nothing lost — just say hi when you're back.`,
-        `Take care! I'll be right here on [${project.name}].`,
-      ])),
+      data: await paraphrasePoolReply(project, sessionContext, template) || template,
     }));
   },
 
@@ -126,19 +142,23 @@ export const basicHandlers = {
     // New intent (2026-08-03, Phase 2.1): brief acknowledgment replies — "nice", "cool", etc.
     // Confirm-prompt responses go through handleConfirmResponse, NOT the matcher — so these
     // can never approve a pending command.
+    const template = pickRandom(chatReplyPool('ack', project, [
+      `Glad it worked! What's next on [${project.name}]?`,
+      `Nice — anything else on [${project.name}]?`,
+      `Good stuff. Ready for the next one.`,
+      `Awesome. What are we doing next?`,
+      `Cool. Let me know what you need.`,
+      `Sweet — what’s next?`,
+      `Got it. Anything else?`,
+      `Haha, love it. What’s next on [${project.name}]?`,
+      `Lol — noted. What do you want to tackle?`,
+      `Love to hear it. What's the next move?`,
+      `Perfect. I'm here if you need anything else.`,
+      `Right on. What shall we do now?`,
+    ]));
     ws.send(JSON.stringify({
       type: 'answer',
-      data: pickRandom(chatReplyPool('ack', project, [
-        `Glad it worked! What's next on [${project.name}]?`,
-        `Nice — anything else on [${project.name}]?`,
-        `Good stuff. Ready for the next one.`,
-        `Awesome. What are we doing next?`,
-        `Cool. Let me know what you need.`,
-        `Sweet — what’s next?`,
-        `Got it. Anything else?`,
-        `Haha, love it. What’s next on [${project.name}]?`,
-        `Lol — noted. What do you want to tackle?`,
-      ])),
+      data: await paraphrasePoolReply(project, sessionContext, template) || template,
     }));
   },
 
@@ -147,19 +167,23 @@ export const basicHandlers = {
     // am tired") previously drifted onto tech_preview/overview. Zero-argument canned sympathy
     // with a soft nudge — never a troubleshooting text (nothing is necessarily broken), never
     // an action. Customizable per project via chatReplies like every other chit-chat pool.
+    const template = pickRandom(chatReplyPool('empathy', project, [
+      `Take a break — [${project.name}] will be right here when you're back.`,
+      `Long days happen. I'm standing by on [${project.name}] whenever you're ready.`,
+      `No rush at all. [${project.name}] isn't going anywhere.`,
+      `That's fair. Rest up a bit — just say the word when you want to pick [${project.name}] back up.`,
+      `I hear you. If it helps, I can run a quick "git status" to catch you up when you're back.`,
+      `Hydrate and take a breather. [${project.name}] will be waiting.`,
+      `Totally get it — we all hit that wall. [${project.name}] will be here.`,
+      `No worries. Grab some air and ping me when you’re ready to jump back in.`,
+      `Burnout is real. [${project.name}] isn’t going anywhere — take your time.`,
+      `Easy does it. [${project.name}] will keep for later.`,
+      `Rest is productive too. Holler when you're recharged.`,
+      `Understood — no pressure from this side. [${project.name}] waits.`,
+    ]));
     ws.send(JSON.stringify({
       type: 'answer',
-      data: pickRandom(chatReplyPool('empathy', project, [
-        `Take a break — [${project.name}] will be right here when you're back.`,
-        `Long days happen. I'm standing by on [${project.name}] whenever you're ready.`,
-        `No rush at all. [${project.name}] isn't going anywhere.`,
-        `That's fair. Rest up a bit — just say the word when you want to pick [${project.name}] back up.`,
-        `I hear you. If it helps, I can run a quick "git status" to catch you up when you're back.`,
-        `Hydrate and take a breather. [${project.name}] will be waiting.`,
-        `Totally get it — we all hit that wall. [${project.name}] will be here.`,
-        `No worries. Grab some air and ping me when you’re ready to jump back in.`,
-        `Burnout is real. [${project.name}] isn’t going anywhere — take your time.`,
-      ])),
+      data: await paraphrasePoolReply(project, sessionContext, template) || template,
     }));
   },
 

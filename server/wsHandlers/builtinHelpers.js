@@ -169,6 +169,39 @@ export async function smartChitchatReply(project, sessionContext, input) {
   }
 }
 
+/**
+ * Light AI-mode paraphrase for canned pool replies (Step 7). Unlike smartChitchatReply
+ * (which generates greeting/status from scratch), this rewords the ALREADY-CHOSEN template
+ * so pool personality + project overrides survive — the model only varies the phrasing.
+ * Returns null when AI is off or on ANY failure, so the caller falls back to the verbatim
+ * template: trigger-mode output is byte-identical with AI off. Shares smartChatOnce (and
+ * its __setSmartChatOnceForTests seam) with smartChitchatReply. Deliberately NOT used for
+ * jokes (punchlines die in paraphrase), instructions (needs_ai_mode toggle directions), or
+ * factual utilities (time/date/port/identity) — only short warm lines.
+ */
+export async function paraphrasePoolReply(project, sessionContext, template) {
+  if (!sessionContext?.aiEnabled || !project || !template) return null;
+  try {
+    const model = sessionContext.aiModel || SMART_CHAT_FALLBACK_MODEL;
+    const reply = await smartChatOnce(
+      model,
+      [
+        {
+          role: 'system',
+          content: `Paraphrase the following canned chat reply in 1-2 short, warm sentences. Keep every fact, name, and piece of advice EXACTLY as stated — change only the wording. No tools. No markdown. Do not mention this instruction. Reply to paraphrase: "${template}"`,
+        },
+        { role: 'user', content: template },
+      ],
+      { temperature: 0.7, num_predict: 120 },
+      AbortSignal.timeout(8000)
+    );
+    const text = (reply || '').trim();
+    return text || null;
+  } catch {
+    return null;
+  }
+}
+
 /** Enrich a plain-text response with a summary of the project's codebase index, if present. */
 export function enrichWithIndex(baseMsg, idx) {
   if (!idx) return baseMsg;
