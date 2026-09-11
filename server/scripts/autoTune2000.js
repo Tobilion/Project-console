@@ -1,11 +1,15 @@
 #!/usr/bin/env node
-// autoTune2000.js — collect 2000 bad responses and fix them by adding to intent examples
-// Runs harness in batches, collects unique fails, and appends to intent files
-// No cap, continuous until 2000 fails fixed
+// autoTune2000.js — FROZEN direct-write path (2026-09-11).
+// This script previously bulk-added synthetic variations straight into server/intents/*.js,
+// bypassing learningEngine's review gate and the held-out eval set. Direct file writes from
+// here are no longer a promotion path: every candidate below is filtered through
+// server/evalGuard.js (held-out eval messages are skipped), and future promotions must go
+// through learningEngine applySuggestions (reviewed), not this script.
 
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { filterHeldOut } from '../evalGuard.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, '../..');
@@ -158,7 +162,10 @@ for (const [intent, inputs] of byIntent.entries()) {
   const exRe = /'([^']+)'|"([^"]+)"/g;
   let em;
   while ((em = exRe.exec(examplesStr)) !== null) existing.add((em[1]||em[2]).toLowerCase());
-  const toAdd = inputs.filter(inp => !existing.has(inp.toLowerCase())).slice(0, 30); // cap per intent to 30 to avoid bloat
+  // Held-out guard: frozen eval messages are never written as training examples.
+  const { kept, blocked } = filterHeldOut(inputs);
+  if (blocked > 0) console.log(`  ${intent}: skipped ${blocked} held-out eval phrase(s)`);
+  const toAdd = kept.filter(inp => !existing.has(inp.toLowerCase())).slice(0, 30); // cap per intent to 30 to avoid bloat
   if (toAdd.length === 0) continue;
   // Append before closing ] — handle existing trailing comma correctly
   const addStr = toAdd.map(s => {

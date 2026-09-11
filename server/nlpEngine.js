@@ -5,6 +5,7 @@ import { BuiltinMicrosoft } from '@nlpjs/builtin-microsoft';
 import { Mutex } from 'async-mutex';
 import { NLP_SEED_INTENTS } from './nlpSeedIntents.js';
 import { FALLBACK_SCORE_FLOOR } from './intentRegistry.js';
+import { isHeldOut } from './evalGuard.js';
 
 class IntentClassifier {
   constructor() {
@@ -65,7 +66,10 @@ class IntentClassifier {
    * every phrase the near-miss loop had already validated as correct.
    */
   addLearnedPhrase(phrase, intentName) {
+    // Held-out guard: eval messages never enter the classifier's training set.
+    if (isHeldOut(phrase)) return false;
     this.manager.addDocument('en', phrase, intentName);
+    return true;
   }
 
   /** Refits the classifier against everything added via addLearnedPhrase() since last train(). */

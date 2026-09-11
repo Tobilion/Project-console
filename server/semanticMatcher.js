@@ -8,6 +8,7 @@ import { matchMultiParts } from './matcherMulti.js';
 import { computeIntentCollisions } from './matcherCollisions.js';
 import { searchFuseSuggestions } from './matcherFuse.js';
 import { getTuning } from './tuningStore.js';
+import { filterHeldOut } from './evalGuard.js';
 import { initializeMatcher } from './semanticMatcherInit.js';
 import { createProjectIntentStore } from './semanticMatcherProjects.js';
 
@@ -189,9 +190,12 @@ class SemanticMatcher {
    */
   async addLearnedExamples(intent, phrases) {
     if (!this.extractor || !phrases || phrases.length === 0 || !this.intentVectors) return;
+    // Held-out guard: defense in depth — eval messages never enter the embedding stage.
+    const { kept } = filterHeldOut(phrases);
+    if (!kept.length) return;
     const vectors = this.intentVectors[intent] || [];
     try {
-      const results = await this._embedBatch(phrases);
+      const results = await this._embedBatch(kept);
       for (const result of results) {
         if (result && result.data) {
           vectors.push(result.data);

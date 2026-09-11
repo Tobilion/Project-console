@@ -210,6 +210,16 @@ function genIntentCover(count, withTypos) {
 // --- MODE 3: user-replay ---
 
 function loadUserMessages(limit=500) {
+  // Held-out eval set first: frozen verbatim real-user messages that must NEVER be trained
+  // on (see server/evalGuard.js). Live history is only a fallback when the file is missing.
+  try {
+    const frozen = path.join(rootDir, 'server', 'scripts', 'eval', 'heldOutEval.json');
+    if (fs.existsSync(frozen)) {
+      const raw = JSON.parse(fs.readFileSync(frozen, 'utf8'));
+      const msgs = (Array.isArray(raw) ? raw : raw.messages || []).filter(m => typeof (typeof m === 'string' ? m : m.input) === 'string' && String(typeof m === 'string' ? m : m.input).trim()).map(m => String(typeof m === 'string' ? m : m.input).trim());
+      if (msgs.length) return msgs.slice(0, limit);
+    }
+  } catch {}
   const dir = path.join(rootDir, 'data', 'conversations');
   const msgs = [];
   try {

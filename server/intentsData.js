@@ -21,6 +21,7 @@ import { CLIPBOARD_INTENTS } from './intents/clipboardIntents.js';
 import { BACKUP_INTENTS } from './intents/backupIntents.js';
 import { SCREENSAVER_INTENTS } from './intents/screensaverIntents.js';
 import { getLocalePhrases } from './intents/localeIntents.js';
+import { filterHeldOut } from './evalGuard.js';
 
 export const INTENTS = {
   ...CHIT_CHAT_INTENTS,
@@ -50,8 +51,10 @@ const localePhrases = getLocalePhrases();
 if (localePhrases) {
   for (const [intent, phrases] of Object.entries(localePhrases)) {
     if (!INTENTS[intent]) continue;
+    // Held-out guard: locale additions must never carry frozen eval messages.
+    const { kept } = filterHeldOut(phrases);
     const existing = new Set(INTENTS[intent].examples || []);
-    for (const phrase of phrases) {
+    for (const phrase of kept) {
       if (!existing.has(phrase)) INTENTS[intent].examples.push(phrase);
     }
   }

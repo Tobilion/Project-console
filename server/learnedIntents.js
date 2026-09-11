@@ -3,6 +3,7 @@ import path from 'path';
 import { INTENTS } from './intentsData.js';
 import { writeFileAtomicSync } from './atomicWrite.js';
 import { resolveData } from './dataPath.js';
+import { filterHeldOut } from './evalGuard.js';
 import { log } from './logger.js';
 
 // `INTENTS` (from intentsData.js) is a single module-level object shared by the whole running
@@ -40,8 +41,10 @@ export function loadLearnedIntents() {
   for (const [intent, phrases] of Object.entries(learned)) {
     const config = INTENTS[intent];
     if (!config || !Array.isArray(phrases)) continue;
+    // Held-out guard: a stale learned file must never inject eval messages on boot.
+    const { kept } = filterHeldOut(phrases);
     const existing = new Set(config.examples);
-    for (const phrase of phrases) {
+    for (const phrase of kept) {
       if (!existing.has(phrase)) {
         config.examples.push(phrase);
         existing.add(phrase);
@@ -62,8 +65,13 @@ export function loadLearnedIntents() {
 export function persistLearnedPhrases(added) {
   if (!added?.length) return;
   ensureDataDir();
+  // Held-out guard: never persist eval messages even if a caller forgets to filter.
+  const { kept } = filterHeldOut(added.map(a => a.phrase));
+  const keptSet = new Set(kept);
+  const filtered = added.filter(a => keptSet.has(a.phrase));
+  if (!filtered.length) return;
   const learned = readLearnedFile();
-  for (const { intent, phrase } of added) {
+  for (const { intent, phrase } of filtered) {
     if (!learned[intent]) learned[intent] = [];
     if (!learned[intent].includes(phrase)) learned[intent].push(phrase);
   }

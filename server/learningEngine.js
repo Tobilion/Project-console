@@ -2,6 +2,7 @@ import { readNearMisses, clearNearMisses, listNearMissProjectIds } from './nearM
 import { semanticMatcher } from './semanticMatcher.js';
 import { INTENTS } from './intentsData.js';
 import { persistLearnedPhrases } from './learnedIntents.js';
+import { filterHeldOut } from './evalGuard.js';
 import { nlpEngine } from './nlpEngine.js';
 import { mapNearMissToIntent } from './nearMissIntentMap.js';
 
@@ -95,7 +96,10 @@ export function applySuggestions(suggestionIds, projectId) {
     if (!intent) continue;
 
     const existing = new Set(intent.examples);
-    for (const phrase of suggestion.phrases) {
+    // Held-out guard: frozen eval messages must never be promoted into training examples.
+    const { kept, blocked } = filterHeldOut(suggestion.phrases);
+    if (blocked > 0) console.warn(`[learningEngine] skipped ${blocked} held-out eval phrase(s) for ${suggestion.intent}`);
+    for (const phrase of kept) {
       if (!existing.has(phrase)) {
         intent.examples.push(phrase);
         existing.add(phrase);
