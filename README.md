@@ -20,7 +20,7 @@ The result is a console that behaves identically offline and online — same com
 
 ### Command dispatcher (works without AI)
 
-- **Intent matching**: every message is resolved through a multi-stage pipeline — embedding similarity (all-MiniLM-L6-v2), literal pre-checks for known trap phrases, fuzzy matching, keyword rules, a trained NLP classifier, and a bounded local-model classification call for novel phrasings. 148 intents with ~2,907 example phrases, split across `server/intents/*.js` and merged in `intentsData.js`.
+- **Intent matching**: every message is resolved through a multi-stage pipeline — embedding similarity (all-MiniLM-L6-v2), literal pre-checks for known trap phrases, fuzzy matching, keyword rules, a trained NLP classifier, and a bounded local-model classification call for novel phrasings. 157 intents with ~3,126 example phrases, split across `server/intents/*.js` and merged in `intentsData.js`.
 - **Self-learning**: confirmed phrases are promoted into the permanent example set automatically as the console is used (near-miss logging → `learningEngine.js`), persisted across restarts, and used to retrain both the embedding matcher and the NLP classifier.
 - **Chit-chat**: greeting, status, gratitude, farewell, acknowledgment, and joke replies with varied templates — no LLM call involved. Greetings/status are enriched with live state (console port, projects indexed, running dev server + URL, uncommitted-file count) and what the console remembers about the project. With AI mode on, greeting/status also ask the active model for a tailored reply (bounded timeout, falls back to the canned reply on any error).
 - **Calculator**: safe arithmetic (`+ - * / ( )`, no eval) plus offline unit conversion (length/weight/volume/temperature), percentage/tip/tax phrases (`convert 5 km to miles`, `what is 15% of 80`, `whats 18% tip on 64.50`, `add 8.25% tax to 120`). The Calculator panel (Tools) is a live iOS-style widget — button presses are instant, `=` evaluates through the same server-side evaluator chat uses.
@@ -139,7 +139,8 @@ The result is a console that behaves identically offline and online — same com
 ### Self-tuning (learned confidence model)
 
 - A small logistic-regression model (plain-JS gradient descent, no library, no GPU) is trained on real accept/reject outcomes from the confirmation flows. Once enough labeled examples exist (12+), it recommends per-intent confidence floors that auto-apply on startup; below that, a fixed heuristic applies (zero behavior change for a fresh install). It runs independently of AI mode. Status any time with `telemetry review`.
-- Near-miss suggestions auto-promote when high-confidence (5+ occurrences, ≥80% acceptance); `review learning` + `approve suggestions` for the rest. AI exchanges are distilled into trigger-mode suggestions (`review distillations` / `apply all distillations`).
+- Near-miss suggestions auto-promote when high-confidence (5+ occurrences, ≥80% acceptance); `review learning` + `approve suggestions` for the rest. AI exchanges are distilled into trigger-mode suggestions (`review distillations` / `apply all distillations` — now queue-for-review only, `applyDistillation` delegates to gated `applyApprovedDistillations` with held-out + 0.92 novelty + cap).
+- Batch replay `npm run replay-history` replays 749 real user messages (96 transcripts) through the live matcher — ranked report: confirmed bugs, coverage gaps, candidate new intents; nightly 03:00 + hourly N=5 digest via `server/replayScheduler.js`.
 
 ### Project discovery & indexing
 
@@ -345,7 +346,7 @@ App-global identity (name/title/custom role) edited from the ⚙ Settings modal;
 | Command | What it does |
 |---|---|
 | `check git status` / `what changed` / `git log` / `git diff` | Read-only git introspection |
-| `push this to github with comment "..."` / `push my changes` / `deploy` | Checkpoint + commit + push |
+| `push this to github with comment "..."` / `push my changes` / `deploy` | Checkpoint commit (`git add -A && git commit -m "..."`) then `git push` — asks for a message if you omit the quoted text; `stop all processes` is intentionally *not* a stop synonym (ambiguous vs. `stop server`/`list auto-start`) |
 | `commit "fix the login bug"` | Commit without pushing — message in quotes |
 | `checkpoint my work` / `make a checkpoint` | Explicit save-point commit before risky moves |
 | `clean up stale branches` | Lists merged branches you can safely delete |
@@ -420,6 +421,7 @@ App-global identity (name/title/custom role) edited from the ⚙ Settings modal;
 | `health check` / `is my console healthy` | Ollama reachability, embedding state, disk space, zombie tracked processes |
 | `review match quality` / `match quality` | Per-intent mean/min match confidence over the rolling log + drift flags when a mean drops >0.1 vs the prior window |
 | `console doctor` / `npm run doctor` | Proactive machine-side checks: ports 3000–3019, daemon, embedding cache, writability, TTY/raw-mode, data dir, log writability, Ollama, update, tooling, disk — works without a running server |
+| `npm run replay-history` / `replay-history:digest` / `replay-history:json` | Batch replay of 749 real user messages from 96 transcripts — ranked report (confirmed bugs, coverage gaps, candidate new intents); nightly 03:00 + hourly N=5 trigger, digest-only notify |
 | `where are my logs` / `export logs` | Logs live in `logs/` (server.log, cli.log, daemon.log, desktop-crash.log); `export logs` bundles recent logs + a doctor report for a bug report |
 | `what is my test coverage` / `analyze bundle size` | Reads existing coverage/build artifacts — never runs anything |
 | `what port are you running on` | The console's own port |
@@ -448,7 +450,7 @@ App-global identity (name/title/custom role) edited from the ⚙ Settings modal;
 | `how do i fix a native module build error` / `how do i fix the re2 build error` | Visual Studio / node-gyp C++ workload fix; re2 & embeddings are optional so the install can succeed without them |
 | `how do i fix the sharp download timeout` | Retry `npm install`; sharp is optional and only affects semantic search |
 | `how do i fix an eperm permission error` | Close locked files / elevated terminal / clear cache; remove the partial `AppData\Roaming\npm\node_modules` folder first |
-| `how do i build the desktop app` | `cd desktop && npm install && npm run dist` — NSIS `.exe` (Windows), `.dmg` (macOS), `.AppImage` (Linux) |
+| `how do i build the desktop app` | `cd desktop && npm install && npm run dist` — builds `dist/server.js` bundle then NSIS `.exe` (Windows) / `.dmg` (macOS) / `.AppImage` (Linux) into `desktop/dist/` |
 | `npx local-project-console cli` | Launch the console in CLI chat mode — the server boots in the background and the terminal becomes the interactive chat agent (same mode as start.bat's [C] option; installed users run `local-project-console cli`) |
 | `what is ai mode vs trigger mode` / `how is this different from terminal` | Explains trigger (deterministic local matcher) vs AI (local Ollama with tools) and terminal differences |
 | `is my data safe` / `where does my data get stored` | Local-only storage — sessions in `.console/`, global state in `data/`, no cloud unless you use cloud models/search |
@@ -557,8 +559,8 @@ Electron wrapper in `desktop/` (its own `package.json`, so the root install neve
 
 ```powershell
 cd desktop
-npm install
-npm run dist        # NSIS .exe on Windows; .dmg on macOS; .AppImage on Linux
+npm install          # desktop has its own package.json so root never pulls Electron
+npm run dist         # bundles server to dist/server.js, then electron-builder → desktop/dist/ (NSIS .exe on Windows; .dmg on macOS; .AppImage on Linux)
 ```
 
 Users double-click the produced installer — no Node, no terminal, no npm. Ollama is still a

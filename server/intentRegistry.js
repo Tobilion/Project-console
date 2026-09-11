@@ -167,6 +167,8 @@ export const BUILTIN_INTENTS = new Set([
   'system.chit_chat.where_are_logs', 'system.chit_chat.export_logs',
   // Screensaver (2026-09-11): SandBlocks idle surface — SandBlocks wins on pointer.
   'system.screensaver.open',
+  // Stop server/site — canonical stop (site/app/website + close synonym, typo-tolerant via preSemantic pin)
+  'system.server.stop',
 ]);
 
 // Phase 1 workspaceType filtering (UPGRADE-ROADMAP.md, 2026-08-11): builtin intents that make

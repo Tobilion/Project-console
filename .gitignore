@@ -97,6 +97,10 @@ data/distillations/
 data/general-workspace/
 metadata.json
 
+# Batch replay pipeline (runtime reports, not versioned)
+data/replay-report.json
+data/replay-state.json
+
 # electron-builder staging dir (desktop builds)
 desktop/stage/
 

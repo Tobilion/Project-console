@@ -49,6 +49,7 @@ import { registerAuthRoutes } from './routes/authRoutes.js';
 import { loadTuning } from './tuningStore.js';
 import { loadEditors } from './editorsStore.js';
 import { log } from './logger.js';
+import { initReplayScheduler } from './replayScheduler.js';
 
 // Boot leaves — each is a self-contained module for one startup phase.
 import { setupDevServer, setupProdStatic } from './boot/viteSetup.js';
@@ -175,6 +176,10 @@ async function init() {
 
   // Stage 1 ML work: confidence retrain + threshold adjustments + near-miss learning.
   await runMlStartupWork();
+
+  // Batch replay scheduler (nightly + N-new trigger, digest-only notify) — only after ML work
+  // so the model is ready for similarity checks; never writes, only reads.
+  initReplayScheduler();
 
   // Port fallback + server event wiring.
   const server = await bindPort(httpServer, emitBootState);

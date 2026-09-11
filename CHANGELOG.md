@@ -10,6 +10,18 @@ changes. The npm package (`local-project-console`, currently `1.0.8`) and the
 desktop app (`local-project-console-desktop`, currently `1.0.0`) are versioned
 independently; desktop releases are tagged against the desktop package.
 
+## [1.0.13] — 2026-09-12
+
+### Added
+- `system.server.stop` — canonical stop for `stop|close|kill` + `server|site|app|website|service|backend|api` (typo-tolerant `sop`/`stp`), new intent + pre-semantic pins + `close` as permanent synonym; 9 battery rows, `stop all processes` intentionally left as fallback (ambiguous).
+- Batch replay pipeline `server/scripts/replayChatHistory.js` (`npm run replay-history` / `:digest` / `:json`) — replays 749 real user messages from 96 transcripts, ranked report (confirmed bugs, coverage gaps, candidate new intents); nightly 03:00 + hourly N=5 trigger via `server/replayScheduler.js` (digest-only notify).
+- Coverage gaps promoted via gated `learningEngine` path: `go to notees` → `open_notes`, `Reminder go to market` → `open_reminders`, `You have done well` → `status` (held-out + 0.92 novelty + cap).
+
+### Fixed
+- Chit-chat contraction guard `server/intentTrust.js:52` — `looksLikeRealRequest` now strips `\b\w+'\w+\b` before quote check; `what's up`/`you're the best` no longer fallback (4 high-sim gaps fixed).
+- `server/preSemanticOverridePins.js:496` + `server/wsHandlers/connectionDevServer.js:45` typo handling for `sop server`; `README` intent count 148→157 / 2,907→3,126.
+- Distillation bypass `server/distillation.js:256` — `autoApplyDistillations` now queues for review only, `applyDistillation` delegates to gated `applyApprovedDistillations` (held-out + novelty).
+
 ## [Unreleased]
 
 ### Added

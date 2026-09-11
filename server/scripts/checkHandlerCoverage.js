@@ -60,6 +60,7 @@ const { csvHandlers } = await import(pathToFileURL(base + 'wsHandlers/builtinCsv
 const { clipboardHandlers } = await import(pathToFileURL(base + 'wsHandlers/builtinClipboard.js').href);
 const { backupHandlers } = await import(pathToFileURL(base + 'wsHandlers/builtinBackup.js').href);
 const { screensaverHandlers } = await import(pathToFileURL(base + 'wsHandlers/builtinScreensaver.js').href);
+const { serverHandlers } = await import(pathToFileURL(base + 'wsHandlers/builtinServer.js').href);
 const { handleNotifyCommand } = await import(pathToFileURL(base + 'wsHandlers/connectionNotifyAdmin.js').href);
 const { getWatchRules } = await import(pathToFileURL(base + 'watchRules.js').href);
 const { handleScheduleCommand } = await import(pathToFileURL(base + 'wsHandlers/connectionScheduleAdmin.js').href);
@@ -97,7 +98,7 @@ function eq(label, got, expect) {
   else if (!ok) console.log(`  FAIL ${label}\n    expected: ${e}\n    got:      ${g}`);
 }
 
-const merged = { ...gitHandlers, ...chitChatHandlers, ...fileNpmHandlers, ...projectKnowledgeHandlers, ...projectContextHandlers, ...projectActionHandlers, ...diagnosticsHandlers, ...generalFileHandlers, ...toolsHandlers, ...pdfHandlers, ...reminderHandlers, ...noteHandlers, ...csvHandlers, ...clipboardHandlers, ...backupHandlers, ...screensaverHandlers };
+const merged = { ...gitHandlers, ...chitChatHandlers, ...fileNpmHandlers, ...projectKnowledgeHandlers, ...projectContextHandlers, ...projectActionHandlers, ...diagnosticsHandlers, ...generalFileHandlers, ...toolsHandlers, ...pdfHandlers, ...reminderHandlers, ...noteHandlers, ...csvHandlers, ...clipboardHandlers, ...backupHandlers, ...screensaverHandlers, ...serverHandlers };
 const handlerKeys = Object.keys(merged).sort();
 const builtinKeys = [...BUILTIN_INTENTS].sort();
 const intentKeys = Object.keys(INTENTS).sort();
@@ -312,11 +313,18 @@ eq('chitchat leaf: needs_ai_mode guidance names the AI dock with a concrete inst
 
 sent.length = 0;
 await handleBuiltinIntent(ws, 'system.chit_chat.empathy', 'Ugh I am tired', proj, {});
-eq('chitchat leaf: empathy answers tired small talk with no side effects', ws.sent.length === 1 && ws.sent[0].type === 'answer' && /(Take a break|Long days|No rush|That's fair|I hear you|Hydrate|Totally get it|No worries|Burnout is real)/.test(ws.sent[0].data), true);
+eq('chitchat leaf: empathy answers tired small talk with no side effects', ws.sent.length === 1 && ws.sent[0].type === 'answer' && /(Take a break|Long days|No rush|That's fair|I hear you|Hydrate|Totally get it|No worries|Burnout is real|Easy does it|Rest is productive|Understood)/.test(ws.sent[0].data), true);
 
 sent.length = 0;
 await handleBuiltinIntent(ws, 'system.chit_chat.needs_ai_mode', 'make me a landing page', proj, { client: 'cli' });
 eq('chitchat leaf: needs_ai_mode answers CLI sessions with the ai on/off command, not web-only UI', ws.sent.length === 1 && ws.sent[0].type === 'answer' && /ai on/.test(ws.sent[0].data) && !/AI dock/.test(ws.sent[0].data), true);
+
+sent.length = 0;
+await handleBuiltinIntent(ws, 'system.server.stop', 'stop the site', proj, {});
+eq('server leaf: stop handles site synonym (close/stop + site/server)', ws.sent.length === 1 && ws.sent[0].type === 'answer' && /No running server|Stopped/.test(ws.sent[0].data), true);
+sent.length = 0;
+await handleBuiltinIntent(ws, 'system.server.stop', 'close site', proj, {});
+eq('server leaf: stop handles close site permanent synonym', ws.sent.length === 1 && ws.sent[0].type === 'answer' && /No running server|Stopped/.test(ws.sent[0].data), true);
 
 // Phase 1.5 (2026-08-11): tool-panel openers. The answer must carry the additive `openPanel`
 // field on the SAME 'answer' payload (never a new WS type), stay plain-text-usable for the CLI,

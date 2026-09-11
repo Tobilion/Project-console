@@ -48,6 +48,7 @@ export const CHIT_CHAT_INTENTS = {
       'are you awake', 'still alive', 'ping', 'pong',
       'everything running', 'all good still', 'how is the project',
       'console status', 'are you up', 'system status',
+      'You have done well',
     ],
   },
   'system.chit_chat.gratitude': {

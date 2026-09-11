@@ -905,5 +905,22 @@ const BATTERIES = [
       ['why is the server down', 'BUILTIN=project.context.dev_server_status'],
     ],
   },
+  {
+    // 2026-09-12: Stop synonyms — "stop the site" / "close site" + typo "sop server" previously misrouted
+    // (open_site, deploy, run_project). Pinned to system.server.stop; negative guards ensure open_site family untouched.
+    name: 'STOP-SYNONYM (2026-09-12 stop/close + site/app typo)',
+    items: [
+      ['stop the site', 'BUILTIN=system.server.stop'],
+      ['sop server', 'BUILTIN=system.server.stop'],
+      ['close site', 'BUILTIN=system.server.stop'],
+      ['close the site', 'BUILTIN=system.server.stop'],
+      ['stop server', 'BUILTIN=system.server.stop'],
+      ['close the app', 'BUILTIN=system.server.stop'],
+      // Negative: open_site family must stay put (open_site vs run_project split is pre-existing — see BASICS)
+      ['open the site', 'BUILTIN=run_project'],
+      ['take me to site', 'BUILTIN=project.action.open_site'],
+      ['open the site in the browser', 'BUILTIN=project.action.open_site'],
+    ],
+  },
 ];
 export { project, fmt, BATTERIES };

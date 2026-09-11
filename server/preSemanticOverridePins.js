@@ -489,4 +489,9 @@ export const PRE_SEMANTIC_OVERRIDES = [
   { intent: 'system.chit_chat.troubleshoot', pattern: /^run\s+diagnostics?$/i },
   { intent: 'system.chit_chat.troubleshoot', pattern: /^diagnose\s+(?:the\s+)?(?:problem|issue|error)$/i },
   { intent: 'system.chit_chat.troubleshoot', pattern: /^check\s+for\s+problems?$/i },
+  // Stop server/site — canonical stop (site/app/website + close as permanent synonym, typo-tolerant for sop/stp)
+  // Probed live 2026-09-11: "Stop the site" opened the site (open_site), "Sop server" fired deploy, "close site" fell to fallback.
+  // These are unambiguous imperative stop requests, pinned like the run_project launch pin above.
+  { intent: 'system.server.stop', pattern: /^(?:stop|close|kill|shutdown|end)\s+(?:the\s+)?(?:server|site|app|website|service|backend|api|process|dev)\b/i },
+  { intent: 'system.server.stop', pattern: /^(?:sop|stp|stap|stpo|sotp)\s+(?:the\s+)?(?:server|site|app|website)\b/i },
 ];

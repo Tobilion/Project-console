@@ -205,6 +205,35 @@ export function inferTriggerFromInput(input, scriptName) {
   return `run ${scriptName || 'script'}`;
 }
 
+async function isNovelAndAllowed(trigger) {
+  const { filterHeldOut } = await import('./evalGuard.js');
+  const { INTENTS } = await import('./intentsData.js');
+  const { cosineSimilarity } = await import('./intentVectorScan.js');
+  const { semanticMatcher } = await import('./semanticMatcher.js');
+  const { kept: heldOutKept, blocked } = filterHeldOut([trigger]);
+  if (blocked > 0) logger.warn(`[distillation] skipped ${blocked} held-out eval phrase(s)`);
+  if (heldOutKept.length === 0) return false;
+  try {
+    const vec = await semanticMatcher.embedInput(trigger);
+    const candidateVec = vec?.data || vec;
+    if (!candidateVec) return true;
+    let maxSim = 0;
+    for (const [, cfg] of Object.entries(INTENTS)) {
+      for (const ex of cfg.examples || []) {
+        const exVecRaw = await semanticMatcher.embedInput(ex);
+        const exVec = exVecRaw?.data || exVecRaw;
+        if (exVec) {
+          const sim = cosineSimilarity(candidateVec, exVec);
+          if (sim > maxSim) maxSim = sim;
+        }
+      }
+    }
+    return maxSim < 0.92;
+  } catch {
+    return true;
+  }
+}
+
 /**
  * Group pending distillation records into actionable suggestions for display.
  */
@@ -269,107 +298,12 @@ export async function autoApplyDistillations(projectId, projectsCache) {
  * and let the file watcher propagate the change. Serialized per project via
  * withConfigLock so two approves in the same tick (web + CLI) can't clobber each
  * other's entry (audit 2026-08-17).
+ * @deprecated Use applyApprovedDistillations — this alias now delegates to the gated path
+ * so any legacy caller still gets held-out + novelty + cap checks. Direct ungated writes are
+ * removed (priority-0 bypass fix 2026-09-12: previously wrote without review/gating).
  */
 export async function applyDistillation(projectId, suggestionIds, projectsCache) {
-  const suggestions = generateDistillationSuggestions(projectId);
-  const approved = suggestions.filter(s => suggestionIds.includes(s.id));
-
-  if (approved.length === 0) return [];
-
-  // Find the project in the cache to get its path
-  const project = projectsCache.find(p => p.id === projectId);
-  if (!project) return [];
-
-  return withConfigLock(project.path, () => {
-    const configPath = path.join(project.path, 'console.config.json');
-    let config = { entries: [] };
-
-    try {
-      if (fs.existsSync(configPath)) {
-        config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
-      }
-    } catch {}
-
-    if (!Array.isArray(config.entries)) config.entries = [];
-
-    const added = [];
-
-// Helper: cosine novelty check (held-out filter, 0.92 threshold, cap)
-  async function isNovelAndAllowed(trigger) {
-    const { kept: heldOutKept, blocked } = filterHeldOut([trigger]);
-    if (blocked > 0) console.warn(`[distillation] skipped ${blocked} held-out eval phrase(s)`);
-    if (heldOutKept.length === 0) return false;
-
-    // Cosine novelty check against existing INTENTS examples
-    try {
-      const candidateVec = (await semanticMatcher.embedInput(trigger))?.data;
-      if (!candidateVec) return true; // model unavailable -> allow
-      let maxSim = 0;
-      for (const [, cfg] of Object.entries(INTENTS)) {
-        for (const ex of cfg.examples || []) {
-          const exVec = (await semanticMatcher.embedInput(ex))?.data;
-          if (exVec) {
-            const sim = cosineSimilarity(candidateVec, exVec);
-            if (sim > maxSim) maxSim = sim;
-          }
-        }
-      }
-      return maxSim < 0.92;
-    } catch {
-      return true; // model unavailable -> allow as fallback
-    }
-  }
-
-  for (const s of approved) {
-      if (s.type === 'command_entry') {
-        // Check if this action already exists
-        const exists = config.entries.some(
-          e => e.type === 'command' && e.action?.trim() === s.action?.trim()
-        );
-        if (exists) continue;
-
-        config.entries.push({
-          triggers: [s.trigger || `run ${s.action?.split(' ').pop() || 'script'}`],
-          type: 'command',
-          action: s.action,
-          risky: /deploy|publish|release|--prod|force/i.test(s.action || ''),
-          auto: true,
-        });
-        added.push({ type: 'command_entry', action: s.action, trigger: s.trigger });
-
-      } else if (s.type === 'knowledge_entry') {
-        const exists = config.entries.some(
-          e => e.type === 'knowledge' && e.triggers?.includes(s.trigger)
-        );
-        if (exists) continue;
-
-        config.entries.push({
-          triggers: [s.trigger],
-          type: 'knowledge',
-          answer: s.answer || 'Information derived from AI analysis.',
-          auto: true,
-        });
-        added.push({ type: 'knowledge_entry', trigger: s.trigger });
-      }
-    }
-
-    if (added.length > 0) {
-      // Write the updated config back to disk — the file watcher will pick it up
-      writeFileAtomicSync(configPath, JSON.stringify(config, null, 2));
-
-      // Mark these records as applied
-      const allRecords = readDistillations(projectId);
-      for (const record of allRecords) {
-        if (suggestionIds.includes(record.id) || approved.some(s => s.ids?.includes(record.id))) {
-          record.status = 'applied';
-        }
-      }
-      const fp = filePath(projectId);
-      writeFileAtomicSync(fp, allRecords.map(r => JSON.stringify(r)).join('\n') + '\n');
-    }
-
-    return added;
-  });
+  return applyApprovedDistillations(projectId, suggestionIds, projectsCache);
 }
 
 /**
@@ -387,13 +321,6 @@ export async function applyApprovedDistillations(projectId, suggestionIds, proje
   // Find the project in the cache to get its path
   const project = projectsCache.find(p => p.id === projectId);
   if (!project) return [];
-
-  // Import gates dynamically to avoid circular deps at module load
-  const { filterHeldOut } = await import('./evalGuard.js');
-  const { INTENTS } = await import('./intentsData.js');
-  const { MAX_EXAMPLES_PER_INTENT } = await import('./learningEngine.js');
-  const { cosineSimilarity } = await import('./intentVectorScan.js');
-  const { semanticMatcher } = await import('./semanticMatcher.js');
 
   const added = [];
   let redundantRejected = 0;

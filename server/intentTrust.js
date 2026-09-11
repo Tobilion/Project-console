@@ -54,7 +54,14 @@ export function looksLikeRealRequest(input) {
   // names, but "8.25"/"64.50" (pure-digit decimals from the calculate grammar) must not, or
   // the Phase 6 percent/tax/tip shapes get blocked by the chit-chat guard below and fall
   // through to deploy (confirmed live 2026-08-12).
-  return /\.[a-zA-Z][a-zA-Z0-9]{0,5}\b/.test(input) || /["']/.test(input);
+  // Quote check: a double quote always counts; a single quote counts only when it is not an
+  // English contraction (what's, you're, how's). Contractions are a single quote between two
+  // letters (\\b[a-zA-Z]+'[a-zA-Z]+\\b) — previously "what's up" was treated as a file-creation
+  // follow-up and blocked the greeting/identity/gratitude intents (2026-09-12 replay: 4 high-sim
+  // fallback hits with confidence 1.0).
+  const contractionStripped = input.replace(/\b[a-zA-Z]+'[a-zA-Z]+\b/g, '');
+  const hasQuote = input.includes('"') || /'/.test(contractionStripped);
+  return /\.[a-zA-Z][a-zA-Z0-9]{0,5}\b/.test(input) || hasQuote;
 }
 
 export function isTrustworthyChitChat(intent, input) {

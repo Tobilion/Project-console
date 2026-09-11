@@ -23,11 +23,66 @@ const DEV_URL_GIT_CONTEXT_RE = /\b(git|github|gitlab|remote|repo|repository|bran
 // reply) but ONLY when a process is actually tracked for this project; a pronoun-only "stop it"
 // with nothing running is ambiguous enough that falling through to the normal yes/no fallback
 // is the safer default.
+function levenshtein(a, b) {
+  if (a === b) return 0;
+  const al = a.length, bl = b.length;
+  if (al === 0) return bl;
+  if (bl === 0) return al;
+  const row = Array(bl + 1).fill(0).map((_, i) => i);
+  for (let i = 1; i <= al; i++) {
+    let prev = row[0];
+    row[0] = i;
+    for (let j = 1; j <= bl; j++) {
+      const tmp = row[j];
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      row[j] = Math.min(row[j] + 1, row[j - 1] + 1, prev + cost);
+      prev = tmp;
+    }
+  }
+  return row[bl];
+}
+
+function isStopVerb(w) {
+  const verbs = ['stop', 'kill', 'shutdown', 'end', 'close', 'halt', 'terminate', 'cancel'];
+  if (verbs.includes(w)) return true;
+  // typo tolerance for the primary verb (1-edit) — "Sop server" live misfire 2026-09-11
+  if (levenshtein(w, 'stop') <= 1) return true;
+  if (levenshtein(w, 'close') <= 1) return true;
+  if (levenshtein(w, 'kill') <= 1) return true;
+  return false;
+}
+
+function isServerNoun(w) {
+  const nouns = ['server', 'site', 'app', 'website', 'process', 'dev', 'service', 'backend', 'api', 'project'];
+  if (nouns.includes(w)) return true;
+  for (const n of nouns) if (levenshtein(w, n) <= 1) return true;
+  return false;
+}
+
+export function isStopServerPhrase(input) {
+  const norm = input.trim().toLowerCase().replace(/[?.!]+$/, '').trim();
+  const clean = norm.replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
+  const words = clean.split(' ');
+  if (words.length < 2) return false;
+  const verb = words[0];
+  if (!isStopVerb(verb)) return false;
+  let idx = 1;
+  if (words[idx] === 'the' || words[idx] === 'my' || words[idx] === 'this' || words[idx] === 'that') idx++;
+  if (idx >= words.length) return false;
+  const noun = words[idx];
+  return isServerNoun(noun);
+}
+export { isStopVerb, isServerNoun, levenshtein };
+
 export async function handleStopServer(ws, project, lowerInput) {
   const hasTrackedProcess = runningProcesses.has(project.id);
   if (
-    /^(stop|kill|shutdown|end)\s+(the\s+)?(server|process|dev)/i.test(lowerInput) ||
-    (hasTrackedProcess && /^(stop|kill|cancel)\s+it\.?$/i.test(lowerInput.trim()))
+    isStopServerPhrase(lowerInput) ||
+    (hasTrackedProcess && /^(stop|kill|cancel|close)\s+it\.?$/i.test(lowerInput.trim())) ||
+    (hasTrackedProcess && (() => {
+      const w = lowerInput.trim().toLowerCase().replace(/[^a-z]/g, ' ').trim().split(/\s+/)[0] || '';
+      return isStopVerb(w) && lowerInput.trim().toLowerCase().includes(' it');
+    })())
   ) {
     const stopped = await stopTrackedProcess(project.id);
     if (stopped.ok) {

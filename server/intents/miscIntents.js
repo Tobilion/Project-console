@@ -203,4 +203,14 @@ export const MISC_INTENTS = {
     'show index.html in the folder', 'open notes.txt in explorer',
   ],
 },
+  // Stop server/site — canonical stop intent (covers site/app/website synonyms; close as permanent synonym per 2026-09-12 confirmation)
+  'system.server.stop': {
+    examples: [
+      'stop the server', 'stop server', 'stop the site', 'stop site',
+      'close the server', 'close server', 'close the site', 'close site',
+      'stop the app', 'close the app', 'stop the website', 'close the website',
+      'kill the server', 'kill the site', 'shutdown the server',
+      'stop the service', 'close the service',
+    ],
+  },
 };

@@ -2373,6 +2373,7 @@ no dispatch or matching logic). Notable functional additions made during the sty
   2026-08-10) and no SIGTERM is sent at all (taskkill kills the wrapper too). The AI query's
   AbortController lives on `sessionContext.aiAbortController`; the router tier's bounded call
   needs no cancel path.
+- **Stop-all ambiguity (2026-09-12)**: `stop all processes` is intentionally left as fallback — it is ambiguous between `stop server` (kill tracked dev servers), `list auto-start`/`disable auto-start`, and a shell-level `kill` — the replay pipeline surfaces it as the sole `stop-server` fallback cluster (1 hit, `data/replay-report.json`), and the product decision (per 2026-09-12 review) is to keep it asking rather than guessing. Do not add it as a synonym without explicit review.
 - **Upgrade sockets need error listeners** (bit twice — a WS client that connected to a
   non-`/stream` path and was then killed crashed the whole server with an unhandled
   `ECONNRESET` on the raw socket). Sockets arriving via `upgrade` leave the http server's

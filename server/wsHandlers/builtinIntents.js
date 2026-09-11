@@ -14,6 +14,7 @@ import { csvHandlers } from './builtinCsvTools.js';
 import { clipboardHandlers } from './builtinClipboard.js';
 import { backupHandlers } from './builtinBackup.js';
 import { screensaverHandlers } from './builtinScreensaver.js';
+import { serverHandlers } from './builtinServer.js';
 
 // Phase 10 (2026-08-04, splitting builtinIntents.js into per-domain leaf modules): this file
 // is now a pure orchestrator — every branch body lives in one of the domain modules
@@ -39,6 +40,7 @@ const handlers = {
   ...clipboardHandlers,
   ...backupHandlers,
   ...screensaverHandlers,
+  ...serverHandlers,
 };
 
 /**

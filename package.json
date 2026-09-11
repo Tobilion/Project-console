@@ -4,7 +4,7 @@
   "author": "Tobi",
   "license": "MIT",
   "private": false,
-  "version": "1.0.12",
+  "version": "1.0.13",
   "packageManager": "npm@11.16.0",
   "engines": {
     "node": ">=20"
@@ -46,6 +46,9 @@
     "daemon:stop": "node scripts/daemon.mjs stop",
     "daemon:status": "node scripts/daemon.mjs status",
     "doctor": "node --import tsx server/doctor.js",
+    "replay-history": "node --import tsx server/scripts/replayChatHistory.js",
+    "replay-history:digest": "node --import tsx server/scripts/replayChatHistory.js --digest",
+    "replay-history:json": "node --import tsx server/scripts/replayChatHistory.js --json",
     "prepare": "husky"
   },
   "dependencies": {
