@@ -24,6 +24,7 @@ export function buildMatchInfo(matchResult, input, { guessed = null, viaContext 
     return {
       stage: 'multi',
       intents: matchResult.multi.map((m) => m.builtin || (m.match ? `${m.match.type || 'entry'}:${m.matchedTrigger || ''}` : null)).filter(Boolean),
+      entities: matchResult.multi.map((m) => m.entities || {}),
       confidence: null,
     };
   }
@@ -32,7 +33,7 @@ export function buildMatchInfo(matchResult, input, { guessed = null, viaContext 
   }
   if (matchResult.builtin) {
     if (matchResult.routedByModel) {
-      return { stage: 'router', intent: matchResult.builtin, confidence: matchResult.routerConfidence ?? null };
+      return { stage: 'router', intent: matchResult.builtin, confidence: matchResult.routerConfidence ?? null, entities: matchResult.entities || {} };
     }
     return {
       stage: matchResult.semanticSource || 'nlp',
@@ -40,6 +41,7 @@ export function buildMatchInfo(matchResult, input, { guessed = null, viaContext 
       confidence: matchResult.semanticConfidence ?? null,
       margin: marginOf(matchResult),
       closeSecond: matchResult.closeSecond?.intent || null,
+      entities: matchResult.entities || {},
     };
   }
   if (matchResult.match) {
@@ -127,7 +129,7 @@ export async function handleMatchingPipeline(ws, project, projectId, input, sess
   if (matchResult.multi) {
     for (const item of matchResult.multi) {
       if (item.builtin) {
-        await handleBuiltinIntent(ws, item.builtin, input, project, sessionContext);
+        await handleBuiltinIntent(ws, item.builtin, input, project, sessionContext, item.entities || null);
       } else if (item.match) {
         await handleMatchedEntry(ws, item.match, input, item.matchedTrigger, project, sessionContext);
       }
@@ -138,7 +140,7 @@ export async function handleMatchingPipeline(ws, project, projectId, input, sess
 
   // 1. Builtin conversational intents
   if (matchResult.builtin) {
-    await handleBuiltinIntent(ws, matchResult.builtin, input, project, sessionContext);
+    await handleBuiltinIntent(ws, matchResult.builtin, input, project, sessionContext, matchResult.entities || null);
     if (matchResult.closeSecond) {
       // Requested directly (2026-08-04): a non-blocking "did you mean" chip when a different
       // intent scored within the near-tie band (margin 0.03-0.10) of the winner.
@@ -272,6 +274,7 @@ export async function explainInput(ws, project, projectId, input, sessionContext
   const confidence = info.confidence !== null && info.confidence !== undefined ? ` (${Math.round(info.confidence * 100)}%)` : '';
   let lines = [`**Input:** \`${input}\``, `**Stage:** ${info.stage}${confidence}`];
   if (info.intent) lines.push(`**Intent:** \`${info.intent}\``);
+  if (matchResult.entities && Object.keys(matchResult.entities).length) lines.push(`**Entities:** \`${JSON.stringify(matchResult.entities)}\``);
   if (info.trigger) lines.push(`**Trigger:** \`${info.trigger}\``);
   if (info.command) lines.push(`**Would run:** \`${info.command}\``);
   if (info.closeSecond) lines.push(`*Near-tie second: \`${info.closeSecond}\` (did-you-mean chip would show)*`);
@@ -280,7 +283,11 @@ export async function explainInput(ws, project, projectId, input, sessionContext
     lines.push(`Would ask which you meant:\n1. ${describeIntent(matchResult.disambiguate[0])}\n2. ${describeIntent(matchResult.disambiguate[1])}`);
   }
   if (matchResult.multi) {
-    lines.push(`Would split into ${matchResult.multi.length} parts: ${matchResult.multi.map((m) => m.builtin || 'config entry').join(', ')}`);
+    lines.push(`Would split into ${matchResult.multi.length} parts: ${matchResult.multi.map((m) => {
+      const label = m.builtin || 'config entry';
+      const ent = m.entities && Object.keys(m.entities).length ? ` ${JSON.stringify(m.entities)}` : '';
+      return `${label}${ent}`;
+    }).join(', ')}`);
   }
   lines.push(`\n_Dry run only — nothing was executed or confirmed._`);
   ws.send(JSON.stringify({ type: 'answer', data: lines.join('\n') }));

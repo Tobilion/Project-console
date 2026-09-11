@@ -19,6 +19,7 @@ import { formatRepoMap } from './codebaseIndexer.js';
 import { BUILTIN_INTENTS, CONFIG_RUN_ENTRY_FLOOR, FALLBACK_SCORE_FLOOR, OPEN_PROJECT_RE, ROUTER_REPO_MAP_CHARS, intentWorkspaceEligible } from './intentRegistry.js';
 import { PURE_CHITCHAT_INTENTS, isTrustworthyChitChat, isTrustworthyKnowledgeIntent, looksLikeRealRequest } from './intentTrust.js';
 import { tryLookupEntry, captureTelemetry, getFallbackSuggestions, computeDidYouMean } from './matchHelpers.js';
+import { extractSlots } from './slotFill.js';
 
 // Re-exported so existing external importers keep working unchanged: connection.js imports
 // describeIntent + getFallbackSuggestions, localRouter.js imports BUILTIN_INTENTS (its
@@ -190,6 +191,9 @@ export async function matchInput(input, project, projectIndex, options = {}) {
           suggestions: [],
           semanticConfidence: r.confidence,
           semanticSource: r.source,
+          // Step 4: per-clause entities resolved by the splitter (matchMultiParts) ride the
+          // multi item so dispatch/explain/Step-5 consumers see {intent, entities} per clause.
+          entities: r.entities || {},
         });
       }
     }
@@ -297,6 +301,9 @@ export async function matchInput(input, project, projectIndex, options = {}) {
           semanticSource: semanticResult.source,
           telemetryId,
           closeSecond,
+          // Step 4: same per-utterance slot fill as the multi path, so single matches also
+          // resolve to {intent, entities}. Additive — fmt()/dispatch ignore it when empty.
+          entities: await extractSlots(semanticResult.intent, input),
         };
       }
     }
@@ -311,7 +318,7 @@ export async function matchInput(input, project, projectIndex, options = {}) {
 
     if (isNlpBuiltinEligible(intent, input) && !questionBlocksExecuting(input, intent)) {
       metrics.event({ type: 'match_result', input: input.slice(0, 80), outcome: 'nlp_builtin', duration: Date.now() - t0 });
-      return { match: null, builtin: intent, suggestions: [], telemetryId };
+      return { match: null, builtin: intent, suggestions: [], telemetryId, entities: await extractSlots(intent, input) };
     }
 
     if (intent.startsWith('project.action.') || intent.startsWith('project.knowledge.')) {
@@ -361,6 +368,7 @@ export async function matchInput(input, project, projectIndex, options = {}) {
       telemetryId,
       routedByModel: true,
       routerConfidence: routerResult.confidence,
+      entities: await extractSlots(routerResult.intent, input),
     };
   }
 

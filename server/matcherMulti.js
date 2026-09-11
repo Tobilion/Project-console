@@ -2,6 +2,7 @@
 // SemanticMatcher (extracted verbatim from semanticMatcher.js — see that file's
 // matchMulti / _splitConjunctions for the originals).
 import { PURE_CHITCHAT_INTENTS } from './intentTrust.js';
+import { extractSlots } from './slotFill.js';
 
 /**
  * Splits an input on common conjunctions. Confirmed live 2026-07-29: `push this code with
@@ -80,7 +81,11 @@ export async function matchMultiParts(matcher, input) {
     const telemetry = matcher.getAndClearLastTelemetry();
     if (r && !seenIntents.has(r.intent)) {
       seenIntents.add(r.intent);
-      results.push({ ...r, originalPhrase: part, telemetry });
+      // Step 4: per-clause slot filling — each clause resolves to {intent, entities} with the
+      // clause's own text (a whole-input extraction would mix clauses' values). Additive:
+      // consumers that don't know `entities` ignore it.
+      const entities = await extractSlots(r.intent, part);
+      results.push({ ...r, originalPhrase: part, telemetry, entities });
     }
   }
 

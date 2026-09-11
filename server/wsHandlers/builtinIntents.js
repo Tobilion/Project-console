@@ -43,8 +43,12 @@ const handlers = {
 
 /**
  * Handles all built-in (non-project-config, non-AI) conversational intents. Returns false if the action wasn't recognized.
+ * `entities` (Step 4) is the match-time slot fill ({intent, entities} resolution) — carried
+ * through to the execution site for future handler adoption and Step 5's structured
+ * fallback. Handlers ignore it today (they parse `input` themselves, unchanged), so this is
+ * purely additive plumbing, never a behavior change.
  */
-export async function handleBuiltinIntent(ws, action, input, project, sessionContext) {
+export async function handleBuiltinIntent(ws, action, input, project, sessionContext, entities = null) {
   if (action === 'undo') action = 'system.chit_chat.undo';
   const handler = handlers[action];
   if (!handler) return false;

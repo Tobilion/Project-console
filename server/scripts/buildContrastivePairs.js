@@ -57,7 +57,7 @@ const POS_PER_INTENT = 12; // sampled same-intent pairs per intent (bounds outpu
 const intentNames = Object.keys(INTENTS).filter(k => (INTENTS[k].examples || []).length >= 2);
 
 const pairs = [];
-const stats = { positive: 0, userPositive: 0, negative: 0, hardNegative: 0, heldOutSkipped: 0 };
+const stats = { positive: 0, userPositive: 0, negative: 0, hardNegative: 0, heldOutBlockedOccurrences: 0 };
 const pushPair = (a, b, label, kind) => {
   const { kept, blocked } = filterHeldOut([a, b]);
   if (blocked > 0) { stats.heldOutSkipped += blocked; return; }

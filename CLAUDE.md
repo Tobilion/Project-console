@@ -1999,6 +1999,19 @@ collapsed header.
 - This is "Stage 1" of a deliberately staged ML plan; further stages were assessed and
   shelved (too little usage volume, Python/GPU tooling absent). Revisit only if usage grows
   substantially.
+- **SetFit contrastive fine-tune — DEFERRED with a concrete trigger (2026-09-11).**
+  `server/scripts/buildContrastivePairs.js` exports deterministic seeded training pairs
+  (same-intent positives + random negatives, held-out-filtered), but the fine-tune itself is
+  parked: transformers.js is inference-only (no Trainer API), so training needs Python torch +
+  sentence-transformers + an optimum ONNX export back to Xenova format — and the one
+  ingredient that would make it worth that chain, logged hard negatives, barely exists
+  (2026-09-11: 97 near-miss entries, only 1 mapping to a real intent). **Revisit trigger:
+  `data/near-misses/*.jsonl` holds ≥ 50 entries whose `resolvedCommand` maps to a real intent
+  via `mapNearMissToIntent` (not null fallback).** Do NOT retrain on corpus-derived pairs
+  alone before that — it teaches the model its own corpus and overfits (cf. the 2e0e2f3
+  bulk-add revert). When the trigger fires: install torch, run SetFit on the pairs export,
+  keep the pre-retrain model file, and promote only on beating baseline on BOTH check-matcher
+  and the held-out eval (`npm run check-eval`).
 
 ## Safety model — don't weaken without discussing first
 
