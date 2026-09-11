@@ -1,6 +1,6 @@
 {
   "name": "local-project-console-desktop",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "Project Console desktop shell — Electron wrapper around the local Express+WS server",
   "main": "main.cjs",
   "private": true,
