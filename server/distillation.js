@@ -247,6 +247,23 @@ export function generateDistillationSuggestions(projectId) {
 }
 
 /**
+ * Auto-apply high-confidence distillation suggestions (Step 8).
+ * When AI mode resolves a query that trigger mode missed, high-confidence
+ * suggestions (occurrences >= 2 or confidence === 'high') are auto-applied
+ * to console.config.json without requiring manual `review distillations`.
+ * Returns the list of applied distillations.
+ */
+export async function autoApplyDistillations(projectId, projectsCache) {
+  const suggestions = generateDistillationSuggestions(projectId);
+  const highConfidence = suggestions.filter(s =>
+    s.confidence === 'high' || s.occurrences >= 2
+  );
+  if (highConfidence.length === 0) return { applied: 0, total: suggestions.length };
+  const added = await applyDistillation(projectId, highConfidence.map(s => s.id), projectsCache);
+  return { applied: added.length, total: suggestions.length };
+}
+
+/**
  * Apply approved distillations — add entries to the project's console.config.json
  * and let the file watcher propagate the change. Serialized per project via
  * withConfigLock so two approves in the same tick (web + CLI) can't clobber each

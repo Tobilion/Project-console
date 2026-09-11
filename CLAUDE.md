@@ -2090,6 +2090,14 @@ collapsed header.
   server the user started separately; with no AI turn in flight it keeps the historical
   all-project behavior so a typed trigger-mode command still cancels. `abort_ai` stays
   process-free by design.
+- **Reminders timeless-question guard (2026-09-11)**: `system.reminders.create` is deliberately
+  NOT confirm-gated (frictionless personal captures, undo via cancel/complete). A timeless
+  question-shaped body like `"remind me what the meaning of life is"` previously silently wrote
+  a junk todo with zero confirmation. Fixed at the parser: `parseReminderInput` now returns
+  `ok: false` with guidance (notes for free text, timed `remind me…`, or rephrase as a task)
+  instead of a todo. Timed inputs and imperative timeless bodies (`to stretch`, `about the
+  meeting`) untouched. REST `/api/reminders` + panel paths inherit the fix via the shared
+  parser. See `fe6d999` (4 check-handler rows, 362/362).
 
 ## Matching pipeline — current behavior and known traps
 

@@ -2,7 +2,7 @@ import { checkOllama } from '../ollama.js';
 import crypto from 'crypto';
 import { appendMessage } from '../conversationStore.js';
 import { streamWithToolDetection } from './aiStream.js';
-import { analyzeAIExchange } from '../distillation.js';
+import { analyzeAIExchange, autoApplyDistillations } from '../distillation.js';
 import { trackFileEdit, trackQuestion, addCandidateAddition } from '../projectMemory.js';
 import { metrics } from '../metrics.js';
 import { getMaxToolRounds, runToolCall } from './aiQueryToolRun.js';
@@ -273,11 +273,15 @@ export async function handleAIQuery(ws, project, input, sessionContext, workspac
 
     // Distillation: analyze what the AI did and suggest trigger-mode improvements
     if (toolHistory.length > 0) {
-      analyzeAIExchange(project, {
+      const distillationIds = analyzeAIExchange(project, {
         input: cleanInput || input,
         finalText: finalText || '',
         toolHistory,
       });
+      // Step 8: auto-apply high-confidence distillations when AI resolves a trigger-mode miss
+      if (distillationIds.length > 0) {
+        autoApplyDistillations(project.id, [project]).catch(() => {});
+      }
     }
 
     // Persist the final assistant text explicitly — token/stream events aren't auto-saved
