@@ -21,6 +21,7 @@ npm-debug.log*
 # Runtime-generated usage data (near-misses, telemetry, conversation index) —
 # regenerated per install, not meant to be version-controlled
 data/near-misses/
+data/review-candidates/
 data/telemetry/
 data/conversations/
 # Last-known dev-server URLs (runtime mirror of state.lastDevUrls, see devUrlStore.js)

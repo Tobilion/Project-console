@@ -2012,6 +2012,16 @@ collapsed header.
   bulk-add revert). When the trigger fires: install torch, run SetFit on the pairs export,
   keep the pre-retrain model file, and promote only on beating baseline on BOTH check-matcher
   and the held-out eval (`npm run check-eval`).
+- **The trigger measures the WRONG population on its own — read this before trusting it
+  (2026-09-11).** All four near-miss log sites fire only when the pipeline FAILS to dispatch
+  (fallback / guess / router-rescue); confident wrong-intent dispatches never log, so the
+  trigger above can sit at 1/50 forever while misfires climb. The second population lives in
+  `data/review-candidates/` (`server/reviewCandidate.js`, surfaced by `npm run audit-nearmiss`):
+  semantic-stage wins under 0.75 (`low-conf`), known-trap shapes on their pinned intent
+  (`trap-watch`), and trap shapes routed elsewhere (`trap-watch-misfire` — automatically
+  counted known-trap misfires). Second trigger arm (manual): ≥ 25 reviewed-confirmed
+  misfires from the review pool. Either arm firing justifies the SetFit revisit — the
+  automatic one never fires on misfires alone by construction.
 
 ## Safety model — don't weaken without discussing first
 

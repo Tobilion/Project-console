@@ -9,6 +9,7 @@ import { logNearMiss } from '../nearMissLogger.js';
 import { patchMessageMeta } from '../conversationStore.js';
 import { recordMatchStat } from '../matchStats.js';
 import { extractCommandLine } from '../typedCommand.js';
+import { maybeLogReviewCandidate } from '../reviewCandidate.js';
 import { state, pendingConfirmations } from '../state.js';
 
 /**
@@ -140,6 +141,15 @@ export async function handleMatchingPipeline(ws, project, projectId, input, sess
 
   // 1. Builtin conversational intents
   if (matchResult.builtin) {
+    // Second telemetry signal (pre-Step-5): successful dispatches can still be misfires, and
+    // the near-miss log never sees them. Weak semantic wins (< 0.75) and known-trap shapes
+    // land in data/review-candidates/ for human review — never auto-promoted.
+    maybeLogReviewCandidate(project.id, {
+      input,
+      intent: matchResult.builtin,
+      confidence: matchResult.semanticConfidence ?? null,
+      stage: matchResult.semanticSource || null,
+    });
     await handleBuiltinIntent(ws, matchResult.builtin, input, project, sessionContext, matchResult.entities || null);
     if (matchResult.closeSecond) {
       // Requested directly (2026-08-04): a non-blocking "did you mean" chip when a different

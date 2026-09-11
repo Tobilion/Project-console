@@ -26,6 +26,7 @@
 import fs from 'fs';
 import { resolveData } from '../dataPath.js';
 import { mapNearMissToIntent } from '../nearMissIntentMap.js';
+import { listReviewCandidateProjectIds, readReviewCandidates } from '../reviewCandidate.js';
 
 const dir = resolveData('near-misses');
 const bySource = {};
@@ -81,3 +82,37 @@ if (rejectedGuesses.length) {
   for (const r of rejectedGuesses) console.log(`    '${String(r.input).slice(0, 70)}' -> ${r.command}`);
 }
 console.log('NOTE: confident wrong-intent dispatches never log — see check-matcher traps + live crosschecks for those.');
+
+// Second population: review candidates (weak wins + trap-watch) — the signal that CAN see
+// misfires. Never auto-promoted; surfaced here for human review.
+try {
+  const projects = listReviewCandidateProjectIds();
+  let total = 0;
+  const byReason = {};
+  const misfires = [];
+  for (const pid of projects) {
+    for (const e of readReviewCandidates(pid)) {
+      total++;
+      byReason[e.reason] = (byReason[e.reason] || 0) + 1;
+      if (e.reason === 'trap-watch-misfire' && misfires.length < 10) {
+        misfires.push({ input: e.input, intent: e.intent, trap: e.trap });
+      }
+    }
+  }
+  console.log(`\n=== REVIEW CANDIDATES (${total} lines across ${projects.length} project(s)) ===`);
+  if (total === 0) {
+    console.log('empty — no weak/trap dispatches recorded yet.');
+  } else {
+    for (const [r, n] of Object.entries(byReason).sort((a, b) => b[1] - a[1])) {
+      const gloss = r === 'low-conf' ? 'semantic win under 0.75 — needs a human look'
+        : r === 'trap-watch' ? 'known-trap shape routed to its pinned intent (pin healthy)'
+        : r === 'trap-watch-misfire' ? 'KNOWN-TRAP MISFIRE — trap shape routed elsewhere'
+        : r;
+      console.log(`  ${r}: ${n} — ${gloss}`);
+    }
+    if (misfires.length) {
+      console.log('trap-watch misfires:');
+      for (const m of misfires) console.log(`    '${String(m.input).slice(0, 70)}' -> ${m.intent} (trap: ${m.trap})`);
+    }
+  }
+} catch { /* review pool absent — near-miss table above still stands */ }
