@@ -5,7 +5,6 @@
 // here are no longer a promotion path: every candidate below is filtered through
 // server/evalGuard.js (held-out eval messages are skipped), and future promotions must go
 // through learningEngine applySuggestions (reviewed), not this script.
-
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -132,15 +131,26 @@ while (collectedFails.size < TARGET_FAILS) {
 
 console.log(`\nCollected ${collectedFails.size} fails from ${totalTests} tests in ${iterations} iterations`);
 
-// Now fix: group fails by expected intent and append to files
+// Direct file writes are NOT a promotion path (Step 2): they bypass learningEngine's
+// held-out filter, cosine-novelty gate, and per-intent cap. This script runs collect-only
+// by default — promote findings via `review learning` / `approve suggestions`, which run
+// every candidate through the gate. An explicit operator override remains for
+// throwaway local experiments: AUTOTUNE_ALLOW_WRITE=1.
+// Group fails by expected intent (in-memory grouping only — file writes below are gated).
 const byIntent = new Map();
 for (const [input, {expected, got}] of collectedFails.entries()) {
   if (!byIntent.has(expected)) byIntent.set(expected, []);
   byIntent.get(expected).push(input);
 }
+let totalAdded = 0; // stays 0 on the default collect-only path; set inside the override below.
 
-console.log(`\nFixing ${byIntent.size} intents...`);
-let totalAdded = 0;
+if (process.env.AUTOTUNE_ALLOW_WRITE !== '1') {
+  console.log('\nWrite phase DISABLED by default (Step 2 gate). Collected fails above were NOT written.');
+  console.log('To promote real findings, use the reviewed flow: `review learning` + `approve suggestions`.');
+  console.log('Only for throwaway local experiments: AUTOTUNE_ALLOW_WRITE=1 (held-out filter still applies).');
+} else {
+  console.log('\nAUTOTUNE_ALLOW_WRITE=1 — direct-write override active (held-out filter still applies).');
+  console.log(`\nFixing ${byIntent.size} intents...`);
 for (const [intent, inputs] of byIntent.entries()) {
   const file = intentFileMap[intent];
   if (!file) {
@@ -181,6 +191,8 @@ for (const [intent, inputs] of byIntent.entries()) {
   totalAdded += toAdd.length;
   console.log(`  ${intent} (${path.basename(file)}): added ${toAdd.length} examples`);
 }
+
+} // end AUTOTUNE_ALLOW_WRITE=1 override block — default path writes nothing above.
 
 console.log(`\nTotal added ${totalAdded} examples across ${byIntent.size} intents`);
 console.log(`Done. Run check-matcher and rebuild needed.`);

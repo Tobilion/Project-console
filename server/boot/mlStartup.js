@@ -41,7 +41,7 @@ export async function runMlStartupWork() {
   // real intent examples on startup, instead of requiring a manual `review learning` +
   // `approve suggestions` round trip.
   try {
-    const learningResults = autoApplySuggestionsForAll();
+    const learningResults = await autoApplySuggestionsForAll();
     if (learningResults.length > 0) {
       log.info(`Auto-applied near-miss learning for ${learningResults.length} project(s):`);
       for (const r of learningResults) {

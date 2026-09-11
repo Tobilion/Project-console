@@ -23,7 +23,8 @@ function ensureDataDir() {
 function readLearnedFile() {
   try {
     if (fs.existsSync(LEARNED_FILE)) {
-      return JSON.parse(fs.readFileSync(LEARNED_FILE, 'utf-8'));
+      const parsed = JSON.parse(fs.readFileSync(LEARNED_FILE, 'utf-8'));
+      if (parsed && typeof parsed === 'object') return parsed;
     }
   } catch {}
   return {};
@@ -33,12 +34,16 @@ function readLearnedFile() {
  * Merge previously-learned phrases into the shared INTENTS object. Must be called before
  * semanticMatcher.initialize() builds its embeddings/Fuse index, so learned phrases are treated
  * as first-class examples rather than only reachable via the Fuse fallback stage.
+ * Also re-applies recorded cap evictions (the `_evicted` map — see persistEviction), so an
+ * example evicted at promotion time stays evicted across restarts instead of resurrecting
+ * from its source file on every boot.
  * Returns the number of phrases merged.
  */
 export function loadLearnedIntents() {
   const learned = readLearnedFile();
   let merged = 0;
   for (const [intent, phrases] of Object.entries(learned)) {
+    if (intent === '_evicted') continue;
     const config = INTENTS[intent];
     if (!config || !Array.isArray(phrases)) continue;
     // Held-out guard: a stale learned file must never inject eval messages on boot.
@@ -49,6 +54,19 @@ export function loadLearnedIntents() {
         config.examples.push(phrase);
         existing.add(phrase);
         merged++;
+      }
+    }
+  }
+  // Re-apply evictions after the merge (a learned phrase re-added above is removed again
+  // when it was the eviction victim — the eviction record wins by design).
+  const evicted = learned._evicted;
+  if (evicted && typeof evicted === 'object') {
+    for (const [intent, phrases] of Object.entries(evicted)) {
+      const config = INTENTS[intent];
+      if (!config || !Array.isArray(phrases)) continue;
+      for (const phrase of phrases) {
+        const i = config.examples.indexOf(phrase);
+        if (i !== -1) config.examples.splice(i, 1);
       }
     }
   }
@@ -72,8 +90,30 @@ export function persistLearnedPhrases(added) {
   if (!filtered.length) return;
   const learned = readLearnedFile();
   for (const { intent, phrase } of filtered) {
-    if (!learned[intent]) learned[intent] = [];
+    if (!learned[intent] || !Array.isArray(learned[intent])) learned[intent] = [];
     if (!learned[intent].includes(phrase)) learned[intent].push(phrase);
+  }
+  writeFileAtomicSync(LEARNED_FILE, JSON.stringify(learned, null, 2));
+}
+
+/**
+ * Record a cap eviction (from learningEngine.js's per-intent cap) so it survives restarts.
+ * The evicted phrase stays in its source intent file on disk — this record is what keeps
+ * loadLearnedIntents() removing it from the in-memory corpus on every boot. Also drops the
+ * phrase from the learned list when the victim was itself a previously-learned phrase.
+ */
+export function persistEviction(intent, phrase) {
+  if (!intent || !phrase) return;
+  ensureDataDir();
+  const learned = readLearnedFile();
+  if (!learned._evicted || typeof learned._evicted !== 'object' || Array.isArray(learned._evicted)) {
+    learned._evicted = {};
+  }
+  if (!Array.isArray(learned._evicted[intent])) learned._evicted[intent] = [];
+  if (!learned._evicted[intent].includes(phrase)) learned._evicted[intent].push(phrase);
+  if (Array.isArray(learned[intent])) {
+    const i = learned[intent].indexOf(phrase);
+    if (i !== -1) learned[intent].splice(i, 1);
   }
   writeFileAtomicSync(LEARNED_FILE, JSON.stringify(learned, null, 2));
 }

@@ -118,7 +118,7 @@ export async function handleLearningCommand(ws, project, lowerInput) {
       ws.send(JSON.stringify({ type: 'end' }));
       return true;
     }
-    const added = applySuggestions(suggestionIds, project.id);
+    const added = await applySuggestions(suggestionIds, project.id);
     if (added.length > 0) {
       ws.send(JSON.stringify({
         type: 'answer',

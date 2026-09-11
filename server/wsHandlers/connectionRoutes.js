@@ -230,7 +230,7 @@ export async function routeMessage(ws, parsed, sessionContext) {
         ws.send(JSON.stringify({ type: 'answer', data: 'No suggestions to approve.' }));
         return;
       }
-      const added = applySuggestions(suggestionIds, projectId);
+      const added = await applySuggestions(suggestionIds, projectId);
       if (added.length > 0) {
         ws.send(JSON.stringify({
           type: 'answer',
