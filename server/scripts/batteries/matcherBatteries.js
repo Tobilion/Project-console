@@ -132,6 +132,15 @@ const BATTERIES = [
       ['comit', 'BUILTIN=git_commit'],
       ['commit now', 'BUILTIN=git_commit'],
       ['commit it', 'BUILTIN=git_commit'],
+      // Commit-with-message shapes (2026-09-11 live probe): routed to git_status by
+      // embedding (same "commit history" prefix trap as the bare token) and RAN STATUS
+      // instead of the commit flow. Pinned like the bare token; the quoted message rides
+      // along for extractCommentMessage (quote-boundary split guard keeps it intact).
+      ['commit with message "fix it"', 'BUILTIN=git_commit'],
+      ['commit with the message "fix it"', 'BUILTIN=git_commit'],
+      ['commit with comment "fix it"', 'BUILTIN=git_commit'],
+      // Guards: the status phrasing stays put (push-with-comment is pinned in MUST_NOT_STEAL).
+      ['commit history', 'BUILTIN=system.chit_chat.git_status(closeSecond=git_log)'],
       // Compound commit+push phrases are ONE intent (git_commit_push), not a split — the
       // whole-phrase matchMulti guard keeps the split from firing on its own example.
       ['commit and push', 'BUILTIN=git_commit_push'],

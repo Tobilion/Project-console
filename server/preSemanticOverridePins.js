@@ -109,6 +109,16 @@ export const PRE_SEMANTIC_OVERRIDES = [
   // [git_status, deploy]); the whole-phrase matchMulti guard in matcherMulti.js keeps the
   // compound itself on git_commit_push.
   { intent: 'git_commit', pattern: /^com?mit\s*(?:it|now|everything|all|this|my changes|the changes|the code|my work)?$/i },
+  // 2026-09-11 live probe: "commit with message X" / "commit with the message X" routed to
+  // git_status by embedding ("commit" prefix-matches git_status's "commit history" example —
+  // the same trap class as the bare-commit pin above) and RAN A STATUS CHECK instead of
+  // offering the commit flow. A leading "commit with (the) message/comment" is unambiguous:
+  // the trailing text IS the commit payload (extractCommentMessage parses it, quote-aware),
+  // never a status question. Anchored to a leading commit token so "commit and push with
+  // message X" (whole-phrase git_commit_push) and "push ... and commit ..." shapes never
+  // match — only the bare commit-with-message command does. The per-clause matcher applies
+  // pins per part, so the "commit with message Y" half of a conjunction split lands here too.
+  { intent: 'git_commit', pattern: /^com?mit\s+with\s+(?:the\s+)?(?:message|comment)\b/i },
   // 2026-08-26 live batch crosscheck: yes/no STATE questions about pushing/committing fired
   // the ACTIONS — "did i push yet" opened the git-push confirm, "did i commit" opened the
   // commit confirm, "have i pushed recently" landed on deploy. The how_do_i helper override
