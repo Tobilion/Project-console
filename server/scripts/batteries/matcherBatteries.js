@@ -295,6 +295,21 @@ const BATTERIES = [
     ],
   },
   {
+    // OOS (Step 6, 2026-09-11): synthetic out-of-scope utterances (server/oosUtterances.js,
+    // 198 total) must not dispatch. Only margin-safe rows live here — plain FALLBACK or a
+    // stable didYouMean, probed live; near-boundary OOS ("run a marathon", "push the door")
+    // is measure-only in check-oos, never baked, since enshrining those FPs would bless
+    // misfires. FP rate overall: check-oos (10.6% train, diffuse across 13 intents).
+    name: 'OOS (Step 6 out-of-scope, 2026-09-11)',
+    items: [
+      ['zzzqxk blorple', 'FALLBACK'],
+      ['asdfgh nonsense words here', 'FALLBACK'],
+      ['lorem ipsum dolor sit amet', 'FALLBACK'],
+      ['how do i grow tomatoes on a balcony', 'FALLBACK'],
+      ['https://github.com/someone/some-repo', 'FALLBACK(didYouMean=project.action.open_github_page)'],
+    ],
+  },
+  {
     // Phase 0 (2026-08-10): the utility intents. Positive rows for each phrase family and one
     // garbled-input row that pins the PURE_CHITCHAT_INTENTS guard specifically against the new
     // canned replies (a garbage hit on "It's 4:32 PM" is the same failure mode as gratitude).

@@ -34,6 +34,15 @@ class IntentClassifier {
     for (const [phrase, intent] of NLP_SEED_INTENTS) {
       this.manager.addDocument('en', phrase, intent);
     }
+    // Step 6 negative result (2026-09-11, measured — do NOT "fix" by re-adding): the
+    // OOS_TRAIN corpus (oosUtterances.js) was trained here as a none-of-the-above class and
+    // REVERTED the same day. Dose-response was damning both ways: 179 docs broke 2 battery
+    // rows (NLP claimed OOS over structure on "split the window"; reweighted commands onto
+    // filler-garbled "please to running the site for me today"), smaller subsets kept the
+    // rows only by shrinking, and TRUE held-out generalization (unseen OOS paraphrases) was
+    // ~0% at every size — the class memorized, never generalized — while any mass at all
+    // shifted weak-stage boundaries. OOS stays measurement (check-oos) + pins, never NLP
+    // training data. See the Step-6 commit message for the full numbers.
   }
 
   clearProjectDocs(projects) {

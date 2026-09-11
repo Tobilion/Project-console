@@ -32,6 +32,7 @@
     "check-matcher": "node --import tsx server/scripts/checkMatcherCoverage.js",
     "check-eval": "node --import tsx server/scripts/evalHeldOut.js",
     "audit-nearmiss": "node --import tsx server/scripts/auditNearMiss.js",
+    "check-oos": "node --import tsx server/scripts/evalOos.js",
     "check-indexer": "node --import tsx server/scripts/checkIndexerCoverage.js",
     "check-tools": "node --import tsx server/scripts/checkToolsCoverage.js",
     "check-handlers": "node --import tsx server/scripts/checkHandlerCoverage.js",
