@@ -361,6 +361,12 @@ export async function matchInput(input, project, projectIndex, options = {}) {
   metrics.observe('matching.stage.router', Date.now() - tRouter);
   if (routerResult) {
     metrics.event({ type: 'match_result', input: input.slice(0, 80), outcome: 'router', duration: Date.now() - t0 });
+    // Step 5: the model's own entities win when present (it saw the full message); the local
+    // Step-4 extraction is the safety net when it omitted them. Either way the result rides
+    // the same entities plumbing as every other stage (dispatch param + transcript).
+    const routerEntities = routerResult.entities && Object.keys(routerResult.entities).length
+      ? routerResult.entities
+      : await extractSlots(routerResult.intent, input);
     return {
       match: null,
       builtin: routerResult.intent,
@@ -368,7 +374,7 @@ export async function matchInput(input, project, projectIndex, options = {}) {
       telemetryId,
       routedByModel: true,
       routerConfidence: routerResult.confidence,
-      entities: await extractSlots(routerResult.intent, input),
+      entities: routerEntities,
     };
   }
 

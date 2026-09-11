@@ -187,6 +187,10 @@ export async function chatOnce(model, messages, options = {}, signal, hostOverri
       model,
       messages,
       stream: false,
+      // Step 5: JSON-schema-constrained decoding for the router tier — passed through ONLY
+      // when the caller supplies options.format (today: localRouter.js alone). The AI-chat
+      // path never sets it, so full-mode conversation behavior is byte-identical.
+      ...(options.format !== undefined ? { format: options.format } : {}),
       // See chatStream()'s comment below — same reasoning/content split, requested here too so a
       // reasoning-capable model's router classification doesn't get its "thinking" text mixed
       // into the one short response this call parses.
