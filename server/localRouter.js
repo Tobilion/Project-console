@@ -11,7 +11,12 @@ const ROUTER_MODEL_FALLBACK = 'qwen2.5-coder:7b';
 // Nudged from 7s to 8s (still inside the plan's stated 5-8s bound) now that the prompt can
 // optionally include a repo-map slice, which adds prompt-processing time on CPU-only hardware.
 const ROUTER_TIMEOUT_MS = 8000;
-const ROUTER_NUM_PREDICT = 200;
+// 2026-09-11: 200 -> 600. Reasoning models (gpt-oss:120b-cloud measured 256 thinking chars
+// before any content on a trivial ping) burn the whole budget thinking and return empty
+// content — the router then nulls cleanly but never rescues. 600 covers thinking + the short
+// JSON payload with headroom; non-thinking models stop at EOS and never touch the extra
+// budget, and the 8s timeout above still bounds wall-clock. Only the last-resort path pays.
+const ROUTER_NUM_PREDICT = 600;
 
 /**
  * JSON schema for Ollama's constrained decoding (Step 5 — replaces the free-text "respond
