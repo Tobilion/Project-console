@@ -25,6 +25,14 @@ const WEEKDAY_IDS = { sunday: 0, monday: 1, tuesday: 2, wednesday: 3, thursday: 
 // so bare "at 9" is rejected instead of guessed. Space-separated minutes (2 44) are also accepted.
 const TIME_RE = /\bat\s+(\d{1,2})(?::(\d{2})|\s+(\d{2}))?\s*(am|pm)?\b/i;
 
+// 2026-09-11: timeless question-shaped bodies are asked about, never silently filed as todos
+// (see the timeless branch in parseReminderInput). Any "X to Y" shape never reaches that
+// branch — the toSplit/chrono-error path above claims it first ("remind me what to buy"
+// errors with can't-read-"what", pre-existing intentional behavior) — so this regex needs
+// no noun-clause exemptions. Local regex, not matcher.js's QUESTION_MARKER_RE, so this
+// parser stays out of the matcher import graph (which pulls the whole semantic pipeline).
+const QUESTION_SHAPED_RE = /^(?:what|why|how|when|where|who|which|whom|whose|is|are|was|were|do|does|did|have|has|had|can|could|should|would|am)\b/i;
+
 function parseTime(when) {
   const m = when.match(TIME_RE);
   if (!m) return null;
@@ -89,6 +97,17 @@ export function parseReminderInput(input) {
       // "remind me about the meeting") — this is a dateless TODO, not an error. The whole
       // body is the reminder text; it lives in the reminders list's No Date section and
       // never fires on its own.
+      // 2026-09-11: question-shaped bodies ("remind me what the meaning of life is") are NOT
+      // todos — nothing about them states a task, and filing them silently writes junk with
+      // zero confirmation (reminders.create never confirm-gates, by design: frictionless
+      // personal captures, undo via cancel/complete — so the parser is the only gate). Ask
+      // instead, pointing at notes (the free-text store) and timed reminders. Imperative
+      // bodies ("to stretch", "about the meeting") never match and file silently as before.
+      // Local regex, not matcher.js's QUESTION_MARKER_RE, so this parser stays out of the
+      // matcher import graph (which pulls the whole semantic pipeline).
+      if (QUESTION_SHAPED_RE.test(body)) {
+        return { ok: false, reason: `"${body}" looks like a question, not a reminder — nothing was saved. To keep it as a dateless todo, phrase it as a task (\`remind me to ...\`); free text belongs in \`note: ...\`; or add a time (\`remind me tomorrow at 9am to ...\`).` };
+      }
       when = null;
       text = body;
     }

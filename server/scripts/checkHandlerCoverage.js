@@ -848,6 +848,18 @@ const rPast = parseReminderInput('remind me yesterday at 9am to fix it');
 eq('reminder parse: explicit past -> rejected', rPast.ok === false && /past/.test(rPast.reason), true);
 const rGarbage = parseReminderInput('remind me blahblah to do the thing');
 eq('reminder parse: unparseable when -> named error', rGarbage.ok === false && /blahblah/.test(rGarbage.reason), true);
+// 2026-09-11: timeless question-shaped bodies ask instead of silently filing junk todos
+// ("remind me what the meaning of life is" created a todo with zero confirmation —
+// reminders.create never confirm-gates by design, so the parser is the only gate).
+const rQuestion = parseReminderInput('remind me what the meaning of life is');
+eq('reminder parse: timeless question-shaped body asks, saves nothing', rQuestion.ok === false && /looks like a question/.test(rQuestion.reason), true);
+const rHowDo = parseReminderInput('remind me how do i cook pasta');
+eq('reminder parse: how-do timeless body asks', rHowDo.ok === false && /looks like a question/.test(rHowDo.reason), true);
+const rTimedQ = parseReminderInput('remind me what to do tomorrow at 9am');
+eq('reminder parse: timed input unaffected by the question guard', rTimedQ.ok === true && rTimedQ.text === 'what to do', true);
+sent.length = 0;
+await handleBuiltinIntent(ws, 'system.reminders.create', 'remind me what the meaning of life is', proj, {});
+eq('reminder leaf: question-shaped create answers guidance, no toast, no write', ws.sent.length === 1 && ws.sent[0].type === 'answer' && /looks like a question/.test(ws.sent[0].data) && ws.sent[0].toast !== true, true);
 
 // --- EXPANDED CALCULATOR (Phase 6, 2026-08-12) ---------------------------------
 // mathEval.js unit + percentage grammars (pure, no store interaction):
