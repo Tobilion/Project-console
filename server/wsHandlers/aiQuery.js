@@ -72,10 +72,10 @@ export async function handleAIQuery(ws, project, input, sessionContext, workspac
   // to the prompt — the model still had the same num_predict ceiling as a plain chat turn, so a
   // genuinely longer, more deliberate answer could still get cut short. Raise the token budget
   // for every streamWithToolDetection call this turn makes when reason mode is on; plain turns
-  // pass undefined and keep Ollama's own default, unchanged.
+  // pass the default NUM_PREDICT budget so simple responses aren't cut short by a low token ceiling.
   const streamOptions = reasoningMode
     ? { num_predict: getTuning('REASON_MODE_NUM_PREDICT', TUNING_DEFAULTS.REASON_MODE_NUM_PREDICT) }
-    : undefined;
+    : { num_predict: getTuning('NUM_PREDICT', TUNING_DEFAULTS.NUM_PREDICT) };
 
   try {
     ws.send(JSON.stringify({ type: 'ai_start', data: `Thinking... (${model})` }));

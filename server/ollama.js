@@ -198,7 +198,7 @@ export async function chatOnce(model, messages, options = {}, signal, hostOverri
       options: {
         num_ctx: currentNumCtx(),
         temperature: options.temperature ?? 0,
-        num_predict: options.num_predict ?? 200,
+        num_predict: options.num_predict ?? getTuning('NUM_PREDICT', 200),
       },
     }),
     signal,

@@ -1,6 +1,7 @@
 import crypto from 'crypto';
 import { chatOnce } from '../ollama.js';
 import { pendingConfirmations } from '../state.js';
+import { getTuning } from '../tuningStore.js';
 
 /**
  * Pulls a filename and (optionally) quoted content out of a natural-language trigger-mode
@@ -159,7 +160,7 @@ export async function smartChitchatReply(project, sessionContext, input) {
         },
         { role: 'user', content: input },
       ],
-      { temperature: 0.7, num_predict: 120 },
+      { temperature: 0.7, num_predict: getTuning('NUM_PREDICT', TUNING_DEFAULTS.NUM_PREDICT) },
       AbortSignal.timeout(8000)
     );
     const text = (reply || '').trim();
@@ -192,7 +193,7 @@ export async function paraphrasePoolReply(project, sessionContext, template) {
         },
         { role: 'user', content: template },
       ],
-      { temperature: 0.7, num_predict: 120 },
+      { temperature: 0.7, num_predict: getTuning('NUM_PREDICT', TUNING_DEFAULTS.NUM_PREDICT) },
       AbortSignal.timeout(8000)
     );
     const text = (reply || '').trim();

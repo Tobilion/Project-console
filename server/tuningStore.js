@@ -39,6 +39,10 @@ export const TUNING_DEFAULTS = {
   // default at boot (see each consumer's own fallback argument to getTuning); a tuning.json
   // override always wins once one exists.
   NUM_CTX: 16384,
+  // ollama (2026-09-11): default token budget for regular AI chat turns. Low defaults
+  // caused slow/empty responses for simple prompts on CPU-only models. Can be overridden
+  // live from Settings > AI > Token Budget. Env var OLLAMA_NUM_PREDICT still sets initial.
+  NUM_PREDICT: 512,
   STREAM_IDLE_TIMEOUT_MS: 120000,
   MAX_TOOL_ROUNDS: 6,
   // notesStore / memoryStore (Phase B.3, 2026-09-09): per-project entry caps. Global knobs
@@ -66,6 +70,7 @@ const BOUNDS = {
   CLIPBOARD_POLL_MS: { min: 500, max: 60000 },
   REASON_MODE_NUM_PREDICT: { min: 200, max: 8000 },
   NUM_CTX: { min: 2048, max: 131072 },
+  NUM_PREDICT: { min: 64, max: 8000 },
   STREAM_IDLE_TIMEOUT_MS: { min: 10000, max: 600000 },
   MAX_TOOL_ROUNDS: { min: 1, max: 30 },
   MAX_NOTES_ENTRIES: { min: 50, max: 2000 },
