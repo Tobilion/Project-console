@@ -12,13 +12,6 @@ export const BACKUP_INTENTS = {
     opensPanel: 'backup',
     examples: [
       'list backups', 'show my backups', 'what backups do i have',
-    
-      'list my backups asap :)',
-      'backups ilst hi,',
-      'hey tell me my backups',
-      'Heey, what backups do i have',
-      'quickly i do backups can have you what',
-      'tell me my backups'
-      ],
+    ],
   },
 };

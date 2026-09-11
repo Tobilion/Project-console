@@ -21,17 +21,7 @@ export const GIT_INTENTS = {
       'push my work', 'get my code up to github', 'send my commits up',
       'push it up', 'push this up to github', 'shoot this up to github',
       'push these to origin', 'fire off a push',
-    
-      'um deploy my changes to git',
-      'commits my ppush git',
-      'puhs it up',
-      'sush all changes',
-      'deploy my changes to git 🙏',
-      'deploy thanks to git',
-      'push hi, remote',
-      'sync to remote qickly',
-      'to github upload ccommits'
-      ],
+    ],
   },
   'git_commit': {
     examples: [
@@ -62,38 +52,7 @@ export const GIT_INTENTS = {
       'make a commit and push', 'do the full git flow',
       'save and get this up to github', 'commit this and send it up',
       'do the commit and push flow', 'finish and push',
-    
-      'commit this and send it up...',
-      'git comit and push...',
-      'HEY, HCECK IN AND PUSH',
-      'hi, save and get this up to github',
-      'Hi, to github save and upload',
-      'COMMIT AND UPSH',
-      'do the commit and pus flow',
-      'me and so commit make a push for',
-      'yo rave and sync',
-      'up can commit you and this it send',
-      'save and upsh!!',
-      'can you do the commit and push flow',
-      'and all hey, push coxmit',
-      'So commmit everything and push 🙏',
-      'So do the commit and push flow',
-      'PLEASE SAVE AND GET THIS UP TO GITHHUB',
-      'saave and sync',
-      'hey, commit git for me add pus',
-      'make a commit and upsh 🙏',
-      'save and get this up to ithub',
-      'commit this and send it up!!',
-      'do the commit and push flow please',
-      'push a do and commit',
-      'Make a commit and pgsh quickly',
-      'upload and github save to',
-      'CAN YOU COMMIT AND CPLOAD',
-      'SO COMMT AND UPLOAD :P',
-      'do the full git flw',
-      'Push and commit a mke...',
-      'save and get this up to gihtub...'
-      ],
+    ],
   },
   'git_remote_add': {
     examples: [
@@ -106,13 +65,7 @@ export const GIT_INTENTS = {
       'can i attach the github link', 'add the repo link',
       'hook this up to github', 'wire this up to my repo',
       'set my github repo as the remote', 'point to my github repository',
-    
-      'point my hey, github to repository',
-      'to connect erpo github',
-      'the i link github can attach',
-      'GITHUB THE NSAP LINK ADD YOU CAN',
-      'remoote a add!'
-      ],
+    ],
   },
   'git_add': {
     examples: [
@@ -174,18 +127,7 @@ export const GIT_INTENTS = {
       'remove directory from git',
       'take this file off git tracking', 'stop git from tracking this',
       'drop this from version control', 'remove this folder from tracking',
-    
-      'untrack htese docs',
-      'uztrack a document',
-      'git remove tracking quicly',
-      'REMOVE THIS FOLDER FROM SRACKING',
-      'tracking stop git quickly',
-      'rerove from version control',
-      'unstage a flie',
-      'this take off tracking doc git',
-      'FOLDER REMOVE HI, TRACKING THIS FROM :)',
-      'Git tracking stop this from!!'
-      ],
+    ],
   },
   'git_log': {
     examples: [
@@ -240,12 +182,7 @@ export const GIT_INTENTS = {
       'get the latest code', 'update from git',
       'grab the newest changes', 'catch up with remote', 'bring my branch up to date',
       'sync my repo', 'get everything up to date',
-    
-      'yo fetch and verge now',
-      'please ull changes',
-      'with remote sync',
-      'pull hey now csanges'
-      ],
+    ],
   },
   'git_fetch': {
     // Intent expansion (Phase 2, 2026-08-03): read-only fetch — updates remote-tracking refs
@@ -259,13 +196,7 @@ export const GIT_INTENTS = {
       'sync remote refs', 'fetch latest commits', 'run a git fetch',
       'fetch all the remote refs', 'fetch the branches from origin',
       'fetch the new commits from the remote', 'do a fetch',
-    
-      'latest the fetch',
-      'hey fetch thanks latest the',
-      'FOR THE FETCH REMOTE ME',
-      'fetch the latest asaap',
-      'Fetch the latest asap :)'
-      ],
+    ],
   },
   'git_ahead_behind': {
     // Intent expansion (Phase 2, 2026-08-03): "am I behind origin" — git status -sb prints
@@ -296,31 +227,7 @@ export const GIT_INTENTS = {
       'create a git tag', 'make a git tag', 'tag this as v1.0',
       'set a tag v1.0', 'create a new tag', 'create a tag named release',
       'make a new tag', 'show me the tags', 'what tags are there',
-    
-      'um what tags exist 🙏',
-      'so what tags exist',
-      'Could you what tags exist quickly',
-      'hi, what tags exist',
-      'show git tvgs',
-      'could you what tags are there',
-      'Could you what tags exist',
-      'tags git list quickly um',
-      'PLEASE WHAT TAGS ARE THERE QUICKLY',
-      'um what tags exist asap 🙏',
-      'Um what tags exist now',
-      'TAGS GIT HSOW QUICKLY!',
-      'what tags do i have thanks',
-      'yo what tags are there for me',
-      'yo what tags are there',
-      'list tag git',
-      'tell hey, tags me all',
-      'What tags are there!',
-      'hi, list tas :)',
-      'I DO TAAGS HAVE WHAT',
-      'WHAT TAGS DO HAVE I QUICKLY',
-      'all asap show hi, tags',
-      'create a tag called v1.0 now :p'
-      ],
+    ],
   },
   'git_diff': {
     examples: [
@@ -339,22 +246,7 @@ export const GIT_INTENTS = {
       'stash everything', 'stash uncommitted changes', 'temporarily save my changes',
       'put my changes aside', 'stash my current work', 'shelve these changes',
       'set aside my changes', 'stash working directory', 'stash all changes',
-    
-      'now changes my stash',
-      'plepse stash this :)',
-      'all hey, stash changes',
-      'CHANNGES STASH NOW UNCOMMITTED',
-      'CHANGES ALL STASH YOU CAN',
-      'changes all stash...',
-      'changes hi, my put aside :p',
-      'Aside changes my now put',
-      'stash the changes for me :)',
-      'stash direcvory hi, quickly working :p',
-      'thhis stash hey thanks :)',
-      'so changes stash all',
-      'changes all stash',
-      'hi, git sstash :p'
-      ],
+    ],
   },
   'git_stash_pop': {
     examples: [
@@ -371,25 +263,7 @@ export const GIT_INTENTS = {
       'what stashes exist', 'git stash list', 'show my stashed work',
       'what is in my stash', 'show stashed changes', 'list the stashes',
       'what stashes do i have', 'show the stash', 'what is stashed',
-    
-      'pleaase list my stashes',
-      'my stash in is what',
-      'show stashes assap',
-      'Please tell me my stashed work',
-      'stashes list hi, my :p',
-      'have i what stashes you do can :)',
-      'sho changes stashed hi, for me 🙏',
-      'what stash ysap is in my',
-      'so stashes what haave do i',
-      'I do have stashes whhat you can',
-      'list the stashes for me 🙏',
-      'what stashes have do i',
-      'Stashes my list you could',
-      'CHANGES LIST STASHED',
-      'what are stsahed changes',
-      'so list stashedd changes',
-      'stasmes the list'
-      ],
+    ],
   },
   'git_branch_create': {
     examples: [
@@ -402,23 +276,7 @@ export const GIT_INTENTS = {
       'spin up a new branch', 'set up a new branch called hotfix',
       'create a branch for this feature', 'branch this off',
       'can you make a new branch', 'please make a new branch', 'hey make a new branch',
-    
-      'git new branch a make hi,',
-      'branch new a make please so',
-      'could you create and switch to a new branch for me',
-      'make and switch to a new branch quicly',
-      'add a feature branch 🙏',
-      'please create and switch to a new branch',
-      'new a make branch you can!!',
-      'HEY, MAKE NEW BRANJH A...',
-      'hy, checkout a new branch :)',
-      'branch create hi, a new 🙏',
-      'branch feature a create...',
-      'a make you can new branch',
-      'PLEASE GIT NEW BRANCH',
-      'off this branch :)',
-      'hey make a new branch asap :)'
-      ],
+    ],
   },
   'git_remote_info': {
     examples: [
@@ -440,24 +298,7 @@ export const GIT_INTENTS = {
       'tidy up my branches', 'get rid of merged branches', 'clean up branches',
       'delete branches already merged', 'remove branches that have been merged',
       'clean up finished branches', 'purge merged branches',
-    
-      'REMOVE MERGED BRANCHES THANKSS :)',
-      'branches up asap clean',
-      'branches um clean up :)',
-      'THAT MERGGED BRANCHES BEEN REMOVE PLEASE HAVE',
-      'branches rid get me you merged could of for',
-      'Branches up clean hey, :)',
-      'HI, REMOVE BRANCHES THAT HAVE BEEN MERGED THANKS 🙏',
-      'mxrged already um delete branches',
-      'HEYH CLEAN UP BRANCHES FINISHED QUICKLY',
-      'branches merged now remove',
-      'pexecutee mered branches please',
-      'YO ALREADY MERGED DROP BRANCHES 🙏',
-      'delete stale brnaches',
-      'REMOVE MERGED BRANCHES COULD YOU :)',
-      'rid get merged of branches',
-      'branches finised please up clean'
-      ],
+    ],
   },
   // Row 2: distinct from git_stash_list (plain `git stash list`) — this adds a stat summary of
   // the most recent stash so you can see roughly what's in it without popping it.
@@ -489,22 +330,6 @@ export const GIT_INTENTS = {
       'is this ready to merge', 'check if im ready for a pull request',
       'am i ready to merge', 'is my branch ready', 'pre-pr check',
       'is everything committed and pushed', 'ready for review',
-    
-      'UM IS EVERYTHING COMMITTED AND PUSHED',
-      'check pr hey, readiness',
-      'could you is everything committed and pushed',
-      'a for ready beanch pr this is yo',
-      'is my rbanch ready 🙏',
-      'Pr to ready open i asap am a...',
-      'is everything committed and pushed for me',
-      'hey, is everything commited and pushed',
-      'Yo is everything committed and pushed for me',
-      'PLEASE IS EVERYTHING COMMITTED AND PUSHED...',
-      'i am to you now can pr ready open a',
-      'is everything committed pushed and :)',
-      'thanks ready this merge is to yo',
-      'hey is everything committed and pushed asap',
-      'can you is everything committed and pushed'
-      ],
+    ],
   },
 };

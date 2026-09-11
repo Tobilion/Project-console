@@ -84,28 +84,7 @@ export const PROJECT_CONTEXT_INTENTS = {
       'brief overview', 'condensed info', 'key things to know',
       'give it to me short', 'short version please', 'sum it up',
       'in a nutshell', 'headline summary', 'give me the highlights',
-    
-      'can you give me a summary',
-      'hey, give me a summary',
-      'summary 🙏',
-      'sfmmary',
-      'can you summary thanks',
-      'hey, project summary',
-      'bottom line pleae :)',
-      'PLEASE PROJECT SUMMARY NOW',
-      'can you project summary :)',
-      'summary for me',
-      'now line bottom',
-      'give me a summary now',
-      'ASAP OVERVIEW QUICK',
-      'hey, boztom line',
-      'CAN YOU SUMMARY',
-      'Project ssummary',
-      'hey spmmary please',
-      'um thanks fast overview...',
-      'give me a summary thanks',
-      'so project summary'
-      ],
+    ],
   },
   'project.context.tests': {
     // Intent expansion (Phase 1, 2026-08-03): "run the tests" now dispatches to the new
@@ -127,15 +106,7 @@ export const PROJECT_CONTEXT_INTENTS = {
       'does this project have tests',
       'execute tests', 'execute the test suite', 'kick off the tests',
       'check test results', 'verify the tests pass',
-    
-      'done yo is how testing quickly',
-      'hwat are tests quickly',
-      'this how to test',
-      'test hey, suite the execute',
-      'setpu so test',
-      'HEY, TELL ME TEST FILES!',
-      'hey, libt test files'
-      ],
+    ],
   },
   'project.context.dependencies': {
     examples: [
@@ -179,11 +150,7 @@ export const PROJECT_CONTEXT_INTENTS = {
       'what api does this expose', 'show me the routes', 'route list',
       'what get and post routes exist', 'what pages does this serve',
       'show the url patterns', 'what endpoints can i hit',
-    
-      'what get and post routes exist quickly',
-      'quickly list route please',
-      'so api routes display'
-      ],
+    ],
   },
   'project.context.file_relations': {
     examples: [
@@ -245,22 +212,7 @@ export const PROJECT_CONTEXT_INTENTS = {
       'show me the heaviest files', 'which files take up the most space',
       'rank files by size', 'find the largest files', 'show top 10 biggest files',
       'what file is taking up the most space', 'show file size breakdown',
-    
-      'what are the biggest docments',
-      'File largest the is what',
-      'what is the biggest document',
-      'most the up take files space which',
-      'THE ME FOR BIGGEST FILES SHOW',
-      'LARGEST THE WHICH THANKS FILE IS!!',
-      'yo what are file sizes 🙏',
-      'hey which documeent is the largest',
-      'COULD YOU WHAT IS THE LARGEST FILE BHANKS...',
-      'what are the biggest documents!',
-      'The biggest files show',
-      'Up file for what the um space ost me taking is :)',
-      'FIND ME THE LARGEST FILES FOR',
-      'bigggest find document the'
-      ],
+    ],
   },
   'project.context.dev_server_status': {
     // Intent expansion (Phase 1, 2026-08-03): "is the server running" / "is the site live" /
@@ -292,20 +244,7 @@ export const PROJECT_CONTEXT_INTENTS = {
       'whats the dev server url', 'what is the dev server url', 'whats the site address',
       'whats the site url', 'show me the dev url', 'tell me the url', 'what is the server link',
       'what port is the dev server on', 'give me the link to the site',
-    
-      'is ilve the app',
-      'hey is the serverr still executening',
-      'is the dev server startning',
-      'whats the dev server url now 🙏',
-      'server dev running my is um',
-      'upning right anything so now fire is',
-      'what server url is the dev',
-      'the is server launchning',
-      'is the site livve please 🙏',
-      'please is the dev server launchnmng',
-      'hi, what are me the dev url',
-      'is the site fire upning'
-      ],
+    ],
   },
   // Intent expansion (Phase 2, 2026-08-03): "what changed recently" — on-demand file-mtime scan
   // (findRecentActivity), NOT git status: this intent answers about file modification times on
@@ -333,19 +272,7 @@ export const PROJECT_CONTEXT_INTENTS = {
       'whats running in the background', 'show all running commands',
       'what commands are running', 'list active processes', 'show background processes',
       'whats currently running', 'show me running tasks',
-    
-      'you still upning can fire whats',
-      'hi, show all startning commands :)',
-      'running commands all sho',
-      'Whats the please background ruaning in',
-      'RUNNING PROCESSES SHOW YO',
-      'commands show all running 🙏',
-      'running currently whats you can',
-      'Whats executening in the backgrond quickly',
-      'CAN YOU WHAT IS FIRE UPNING RIGHT NOW PLEASE!!',
-      'you right what can is running now',
-      'whats executening'
-      ],
+    ],
   },
   'project.context.session_info': {
     examples: [
@@ -354,11 +281,7 @@ export const PROJECT_CONTEXT_INTENTS = {
       'show recent sessions', 'how many conversations do i have',
       'session count', 'chat count', 'how many chat sessions',
       'show my sessions', 'list sessions', 'what chats do i have',
-    
-      'what hats do i have...',
-      'WHAT CHAATS DO I HAVE',
-      'list me sesions for'
-      ],
+    ],
   },
   'project.context.scan_servers': {
     examples: [

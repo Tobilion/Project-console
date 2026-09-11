@@ -69,24 +69,7 @@ export const CHIT_CHAT_INTENTS = {
       'good looking out thanks', 'you rock', 'legend thanks',
       'this was helpful thanks', 'great stuff', 'perfect thanks a lot',
       'good job', 'nice work', 'great job', 'well done',
-    
-      'Hey, nice one thanks',
-      'great thanks for me',
-      'So you\'re the best',
-      'perfect thank you quickly',
-      'you the hi, best are',
-      'hi, ty',
-      'great thanks asap',
-      'nice one thanks now',
-      'you\'re the best for me :)',
-      'nice one thanks asap',
-      'couldd you perfect thank you',
-      'ncce one thanks',
-      'Hi, ty',
-      'PLEASE THAT IS GREAT THANKS',
-      'please great thanks',
-      'That is great thanks!!'
-      ],
+    ],
   },
   'system.chit_chat.farewell': {
     examples: [
@@ -167,38 +150,7 @@ export const CHIT_CHAT_INTENTS = {
     examples: [
       'list commands', 'help all', 'list all commands', 'show all commands',
       'full command list',
-    
-      'commands me tell asap all',
-      'Please list all commands',
-      'show all commands asap...',
-      'ohow all commands',
-      'list commands please 🙏',
-      'show all commans',
-      'could you show all commands!',
-      'List all commands for me :)',
-      'please show all commands',
-      'hep all',
-      'hey, show all commands',
-      'commands all list',
-      'hey list all commands',
-      'thanks sshow all commands',
-      'LIST COMANDS',
-      'yo list all commands',
-      'list all commands thanks!',
-      'could you list all commands asap',
-      'lit commands',
-      'hey show all commands...',
-      'could you show all commands',
-      'so list all commands',
-      'list all commands now',
-      'SHOW ALL COMMANDS QUICKLY',
-      'hsow all commands quickly',
-      'HI, LIST ALL COMMANDS',
-      'list all commands quickly',
-      'Can you what are all commands',
-      'YO SHOW ALL COMMANDS',
-      'show um commands all'
-      ],
+    ],
   },
   'system.chit_chat.git_status': {
     examples: [
@@ -254,17 +206,7 @@ export const CHIT_CHAT_INTENTS = {
     examples: [
       'where are my logs', 'where is the log file', 'log file location',
       'diagnostic logs', 'crash log', 'show me the logs', 'where are the logs',
-    
-      'is where log the file',
-      'for are logs me the where please!',
-      'what are me the logs',
-      'the where please logs are',
-      'So where quickly the log is file',
-      'logs are me can my where you for',
-      'llogs diagnostic asap',
-      'the is could log file you where :p',
-      'are where logs yo my now'
-      ],
+    ],
   },
   'system.chit_chat.export_logs': {
     examples: [
@@ -343,23 +285,7 @@ export const CHIT_CHAT_INTENTS = {
       'whats the current time', 'what time is it now', 'give me the time',
       'do you know what time it is', 'what is the time right now',
       'can you tell me what time it is', 'hey what time is it', 'please tell me the time',
-    
-      'it hey, do you know what is time',
-      'what me is tell you can it yo time',
-      'IS TIME WHA RIGHT IT NOW',
-      'is currrent hey, thanks what time the',
-      'thanks it is time what um now',
-      'can you tell me what time it is 🙏',
-      'it is time what',
-      'the cuurrent is time what yo',
-      'current time the whats you could',
-      'Tell me can is time what you it',
-      'it time what is',
-      'whats the thanks time current um',
-      'is timee can you tell it me please what!!',
-      'Time current the whats...',
-      'THE ME TIME TELL PLEASE'
-      ],
+    ],
   },
   'system.chit_chat.date': {
     examples: [
@@ -432,23 +358,7 @@ export const CHIT_CHAT_INTENTS = {
       'how do you schedule a command', 'how to schedule a command',
       'what is the command to schedule a command',
       'how do you see the dashboard', 'what is the command to see the dashboard',
-    
-      'command how do a you schedule',
-      'check how to status git',
-      'do dashboard how you the see',
-      'i a do command how schedule',
-      'In you this do open how vs code yo',
-      'CHAT EXPORT THIS HEY TO HOW 🙏',
-      'tests the what launch is command the to',
-      'so how do you display this in vs code thanks',
-      'DO HOW THE SEE YOU DASHBOARD I COULD',
-      'WHAT COMMAND IS THE TO STATUS CHECK GIT :)',
-      'i me tools for do how hey, add :p',
-      'to push to how github',
-      'export quickly please how chat you do this',
-      'i do how command schedule yo a',
-      'run the tests yo how to'
-      ],
+    ],
   },
   'system.chit_chat.needs_ai_mode': {
     examples: [
@@ -492,15 +402,7 @@ export const CHIT_CHAT_INTENTS = {
       'tell me a joke', 'make me laugh', 'give me a joke',
       'got any jokes', 'tell a joke', 'say something funny',
       'joke for me', 'tell me something funny',
-    
-      'asap funny me something tell :)',
-      'JOLE FOR ME NOW',
-      'YOU ME TDLL CAN A JOKE',
-      'a me joke gie',
-      'TELL QUICKLY ME SOMETHING FNUNY',
-      'PLEASE JJOKE ME FOR :)',
-      'MAEK ME LAUGH ASAP 🙏'
-      ],
+    ],
   },
   'system.chit_chat.troubleshoot': {
     // K-11 (2026-09-09): the chat-side entry point for the doctor/auto-fix flow. Pinned by

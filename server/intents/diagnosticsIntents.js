@@ -37,15 +37,7 @@ export const DIAGNOSTICS_INTENTS = {
       'is my env file complete', 'validate environment variables',
       'check for missing environment variables', 'diff env and env example',
       'what env vars am i missing',
-    
-      'example hey, to compare env env',
-      'hi, please environment variables valldate',
-      'diff env and env dxample',
-      'Ceck environment variables',
-      'My hi, validate env file',
-      'env hi, check vars please missing for',
-      'chek environment variables'
-      ],
+    ],
   },
   // Infrastructure expansion (2026-08-10) — not project-scoped like the rest of this file, but
   // grouped here rather than creating a one-entry file: it's another read-only "ask the console
@@ -60,22 +52,7 @@ export const DIAGNOSTICS_INTENTS = {
       'search all my projects', 'find which project i did this in',
       'which of my projects has this', 'search across all projects for',
       'what project did i configure this in', 'find across projects',
-    
-      'i which in project do did this',
-      'i project did which find in this asap',
-      'tthis all find my projects across',
-      'which hey, code has the auth project',
-      'please search across all projects for quickly :p',
-      'ATROSS SEARCH FOR ALL PROJECTS',
-      'couhd you find across now projects!',
-      'find across projects please :p',
-      'yo search across my projects please 🙏',
-      'where did i wwebhooks set up',
-      'yo search every project for plpase',
-      'all thanks across search for projects :)',
-      'did i this find which project in',
-      'asap across my this find all projects'
-      ],
+    ],
   },
   'project.diagnostics.log_errors': {
     examples: [

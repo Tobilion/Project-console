@@ -10,16 +10,6 @@ export const SCREENSAVER_INTENTS = {
       'show the screensaver',
       'launch screensaver',
       'screensaver',
-    
-      'idsplay the screensaver asap 🙏',
-      'yo open screensaver thanks :)',
-      'please display the screensaver',
-      'He,y show screensaver :p',
-      'Could you view the screensaver 🙏',
-      'SCREESNAVER OPEN HI, 🙏',
-      'display the screensaver!',
-      'yo screensover asap 🙏',
-      'yo display the screensaver thanks!'
-      ],
+    ],
   },
 };
