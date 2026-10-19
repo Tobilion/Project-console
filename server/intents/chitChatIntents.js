@@ -107,13 +107,17 @@ export const CHIT_CHAT_INTENTS = {
     ],
   },
   'system.chit_chat.clear': {
+    // "clear window" is deliberately absent (audit 2026-10-18). It made every "<verb> the window"
+    // shape score onto this intent — "split the window" cleared the transcript instead of answering
+    // — while the window sense is already carried by "clear the screen"/"clear this"/"wipe
+    // terminal" ("clear window" itself still routes here at 0.77 without it).
     examples: [
       'clear', 'clear console', 'clear chat', 'cls', 'clean screen', 'reset',
       'clear the screen', 'wipe the console', 'clear the chat',
       'clear everything', 'reset the console', 'clean up',
       'clear messages', 'wipe chat', 'clean the screen',
       'start fresh', 'clear this', 'reset chat', 'clear all',
-      'clear window', 'wipe this clean', 'new screen',
+      'wipe this clean', 'new screen',
       'blank the screen', 'flush the console', 'reset terminal',
       'wipe terminal', 'empty the chat', 'clear out the chat',
       'get rid of all this text', 'start over', 'restart the chat view',

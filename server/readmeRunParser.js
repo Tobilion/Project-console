@@ -28,8 +28,14 @@ function matchCommandLine(rawLine) {
     const m = trimmed.match(pattern);
     if (m) {
       const tail = trimmed.slice(m.index + m[0].length);
-      const rest = tail.split(/(?:\s*#|\s*\/\/|\s*&&|\s*\|\|)\s*/)[0].trim();
-      return (m[0] + (rest ? ` ${rest}` : '')).trim();
+      // A backtick is a markdown inline-code fence. A README line like "npm run build` also
+      // verifies the public" is an inline-code span followed by prose — NOT one command — yet
+      // the prose was appended to the extracted command (live: Oja's README surfaced
+      // "npm run build ` also verifies the public" as a documented run command). Treat a
+      // backtick as a delimiter (same as # // && ||) and strip any stray backticks from the
+      // result, so the command is never polluted by trailing prose.
+      const rest = tail.split(/(?:\s*#|\s*\/\/|\s*&&|\s*\|\||\s*`)\s*/)[0].trim();
+      return (m[0] + (rest ? ` ${rest}` : '')).replace(/`/g, '').trim();
     }
   }
   return null;

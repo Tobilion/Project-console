@@ -20,7 +20,14 @@ export const KEYWORD_RULES = [
   { intent: 'system.chit_chat.gratitude', confidence: 0.5, re: /\b(thanks|thank|thx|appreciate|cheers)\b/ },
   { intent: 'system.chit_chat.greeting', confidence: 0.4, re: /\b(hi|hello|hey|howdy|sup|yo)\b/, maxLength: 30 },
   { intent: 'system.chit_chat.clear', confidence: 0.5, re: /\b(clear|cls|clean|wipe)\b/, or: [/\b(console|screen|chat)\b/], orLength: 10 },
-  { intent: 'system.chit_chat.git_status', confidence: 0.4, and: [/\b(git|change|commit)\b/, /\b(status|changed|log|diff|commit)\b/] },
+  // 2026-10-18 live crosscheck: this rule's `and` pair was satisfiable by the SINGLE word
+  // "commit" (both lists contained it), so any unpinned "commit <noun>" input — "commit the
+  // site" — fell here at 0.4 and RAN `git status --short` instead of offering the commit flow.
+  // 'commit' is now absent from both lists: the rule still catches "git status/log/diff" and
+  // "change <status/log/diff>" shapes, while commit actions reach the git_commit rule below
+  // (and the commit pre-semantic pins own the bare/typo forms). "commit history" stays on
+  // git_status via the embedding stage (its example corpus includes that exact phrase).
+  { intent: 'system.chit_chat.git_status', confidence: 0.4, and: [/\b(git|change)\b/, /\b(status|changed|log|diff)\b/] },
   { intent: 'git_push', confidence: 0.4, re: /\b(push|deploy.*git|upload.*github|send.*remote)\b/i },
   { intent: 'git_init', confidence: 0.45, re: /\binitialize git|init.*repo|start git/i },
   { intent: 'git_ignore_add', confidence: 0.4, re: /\bgiti?gnore\b/i },
@@ -30,7 +37,11 @@ export const KEYWORD_RULES = [
   { intent: 'run_project', confidence: 0.5, re: /\bnpx\s+serve\b/i },
   { intent: 'run_project', confidence: 0.45, re: /^(python|node)\s+\S+/i },
   { intent: 'npm_install', confidence: 0.4, re: /\b(install|npm i)\b/i, notRe: /\bremove|delete|uninstall\b/i },
-  { intent: 'git_commit', confidence: 0.4, re: /\bcommit\b.*\b(changes?|work|code|files?|message|save)\b/i },
+  // 2026-10-18: object list gained project nouns ("commit the site"/"the project"/"the app"),
+  // which previously had no keyword-tier landing spot once the git_status rule stopped stealing
+  // them. The negative lookahead keeps commit+push compounds ("commit and push",
+  // "commit the project and push") on the git_commit_push rule directly below.
+  { intent: 'git_commit', confidence: 0.4, re: /\bcommit\b(?!.*\b(?:and|then)\s+push\b).*\b(changes?|work|code|files?|message|save|site|project|app|website|repo|folder|directory)\b/i },
   { intent: 'git_commit_push', confidence: 0.5, re: /\bcommit\b.*\bpush\b|\bpush\b.*\bcommit\b/i },
   { intent: 'git_pull', confidence: 0.45, re: /\bpull\b.*\b(remote|origin|latest|changes|update)\b|\bgit pull\b/i },
   { intent: 'npm_build', confidence: 0.45, re: /\bbuild\b.*\b(project|app|site|code|bundle)\b|\bnpm run build\b/i },

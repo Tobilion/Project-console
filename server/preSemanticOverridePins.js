@@ -119,6 +119,12 @@ export const PRE_SEMANTIC_OVERRIDES = [
   // match — only the bare commit-with-message command does. The per-clause matcher applies
   // pins per part, so the "commit with message Y" half of a conjunction split lands here too.
   { intent: 'git_commit', pattern: /^com?mit\s+with\s+(?:the\s+)?(?:message|comment)\b/i },
+  // 2026-10-18 live crosscheck: "commit the site" (and the typo'd "commit the siter") reached
+  // the fuzzy stage and matched git_status's "commit history" example, RUNNING a status check
+  // instead of the commit flow. A leading commit token plus a project noun is unambiguous — a
+  // status question asks "what changed"/"git status", never "commit the site". Runs pre-semantic
+  // so it beats the fuzzy stage; the lookahead keeps commit+push compounds on git_commit_push.
+  { intent: 'git_commit', pattern: /^\s*com?mit\b(?!.*\b(?:and|then)\s+push\b).*\b(?:the\s+|my\s+|this\s+|that\s+|our\s+)?(?:site|siter|sites|project|app|website|repo|folder|directory)\b/i },
   // 2026-08-26 live batch crosscheck: yes/no STATE questions about pushing/committing fired
   // the ACTIONS — "did i push yet" opened the git-push confirm, "did i commit" opened the
   // commit confirm, "have i pushed recently" landed on deploy. The how_do_i helper override
@@ -155,6 +161,18 @@ export const PRE_SEMANTIC_OVERRIDES = [
   // the stack/overview or an action (live 2026-08-26: the why-frustration pin deliberately
   // leaves specific nouns alone, and the semantic stage drifted this one to stack).
   { intent: 'project.context.dev_server_status', pattern: /^why\s+is\s+(?:the\s+)?(?:server|site|app|api|backend)\s+(?:down|not\s+running|not\s+working|offline)\b/i },
+  // 2026-10-18 live crosscheck: "what are git commands" asked a generic question but the fuzzy
+  // stage matched project.knowledge.commands on the shared word "commands" and answered with the
+  // project's own run commands. A "what are (the) git commands" question belongs to the how_do_i
+  // catalog (the git-commands entry renders the git family), never the project-commands answer.
+  { intent: 'system.chit_chat.how_do_i', pattern: /^what(?:'s|s| are)(?: the)? git commands?\b/i },
+  // 2026-10-18 live crosscheck: "when did it start running" / "when did the site start" /
+  // "how long has the site been running" are questions about the RUNNING process, but the
+  // embedding/fuzzy stages had no landing spot (the live chat fell through to the generic
+  // fallback; a probe on a fresh classifier even landed on gratitude). The dev_server_status
+  // handler answers them from runningProcesses + the tracked process's startedAt. Scoped to a
+  // when/how-long question + a process noun + a start/running verb.
+  { intent: 'project.context.dev_server_status', pattern: /^(?:when|how long)\s+(?:did|has|have)\s+(?:it|the\s+(?:server|site|app|website|dev\s+server|backend|frontend)|this)\s+(?:start|start\s+running|come\s+up|boot|boot\s+up|go\s+live|been\s+running|been\s+up)\b/i },
   // 2026-08-26 live batch crosscheck: bare "run tests" (no article) fell below the semantic
   // floor and dead-ended on the fallback (which offered "run tests" as a chip) — the short
   // form is the one a hurried user actually types. The pin is exact-phrase narrow so

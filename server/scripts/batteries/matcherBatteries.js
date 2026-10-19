@@ -922,5 +922,29 @@ const BATTERIES = [
       ['open the site in the browser', 'BUILTIN=project.action.open_site'],
     ],
   },
+  {
+    // 2026-10-18 live bad-chat crosscheck (Oja / Dream Kick / Matchday Exchange exports).
+    // F5: "commit the site" (and the typo "siter") reached the fuzzy stage and matched
+    // git_status's "commit history" example, RUNNING `git status --short` instead of offering
+    // the commit flow. F4b: "what are git commands" fuzzy-matched project.knowledge.commands.
+    // F4a: "how do you push site" reached how_do_i but its catalog lookup had no site keyword.
+    // F6: "when did it start running" had no landing spot and fell to the generic fallback.
+    name: 'CHAT-2026-10-18 (live bad-chat crosscheck)',
+    items: [
+      ['commit the site', 'BUILTIN=git_commit'],
+      ['commit the siter', 'BUILTIN=git_commit'],
+      ['commit the project', 'BUILTIN=git_commit'],
+      // compound commit+push stays one intent (must not be stolen by the commit rule)
+      ['commit and push', 'BUILTIN=git_commit_push'],
+      ['commit everything and push', 'BUILTIN=git_commit_push'],
+      ['what are git commands', 'BUILTIN=system.chit_chat.how_do_i'],
+      ['what are the git commands', 'BUILTIN=system.chit_chat.how_do_i'],
+      ['how do you push site', 'BUILTIN=system.chit_chat.how_do_i'],
+      ['how do you push', 'BUILTIN=system.chit_chat.how_do_i'],
+      ['when did it start running', 'BUILTIN=project.context.dev_server_status'],
+      ['when did the site start', 'BUILTIN=project.context.dev_server_status'],
+      ['how long has the site been running', 'BUILTIN=project.context.dev_server_status'],
+    ],
+  },
 ];
 export { project, fmt, BATTERIES };

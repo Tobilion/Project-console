@@ -71,6 +71,12 @@ export const docHandlers = {
       .trim()
       .replace(/[?!.]+$/g, '')
       .replace(/^what(?:'s|s| is) the (?:best|easiest) way to\s*/i, 'how do i ')
+      // 2026-10-18 live crosscheck: "how do you push site" routed to how_do_i but the catalog
+      // lookup had no keyword for the site-shaped subject, and the bare "how do you push"
+      // missed the three-way disambiguation (PUSH_TARGET_RE only matches first-person "do i").
+      // Normalizing the second-person question form to the first-person one keeps both the
+      // bare-push question and the site-shaped subject working.
+      .replace(/^how\s+(?:do|can|would|could|should)\s+you\s+/i, 'how do i ')
       .replace(/\bpus\w*\b/gi, 'push');
     if (PUSH_PRODUCTION_RE.test(pushStripped)) {
       await answerDocMatches(ws, 'push to github', project);

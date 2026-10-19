@@ -351,6 +351,7 @@ App-global identity (name/title/custom role) edited from the ⚙ Settings modal;
 | `checkpoint my work` / `make a checkpoint` | Explicit save-point commit before risky moves |
 | `clean up stale branches` | Lists merged branches you can safely delete |
 | `git fetch` / `git pull` / `am i behind origin` / `list tags` / `git init` | More git actions (mutations confirm-gated) |
+| `git commands` | Lists the git commands the console understands (status/log/diff/commit/push/checkpoint) |
 
 ### Files & editor
 
