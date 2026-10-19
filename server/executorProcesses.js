@@ -6,7 +6,8 @@
 import { spawnSync } from 'child_process';
 import { forgetDevUrl } from './devUrlStore.js';
 import { state } from './state.js';
-import { probeUrl } from './livenessProbe.js';
+import { probeDevServerCandidate } from './livenessProbe.js';
+import { isSiteCommand } from './executorDevServer.js';
 import { broadcast } from './wsServer.js';
 
 // Track running processes so they can be killed by the user
@@ -146,7 +147,9 @@ async function verifyProcessStopped(procs, devUrl) {
       // Skip probing when the URL is the console's own port — that would be ourselves.
       const port = new URL(devUrl).port || '80';
       if (Number(port) !== state.serverPort) {
-        const probe = await probeUrl(devUrl, 1500);
+        // probeDevServerCandidate, not a bare probe: a *second* console instance on a candidate
+        // port would otherwise answer and produce a false "the site is still responding" heads-up.
+        const probe = await probeDevServerCandidate(devUrl, 1500);
         if (probe.alive) warnings.push(`the site at **${devUrl}** is still responding`);
       }
     } catch {}
@@ -155,24 +158,44 @@ async function verifyProcessStopped(procs, devUrl) {
 }
 
 /**
+ * Does a tracked process match a stop target? `target` is one of:
+ *   { devServer: true }    — a dev-server-shaped command (vite / next dev / npm run dev / ...)
+ *   { notDevServer: true } — anything that is NOT dev-server-shaped
+ *   { commandRe: RegExp }  — the command string matches
+ *   { pids: number[] }     — a specific tracked pid (the disambiguation pick)
+ * Exported so the stop handler and its tests exercise the exact filter used at stop time.
+ */
+export function matchesStopTarget(proc, pid, target) {
+  if (!target) return true;
+  if (Array.isArray(target.pids)) return target.pids.includes(pid);
+  if (target.commandRe) return target.commandRe.test(proc.command);
+  if (target.devServer) return isSiteCommand(proc.command);
+  if (target.notDevServer) return !isSiteCommand(proc.command);
+  return true;
+}
+
+/**
  * Single kill path for every caller that stops a tracked process — the "stop server" trigger
  * phrase (connection.js), the `stop_process` WS message (dock stop button), and the AI-mode
  * `stopProcess` tool. Was previously copy-pasted three times; all three now route here so the
  * cleanup (kill + map delete + log delete + lastDevUrls delete + both broadcasts) can never
- * drift. Stops every tracked process for the project — "stop server" is one user intent, and
- * a single-slot-style "stop just one" would silently leave siblings running. Returns
- * { ok: false } when nothing is tracked for that project, plus an optional `warning` when
- * post-stop verification found survivors (process still alive / site still responding).
+ * drift.
+ *
+ * Stop scope (2026-10-18, user-reported): this used to stop EVERY tracked process for the
+ * project unconditionally, so a project with a site AND a backend ("stop the server" on Matchday
+ * Exchange) killed both. `target` now restricts the stop — see matchesStopTarget. With no target
+ * it keeps the historical all-process behavior (the dock Stop button and the AI tool want that).
  *
  * `turnKey` (optional) restricts the stop to processes started by one AI turn — used by the
  * `cancel` WS message so cancelling an AI turn never tears down a dev server the user started
  * separately (audit 2026-08-17). With a turnKey, the project's dev URL and log buffer are only
  * cleared when the turn's stop emptied the slot (a sibling process may still own them).
  */
-export async function stopTrackedProcess(projectId, { turnKey } = {}) {
+export async function stopTrackedProcess(projectId, { turnKey, target } = {}) {
   const slot = runningProcesses.get(projectId);
   const entries = slot ? [...slot.entries()] : [];
-  const toStop = turnKey ? entries.filter(([, p]) => p.turnKey === turnKey) : entries;
+  let toStop = turnKey ? entries.filter(([, p]) => p.turnKey === turnKey) : entries;
+  if (target) toStop = toStop.filter(([pid, p]) => matchesStopTarget(p, pid, target));
   if (toStop.length === 0) return { ok: false };
   const commands = [];
   for (const [pid, proc] of toStop) {
@@ -197,7 +220,7 @@ export async function stopTrackedProcess(projectId, { turnKey } = {}) {
   broadcast({ type: 'dashboard_update' });
   broadcast({ type: 'processes_update' });
   const warning = await verifyProcessStopped(toStop.map(([, p]) => p), devUrl);
-  return { ok: true, command: commands.join('` and `'), warning };
+  return { ok: true, command: commands.join('` and `'), warning, stopped: toStop.length, total: entries.length };
 }
 
 // Clean up on exit — kills tracked children before Node shuts down

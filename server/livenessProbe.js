@@ -109,6 +109,44 @@ export async function probeUrl(url, timeoutMs = 3000) {
 }
 
 /**
+ * True when the URL answers and serves the console's own API shape — i.e. it is ANOTHER console
+ * instance, not the project's dev server. The candidate-port fallback (COMMON_DEV_PORTS) includes
+ * 3000/3001/5173, so a second console the user already has open can be mistaken for the project's
+ * site: the URL gets recorded as the project's own, and the untracked-stop flow then offers to kill
+ * the console itself (2026-10-18 live: a fixture server that printed no URL made the probe record
+ * http://localhost:3000 — the user's own console).
+ *
+ * Shape contract (keep in sync by eye with portProbe.probeConsolePort, the source of truth for
+ * "is this our server"): either a JSON body shaped `{ projects: [...] }`, or an ARMED server's
+ * `401 { ok: false, error: 'Login required.' }`. The armed case matters — accounts exist on
+ * LAN/opted-in installs, and a 401 must still count as "another console" or the flow would offer
+ * to kill it.
+ */
+export async function isConsoleServerUrl(url, timeoutMs = 1200) {
+  try {
+    const base = String(url).replace(/\/+$/, '');
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    const res = await fetch(`${base}/api/projects`, { method: 'GET', redirect: 'manual', signal: controller.signal });
+    const data = await res.json().catch(() => null);
+    clearTimeout(timer);
+    if (Array.isArray(data?.projects)) return true;
+    if (res.status === 401 && data?.ok === false && data?.error === 'Login required.') return true;
+    return false;
+  } catch {
+    return false;
+  }
+}
+
+/** Probe a candidate dev-server URL, treating another console instance as "not our server". */
+export async function probeDevServerCandidate(url, timeoutMs) {
+  const probe = await probeUrl(url, timeoutMs);
+  if (!probe.alive) return probe;
+  if (await isConsoleServerUrl(url, timeoutMs)) return { alive: false, error: 'console-instance' };
+  return probe;
+}
+
+/**
  * Probes the last-known dev URL of every project that has one, bounded by a per-URL timeout
  * and a small worker pool. Only projects WITH a recorded URL are ever touched — for a typical
  * console that's one or two, so a scan finishes in a couple of seconds.
@@ -142,7 +180,10 @@ export async function scanProjectServers(projects, { timeoutMs = 2000, concurren
   async function worker() {
     while (recIdx < recorded.length) {
       const { project, url } = recorded[recIdx++];
-      const probe = await probeUrl(url, timeoutMs);
+      // Same console-shape guard as the candidate pass: a RECORDED url can be a second console
+      // instance too (that is exactly how it got recorded), and reporting it as this project's
+      // live server would be wrong.
+      const probe = await probeDevServerCandidate(url, timeoutMs);
       results.push({
         projectId: project.id,
         projectName: project.name,
@@ -156,7 +197,7 @@ export async function scanProjectServers(projects, { timeoutMs = 2000, concurren
   async function candidateWorker() {
     while (candIdx < candidateTargets.length) {
       const target = candidateTargets[candIdx++];
-      const probe = await probeUrl(target.url, candidateTimeoutMs);
+      const probe = await probeDevServerCandidate(target.url, candidateTimeoutMs);
       if (probe.alive) recordDevUrl(target.project.id, target.url);
       results.push({
         projectId: target.project.id,

@@ -33,6 +33,18 @@ export function collapseLfCrlfWarnings(text) {
   return rest ? `${rest}\n${summary}` : summary;
 }
 
+// npm prints informational lines like "npm notice run <pkg>@<ver> <script>" to stderr on every
+// script run — it is echoing the command it is about to execute, not an error. The Matchday
+// Exchange live chat showed these rendered as a red error bubble.
+const NPM_NOTICE_RE = /^npm notice\b/;
+
+/** True when every non-blank line in the batch is an npm notice (no real error text mixed in). */
+export function isPurelyNpmNotices(text) {
+  const lines = text.split('\n').map((l) => l.trim()).filter(Boolean);
+  if (lines.length === 0) return false;
+  return lines.every((l) => NPM_NOTICE_RE.test(l));
+}
+
 // How long to coalesce rapid bursts of stdout/stderr `data` events before forwarding them to the
 // client as one message. Without this, a command that writes many small chunks in quick
 // succession (git printing one warning line per file is the confirmed-live case) turns into one

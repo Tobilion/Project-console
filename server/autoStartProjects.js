@@ -33,7 +33,7 @@ import { enqueueTask } from './taskQueue.js';
 import { matchInput } from './matcher.js';
 import { handleBuiltinIntent } from './wsHandlers/builtinIntents.js';
 import { handleMatchedEntry } from './wsHandlers/matchedEntry.js';
-import { candidateDevUrls, probeUrl } from './livenessProbe.js';
+import { candidateDevUrls, probeDevServerCandidate } from './livenessProbe.js';
 import { resolveData } from './dataPath.js';
 import { writeFileAtomicSync } from './atomicWrite.js';
 
@@ -154,7 +154,7 @@ function deliverResult(project, text) {
  */
 export async function runAutoStart(project, entry) {
   for (const url of candidateDevUrls(project)) {
-    const probe = await probeUrl(url, AUTO_START_PROBE_TIMEOUT_MS);
+    const probe = await probeDevServerCandidate(url, AUTO_START_PROBE_TIMEOUT_MS);
     if (probe.alive) {
       deliverResult(project, `auto-start skipped — **${url}** is already responding, so the site is up (no double-serve).`);
       return;

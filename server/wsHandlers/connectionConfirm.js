@@ -10,6 +10,10 @@ import { trackCommand, trackFileEdit } from '../projectMemory.js';
 import { appendAction, revertAction } from '../actionHistory.js';
 import { performTidy, performDuplicateDeletes, performRename, performMove } from './builtinGeneralFiles.js';
 import { mergePdfs, splitPdf, extractPages, watermarkPdf } from '../pdfKit.js';
+import { killProcessByPid, resolveProcessOnPort } from '../untrackedProcess.js';
+import { probeUrl } from '../livenessProbe.js';
+import { forgetDevUrl } from '../devUrlStore.js';
+import { broadcast } from '../wsServer.js';
 import { state, pendingConfirmations, pendingToolConfirmations, connectionRegistry } from '../state.js';
 import { pendingMemorySuggestions } from './connectionState.js';
 import { log as logger } from '../logger.js';
@@ -304,6 +308,47 @@ export async function handleConfirmResponse(ws, parsed) {
       // "Merge needs at least two PDFs") — a refused output name is a normal refusal, not an
       // execution error, and the frontend renders answers as readable bubbles.
       ws.send(JSON.stringify({ type: 'answer', data: result.error }));
+    }
+    ws.send(JSON.stringify({ type: 'end' }));
+    return;
+  }
+
+  // 2026-10-18: confirmed stop of a process the console does NOT track (started outside it).
+  // There is no shell command to run — just a tree-kill of the resolved pid, then a verification
+  // probe so the user is never told it stopped while the port still answers.
+  if (pending.killProcess) {
+    const { pid, commandLine, port } = pending.killProcess;
+    // The pid was resolved when the offer was made, but the user can take minutes to confirm. A
+    // pid is only meaningful while it still owns the port — re-resolve before killing so a
+    // recycled pid can never be killed in place of the server the card named.
+    const current = resolveProcessOnPort(port);
+    if (!current || current.pid !== pid) {
+      ws.send(JSON.stringify({ type: 'error_output', data: `Nothing is listening on port ${port} anymore, so I didn't stop anything — the process I found earlier is gone (or the port changed hands).\n` }));
+      ws.send(JSON.stringify({ type: 'end' }));
+      return;
+    }
+    const killed = killProcessByPid(pid);
+    await new Promise((r) => setTimeout(r, 700));
+    let stillAlive = false;
+    if (port) {
+      try {
+        const probe = await probeUrl(`http://localhost:${port}`, 1500);
+        stillAlive = probe.alive;
+      } catch {
+        // A failed probe is not proof the process survived. Leave stillAlive false and report the
+        // stop — the error branch below is for a positive "still answering", never a probe error.
+      }
+    }
+    if (!killed || stillAlive) {
+      ws.send(JSON.stringify({ type: 'error_output', data: `Couldn't stop the process on port ${port}${stillAlive ? ' — it is still responding' : ''}. You may need to stop it from the terminal (find the PID with \`Get-NetTCPConnection -LocalPort ${port}\`).\n` }));
+    } else {
+      // The URL belonged to an untracked server and the project has no tracked process left, so
+      // drop it and refresh the dashboard's Live Sites row instead of leaving it "live" for up to
+      // the 30s cache window.
+      if (!runningProcesses.has(pending.projectId)) forgetDevUrl(pending.projectId);
+      broadcast({ type: 'dashboard_update' });
+      broadcast({ type: 'processes_update' });
+      ws.send(JSON.stringify({ type: 'answer', data: `Stopped the process on port ${port}${commandLine ? ` (${commandLine})` : ''}.\n` }));
     }
     ws.send(JSON.stringify({ type: 'end' }));
     return;

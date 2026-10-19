@@ -25,8 +25,9 @@ import {
   getTrackedProcesses,
   removeTrackedProcess,
   stopTrackedProcess,
+  matchesStopTarget,
 } from './executorProcesses.js';
-import { ANSI_RE, URL_PATTERN, collapseLfCrlfWarnings, createBufferedSender } from './executorOutput.js';
+import { ANSI_RE, URL_PATTERN, collapseLfCrlfWarnings, isPurelyNpmNotices, createBufferedSender } from './executorOutput.js';
 import { buildPortPromptConfirmation } from './executorPorts.js';
 import { isDevServerCommand, buildDetachMessage } from './executorDevServer.js';
 import { getTuning } from './tuningStore.js';
@@ -46,7 +47,7 @@ import {
 // (stopTrackedProcess), connectionConfirm (PORT_PROMPT_ANSWER_TIMEOUT_MS), processLogs (no
 // external importer today — kept for the Phase 6 harness). The remaining knobs stay importable
 // from executorConstants.js (getTuning callers use the defaults here or the constants module).
-export { runningProcesses, processLogs, getProcessLog, stopTrackedProcess, PORT_PROMPT_ANSWER_TIMEOUT_MS };
+export { runningProcesses, processLogs, getProcessLog, getTrackedProcesses, stopTrackedProcess, matchesStopTarget, PORT_PROMPT_ANSWER_TIMEOUT_MS };
 
 /** Rewrites `python ...` to the project's venv interpreter when a venv exists (verbatim rule). */
 function rewriteVenvPython(command, cwd) {
@@ -139,6 +140,13 @@ export function executeCommand(command, cwd, ws, projectId, opts = {}) {
     const stdoutSender = createBufferedSender(sendEvent, 'output');
     const stderrSender = createBufferedSender(sendEvent, 'error_output', (text) => {
       const out = collapseLfCrlfWarnings(text);
+      // A batch made only of npm notice lines is informational (npm echoing the script it is
+      // about to run), not an error — reroute it to the amber warning channel. Mixed batches
+      // (a real error plus a notice) keep the notice and stay red so a genuine error is never
+      // downgraded.
+      if (isPurelyNpmNotices(out)) {
+        return { type: 'warning', text: out };
+      }
       // The LF/CRLF collapse summary is a pure informational notice (the "(cosmetic, no action
       // needed)" marker) — reroute it through the `warning` channel so the frontend renders an
       // amber notice instead of a red error bubble. Only a summary standing completely alone

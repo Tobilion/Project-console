@@ -8,7 +8,7 @@ import { log as logger } from './logger.js';
 import { broadcast } from './wsServer.js';
 import { forgetDevUrl } from './devUrlStore.js';
 import { state } from './state.js';
-import { probeUrl } from './livenessProbe.js';
+import { probeDevServerCandidate } from './livenessProbe.js';
 import { summarizeCommandOutput } from './outputSummarizer.js';
 import { runningProcesses, removeTrackedProcess } from './executorProcesses.js';
 import { offerPortRetry } from './executorPorts.js';
@@ -149,10 +149,10 @@ export function createCloseHandler(ctx) {
       // declares death; a timeout gets one retry after the same delay. This used to
       // removeTrackedProcess + forgetDevUrl + fire a false `dev-server-crash` notification
       // on the first timeout, silently dropping the open-site chip for a live server.
-      let probe = await probeUrl(lastUrl, DETACHED_EXIT_PROBE_TIMEOUT_MS);
+      let probe = await probeDevServerCandidate(lastUrl, DETACHED_EXIT_PROBE_TIMEOUT_MS);
       if (!probe.alive && probe.error === 'timeout') {
         await new Promise((r) => setTimeout(r, DETACHED_EXIT_PROBE_DELAY_MS));
-        probe = await probeUrl(lastUrl, DETACHED_EXIT_PROBE_TIMEOUT_MS);
+        probe = await probeDevServerCandidate(lastUrl, DETACHED_EXIT_PROBE_TIMEOUT_MS);
       }
       if (probe.alive) return; // real server still serving (wrapper-close-early case)
       const removed = removeTrackedProcess(projectId, child.pid);

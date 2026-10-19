@@ -5,7 +5,7 @@ import { metrics } from '../metrics.js';
 import { runningProcesses, getProcessLog } from '../executor.js';
 import { state, getTabWorkspace } from '../state.js';
 import { forgetDevUrl } from '../devUrlStore.js';
-import { probeUrl } from '../livenessProbe.js';
+import { probeDevServerCandidate } from '../livenessProbe.js';
 import { asyncHandler } from '../asyncHandler.js';
 
 /** Runs a git command in the given directory with a timeout, returning { stdout, stderr }. */
@@ -257,8 +257,10 @@ export function registerMonitoringRoutes(app) {
       if (devUrl) {
         try {
           // Phase 6: probe bound tightened to 600ms — the parallel worker pool overlaps the
-          // per-project probes, so each individual bound can be shorter.
-          const probe = await probeUrl(devUrl, 600);
+          // per-project probes, so each individual bound can be shorter. The candidate-probe
+          // variant is required here: a bare probe would let a *second* console instance on a
+          // recorded candidate port mark this project's site as live.
+          const probe = await probeDevServerCandidate(devUrl, 600);
           if (probe.alive) {
             probeConfirmedAlive = true;
           } else {

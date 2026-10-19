@@ -9,7 +9,7 @@ import { getCommandDir } from '../commandDir.js';
 import { handleAIQuery } from './aiQuery.js';
 import { guessCommand } from '../commandGuesser.js';
 import { logNearMiss } from '../nearMissLogger.js';
-import { handlePendingParamReply, handlePendingFollowUpReply, handlePendingDisambiguationReply, handlePendingFileQuestionReply, handlePendingNoteDeleteReply, handlePendingMemorySuggestionReply, handlePendingPushTargetReply } from './connectionInterceptors.js';
+import { handlePendingParamReply, handlePendingFollowUpReply, handlePendingDisambiguationReply, handlePendingStopTargetReply, handlePendingUntrackedStopReply, handlePendingFileQuestionReply, handlePendingNoteDeleteReply, handlePendingMemorySuggestionReply, handlePendingPushTargetReply } from './connectionInterceptors.js';
 import { handleTelemetryCommand } from './connectionTelemetry.js';
 import { handleDistillationCommand, handleMemoryReview, handleLearningCommand } from './connectionAdminCommands.js';
 import { handlePackCommand, handlePendingPackInstallReply } from './connectionPackAdmin.js';
@@ -200,6 +200,8 @@ async function handleExecuteBody(ws, parsed, sessionContext) {
   if (await handlePendingParamReply(ws, project, projectId, input, sessionContext)) return;
   if (await handlePendingFollowUpReply(ws, project, projectId, input, sessionContext)) return;
   if (await handlePendingDisambiguationReply(ws, project, projectId, input, sessionContext)) return;
+  if (await handlePendingStopTargetReply(ws, project, projectId, input, sessionContext)) return;
+  if (await handlePendingUntrackedStopReply(ws, project, projectId, input, sessionContext)) return;
   if (await handlePendingFileQuestionReply(ws, project, projectId, input, sessionContext)) return;
   if (await handlePendingNoteDeleteReply(ws, project, projectId, input, sessionContext)) return;
   if (await handlePendingPushTargetReply(ws, project, projectId, input, sessionContext)) return;
@@ -249,7 +251,7 @@ async function handleExecuteBody(ws, parsed, sessionContext) {
   if (await handleUpdateCommand(ws, project, lowerInput)) return;
   if (await handleWorkspaceCommand(ws, project, lowerInput, input, sessionContext)) return;
   if (await handleHistoryCommand(ws, project, lowerInput, input)) return;
-  if (await handleStopServer(ws, project, lowerInput)) return;
+  if (await handleStopServer(ws, project, lowerInput, sessionContext)) return;
   if (await handleDevUrl(ws, project, lowerInput)) return;
   if (await handleModeCommand(ws, project, lowerInput)) return;
   if (await handleOnboardingCommand(ws, lowerInput)) return;

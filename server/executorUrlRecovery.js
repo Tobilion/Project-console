@@ -15,7 +15,7 @@
 
 import { recordDevUrl } from './devUrlStore.js';
 import { state, allKnownProjects } from './state.js';
-import { probeUrl, candidateDevUrls } from './livenessProbe.js';
+import { probeDevServerCandidate, candidateDevUrls } from './livenessProbe.js';
 import { broadcast } from './wsServer.js';
 import {
   DEV_URL_RECOVERY_PROBE_DELAY_MS,
@@ -40,7 +40,7 @@ export async function recoverDevUrlAfterDetach(projectId, ws) {
     if (state.lastDevUrls.has(projectId)) return;
     for (const url of candidates) {
       if (state.lastDevUrls.has(projectId)) return;
-      const probe = await probeUrl(url, DEV_URL_RECOVERY_PROBE_TIMEOUT_MS);
+      const probe = await probeDevServerCandidate(url, DEV_URL_RECOVERY_PROBE_TIMEOUT_MS);
       if (probe.alive) {
         recordDevUrl(projectId, url);
         if (ws.readyState === 1) {

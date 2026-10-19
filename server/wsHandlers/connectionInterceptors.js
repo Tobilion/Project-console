@@ -7,6 +7,10 @@ import { removeScheduleById } from '../schedules/scheduleStore.js';
 import { pendingMemorySuggestions } from './connectionState.js';
 import { parseFileNameOnly } from './builtinHelpers.js';
 import { answerDocMatches, pushTargetQuestion } from './builtinChitChat.js';
+import crypto from 'crypto';
+import { stopTrackedProcess } from '../executor.js';
+import { pendingConfirmations } from '../state.js';
+import { resolveProcessOnPort, portFromUrl, looksLikeDevServer } from '../untrackedProcess.js';
 
 // The four "this message is a reply to a pending question" interceptors from handleExecute —
 // each returns true when it consumed the message. They must be called in this order (param,
@@ -182,6 +186,84 @@ export async function handlePendingDisambiguationReply(ws, project, projectId, i
   // means treating it as a brand-new input through the normal pipeline rather than getting
   // stuck insisting on an answer to a question nobody's addressing anymore.
   return false;
+}
+
+// Stop-target reply (2026-10-18): when a project has multiple tracked processes and the stop
+// phrase named none of them, handleStopServer staged sessionContext.pendingStopTarget and asked
+// which to stop. This interceptor consumes the reply — a number stops that one process, "both"
+// stops them all, "cancel"/a non-answer clears the state and falls through to normal matching.
+export async function handlePendingStopTargetReply(ws, project, projectId, input, sessionContext) {
+  const pending = sessionContext.pendingStopTarget;
+  if (!pending || pending.projectId !== projectId) return false;
+  const lower = input.trim().toLowerCase();
+  if (/^(cancel|nevermind|never mind|no|nope|none)\b/.test(lower)) {
+    sessionContext.pendingStopTarget = null;
+    ws.send(JSON.stringify({ type: 'answer', data: 'Cancelled — nothing was stopped.\n' }));
+    ws.send(JSON.stringify({ type: 'end' }));
+    return true;
+  }
+  if (/^(both|all|everything|every)\b/.test(lower)) {
+    sessionContext.pendingStopTarget = null;
+    const stopped = await stopTrackedProcess(projectId);
+    ws.send(JSON.stringify({ type: 'answer', data: stopped.ok ? `Stopped ${stopped.command}.\n` : 'Nothing is running anymore.\n' }));
+    ws.send(JSON.stringify({ type: 'end' }));
+    return true;
+  }
+  const m = lower.match(/\b(\d+)\b/);
+  if (m) {
+    const idx = parseInt(m[1], 10) - 1;
+    if (idx >= 0 && idx < pending.entries.length) {
+      const pick = pending.entries[idx];
+      sessionContext.pendingStopTarget = null;
+      const stopped = await stopTrackedProcess(projectId, { target: { pids: [pick.pid] } });
+      ws.send(JSON.stringify({ type: 'answer', data: stopped.ok ? `Stopped \`${stopped.command}\`.\n` : 'That process is no longer running.\n' }));
+      ws.send(JSON.stringify({ type: 'end' }));
+      return true;
+    }
+  }
+  sessionContext.pendingStopTarget = null;
+  return false;
+}
+
+// Untracked-stop reply (2026-10-18): handleStopServer found a dev URL answering that the console
+// doesn't track and staged sessionContext.pendingUntrackedStop. An affirmative reply resolves the
+// process listening on that port and stages a confirm card (pendingConfirmations killProcess)
+// naming the pid + command line — the kill never happens without that explicit confirmation.
+export async function handlePendingUntrackedStopReply(ws, project, projectId, input, sessionContext) {
+  const pending = sessionContext.pendingUntrackedStop;
+  if (!pending || pending.projectId !== projectId) return false;
+  const lower = input.trim().toLowerCase();
+  if (!/^(stop it|stop that|stop it anyway|yes|yeah|yep|sure|ok|okay|kill it|go ahead|do it|please)\b/.test(lower)) {
+    sessionContext.pendingUntrackedStop = null;
+    return false;
+  }
+  sessionContext.pendingUntrackedStop = null;
+  const port = portFromUrl(pending.url);
+  if (!port) {
+    ws.send(JSON.stringify({ type: 'answer', data: `I can't tell which port **${pending.url}** is on — stop it from the terminal if it keeps running.\n` }));
+    ws.send(JSON.stringify({ type: 'end' }));
+    return true;
+  }
+  const info = resolveProcessOnPort(port);
+  if (!info) {
+    ws.send(JSON.stringify({ type: 'answer', data: `I couldn't find the process listening on port ${port} — it may have already stopped. Check http://localhost:${port} again.\n` }));
+    ws.send(JSON.stringify({ type: 'end' }));
+    return true;
+  }
+  const token = crypto.randomUUID();
+  pendingConfirmations.set(token, {
+    owner: ws, projectId, createdAt: Date.now(), trigger: input,
+    killProcess: { pid: info.pid, commandLine: info.commandLine, port },
+  });
+  // The port's owner is not always a dev server (an unrelated service may have taken it). Say so
+  // on the card when the command line doesn't look server-shaped, so the user can back out before
+  // a tree-kill rather than discovering it afterwards.
+  const caution = looksLikeDevServer(info.commandLine)
+    ? ''
+    : `\n\nHeads-up: that command doesn't look like a dev server — make sure it is the right process before confirming.`;
+  ws.send(JSON.stringify({ type: 'confirm_prompt', token, command: `Stop the process on port ${port}${info.commandLine ? ` — ${info.commandLine}` : ''}${caution}`, trigger: 'untracked_stop' }));
+  ws.send(JSON.stringify({ type: 'end' }));
+  return true;
 }
 
 export async function handlePendingFileQuestionReply(ws, project, projectId, input, sessionContext) {

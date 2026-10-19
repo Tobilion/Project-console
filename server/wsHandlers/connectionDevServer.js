@@ -1,6 +1,7 @@
-import { runningProcesses, stopTrackedProcess } from '../executor.js';
+import { runningProcesses, stopTrackedProcess, getTrackedProcesses, matchesStopTarget } from '../executor.js';
+import { isSiteCommand } from '../executorDevServer.js';
 import { state, withPortCollisionWarning } from '../state.js';
-import { probeUrl, candidateDevUrls } from '../livenessProbe.js';
+import { probeDevServerCandidate, candidateDevUrls } from '../livenessProbe.js';
 import { recordDevUrl } from '../devUrlStore.js';
 
 // "Where is the link / what is the url" pre-check patterns (hoisted + exported so the harness can
@@ -74,17 +75,79 @@ export function isStopServerPhrase(input) {
 }
 export { isStopVerb, isServerNoun, levenshtein };
 
-export async function handleStopServer(ws, project, lowerInput) {
-  const hasTrackedProcess = runningProcesses.has(project.id);
-  if (
+function escapeRegExp(s) {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+// Phrase -> which tracked process(es) the user means. Returns one of:
+//   { devServer: true }    — the site/app/website (a dev-server-shaped command)
+//   { notDevServer: true } — a named non-site service (wallet/backend/api/db)
+//   { commandRe: RegExp }  — an explicitly named script ("npm run server", "tsx server/...")
+//   null                   — generic ("stop the server"/"stop it"); the caller asks when >1 run
+// 2026-10-18: "stop the server" used to stop EVERY tracked process, so a project with a site and
+// a backend lost both. Naming the target (or asking) is what keeps a stop scoped to one process.
+export function classifyStopTarget(lowerInput) {
+  if (/\b(site|app|website|web\s*site|frontend|front\s*end|client)\b/.test(lowerInput)) return { devServer: true };
+  const script = lowerInput.match(/\b(?:npm\s+run|yarn|pnpm|bun|tsx|node|python[3]?)\s+([a-z0-9:._/-]+)/);
+  if (script) return { commandRe: new RegExp(escapeRegExp(script[1]), 'i') };
+  if (/\b(wallet|backend|api|database|db|server:start)\b/.test(lowerInput)) return { notDevServer: true };
+  return null;
+}
+
+// A dev URL that answers but is NOT tracked by the console (started outside it, or before a
+// restart) — the case the "can't stop it from here" message used to dead-end on. Probes the
+// recorded URL first, then the project's own candidate ports. Returns the live URL or null.
+async function findUntrackedDevUrl(project) {
+  const recorded = state.lastDevUrls.get(project.id);
+  if (recorded) {
+    const probe = await probeDevServerCandidate(recorded, 2000);
+    if (probe.alive) return recorded;
+  }
+  for (const candidate of candidateDevUrls(project)) {
+    const probe = await probeDevServerCandidate(candidate, 1200);
+    if (probe.alive) {
+      recordDevUrl(project.id, candidate);
+      return candidate;
+    }
+  }
+  return null;
+}
+
+export async function handleStopServer(ws, project, lowerInput, sessionContext) {
+  const entries = getTrackedProcesses(project.id);
+  const hasTrackedProcess = entries.length > 0;
+  const isStopPhrase =
     isStopServerPhrase(lowerInput) ||
     (hasTrackedProcess && /^(stop|kill|cancel|close)\s+it\.?$/i.test(lowerInput.trim())) ||
     (hasTrackedProcess && (() => {
       const w = lowerInput.trim().toLowerCase().replace(/[^a-z]/g, ' ').trim().split(/\s+/)[0] || '';
       return isStopVerb(w) && lowerInput.trim().toLowerCase().includes(' it');
-    })())
-  ) {
-    const stopped = await stopTrackedProcess(project.id);
+    })());
+  if (!isStopPhrase) return false;
+
+  // Nothing tracked: if a dev URL still answers, offer to stop it (started outside the console).
+  if (!hasTrackedProcess) {
+    const untracked = await findUntrackedDevUrl(project);
+    if (untracked) {
+      sessionContext.pendingUntrackedStop = { projectId: project.id, url: untracked };
+      ws.send(JSON.stringify({ type: 'answer', data: `**${project.name}** is still responding at **${untracked}**, but it was started outside the console so I can't track it. Say "stop it anyway" and I'll find and stop the process for you.\n` }));
+      ws.send(JSON.stringify({ type: 'end' }));
+      return true;
+    }
+    ws.send(JSON.stringify({ type: 'answer', data: `No running server for **${project.name}**.\n` }));
+    ws.send(JSON.stringify({ type: 'end' }));
+    return true;
+  }
+
+  // Scoped targeting: a phrase that names a specific process stops only that one. A phrase that
+  // names nothing ("stop the server"/"stop it") keeps every process as a candidate — and when
+  // more than one remains, asks which to stop instead of stopping both.
+  const target = classifyStopTarget(lowerInput);
+  let candidates = target ? entries.filter((p) => matchesStopTarget(p, p.child.pid, target)) : entries;
+  if (target && candidates.length === 0) candidates = entries;
+
+  if (candidates.length === 1) {
+    const stopped = await stopTrackedProcess(project.id, { target: { pids: [candidates[0].child.pid] } });
     if (stopped.ok) {
       const headsup = stopped.warning ? `\n\nHeads-up: ${stopped.warning}.` : '';
       ws.send(JSON.stringify({ type: 'answer', data: `Stopped \`${stopped.command}\`.${headsup}\n` }));
@@ -94,7 +157,15 @@ export async function handleStopServer(ws, project, lowerInput) {
     ws.send(JSON.stringify({ type: 'end' }));
     return true;
   }
-  return false;
+
+  const list = candidates.map((p, i) => `${i + 1}. \`${p.command}\`${isSiteCommand(p.command) ? ' (the site)' : ''}`).join('\n');
+  sessionContext.pendingStopTarget = {
+    projectId: project.id,
+    entries: candidates.map((p) => ({ pid: p.child.pid, command: p.command })),
+  };
+  ws.send(JSON.stringify({ type: 'answer', data: `**${project.name}** has ${candidates.length} processes running. Which should I stop?\n\n${list}\n\nReply with a number, "both", or "cancel".\n` }));
+  ws.send(JSON.stringify({ type: 'end' }));
+  return true;
 }
 
 // "Where is the link?" — answer from the last detected dev server URL. Wide enough to catch
@@ -111,7 +182,7 @@ export async function handleDevUrl(ws, project, lowerInput) {
     // Liveness-check the last-known URL (2026-08-04): the URL may survive a console restart
     // via devUrlStore.js even when the process itself isn't tracked anymore — probe before
     // claiming it's up. On-demand only, 3s bound.
-    const probe = await probeUrl(devUrl, 3000);
+    const probe = await probeDevServerCandidate(devUrl, 3000);
     if (probe.alive) {
       const answer = withPortCollisionWarning(`The dev server is running at **${devUrl}** — open it in your browser.`, devUrl);
       ws.send(JSON.stringify({ type: 'answer', data: answer }));
@@ -126,7 +197,7 @@ export async function handleDevUrl(ws, project, lowerInput) {
     const candidates = candidateDevUrls(project);
     let found = null;
     for (const candidate of candidates) {
-      const probe = await probeUrl(candidate, 1500);
+      const probe = await probeDevServerCandidate(candidate, 1500);
       if (probe.alive) { found = candidate; break; }
     }
     if (found) {
