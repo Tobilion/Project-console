@@ -66,12 +66,20 @@ const { getWatchRules } = await import(pathToFileURL(base + 'watchRules.js').hre
 const { handleScheduleCommand } = await import(pathToFileURL(base + 'wsHandlers/connectionScheduleAdmin.js').href);
 const { handleHistoryCommand } = await import(pathToFileURL(base + 'wsHandlers/connectionHistoryAdmin.js').href);
 const { handleConfirmResponse } = await import(pathToFileURL(base + 'wsHandlers/connectionConfirm.js').href);
-const { handlePendingPushTargetReply } = await import(pathToFileURL(base + 'wsHandlers/connectionInterceptors.js').href);
+const { handlePendingPushTargetReply, handlePendingStopTargetReply, handlePendingUntrackedStopReply } = await import(pathToFileURL(base + 'wsHandlers/connectionInterceptors.js').href);
 const { explainInput, buildMatchInfo } = await import(pathToFileURL(base + 'wsHandlers/connectionMatching.js').href);
 const { handleAutoStartCommand } = await import(pathToFileURL(base + 'wsHandlers/connectionAutoStartAdmin.js').href);
 const { handleUpdateCommand } = await import(pathToFileURL(base + 'wsHandlers/connectionUpdateAdmin.js').href);
 const { handleDoctorCommand } = await import(pathToFileURL(base + 'wsHandlers/connectionDoctor.js').href);
 const { handleMatchStatsCommand } = await import(pathToFileURL(base + 'wsHandlers/connectionMatchStats.js').href);
+const { classifyStopTarget } = await import(pathToFileURL(base + 'wsHandlers/connectionDevServer.js').href);
+const { matchesStopTarget } = await import(pathToFileURL(base + 'executorProcesses.js').href);
+const { isSiteCommand } = await import(pathToFileURL(base + 'executorDevServer.js').href);
+const { handleStopServer } = await import(pathToFileURL(base + 'wsHandlers/connectionDevServer.js').href);
+const { isPurelyNpmNotices } = await import(pathToFileURL(base + 'executorOutput.js').href);
+const { findDocumentedRunCommands } = await import(pathToFileURL(base + 'readmeRunParser.js').href);
+const { portFromUrl, resolveProcessOnPort, looksLikeDevServer } = await import(pathToFileURL(base + 'untrackedProcess.js').href);
+const { isConsoleServerUrl, probeDevServerCandidate } = await import(pathToFileURL(base + 'livenessProbe.js').href);
 const { parseReminderInput } = await import(pathToFileURL(base + 'schedules/reminderParser.js').href);
 const {
   parsePdfNames, parsePdfOutput, parsePageSpec, extractWatermarkText,
@@ -150,6 +158,17 @@ await handleBuiltinIntent(ws, 'project.context.dev_server_status', 'is the serve
 // reports "responding at ... started outside the console" instead of "has no server running".
 // Both are valid answers; what's under test is the dispatch + single-answer shape, not the probe.
 eq('context leaf: dev_server_status (nothing) answers running-or-not', ws.sent.length === 1 && ws.sent[0].type === 'answer' && (ws.sent[0].data.includes('has no server running') || ws.sent[0].data.includes('responding at')), true);
+
+// 2026-10-18: "when did it start running" answers from the tracked process's startedAt (the live
+// chat fell through to the generic fallback). Seed a tracked entry with a known start time.
+{
+  const { runningProcesses } = await import(pathToFileURL(base + 'executorProcesses.js').href);
+  runningProcesses.set('p1', new Map([[9999, { child: { pid: 9999 }, command: 'vite --port=3001', startedAt: Date.now() - 45 * 60 * 1000 }]]));
+  sent.length = 0;
+  await handleBuiltinIntent(ws, 'project.context.dev_server_status', 'when did it start running', proj, {});
+  runningProcesses.delete('p1');
+  eq('context leaf: dev_server_status answers a start-time question from startedAt', ws.sent.length === 1 && ws.sent[0].type === 'answer' && /started 45 minutes ago/.test(ws.sent[0].data), true);
+}
 
 sent.length = 0;
 await handleBuiltinIntent(ws, 'project.action.copy_path', 'copy path', proj, {});
@@ -1484,5 +1503,138 @@ eq('checkpoint: quoted trigger survives via -F tempfile', cpQuoted.success === t
 
 fs.rmSync(gpRoot, { recursive: true, force: true });
 
+// 2026-10-18 live bad-chat crosscheck — stop scoping, untracked-stop helpers, npm-notice
+// rerouting, and the README inline-code artifact. Pure-helper unit rows (no process spawn).
+eq('stop scope: site-shaped phrase targets the dev server', JSON.stringify(classifyStopTarget('stop the site')) === JSON.stringify({ devServer: true }), true);
+eq('stop scope: explicit script name targets that command', classifyStopTarget('stop npm run server')?.commandRe?.test('npm run server') === true, true);
+eq('stop scope: named non-site service targets the non-dev process', JSON.stringify(classifyStopTarget('stop the wallet server')) === JSON.stringify({ notDevServer: true }), true);
+eq('stop scope: generic "stop the server" names nothing (caller disambiguates)', classifyStopTarget('stop the server') === null, true);
+eq('stop scope: matchesStopTarget filters by dev-server shape', matchesStopTarget({ command: 'vite --port=3001' }, 1, { devServer: true }) === true && matchesStopTarget({ command: 'python main.py migrate' }, 2, { devServer: true }) === false, true);
+eq('stop scope: matchesStopTarget filters by pid list', matchesStopTarget({ command: 'x' }, 42, { pids: [42, 43] }) === true && matchesStopTarget({ command: 'x' }, 44, { pids: [42] }) === false, true);
+
+eq('npm notice: a purely-notice batch is informational', isPurelyNpmNotices('npm notice run cu-bet@1.0.0 dev\nnpm notice run vite --port=3001') === true, true);
+eq('npm notice: a real error mixed with a notice is not', isPurelyNpmNotices('npm notice run vite\nError: EADDRINUSE') === false, true);
+eq('npm notice: blank batch is not', isPurelyNpmNotices('  \n') === false, true);
+
+eq('untracked process: portFromUrl extracts the port', portFromUrl('http://localhost:3001/') === 3001 && portFromUrl('not a url') === null, true);
+eq('untracked process: resolveProcessOnPort(null) is a clean null', resolveProcessOnPort(null) === null, true);
+eq('untracked process: looksLikeDevServer recognizes a dev server', looksLikeDevServer('node node_modules/vite/bin/vite.js --port=3001') === true && looksLikeDevServer('') === false, true);
+// Drives the untracked-stop card's caution line: an unrelated service that happens to hold the
+// port must NOT be presented as a dev server the user can safely tree-kill.
+eq('untracked process: looksLikeDevServer rejects an unrelated service', looksLikeDevServer('C:\\Windows\\System32\\svchost.exe -k netsvcs') === false && looksLikeDevServer('nginx.exe -g daemon off;') === false, true);
+
+// The stop-scoping predicate must NOT be the loose detach heuristic: DEV_SERVER_PATTERNS'
+// unanchored /npm run (dev|start|serve)/ matches `npm run server`, the commonest backend script
+// name, which made "stop the api" match nothing and fall back to stopping every process.
+eq('stop scope: `npm run serve` is site-shaped but `npm run server` is not', isSiteCommand('npm run serve') === true && isSiteCommand('npm run server') === false, true);
+eq('stop scope: `npm run dev`/`npm run start` stay site-shaped', isSiteCommand('npm run dev') === true && isSiteCommand('npm run start') === true, true);
+eq('stop scope: a backend named `npm run server` is targetable as the non-site process', matchesStopTarget({ command: 'npm run server' }, 1, { notDevServer: true }) === true && matchesStopTarget({ command: 'npm run server' }, 1, { devServer: true }) === false, true);
+
+// 2026-10-18: the multi-process ask + its numeric reply, and the untracked-stop offer. Two real
+// short-lived children stand in for tracked dev servers, so the scoped kill is exercised for real
+// rather than through the filter helper; both self-exit after 30s even if this row throws.
+{
+  const http = await import('node:http');
+  const { spawn } = await import('node:child_process');
+  const { runningProcesses } = await import(pathToFileURL(base + 'executorProcesses.js').href);
+  const { pendingConfirmations } = await import(pathToFileURL(base + 'state.js').href);
+
+  const a = spawn(process.execPath, ['-e', 'setTimeout(() => process.exit(0), 30000)'], { stdio: 'ignore', windowsHide: true });
+  const b = spawn(process.execPath, ['-e', 'setTimeout(() => process.exit(0), 30000)'], { stdio: 'ignore', windowsHide: true });
+  runningProcesses.set('p1', new Map([
+    [a.pid, { child: a, command: 'npm run dev' }],
+    [b.pid, { child: b, command: 'npm run server' }],
+  ]));
+
+  sent.length = 0;
+  const sc = {};
+  const asked = await handleStopServer(ws, proj, 'stop the server', sc);
+  eq('stop scope: two processes + a generic phrase asks which to stop', asked === true && sc.pendingStopTarget?.entries?.length === 2 && /Which should I stop/.test(sent[0].data), true);
+  eq('stop scope: the ask labels only the site and lists both commands', sent[0].data.includes('npm run dev') && sent[0].data.includes('npm run server') && sent[0].data.includes('(the site)'), true);
+
+  sent.length = 0;
+  const picked = await handlePendingStopTargetReply(ws, proj, 'p1', '2', sc);
+  eq('stop scope: a numeric reply stops only the picked process', picked === true && sent[0].type === 'answer' && /npm run server/.test(sent[0].data), true);
+  eq('stop scope: the sibling dev server stays tracked', runningProcesses.get('p1')?.has(a.pid) === true && runningProcesses.get('p1')?.size === 1, true);
+  eq('stop scope: the reply clears the pending ask', sc.pendingStopTarget === null, true);
+  try { a.kill(); } catch { /* already gone */ }
+  runningProcesses.delete('p1');
+
+  // Untracked-stop offer: nothing tracked, but a dev URL still answers on its port.
+  const devSrv = http.createServer((_req, res) => res.end('dev server'));
+  await new Promise((r) => devSrv.listen(0, '127.0.0.1', r));
+  const devUrl = `http://127.0.0.1:${devSrv.address().port}/`;
+  state.lastDevUrls.set('p1', devUrl);
+
+  sent.length = 0;
+  const sc2 = {};
+  const offered = await handleStopServer(ws, proj, 'stop the server', sc2);
+  eq('untracked stop: a live untracked server is offered, not dead-ended', offered === true && sc2.pendingUntrackedStop?.url === devUrl && /stop it anyway/i.test(sent[0].data), true);
+
+  sent.length = 0;
+  await handlePendingUntrackedStopReply(ws, proj, 'p1', 'stop it anyway', sc2);
+  const card = sent[0];
+  // Either branch is correct and neither kills on its own: the confirm card (PID resolution worked)
+  // or the honest "couldn't find it" answer. A silent kill is the failure this row guards against.
+  eq('untracked stop: the reply never kills outright, it confirms or reports',
+    (card?.type === 'confirm_prompt' && card.trigger === 'untracked_stop' && /Stop the process on port/.test(card.command))
+    || (card?.type === 'answer' && /couldn't find the process/i.test(card.data)), true);
+  if (card?.token) pendingConfirmations.delete(card.token);
+
+  state.lastDevUrls.delete('p1');
+  devSrv.closeAllConnections?.();
+  await new Promise((r) => devSrv.close(r));
+  // Let the killed children be reaped before the harness exits; a child handle still closing at
+  // process.exit() trips win32's libuv async-handle assertion.
+  await new Promise((r) => setTimeout(r, 250));
+}
+
+// README inline-code artifact: "npm run build` also verifies the public" must extract just the
+// command, never the trailing prose (live: Oja's README surfaced the polluted string).
+const readmeFixture = { contextFiles: [{ filename: 'README.md', content: '## Run\n\n```\nnpm run build` also verifies the public\n```\n' }] };
+const readmeCmds = findDocumentedRunCommands(readmeFixture).map((c) => c.command);
+eq('readme parser: inline-code prose is not appended to the command', readmeCmds.length === 1 && readmeCmds[0] === 'npm run build', true);
+
+// Console-instance detection: a candidate port that serves the console's own API shape is another
+// console, not the project's dev server — the candidate fallback must never record or offer to
+// stop it (2026-10-18 live: a fixture's URL-less server made the probe record the user's console).
+{
+  const http = await import('node:http');
+  const consoleSrv = http.createServer((req, res) => {
+    if (req.url.startsWith('/api/projects')) { res.setHeader('content-type', 'application/json'); res.end(JSON.stringify({ scanPath: '/x', projects: [] })); }
+    else { res.end('nope'); }
+  });
+  const plainSrv = http.createServer((req, res) => { res.statusCode = 404; res.end('not here'); });
+  // An ARMED console answers /api/projects with 401 + this body while login is required, so a
+  // second console instance must still be recognized then (the open-shape check alone would miss
+  // it and the probe would record the user's own login-gated console as the project's dev server).
+  const armedSrv = http.createServer((_req, res) => {
+    res.statusCode = 401;
+    res.setHeader('content-type', 'application/json');
+    res.end(JSON.stringify({ ok: false, error: 'Login required.' }));
+  });
+  const otherSrv = http.createServer((_req, res) => { res.statusCode = 401; res.end('unauthorized'); });
+  for (const s of [consoleSrv, plainSrv, armedSrv, otherSrv]) await new Promise((r) => s.listen(0, '127.0.0.1', r));
+  const consoleUrl = `http://127.0.0.1:${consoleSrv.address().port}/`;
+  const plainUrl = `http://127.0.0.1:${plainSrv.address().port}/`;
+  const armedUrl = `http://127.0.0.1:${armedSrv.address().port}/`;
+  const otherUrl = `http://127.0.0.1:${otherSrv.address().port}/`;
+  eq('liveness probe: console API shape is detected', await isConsoleServerUrl(consoleUrl) === true, true);
+  eq('liveness probe: a login-gated console is still detected', await isConsoleServerUrl(armedUrl) === true, true);
+  eq('liveness probe: an unrelated 401 is not a console', await isConsoleServerUrl(otherUrl) === false, true);
+  eq('liveness probe: a plain dev server is not mistaken for a console', await isConsoleServerUrl(plainUrl) === false, true);
+  eq('liveness probe: candidate probe skips a console instance', (await probeDevServerCandidate(consoleUrl, 800)).alive === false, true);
+  eq('liveness probe: candidate probe skips a login-gated console', (await probeDevServerCandidate(armedUrl, 800)).alive === false, true);
+  eq('liveness probe: candidate probe accepts a plain dev server', (await probeDevServerCandidate(plainUrl, 800)).alive === true, true);
+  for (const s of [consoleSrv, plainSrv, armedSrv, otherSrv]) {
+    s.closeAllConnections?.();
+    await new Promise((r) => s.close(r));
+  }
+}
+
 console.log(`check-handlers: ${total} checks, ${failed} failed`);
-process.exit(failed ? 1 : 0);
+// Natural exit rather than process.exit(): on Windows the win32 libuv build asserts
+// (!(handle->flags & UV_HANDLE_CLOSING), win/async.c) when the process terminates while a child or
+// socket handle is still closing, aborting with 0xC0000409 EVEN WHEN EVERY CHECK PASSED — so a
+// green run reported a nonzero exit code and would have failed the pre-commit hook and Windows CI.
+process.exitCode = failed ? 1 : 0;
