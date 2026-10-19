@@ -1339,7 +1339,10 @@ npm run doctor  # standalone machine-side diagnostics (ports/daemon/embedding/wr
   "Heads-up" warning appended to the answer, verification never re-kills (a same-command process
   may be the user's own manual instance); `removeTrackedProcess` deletes one
   pid and cleans the project key when its slot empties; `process.on('exit'/'SIGTERM')` cleanup),
-   `executorDevServer.js` (`isDevServerCommand`, `buildDetachMessage`). Post-detach URL
+   `executorDevServer.js` (`isDevServerCommand` for the detach timer — its `serve` alternative is
+   deliberately unanchored so `npm run server` counts, which is right there; `isSiteCommand`, the
+   word-bounded stop-scoping sibling that must NOT match `npm run server` — see the 2026-10-18
+   F3 audit follow-up; `buildDetachMessage`). Post-detach URL
    recovery (2026-08-18, Matchday Exchange live report): a slow cold start can print the
    "Local:" banner AFTER the 10s force-detach deadline; the stdout listener now STAYS attached
    in URL-scan-only mode post-detach (no streaming/buffering/accumulation, late banner still
@@ -3326,6 +3329,109 @@ gap, both fixed + harness-pinned. Crosscheck notes per class:
 - Live-probed (catalog lookup): "how do i publish" → [push to github, how do i publish this];
   "how do i publish to npm" → [how do i publish this, push to github]; "how do i publish this"
   → [how do i publish this, push to github]; "how do i use a command" → [help].
+
+## Bug fix pass (2026-10-18) — bad-chat crosscheck (Oja / Dream Kick / Matchday Exchange)
+
+Reviewed three exported live chats against the Tuning Template's protocol: classify each failure,
+do NOT paste failing phrases into intent examples (that's the near-miss path), route genuinely new
+phrasings to the frozen held-out eval set. Per-failure category + actual fix type:
+
+- **F5 "commit the site" → `git_status` (matcher misfire, wrong intent)** — the keyword stage's
+  git_status rule matched `commit` + `changed`, and the bare-commit pin only covered `commit`/`comit`,
+  so a targeted phrase fell to the generic rule. Fix: the git_status AND-lists dropped `commit`; the
+  git_commit keyword objects gained site/project/app/website/repo/folder/directory targets with a
+  `(?!.*\b(?:and|then)\s+push\b)` lookahead; new pin for `com?mit … the site` shapes. "commit and push"
+  still resolves to the single `git_commit_push` intent.
+- **F4a "how do you push site" → no catalog answer (slot/conversation miss)** — the how_do_i
+  normalizer only rewrote "how do i", so "how do you …" reached the catalog unnormalized, and the push
+  entry lacked site-shape keywords. Fix: `chitChat/howDoI.js` normalizes `how do/…you` → "how do i";
+  the push docs entry gained `push site`/`push the site`/`push my site`/`push the app`/`push website`.
+- **F4b "what are git commands" → `project.knowledge.commands` (matcher misfire)** — no catalog entry
+  matched, so embedding answered the project's own scripts. Fix: new `git commands` catalog entry +
+  a narrow pin + a README reference row (check-docs synced).
+- **F6 "when did it start running" → canned gratitude (matcher misfire, NLP stage)** — a shape no
+  intent owned. Fix: narrow dev_server_status pin + the handler now reads `input`, matches
+  `START_TIME_RE`, and answers "It started N minutes ago" from the tracked process's `startedAt`
+  (honest "started outside the console" when untracked).
+- **F7 pure npm-notice stderr rendered as an error block (output classification)** — new
+  `isPurelyNpmNotices()` in `executorOutput.js`; `executor.js` reroutes a wholly-informational stderr
+  batch to the amber `warning` channel.
+- **F8 README command parse ate trailing prose (slot extraction)** — "npm run build \` also verifies…"
+  became the documented command. Fix: `readmeRunParser.js`'s `matchCommandLine` treats a backtick as a
+  delimiter and strips stray backticks.
+- **F3 "stop the server" killed EVERY tracked process (scope bug)** — a project running a site AND a
+  backend lost both. Fix: `stopTrackedProcess(projectId, {turnKey, target})` + new exported
+  `matchesStopTarget` (devServer / notDevServer / commandRe / pids); `connectionDevServer.js` gained
+  `classifyStopTarget` and stops the named process, or asks a numbered "which should I stop?"
+  (`sessionContext.pendingStopTarget`) when >1 remains. Verified live: "stop the api" stops only the
+  api; a numbered reply stops only that one; "both" stops both.
+  **Audit follow-up (2026-10-18)**: the scoping used `isDevServerCommand` for the devServer/
+  notDevServer split, and that pattern's `serve` alternative is UNANCHORED — so `npm run server`
+  (the commonest backend script name) classified as a site, `{notDevServer:true}` then matched
+  nothing, and the fallback stopped every process again: the exact F3 bug, for the commonest backend
+  name. New word-bounded `isSiteCommand` in `executorDevServer.js` is the stop-scoping predicate
+  (`npm run serve` yes, `npm run server` no); `isDevServerCommand` is deliberately UNCHANGED and
+  still drives the force-detach timer (there a `npm run server` really is long-running).
+  `matchesStopTarget` + the ask card's `(the site)` label both use `isSiteCommand` now.
+- **F2 an untracked server could not be stopped at all (missing capability)** — new
+  `server/untrackedProcess.js` (`portFromUrl`/`resolveProcessOnPort`/`killProcessByPid`/`looksLikeDevServer`;
+  win32 Get-NetTCPConnection → Get-CimInstance, POSIX lsof) + `handlePendingStopTargetReply`/
+  `handlePendingUntrackedStopReply` in `connectionInterceptors.js` staging the standard confirm card, and
+  a new `killProcess` branch in `connectionConfirm.js` (tree-kill → 700ms → re-probe).
+  **Audit follow-up (2026-10-18)**: the branch re-resolves the port's owner before killing and
+  aborts with a plain error when the pid changed or nothing listens any more, so a recycled pid can
+  never be killed in place of the server the card named; on success it forgets the project's dev URL
+  (only when no tracked process remains) and broadcasts `dashboard_update`/`processes_update` so the
+  Live Sites row cannot stay "live" for the cache window. The card also appends a caution line when
+  `looksLikeDevServer()` rejects the command line, since the port's owner is not always a dev server.
+  Verified live end-to-end (**16/16** driver checks, 2026-10-18/19 audit): "is the site running" →
+  "stop the server" → "stop it anyway" → confirm card naming the PID/command line → confirm stops it
+  and the re-probe reports DOWN (~3.5s: tree-kill + 700ms + probe), plus "stop the api"/"stop the
+  site" scoping only their own process and the numbered ask stopping only the process it numbers.
+- **Console-instance false positive (found while verifying F2 — the real cause of "it said the site was
+  running at 3001 but I can't stop it")** — `candidateDevUrls` falls back to COMMON_DEV_PORTS
+  (3000/3001/5173/…), so a URL probe could record ANOTHER console instance (including the user's own) as
+  the project's dev URL, and the F2 flow would then offer to stop the console. Fix: new
+  `isConsoleServerUrl`/`probeDevServerCandidate` in `livenessProbe.js` (rejects a candidate whose
+  `/api/projects` answers with the console shape) used by every candidate probe — `executorUrlRecovery.js`,
+  `scanProjectServers` (both workers: candidate ports AND a recorded URL, which can equally be a
+  second console), dev_server_status, `findUntrackedDevUrl`, `handleDevUrl`, and `runAutoStart`
+  (which could otherwise skip an auto-start as "already up"). Verified live: with the user's console
+  answering on :3000, the probe skipped it and found the real untracked server on :5173. The
+  dev_server_status / scan answers no longer dead-end on "I can't stop it from here" — they point at
+  "stop the server". **Audit follow-up (2026-10-18)**: an ARMED console answers `/api/projects` with
+  401 + `{ok:false,error:'Login required.'}` rather than the disarmed JSON body, so the console-shape
+  check recognizes both (7 liveness harness rows cover the two shapes).
+- **Tuning-protocol note**: the F5/F4b/F6 traps were each seen once in a single chat — below the
+  near-miss gate's MIN_OCCURRENCES of 3 — so they could not promote through learningEngine. The repo's
+  documented pattern for a confirmed trap (narrow pre-semantic pin + held-out eval row) is what was used,
+  per the template's own guidance to report the actual fix type rather than force the suggestion path.
+- **Harness / eval**: new `CHAT-2026-10-18` matcher battery (12 rows); `check-handlers` gained rows
+  for the start-time answer, stop-scoping units, npm-notice classification, untracked-process
+  helpers, console-instance/liveness detection (against real temp HTTP servers, incl. the armed-401
+  shape) and README command extraction; `heldOutEval.json` +6 phrases (33→39, version 2).
+  (A "+10 rows" figure appeared here earlier; it was never accurate — trust the harness's own total.)
+  **Audit follow-up (2026-10-18)**: the doc claimed coverage for the multi-process ask and the
+  untracked-stop offer that the harness never exercised; real rows now drive both end-to-end (two
+  spawned short-lived children as tracked entries so the scoped kill is genuinely exercised, plus 3
+  `isSiteCommand` rows pinning the `serve`/`server` split).
+- **Matcher drift cleared (2026-10-18 audit)**: `system.chit_chat.clear` no longer carries the
+  `clear window` example. It made every `<verb> the window` shape score onto clear — `split the
+  window` cleared the transcript instead of answering — and the expectation for that input
+  (`project.context.structure`, a `MUST_NOT_STEAL` guard against the pdf.split cluster) had been
+  red on every machine since the 2026-08-18 recalibration. The window sense stays covered by
+  `clear the screen`/`clear this`/`wipe terminal`; `clear window` itself still routes to clear at
+  0.77. Do not re-add the phrase.
+- **Numbers**: check-matcher 459/459 (**zero drift** — the long-standing "split the window" red is
+  gone), check-handlers 396/396, check-docs 83 entries / 0 unmapped, check-intents unchanged
+  (1/17/137), check-ws-cases 138/138, check-tools 182/182, check-indexer 103/103, check-auth 99/99,
+  check-eval 35/39 (4 pre-existing fallbacks), npm test 637/637, lint clean.
+  **check-handlers now exits 0 on Windows (2026-10-18 audit)**: it always printed "0 failed" but
+  terminated via `process.exit()` with a child/socket handle still closing, so win32's libuv aborted
+  with `Assertion failed: !(handle->flags & UV_HANDLE_CLOSING)` (exit 0xC0000409) — a *passing* run
+  exited nonzero, which fails the pre-commit hook (`guard-staged.mjs`) and any Windows CI. The tail
+  now sets `process.exitCode` and lets the loop drain (verified: exit 0, ~25s, no assertion). Node's
+  natural exit must stay possible here — do not reintroduce `process.exit()` in this harness.
 
 ## Conventions
 
