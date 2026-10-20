@@ -18,6 +18,7 @@ import readline from 'readline';
 import { C } from './cliOptions.js';
 import { stripMarkdown, tryFetchProjects } from './cliDiscovery.js';
 import { selectProject } from './cliProjectPicker.js';
+import { traceBoot } from './bootTrace.js';
 
 export function createCliRenderer({ ws, sessionId, state }) {
   let rl = null;
@@ -118,6 +119,7 @@ export function createCliRenderer({ ws, sessionId, state }) {
     rl.setPrompt(`${C.cyan}${C.bold}chat>${C.reset} `);
     waitingForInput = true;
     rl.prompt();
+    traceBoot('cli:prompt-ready');
     rl.on('line', (line) => {
       const trimmed = line.trim();
       if (!trimmed) { rl.prompt(); return; }

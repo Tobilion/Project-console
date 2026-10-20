@@ -26,6 +26,9 @@ import { selectProject, findProjectFromArgs } from './cliProjectPicker.js';
 import { renderMascot } from './cliMascot.js';
 import { createCliRenderer } from './cliRenderer.js';
 import { appendLogFile } from './fileLogger.js';
+import { traceBoot } from './bootTrace.js';
+
+traceBoot('cli:module-loaded');
 
 // Global crash guard — the Start Menu launches via cli.cmd which closes on exit, so an
 // uncaught throw after "Connected" (e.g. clack raw-mode failure under ELECTRON_RUN_AS_NODE)
@@ -83,7 +86,7 @@ function runScriptedMode(ws, project, sessionId) {
   // instead of the generic error/close path below (which would read as "server is down").
   ws.on('unexpected-response', (_req, res) => {
     if (res?.statusCode === 401) {
-      process.stderr.write('This console requires login. Open it in a browser to log in first (CLI login is coming).\n');
+      process.stderr.write('This console requires login. Run the CLI in an interactive terminal to log in, or log in via the web UI first.\n');
       process.exit(1);
     }
   });
@@ -220,13 +223,19 @@ async function main() {
   if (!spinner && !SCRIPTED) {
     console.log(`${C.dim}Connecting (checking ports ${BASE_PORT}-${BASE_PORT + MAX_PORT_ATTEMPTS - 1}, retrying for up to ${CONNECT_TIMEOUT_MS / 1000}s)...${C.reset}`);
   }
+  traceBoot('cli:discovery-start');
 
   const discovered = await discoverServer(
     spinner
       ? (elapsed) => { try { spinner.message(`Still connecting (${elapsed}s elapsed, checking ports ${BASE_PORT}-${BASE_PORT + MAX_PORT_ATTEMPTS - 1})...`); } catch {} }
       : (SCRIPTED ? () => {} : null)
   );
-  if (!discovered || (discovered.projects.length === 0 && !discovered.armed)) {
+  // A console that answers /api/projects IS a running console — including one that has
+  // discovered zero projects (a fresh install, or a scan root with nothing in it yet). The
+  // old check also required a non-empty project list, so a perfectly healthy empty console
+  // was reported as "could not connect" and the CLI exited. The General workspace is always
+  // available, so an empty console is a usable console.
+  if (!discovered) {
     if (spinner) try { spinner.stop(chalk.red(`✖ Could not connect to a server on ports ${BASE_PORT}-${BASE_PORT + MAX_PORT_ATTEMPTS - 1}`)); } catch {}
     else process.stderr.write(`${C.red}✖ Could not connect to a server on ports ${BASE_PORT}-${BASE_PORT + MAX_PORT_ATTEMPTS - 1}${C.reset}\n`);
     process.stderr.write(`${C.yellow}  Make sure the console is running (start the Project Console app, or "npm run dev"), then try again.${C.reset}\n`);
@@ -241,6 +250,7 @@ async function main() {
   }
 
   let { projects, port: PORT } = discovered;
+  traceBoot('cli:discovery-done', `port ${PORT}, ${projects.length} project(s)`);
   // Phase I (2026-09-09): the discovery probe reports armed servers (401 on /api/projects)
   // instead of skipping them — log in here, before anything else needs projects. TTY gets
   // an interactive prompt (password masked); non-TTY/scripted callers get a clear error
@@ -296,6 +306,9 @@ async function main() {
     try { spinner.stop(chalk.green(`✔ Connected to Local Engine on port ${PORT}`)); } catch {}
   } else if (!SCRIPTED) {
     console.log(`${C.green}✔ Connected.${C.reset}`);
+  }
+  if (projects.length === 0 && !SCRIPTED) {
+    console.log(`${C.dim}No projects discovered in the scan root yet — the General workspace is available.${C.reset}`);
   }
   if (PORT !== BASE_PORT && !SCRIPTED) {
     console.log(`${C.yellow}Note: server is on port ${PORT}, not ${BASE_PORT} (something else had ${BASE_PORT}).${C.reset}`);
@@ -413,6 +426,7 @@ async function main() {
   }
 
   console.log(`\n${C.dim}─── Project: ${C.green}${project.name}${C.dim} ───────${C.reset}`);
+  traceBoot('cli:project-resolved', project.name);
   if (resumed) {
     console.log(`${C.dim}Resuming session ${sessionId}${C.reset}`);
   }
@@ -431,7 +445,7 @@ async function main() {
   // read as a dead server, and the discovery retry loop would burn 90s first).
   ws.on('unexpected-response', (_req, res) => {
     if (res?.statusCode === 401) {
-      console.log('\nThis console requires login. Open it in a browser to log in first (CLI login is coming).');
+      console.log('\nThis console requires login. Run the CLI in an interactive terminal to log in, or log in via the web UI first.');
       process.exit(1);
     }
   });
@@ -481,6 +495,7 @@ async function main() {
   // attaches — an 'open'-only listener would never fire and the CLI would sit with no prompt.
   if (ws.readyState === 1) { sendClientInfo(ws); setupReadline(); }
   else ws.on('open', () => { sendClientInfo(ws); setupReadline(); });
+  traceBoot('cli:ws-setup');
 
   ws.on('message', (raw) => {
     let msg;
