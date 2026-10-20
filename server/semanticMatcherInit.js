@@ -4,7 +4,7 @@
 // provides extractor/state; this module owns the boot sequence itself.
 
 import { broadcast } from './wsServer.js';
-import { INTENTS } from './intentsData.js';
+import { INTENTS, BASE_INTENTS } from './intentsData.js';
 import { getTuning } from './tuningStore.js';
 import { INIT_WAIT_POLL_MS, INIT_DOWNLOAD_TIMEOUT_MS } from './semanticMatcher.js';
 import { loadIntentVectorCache, saveIntentVectorCache } from './intentVectorCache.js';
@@ -57,30 +57,88 @@ export async function initializeMatcher(owner) {
     // Phase D-4 (2026-09-08): a persisted cache of the batch-embed output below skips the
     // whole ~2500-phrase recompute on every boot when the corpus + model haven't changed —
     // see intentVectorCache.js for the validity-hash and corruption-recovery details.
-    const cached = loadIntentVectorCache(INTENTS);
+    //
+    // The cache is keyed on the SHIPPED corpus (BASE_INTENTS), not on the live INTENTS
+    // object. The live object grows whenever a phrase is learned (learnedIntents.js merges
+    // at boot, the learning engine promotes at runtime), and keying on it meant every
+    // learning event invalidated the cache — the next boot then re-embedded all ~3100
+    // phrases (measured: ~25 seconds of a ~40 second boot). Now the cached part is stable
+    // and only the handful of learned phrases are embedded on top of it.
+    const baseCorpus = BASE_INTENTS;
+    const cached = loadIntentVectorCache(baseCorpus);
+    let baseVectors;
     if (cached) {
-      owner.intentVectors = cached.intentVectors;
+      baseVectors = cached.intentVectors;
       log.info('[SemanticMatcher] Loaded intent embeddings from cache (skipped batch recompute).');
     } else {
-      owner.intentVectors = {};
+      baseVectors = {};
       // Phase 6: embed the whole phrase corpus in one bounded-concurrency batch instead of
       // serially — ~2500 phrases at 8 in flight is the single largest boot-time reduction.
       const phraseTasks = [];
-      for (const [intent, config] of Object.entries(INTENTS)) {
-        for (const example of config.examples) {
+      for (const [intent, examples] of Object.entries(baseCorpus)) {
+        for (const example of examples) {
           phraseTasks.push({ intent, example });
         }
       }
       const phraseResults = await owner._embedBatch(phraseTasks.map((t) => t.example));
       for (let i = 0; i < phraseTasks.length; i++) {
         const { intent } = phraseTasks[i];
-        if (!owner.intentVectors[intent]) owner.intentVectors[intent] = [];
+        if (!baseVectors[intent]) baseVectors[intent] = [];
         // .data is the model's typed-array output — Array.from() here (not at save time)
-        // keeps every consumer of owner.intentVectors working with plain arrays uniformly,
-        // whether this boot recomputed them or a later boot loads them straight from JSON.
-        owner.intentVectors[intent].push(Array.from(phraseResults[i].data));
+        // keeps every consumer working with plain arrays uniformly, whether this boot
+        // recomputed them or a later boot loads them straight from JSON.
+        baseVectors[intent].push(Array.from(phraseResults[i].data));
       }
-      saveIntentVectorCache(INTENTS, owner.intentVectors);
+      saveIntentVectorCache(baseCorpus, baseVectors);
+    }
+
+    // Delta: phrases that exist in the live corpus but not in the shipped snapshot — the
+    // learned phrases restored at boot plus anything promoted at runtime. Usually a handful,
+    // so this costs a fraction of a second.
+    const deltaTasks = [];
+    for (const [intent, config] of Object.entries(INTENTS)) {
+      const baseSet = new Set(baseCorpus[intent] || []);
+      for (const example of config.examples) {
+        if (!baseSet.has(example)) deltaTasks.push({ intent, example });
+      }
+    }
+    const deltaVectors = new Map();
+    if (deltaTasks.length > 0) {
+      const deltaResults = await owner._embedBatch(deltaTasks.map((t) => t.example));
+      for (let i = 0; i < deltaTasks.length; i++) {
+        const res = deltaResults[i];
+        if (res && res.data) deltaVectors.set(`${deltaTasks[i].intent}\u0000${deltaTasks[i].example}`, Array.from(res.data));
+      }
+      log.info(`[SemanticMatcher] Embedded ${deltaTasks.length} learned phrase(s) on top of the cached corpus.`);
+    }
+
+    // Assemble the per-intent vector bags in the LIVE corpus order. Vectors are matched by
+    // phrase identity rather than by position: an eviction removes a phrase from the middle
+    // of an intent's example list, so a positional zip would silently shift every vector
+    // after it onto the wrong phrase.
+    owner.intentVectors = {};
+    for (const [intent, config] of Object.entries(INTENTS)) {
+      const byPhrase = new Map();
+      const baseExamples = baseCorpus[intent] || [];
+      const baseVecs = baseVectors[intent] || [];
+      baseExamples.forEach((phrase, i) => {
+        if (baseVecs[i]) byPhrase.set(phrase, baseVecs[i]);
+      });
+      for (const [key, vec] of deltaVectors) {
+        const sep = key.indexOf('\u0000');
+        if (key.slice(0, sep) === intent) byPhrase.set(key.slice(sep + 1), vec);
+      }
+      const ordered = [];
+      let missing = 0;
+      for (const example of config.examples) {
+        const vec = byPhrase.get(example);
+        if (vec) ordered.push(vec);
+        else missing++;
+      }
+      if (missing > 0) {
+        log.warn(`[SemanticMatcher] ${missing} phrase(s) of "${intent}" have no vector this boot (embed failure) — they fall back to the fuzzy/NLP stages.`);
+      }
+      owner.intentVectors[intent] = ordered;
     }
 
     owner._rebuildFuseIndex();

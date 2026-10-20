@@ -28,13 +28,18 @@ const MODEL_ID = 'Xenova/all-MiniLM-L6-v2';
 
 /** Stable hash over the model id + every (intent, phrase) pair, order-independent per intent
  *  set but phrase-order-sensitive within an intent (phrase order is also vector order, and
- *  the caller zips results back onto phraseTasks in the same order it read them in). */
-function computeCorpusHash(intents) {
+ *  the caller zips results back onto phraseTasks in the same order it read them in).
+ *
+ *  `corpus` is the SHIPPED phrase corpus (server/intentsData.js's BASE_INTENTS snapshot) —
+ *  not the live INTENTS object. The live object grows every time a phrase is learned, and
+ *  keying the cache on it meant each learning event threw the cache away and the next boot
+ *  re-embedded all ~3100 phrases (~25 seconds). */
+function computeCorpusHash(corpus) {
   const hash = crypto.createHash('sha256');
   hash.update(MODEL_ID);
-  for (const intentName of Object.keys(intents).sort()) {
+  for (const intentName of Object.keys(corpus).sort()) {
     hash.update('\n#' + intentName);
-    for (const example of intents[intentName].examples) {
+    for (const example of corpus[intentName]) {
       hash.update('\n' + example);
     }
   }
@@ -43,7 +48,7 @@ function computeCorpusHash(intents) {
 
 /** Returns { intentVectors } on a valid cache hit, or null on any miss/corruption — callers
  *  must fall back to a full recompute on null, never partial-fill from a corrupt cache. */
-export function loadIntentVectorCache(intents) {
+export function loadIntentVectorCache(corpus) {
   let raw;
   try {
     raw = fs.readFileSync(CACHE_FILE, 'utf8');
@@ -60,19 +65,19 @@ export function loadIntentVectorCache(intents) {
   if (!parsed || typeof parsed !== 'object' || !parsed.intentVectors || parsed.modelId !== MODEL_ID) {
     return null;
   }
-  const expectedHash = computeCorpusHash(intents);
+  const expectedHash = computeCorpusHash(corpus);
   if (parsed.hash !== expectedHash) {
     log.info('[intentVectorCache] intent corpus or model changed since the cache was written — recomputing.');
     return null;
   }
-  // Shape sanity: every intent in the current corpus must have a matching vector array of
-  // the same length as its example list, and every vector must be a non-empty number array.
-  // A hash match already implies this in the normal case, but a hand-edited or truncated
-  // cache file could still slip past — verify rather than trust before handing this to the
+  // Shape sanity: every intent in the corpus must have a matching vector array of the same
+  // length as its example list, and every vector must be a non-empty number array. A hash
+  // match already implies this in the normal case, but a hand-edited or truncated cache
+  // file could still slip past — verify rather than trust before handing this to the
   // matcher, since a bad vector here corrupts matching silently instead of failing loudly.
-  for (const [intentName, config] of Object.entries(intents)) {
+  for (const [intentName, examples] of Object.entries(corpus)) {
     const vectors = parsed.intentVectors[intentName];
-    if (!Array.isArray(vectors) || vectors.length !== config.examples.length) {
+    if (!Array.isArray(vectors) || vectors.length !== examples.length) {
       log.warn(`[intentVectorCache] shape mismatch on intent "${intentName}", recomputing.`);
       return null;
     }
@@ -88,13 +93,17 @@ export function loadIntentVectorCache(intents) {
 
 /** Persists the freshly computed intentVectors (owner.intentVectors — plain arrays already,
  *  per the Array.from() conversion at the call site in semanticMatcherInit.js). Best-effort:
- *  a write failure only costs the NEXT boot's time savings, never today's matching. */
-export function saveIntentVectorCache(intents, intentVectors) {
+ *  a write failure only costs the NEXT boot's time savings, never today's matching.
+ *
+ *  Only the SHIPPED corpus' vectors belong in the cache. Learned phrases are re-embedded
+ *  from scratch at every boot (there are only ever a handful of them), which keeps the
+ *  cache valid across learning events. */
+export function saveIntentVectorCache(corpus, intentVectors) {
   try {
     fs.mkdirSync(resolveData('.cache'), { recursive: true });
     const payload = JSON.stringify({
       modelId: MODEL_ID,
-      hash: computeCorpusHash(intents),
+      hash: computeCorpusHash(corpus),
       createdAt: new Date().toISOString(),
       intentVectors,
     });

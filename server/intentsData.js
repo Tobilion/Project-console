@@ -59,3 +59,20 @@ if (localePhrases) {
     }
   }
 }
+
+/**
+ * Snapshot of the shipped corpus, taken at module load.
+ *
+ * INTENTS is mutated AFTER this point: learnedIntents.js merges previously-learned phrases
+ * into it at boot, and the learning engine promotes more at runtime. The intent-vector cache
+ * (server/intentVectorCache.js) is keyed on this snapshot instead of the live INTENTS object,
+ * because keying on the live corpus meant every learning event invalidated the cache and the
+ * NEXT boot had to re-embed all ~3100 phrases from scratch (measured: ~25 seconds of the
+ * boot). With the snapshot as the key, a learned phrase only costs the handful of vectors
+ * that phrase actually needs — see semanticMatcherInit.js for the delta handling.
+ *
+ * Shape: { [intent]: string[] } — a copy of each intent's example list at load time.
+ */
+export const BASE_INTENTS = Object.fromEntries(
+  Object.entries(INTENTS).map(([intent, config]) => [intent, [...(config.examples || [])]])
+);
