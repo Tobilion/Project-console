@@ -57,6 +57,7 @@ const toolProcess = await import(pathToFileURL(base + 'toolProcess.js').href);
 const dangerous = await import(pathToFileURL(base + 'dangerousPatterns.js').href);
 const typed = await import(pathToFileURL(base + 'typedCommand.js').href);
 const cmdDir = await import(pathToFileURL(base + 'commandDir.js').href);
+const guesser = await import(pathToFileURL(base + 'commandGuesser.js').href);
 const guardMod = await import(pathToFileURL(base + 'aiGuardrails.js').href);
 const verify = await import(pathToFileURL(base + 'verifyHarness.js').href);
 const distillation = await import(pathToFileURL(base + 'distillation.js').href);
@@ -190,8 +191,32 @@ try {
     console.log('  (skipped PATH-resolution rows — npm not on PATH)');
   }
 
-  console.log('\n=== COMMAND-DIR (wrapper sub-package rule) ===');
-  const wrapperRoot = path.join(FIXTURE_ROOT, 'wrapper');
+  console.log('\n=== GUESSER (prose must never become a command) ===');
+  // The guesser is the last tier before the fallback suggestions. It used to accept ANY text
+  // after the verb, so a phrase the matcher did not understand became a real command:
+  // "add a note that the API needs a key" -> git add "a note that the API needs a key",
+  // "remove the old component" -> npm uninstall "the old component",
+  // "delete everything" -> del /f /q "everything".
+  eq('guesser refuses a prose note', guesser.guessCommand('add a note that the API needs a key'), null);
+  eq('guesser refuses prose about the API', guesser.guessCommand('add note about the API'), null);
+  eq('guesser refuses prose removal', guesser.guessCommand('remove the old component'), null);
+  eq('guesser refuses prose install', guesser.guessCommand('install the new dependency'), null);
+  eq('guesser refuses delete everything', guesser.guessCommand('delete everything'), null);
+  eq('guesser refuses open the calculator', guesser.guessCommand('open the calculator'), null);
+  eq('guesser refuses a prose file name', guesser.guessCommand('create a file called my new project'), null);
+  // Real command targets still guess.
+  eq('guesser keeps git add for a file', guesser.guessCommand('git add src/index.js')?.command, 'git add "src/index.js"');
+  eq('guesser keeps git add for a filename', guesser.guessCommand('add notes.md')?.command, 'git add "notes.md"');
+  eq('guesser keeps npm uninstall', guesser.guessCommand('uninstall express')?.command, 'npm uninstall express');
+  eq('guesser keeps npm install', guesser.guessCommand('install express')?.command, 'npm install express');
+  eq('guesser keeps file delete', guesser.guessCommand('delete notes.txt')?.command, 'del /f /q "notes.txt"');
+  eq('guesser deletes a file for remove', guesser.guessCommand('remove notes.txt')?.command, 'del /f /q "notes.txt"');
+  eq('guesser keeps file display', guesser.guessCommand('show me the file README.md')?.command, 'type "README.md"');
+  // The create-file capture must not stop at the first character (it used to capture "n").
+  eq('guesser captures the whole file name', guesser.guessCommand('create a file called notes.txt')?.command, 'type nul > "notes.txt"');
+  eq('guesser captures file content', guesser.guessCommand('create a file called notes.txt with content hello')?.command, 'echo "hello" > "notes.txt"');
+
+  console.log('\n=== COMMAND-DIR (wrapper sub-package rule) ===');  const wrapperRoot = path.join(FIXTURE_ROOT, 'wrapper');
   await fs.mkdir(path.join(wrapperRoot, 'app'), { recursive: true });
   await fs.writeFile(path.join(wrapperRoot, 'app', 'package.json'), JSON.stringify({ scripts: { dev: 'ng serve', start: 'ng serve' } }));
   const wrapperProj = { path: wrapperRoot, codebaseIndex: { keyFiles: {} } };

@@ -5,7 +5,7 @@ Use this as the single prompt to **continuously hammer** the chat, tune intents,
 ## Quick start
 
 ```powershell
-# one-shot, all 3 modes, ~600 inputs
+# one-shot, all 3 modes, ~600 inputs (matcher only, no server needed)
 node --import tsx server/scripts/continuousChatHarness.js
 
 # high-volume: 1000 intent-cover with typos
@@ -16,6 +16,9 @@ node --import tsx server/scripts/continuousChatHarness.js --mode all --count 300
 
 # user-style replay only (your own history → variations)
 node --import tsx server/scripts/continuousChatHarness.js --mode user-replay --count 300 --typos
+
+# LIVE: drives the real chat over the WebSocket protocol (needs a running console)
+node --import tsx server/scripts/continuousChatHarness.js --live --port 3000 --project "Oja"
 
 # JSON report for CI / jq
 node --import tsx server/scripts/continuousChatHarness.js --json > harness-report.json
@@ -56,14 +59,35 @@ fallback (no intent): 23        <- candidates for NEW intents
 risky-on-chitchat: 0            <- must stay 0; if >0, fix QUESTION_BLOCKED_INTENTS
 Top FAILs:
   'show screensaver for me' exp:system.screensaver.open got:fallback conf:0.420
-  -> add 'show screensaver for me' to screensaverIntents.js examples
+  -> classify this before fixing it (see below)
 Fallback cluster:
   'what is': 5 inputs  -> new intent: "what is the meaning of life" style → how_do_i or needs_ai_mode
 ```
 
-* **FAIL** = paraphrase of a known intent routed elsewhere → add that exact phrasing to `server/intents/*Intents.js`.
-* **Fallback cluster** = inputs that fell through to `fallback` grouped by bigram → if a cluster is frequent, create a new intent (or map to existing `how_do_i`/`needs_ai_mode`).
+* **FAIL** = paraphrase of a known intent routed elsewhere. **Do NOT paste the failing input
+  into an intent's examples.** Classify it first (see the "Fix protocol" below) and use the
+  fix type that matches the failure.
+* **Fallback cluster** = inputs that fell through to `fallback` grouped by bigram → if a
+  cluster is frequent, create a new intent (or map to existing `how_do_i`/`needs_ai_mode`).
 * **Risky-on-chitchat** = `hey`/`lol` → `deploy` etc. → widen `QUESTION_BLOCKED_INTENTS` in `server/matcher.js:71` or add `preSemanticOverrides`.
+
+## Fix protocol — classify before you touch anything
+
+Every FAIL is one of four kinds, and the fix differs per kind:
+
+| Kind | Symptom | Fix |
+|---|---|---|
+| Matcher misfire | wrong intent selected | narrow pre-semantic pin + a `matcherBatteries.js` row |
+| Slot-extraction miss | right intent, wrong/missing entities | fix the slot pattern, not the examples |
+| Threshold problem | fell through to fallback/AI when it should not have (or the reverse) | per-intent threshold change with evidence — never a global loosening |
+| New/ambiguous capability | no intent owns the job at all | new intent (needs ≥3 independent phrasings), or a held-out eval row if it is genuinely ambiguous |
+
+A confirmed trap (one confirmed failure of a shape you have seen before) becomes a **narrow
+literal pin plus a battery row** — the pattern this repo already uses. A one-off phrasing
+becomes a **near-miss** and goes through the existing near-miss → suggestion → gated-promotion
+path (`learningEngine.applySuggestions`). A genuinely new or ambiguous phrasing goes into the
+**frozen held-out eval set** (`server/scripts/eval/heldOutEval.json`) so it is tested rather
+than trained on.
 
 ## Response naturalness
 
@@ -77,13 +101,27 @@ The harness also audits `server/wsHandlers/chitChat/*.js`:
 
 Every canned answer should have **3-5 variants** via `pickRandom(chatReplyPool(...))` so repeated `hey`/`thanks` never echos identically. Add your tone there.
 
-## Live WS mode (optional)
+## Live WS mode
 
 ```powershell
-node --import tsx server/scripts/continuousChatHarness.js --live --port 3000
+node --import tsx server/scripts/continuousChatHarness.js --live --port 3000 --project "Oja"
 ```
 
-Connects to `ws://127.0.0.1:<port>/stream` and sends the same inputs through the full handler pipeline (confirm gates, projectIndex, etc.) — use for `revert`/`open file` smoke, not just matcher.
+`--live` drives the **real** chat pipeline over the WebSocket protocol (the same messages
+the CLI and the web client send). The matcher-only modes prove which intent a phrase would
+select; the live probe proves what the console actually does with it:
+
+```
+live turns: 200  answered: 197  no-response: 2  errors: 1  avg: 143ms  p95: 380ms
+PROBLEM TURNS (3):
+  'run the site' -> no-response
+EMPTY ANSWERS (1):
+  'what is the goal'
+```
+
+Use it for confirm/handler smoke and answer quality. Note that a scripted run auto-DECLINES
+confirm prompts, so a mutation flow will report as declined rather than executed — drive
+those interactively.
 
 ## Tuning loop (recommended)
 

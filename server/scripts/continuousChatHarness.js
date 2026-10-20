@@ -20,8 +20,11 @@
  *   node --import tsx server/scripts/continuousChatHarness.js --mode user-replay --count 300
  *   node --import tsx server/scripts/continuousChatHarness.js --json > harness-report.json
  *
- * No server required. Uses semanticMatcher + matcher.js directly (same 23MB cache as the app).
- * For live WS testing, see --live flag (connects to ws://127.0.0.1:<port>/stream).
+ * Matcher-direct by default: no server needed. The matcher stage is the bottleneck for
+ * intent coverage, but it cannot tell you whether a turn actually ANSWERS or TERMINATES.
+ * --live drives the real WebSocket protocol against a running console for that (see
+ * liveChatProbe.js):
+ *   node --import tsx server/scripts/continuousChatHarness.js --live --port 3000 --project "Oja"
  */
 
 import fs from 'fs';
@@ -45,6 +48,7 @@ const WANT_TYPO = hasFlag('--typos');
 const JSON_OUT = hasFlag('--json');
 const LIVE = hasFlag('--live');
 const LIVE_PORT = parseInt(getArg('--port', '3000'), 10);
+const LIVE_PROJECT = getArg('--project', '');
 
 // --- load matcher (lazy, with cache) ---
 const { matchInput } = await import('../matcher.js');
@@ -289,6 +293,20 @@ async function auditResponseVariation() {
 
 // --- runner ---
 
+/**
+ * The input set for the live probe. The matcher-only modes generate variations of intent
+ * examples; the live probe needs real PHRASES, because what it measures is the chat's
+ * behaviour (does it answer, does it terminate), not the matcher's routing. The random-ai
+ * chatter set plus the intent-cover paraphrases are both useful here - the first proves
+ * that casual input is handled gracefully, the second proves the intents answer.
+ */
+function buildLiveInputs(count) {
+  const inputs = [];
+  for (let i = 0; i < count; i++) inputs.push({ input: genRandomAI(false), expected: null });
+  for (const item of genIntentCover(count, false)) inputs.push({ input: item.input, expected: item.expected });
+  return shuffle(inputs);
+}
+
 async function runOnce(mode, count, withTypos) {
   const results = [];
   let inputs = [];
@@ -371,8 +389,36 @@ async function main() {
   const variationIssues = await auditResponseVariation();
   if (!JSON_OUT && variationIssues.length) {
     console.log('=== RESPONSE VARIATION AUDIT ===');
-    for (const iss of variationIssues) console.log('  - ' + iss);
+    for (const iss of variationIssues) {
+      console.log('  - ' + iss);
+    }
     console.log('  Fix: wrap single-string answers with pickRandom(chatReplyPool(...)) like greeting/status/ack do.\n');
+  }
+
+  if (LIVE) {
+    // Live mode drives the REAL chat pipeline over the WebSocket protocol. It answers the
+    // question the matcher-only modes cannot: does the turn actually answer, does it
+    // terminate, does it carry an error, and how long does it take.
+    const inputs = buildLiveInputs(COUNT);
+    const { runLiveChatProbe, formatLiveReport } = await import('./liveChatProbe.js');
+    try {
+      const report = await runLiveChatProbe({
+        inputs,
+        port: LIVE_PORT,
+        projectId: LIVE_PROJECT || null,
+        onProgress: (record, done, total) => {
+          if (!JSON_OUT && (done % 25 === 0 || done === total)) {
+            console.log(`  [live] ${done}/${total} turns (last: '${record.input}' -> ${record.outcome})`);
+          }
+        },
+      });
+      if (JSON_OUT) console.log(JSON.stringify({ live: report }, null, 2));
+      else console.log(`\n=== LIVE CHAT REPORT ===\n${formatLiveReport(report)}`);
+    } catch (err) {
+      console.error(`Live probe failed: ${err.message}`);
+      process.exitCode = 1;
+    }
+    return;
   }
 
   if (LOOP) {

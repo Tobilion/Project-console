@@ -123,17 +123,25 @@ function runScriptedMode(ws, project, sessionId) {
       }));
       // One-shot exit: command turns end with an 'end' message; answer-only turns (pure
       // chit-chat / read-only intents) never send one — so ALSO exit on an 800ms quiet window
-      // after the first real message, plus a 30s hard cap in case nothing ever comes back.
+      // after the turn's FIRST answer, plus a hard cap in case nothing ever comes back.
       // (The node:test harness docs explicitly reserve quiet-windows for answer-only turns.)
+      //
+      // The quiet window must be anchored to the ANSWER, not to the first message of any
+      // kind: the server pushes `ai_status` the moment the connection opens, and counting
+      // that as activity started the 800ms countdown before the turn had even produced
+      // anything. Any turn slower than ~800ms (a dev-server status probe, an AI call, a
+      // command that takes a second) then closed the socket and exited with NO OUTPUT AT
+      // ALL — which reads as "the CLI crashed" from a script. Only turn messages count.
+      const NO_RESPONSE_CAP_MS = 120000;
       let lastActivity = Date.now();
       let received = false;
       const quietTimer = setInterval(() => {
         if (received && Date.now() - lastActivity > 800) {
           clearInterval(quietTimer);
           try { ws.close(); } catch {}
-        } else if (!received && Date.now() - lastActivity > 30000) {
+        } else if (!received && Date.now() - lastActivity > NO_RESPONSE_CAP_MS) {
           clearInterval(quietTimer);
-          process.stderr.write('No response from the server within 30s.\n');
+          process.stderr.write(`No response from the server within ${NO_RESPONSE_CAP_MS / 1000}s.\n`);
           try { ws.close(); } catch {}
         }
       }, 250);
@@ -145,6 +153,9 @@ function runScriptedMode(ws, project, sessionId) {
           try { ws.close(); } catch {}
           return;
         }
+        // Unsolicited server pushes (ai_status, update_available, semantic_matcher_progress)
+        // are not part of the turn and must not start the quiet window.
+        if (m.type === 'ai_status' || m.type === 'update_available' || m.type === 'semantic_matcher_progress') return;
         lastActivity = Date.now();
         received = true;
       });

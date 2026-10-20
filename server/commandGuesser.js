@@ -18,7 +18,12 @@ export function guessCommand(input) {
     const match = trimmed.match(guess.pattern);
     if (match) {
       try {
-        return guess.build(match);
+        const built = guess.build(match);
+        // A rule can DECLINE a match: the captured text does not look like a command
+        // argument (a multi-word phrase such as "a note that the API needs a key"), and the
+        // rule returns null. That must continue the search, not end it — otherwise the
+        // first declining rule would swallow every later, better-fitting one.
+        if (built) return built;
       } catch {
         continue;
       }

@@ -13,56 +13,137 @@ import { isWindows } from './platformCommand.js';
 // throw "command not found" on macOS/Linux. `npx`, `npm`, `git`, and `python` guesses below
 // don't need branching; `dir`, `del`, `type` do.
 
+/**
+ * A captured argument only counts as a COMMAND TARGET when it looks like one: a single token
+ * (a package name, a filename, a path) or an explicitly quoted string.
+ *
+ * This guard exists because the guesser used to accept ANY text after the verb. Live examples
+ * of what that produced:
+ *   "add a note that the API needs a key"  ->  git add "a note that the API needs a key"
+ *   "remove the old component"              ->  npm uninstall "the old component"
+ *   "delete everything"                     ->  del /f /q "everything"
+ * A multi-word phrase is a request the matcher did not understand, not a command argument —
+ * the right outcome there is the fallback suggestions, not a confirm card for a nonsense
+ * command.
+ */
+function isCommandTarget(text) {
+  const t = String(text || '').trim();
+  if (!t) return false;
+  if (/^".*"$|^'.*'$/.test(t)) return true; // the user named the exact thing
+  return !/\s/.test(t);
+}
+
+/**
+ * Stricter variant for the rules that DELETE or display a FILE: the target must look like a
+ * path or a filename (it has a separator, a leading dot, or an extension). "delete everything"
+ * and "remove the old component" are prose, not filenames.
+ */
+function isFileTarget(text) {
+  const t = String(text || '').trim();
+  if (!t) return false;
+  if (/^".*"$|^'.*'$/.test(t)) return true;
+  if (/\s/.test(t)) return false;
+  return /[\\/]/.test(t) || /^\./.test(t) || /\.[A-Za-z0-9]{1,8}$/.test(t);
+}
+
 export const GUESSES = [
   {
     // "remove node_modules from git" → "git rm --cached -r node_modules"
     pattern: /remove\s+(.+?)\s+from\s+git/i,
-    build: (match) => ({
-      command: `git rm --cached -r "${match[1].trim()}"`,
-      description: `Remove ${match[1].trim()} from git tracking (keeps file on disk)`,
-    }),
+    build: (match) => {
+      const target = match[1].trim();
+      if (!isCommandTarget(target)) return null;
+      return {
+        command: `git rm --cached -r "${target}"`,
+        description: `Remove ${target} from git tracking (keeps file on disk)`,
+      };
+    },
   },
   {
     // "add .env to gitignore" → append to .gitignore
     pattern: /add\s+(.+?)\s+to\s+gi?ignore/i,
-    build: (match) => ({
-      command: `echo "${match[1].trim()}" >> .gitignore`,
-      description: `Add ${match[1].trim()} to .gitignore`,
-    }),
+    build: (match) => {
+      const target = match[1].trim();
+      if (!isCommandTarget(target)) return null;
+      return {
+        command: `echo "${target}" >> .gitignore`,
+        description: `Add ${target} to .gitignore`,
+      };
+    },
   },
   {
     // "create a file called X" → echo > file
-    pattern: /create\s+(?:a\s+)?(?:new\s+)?file\s+(?:called\s+|named\s+)?["']?(.+?)["']?(?:\s+with\s+content\s+(.+))?/i,
-    build: (match) => ({
-      command: match[2]
-        ? `echo "${match[2].trim()}" > "${match[1].trim()}"`
-        : isWindows ? `type nul > "${match[1].trim()}"` : `touch "${match[1].trim()}"`,
-      description: `Create file ${match[1].trim()}${match[2] ? ' with provided content' : ''}`,
-    }),
+    //
+    // The trailing $ matters: without it the lazy capture stopped at the FIRST character
+    // (everything after it was optional), so "create a file called notes.txt" captured "n"
+    // and would have created a file named "n".
+    pattern: /create\s+(?:a\s+)?(?:new\s+)?file\s+(?:called\s+|named\s+)?["']?(.+?)["']?(?:\s+with\s+content\s+(.+))?$/i,
+    build: (match) => {
+      const name = match[1].trim();
+      if (!isFileTarget(name)) return null;
+      return {
+        command: match[2]
+          ? `echo "${match[2].trim()}" > "${name}"`
+          : isWindows ? `type nul > "${name}"` : `touch "${name}"`,
+        description: `Create file ${name}${match[2] ? ' with provided content' : ''}`,
+      };
+    },
   },
   {
     // "install express" → npm install express
-    pattern: /install\s+(.+?)(?:\s+as\s+(?:a\s+)?(?:dev\s+)?dependency)?$/i,
-    build: (match) => ({
-      command: `npm install ${match[1].trim()}`,
-      description: `Install npm package ${match[1].trim()}`,
-    }),
+    //
+    // Anchored at the start: an unanchored "install\s+" also matched the tail of
+    // "uninstall express", which then produced `npm install express` for an uninstall.
+    pattern: /^install\s+(.+?)(?:\s+as\s+(?:a\s+)?(?:dev\s+)?dependency)?$/i,
+    build: (match) => {
+      const pkg = match[1].trim();
+      if (!isCommandTarget(pkg)) return null;
+      return {
+        command: `npm install ${pkg}`,
+        description: `Install npm package ${pkg}`,
+      };
+    },
   },
   {
     // "install express as dev dependency" → npm install --save-dev express
     pattern: /install\s+(.+?)\s+as\s+(?:a\s+)?dev\s+dependency/i,
-    build: (match) => ({
-      command: `npm install --save-dev ${match[1].trim()}`,
-      description: `Install ${match[1].trim()} as dev dependency`,
-    }),
+    build: (match) => {
+      const pkg = match[1].trim();
+      if (!isCommandTarget(pkg)) return null;
+      return {
+        command: `npm install --save-dev ${pkg}`,
+        description: `Install ${pkg} as dev dependency`,
+      };
+    },
+  },
+  {
+    // "delete notes.txt" / "remove notes.txt" → delete that FILE.
+    //
+    // This rule comes BEFORE the npm-uninstall rule on purpose: "remove notes.txt" means the
+    // file, and the package rule would otherwise read it as `npm uninstall notes.txt`.
+    // The target must look like a file (path, extension or dotfile) — "delete everything" and
+    // "remove the old component" are prose and get no guess at all.
+    pattern: /(?:delete|remove|erase)\s+(?:the\s+)?(?:file\s+)?["']?(.+?)["']?$/i,
+    build: (match) => {
+      const target = match[1].trim();
+      if (!isFileTarget(target)) return null;
+      return {
+        command: isWindows ? `del /f /q "${target}"` : `rm -f "${target}"`,
+        description: `Delete file ${target}`,
+      };
+    },
   },
   {
     // "uninstall express" / "remove express" → npm uninstall express
     pattern: /(?:uninstall|remove)\s+(.+?)(?:\s+package)?$/i,
-    build: (match) => ({
-      command: `npm uninstall ${match[1].trim()}`,
-      description: `Uninstall npm package ${match[1].trim()}`,
-    }),
+    build: (match) => {
+      const pkg = match[1].trim();
+      if (!isCommandTarget(pkg)) return null;
+      return {
+        command: `npm uninstall ${pkg}`,
+        description: `Uninstall npm package ${pkg}`,
+      };
+    },
   },
   {
     // "run dev" → npm run dev (only when no script name is given)
@@ -81,20 +162,16 @@ export const GUESSES = [
     }),
   },
   {
-    // "delete file X" / "remove file X"
-    pattern: /(?:delete|remove|erase)\s+(?:the\s+)?(?:file\s+)?["']?(.+?)["']?$/i,
-    build: (match) => ({
-      command: isWindows ? `del /f /q "${match[1].trim()}"` : `rm -f "${match[1].trim()}"`,
-      description: `Delete file ${match[1].trim()}`,
-    }),
-  },
-  {
     // "show me the file X" / "read file X"
     pattern: /(?:show|read|view|open|display|cat)\s+(?:me\s+)?(?:the\s+)?(?:file\s+|contents?\s+of\s+)?["']?(.+?)["']?$/i,
-    build: (match) => ({
-      command: isWindows ? `type "${match[1].trim()}"` : `cat "${match[1].trim()}"`,
-      description: `Display contents of ${match[1].trim()}`,
-    }),
+    build: (match) => {
+      const target = match[1].trim();
+      if (!isFileTarget(target)) return null;
+      return {
+        command: isWindows ? `type "${target}"` : `cat "${target}"`,
+        description: `Display contents of ${target}`,
+      };
+    },
   },
   {
     // "list all files" / "show files" — but not if it already matched project.context.structure
@@ -109,10 +186,14 @@ export const GUESSES = [
   {
     // "git add X" → git add specific file
     pattern: /^(?:git\s+)?add\s+["']?(.+?)["']?$/i,
-    build: (match) => ({
-      command: `git add "${match[1].trim()}"`,
-      description: `Stage ${match[1].trim()} for commit`,
-    }),
+    build: (match) => {
+      const target = match[1].trim();
+      if (!isFileTarget(target)) return null;
+      return {
+        command: `git add "${target}"`,
+        description: `Stage ${target} for commit`,
+      };
+    },
   },
   {
     // "npx serve ." → serve current directory
