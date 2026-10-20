@@ -52,6 +52,24 @@ export async function tryFetchProjects(port) {
 }
 
 /**
+ * Probes every port in the range CONCURRENTLY and returns the result for the LOWEST port
+ * that answered, or null when none did. The serial scan this replaces cost one full
+ * 5-second timeout per unresponsive port — with 20 ports a single hung port could stall a
+ * discovery cycle for 100 seconds. Probing in parallel bounds a cycle by one timeout, and a
+ * machine with every port closed still resolves in milliseconds because a closed localhost
+ * port refuses the connection immediately.
+ */
+async function findServerOnAnyPort() {
+  const ports = [];
+  for (let i = 0; i < MAX_PORT_ATTEMPTS; i++) ports.push(BASE_PORT + i);
+  const results = await Promise.all(ports.map((port) => tryFetchProjects(port)));
+  for (let i = 0; i < ports.length; i++) {
+    if (results[i]) return results[i];
+  }
+  return null;
+}
+
+/**
  * Finds which port the server actually bound to and waits out its startup time, instead of the
  * old single-shot fetch that failed instantly if the server wasn't listening yet on the exact
  * moment this ran (confirmed live: "npm run dev" starting via start.bat is not instant — route
@@ -63,12 +81,10 @@ export async function discoverServer(onCycle) {
   const startedAt = Date.now();
   let printedDots = false;
   while (Date.now() < deadline) {
-    for (let i = 0; i < MAX_PORT_ATTEMPTS; i++) {
-      const result = await tryFetchProjects(BASE_PORT + i);
-      if (result) {
-        if (printedDots) process.stdout.write('\n');
-        return result;
-      }
+    const result = await findServerOnAnyPort();
+    if (result) {
+      if (printedDots) process.stdout.write('\n');
+      return result;
     }
     // TTY path: main() drives a @clack/prompts spinner via this callback; the non-TTY path
     // keeps the original dot-printing so piped/redirected output stays readable.

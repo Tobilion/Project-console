@@ -41,11 +41,23 @@ export async function probeConsolePort(port, timeoutMs = 5000) {
 }
 
 /** Scans `basePort .. basePort + maxAttempts - 1` and returns the first port that answers
- *  as a running console, or `null` if none does. */
+ *  as a running console, or `null` if none does.
+ *
+ *  The ports are probed CONCURRENTLY, not one after the other. The serial version cost one
+ *  full timeout per unresponsive port: with 20 ports and a 5s timeout a single hung port
+ *  could burn 100s of a launcher's startup before it even decided whether a console was
+ *  running, and the CLI paid that cost on every retry cycle. Probing in parallel bounds the
+ *  whole scan by ONE timeout, and a machine where every port is closed still resolves in
+ *  milliseconds (a closed localhost port refuses the connection immediately).
+ *
+ *  The "lowest answering port wins" contract is unchanged: the parallel results are read
+ *  back in ascending port order and the first hit is returned. */
 export async function findRunningConsole(basePort, maxAttempts, timeoutMs = 5000) {
-  for (let port = basePort; port < basePort + maxAttempts; port++) {
-    const found = await probeConsolePort(port, timeoutMs);
-    if (found) return found;
+  const ports = [];
+  for (let port = basePort; port < basePort + maxAttempts; port++) ports.push(port);
+  const results = await Promise.all(ports.map((port) => probeConsolePort(port, timeoutMs)));
+  for (let i = 0; i < ports.length; i++) {
+    if (results[i] !== null) return ports[i];
   }
   return null;
 }
