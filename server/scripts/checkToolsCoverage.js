@@ -215,6 +215,13 @@ try {
   // The create-file capture must not stop at the first character (it used to capture "n").
   eq('guesser captures the whole file name', guesser.guessCommand('create a file called notes.txt')?.command, 'type nul > "notes.txt"');
   eq('guesser captures file content', guesser.guessCommand('create a file called notes.txt with content hello')?.command, 'echo "hello" > "notes.txt"');
+  // A guess must never reach outside the project: the file tools sandbox every path, and a
+  // raw shell command that escapes is the same hole in a different place. "open
+  // ../../Windows/System32" produced `type ../../Windows/System32` before this check.
+  eq('guesser refuses a parent-directory escape', guesser.guessCommand('open ../../Windows/System32'), null);
+  eq('guesser refuses a git add escape', guesser.guessCommand('git add ../secrets'), null);
+  eq('guesser refuses an absolute path', guesser.guessCommand('read C:/Windows/System32/config'), null);
+  eq('guesser still reads a project-relative file', guesser.guessCommand('read data/users.json')?.command, 'type "data/users.json"');
 
   console.log('\n=== COMMAND-DIR (wrapper sub-package rule) ===');  const wrapperRoot = path.join(FIXTURE_ROOT, 'wrapper');
   await fs.mkdir(path.join(wrapperRoot, 'app'), { recursive: true });

@@ -4,6 +4,7 @@ import os from 'os';
 import archiver from 'archiver';
 import { getLogDir, listLogFiles, readLogFile, whereAreLogs } from '../../fileLogger.js';
 import { runDoctorChecks, printDoctorReport } from '../../doctor.js';
+import { pickRandom, chatReplyPool } from '../builtinHelpers.js';
 
 /**
  * system.chit_chat.* diagnostics/log-support handlers (extracted verbatim from builtinChitChat.js).
@@ -23,7 +24,13 @@ export const supportHandlers = {
     const before = await runDoctorChecks();
     const problems = before.filter((c) => c.status !== 'ok');
     if (problems.length === 0) {
-      ws.send(JSON.stringify({ type: 'answer', data: "Ran a full diagnostic — everything checks out, nothing to fix right now." }));
+      const clean = pickRandom(chatReplyPool('troubleshoot_clean', project, [
+        "Ran a full diagnostic — everything checks out, nothing to fix right now.",
+        "Full diagnostic done: everything checks out. Nothing to fix.",
+        "Checked everything — no problems found. The console is healthy.",
+        "Diagnostic complete and clean. Nothing needs fixing.",
+      ]));
+      ws.send(JSON.stringify({ type: 'answer', data: clean }));
       return;
     }
     let msg = `### Troubleshoot\n\nFound ${problems.length} issue${problems.length > 1 ? 's' : ''}:\n\n` +
@@ -51,7 +58,12 @@ export const supportHandlers = {
       const logDir = getLogDir();
       const files = listLogFiles();
       if (files.length === 0) {
-        ws.send(JSON.stringify({ type: 'answer', data: 'No log files found to export.' }));
+        const empty = pickRandom(chatReplyPool('export_logs_empty', project, [
+          'No log files found to export.',
+          'There are no log files to export yet.',
+          'Nothing to export — no log files on disk.',
+        ]));
+        ws.send(JSON.stringify({ type: 'answer', data: empty }));
         return;
       }
       const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);

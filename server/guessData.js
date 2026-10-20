@@ -27,10 +27,26 @@ import { isWindows } from './platformCommand.js';
  * command.
  */
 function isCommandTarget(text) {
-  const t = String(text || '').trim();
+  let t = String(text || '').trim();
   if (!t) return false;
-  if (/^".*"$|^'.*'$/.test(t)) return true; // the user named the exact thing
+  if (/^".*"$|^'.*'$/.test(t)) t = t.slice(1, -1).trim();
+  else if (/\s/.test(t)) return false;
+  if (!t) return false;
+  if (escapesProject(t)) return false;
   return !/\s/.test(t);
+}
+
+/**
+ * True when a path leaves the project directory. The file tools sandbox every path
+ * (createResolveSafe rejects an escape), so the guesser must not offer a raw shell command
+ * that reaches outside the project either: "open ../../Windows/System32" produced
+ * `type ../../Windows/System32` before this check.
+ */
+function escapesProject(t) {
+  if (/(^|[\\/])\.\.($|[\\/])/.test(t)) return true;          // ../ or ..\ segment
+  if (/^[A-Za-z]:[\\/]/.test(t)) return true;                   // C:\...
+  if (t.startsWith('/') || t.startsWith('\\\\')) return true;  // /etc/... or a UNC path
+  return false;
 }
 
 /**
@@ -39,10 +55,12 @@ function isCommandTarget(text) {
  * and "remove the old component" are prose, not filenames.
  */
 function isFileTarget(text) {
-  const t = String(text || '').trim();
+  let t = String(text || '').trim();
   if (!t) return false;
-  if (/^".*"$|^'.*'$/.test(t)) return true;
-  if (/\s/.test(t)) return false;
+  if (/^".*"$|^'.*'$/.test(t)) t = t.slice(1, -1).trim();
+  else if (/\s/.test(t)) return false;
+  if (!t) return false;
+  if (escapesProject(t)) return false;
   return /[\\/]/.test(t) || /^\./.test(t) || /\.[A-Za-z0-9]{1,8}$/.test(t);
 }
 

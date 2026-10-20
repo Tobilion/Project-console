@@ -1,4 +1,5 @@
 import { evaluateArithmetic, formatValue, convertUnits, percentageQuery } from '../../mathEval.js';
+import { pickRandom } from '../builtinHelpers.js';
 
 /**
  * system.chit_chat.calculate handler (extracted verbatim from builtinChitChat.js) — safe
@@ -32,9 +33,20 @@ export const mathHandlers = {
         data: `**${result.expression}** = **${formatValue(result.value)}**`,
       }));
     } else {
+      // The RESULTS stay deterministic (the same input must always print the same number),
+      // but the way an unsupported input is explained can vary — the same sentence for every
+      // bad calculation is the most robotic part of the chat.
       const hint = result.reason === 'divide-by-zero'
-        ? 'Can\'t divide by zero.'
-        : 'I can only handle basic arithmetic — numbers with + - * / and parentheses, like "what is 12 times 7", or conversions like "convert 5 km to miles" and percentages like "15% of 80".';
+        ? pickRandom([
+          "Can't divide by zero.",
+          'Division by zero is undefined — I cannot compute that.',
+          "I can't divide by zero, sorry.",
+        ])
+        : pickRandom([
+          'I can only handle basic arithmetic — numbers with + - * / and parentheses, like "what is 12 times 7", or conversions like "convert 5 km to miles" and percentages like "15% of 80".',
+          'That one is outside what I can compute. I handle numbers with + - * / and parentheses, conversions ("convert 5 km to miles") and percentages ("15% of 80").',
+          'I can do basic arithmetic — numbers with + - * / and parentheses — plus conversions ("convert 5 km to miles") and percentages ("15% of 80").',
+        ]);
       ws.send(JSON.stringify({ type: 'answer', data: hint }));
     }
   },

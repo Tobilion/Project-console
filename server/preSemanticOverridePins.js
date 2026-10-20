@@ -100,6 +100,25 @@ export const PRE_SEMANTIC_OVERRIDES = [
   // confirm card. A leading negative/question marker routes those to normal matching instead
   // (the how_do_i rule above already owns the "how do i deploy" shapes).
   { intent: 'system.chit_chat.deploy', pattern: /^(?!.*\b(?:don'?t|dont|do\s+not|should\s+(?:i|we|you)|is\s+it|stop)\b).*(?:\bdeploy\b|\bpush\s+live\b)/i },
+  // 2026-10-20 live corpus: "show me the contents of package.json" listed the whole directory
+  // tree instead of reading the file — the file name dominated the vector and the trailing
+  // "contents of" phrase did not carry it. A read verb + a file that HAS a stem and an
+  // extension is unambiguous. A dotfile (".env") is deliberately NOT matched here: the config
+  // intent answers those, and it is the safer answer — it summarizes the configuration instead
+  // of dumping secrets into the transcript.
+  // "open" is deliberately NOT in this list: "open index.html" / "open main.py" are OPEN
+  // actions (browser / editor), not reads, and they have their own intents.
+  { intent: 'file_read', pattern: /^(?:show|read|display|view|cat|print)\s+(?:me\s+)?(?:the\s+)?(?:file\s+)?(?:contents?\s+of\s+)?["']?([\w-]+\.[A-Za-z0-9]{1,8})["']?\s*$/i },
+  // The dotfile is the one file shape that must NOT be read raw: ".env" holds secrets. The
+  // config intent answers it with the project's configuration summary instead of a dump.
+  { intent: 'project.context.config', pattern: /^(?:show|read|display|view)\s+(?:me\s+)?(?:the\s+)?(?:contents?\s+of\s+)?["']?\.env(?:\.example)?["']?\s*$/i },
+  // 2026-10-20 live corpus: "push without asking me" landed on git_ahead_behind (a state
+  // query) and answered with the ahead/behind table instead of offering the push. A leading
+  // "push" VERB is the push action — the state questions are phrased the other way round
+  // ("did i push", "have i pushed", "do i need to push"), so they never match an
+  // anchored-at-the-start pattern. The push still asks for confirmation like every other
+  // deploy: a user asking to skip the confirmation does not get to skip it.
+  { intent: 'system.chit_chat.deploy', pattern: /^(?:please\s+|go\s+and\s+|just\s+)?push\b(?!\s+(?:where|what|how|when|why|who)\b)(?!.*\bwith\s+(?:the\s+)?(?:comment|message)\b)/i },
   // 2026-08-26 live batch crosscheck: bare "commit" / "comit" routed to git_status by the
   // fuzzy stage ("commit" prefix-matches git_status's "commit history" example) and RAN A
   // STATUS CHECK instead of offering the commit flow. A bare commit token with no object is
@@ -371,7 +390,19 @@ export const PRE_SEMANTIC_OVERRIDES = [
   // dominate the vector with the topic noun and drift to tech_preview. The about-phrasing is
   // the same unambiguous note-create class — no colon needed when the verb + note noun is present.
   { intent: 'system.notes.create', pattern: /^(?:note|add\s+a\s+note|write\s+a\s+note|jot\s+down)\s*:/i },
-  { intent: 'system.notes.create', pattern: /^(?:add|create|make|write)\s+a\s+note\s+(?:about|on|for)\s+\S/i },
+  // 2026-10-20 live corpus: "add a note that the API needs a key" and "add note about the API"
+  // both fell through to another intent (project.context.routes) and ended on the generic
+  // "I don't have a command configured for that" answer. The article-less form missed the
+  // about/on/for pin, and the "that <clause>" form matched no note pin at all — the trailing
+  // clause dominates the embedding vector, the same trap class as the colon and about forms.
+  // The verb + note noun is unambiguous, so it pins here. "to/in/into" is explicitly excluded:
+  // "add a note to notes.md" is a file append, not a personal note.
+  { intent: 'system.notes.create', pattern: /^(?:add|create|make|write|jot\s+down)\s+(?:a\s+)?note\b(?!\s+(?:to|in|into)\b)/i },
+  // Same class of trap for note DELETE: "delete that note" / "delete the last note" name the
+  // note with a pronoun. The explicit-noun pin below only covered "delete note: X" and
+  // "delete my note about X", so a pronoun reference fell to file_delete ("To delete files,
+  // turn AI mode ON...") — wrong tool for the thing the user named.
+  { intent: 'system.notes.delete', pattern: /^(?:delete|remove|erase|clear)\s+(?:(?:that|the|my|last|this)(?:\s+(?:last|one|newest))?)\s+notes?\b/i },
   // Same class of trap for note SEARCH: "search my notes for <free text>" — the query
   // terms after "for/about/with" dominate the vector. The prefix is unambiguous.
   { intent: 'system.notes.search', pattern: /^(?:search|find)\s+(?:my\s+)?notes?\s+(?:for|about|with)\s+\S/i },

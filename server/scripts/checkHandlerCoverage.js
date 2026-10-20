@@ -936,6 +936,24 @@ eq('notes leaf: search answers no-hits on empty store', ws.sent.length === 1 && 
 sent.length = 0;
 await handleBuiltinIntent(ws, 'system.notes.delete', 'delete note:', proj, {});
 eq('notes leaf: delete without text asks', ws.sent.length === 1 && ws.sent[0].type === 'answer' && /Which note should I delete/.test(ws.sent[0].data), true);
+// 2026-10-20 live corpus: the "that <clause>" and article-less shapes carry their own content,
+// so the console stores it instead of asking for it a second time.
+const notesContentRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'console-notes-content-'));
+const notesContentProj = {
+  id: 'notes-content-p', name: 'NotesContentProj', path: notesContentRoot, workspaceType: 'general',
+  config: { projectName: 'NotesContentProj', entries: [] }, contextFiles: [],
+  parsedKnowledge: {}, codebaseIndex: { languages: [], keyFiles: {} },
+};
+sent.length = 0;
+await handleBuiltinIntent(ws, 'system.notes.create', 'add a note that the API needs a key', notesContentProj, {});
+eq('notes leaf: create captures a that-clause as the content', ws.sent.length === 1 && ws.sent[0].type === 'answer' && /the API needs a key/.test(ws.sent[0].data), true);
+sent.length = 0;
+await handleBuiltinIntent(ws, 'system.notes.create', 'add a note', proj, {});
+eq('notes leaf: create without any content still asks', ws.sent.length === 1 && ws.sent[0].type === 'answer' && /What should the note say/.test(ws.sent[0].data), true);
+sent.length = 0;
+await handleBuiltinIntent(ws, 'system.notes.delete', 'delete that note', proj, {});
+eq('notes leaf: pronoun delete asks which note', ws.sent.length === 1 && ws.sent[0].type === 'answer' && /Which note should I delete/.test(ws.sent[0].data), true);
+fs.rmSync(notesContentRoot, { recursive: true, force: true });
 
 // Temp-dir smoke: append -> list round trip -> search hit -> dedupe -> cap behavior.
 const notesRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'console-notes-'));

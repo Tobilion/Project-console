@@ -946,5 +946,64 @@ const BATTERIES = [
       ['how long has the site been running', 'BUILTIN=project.context.dev_server_status'],
     ],
   },
+  {
+    // 2026-10-20 live corpus (opencode): the note phrasings that carry their own content
+    // drifted onto other intents and ended on the generic "I don't have a command configured
+    // for that" answer. "add a note that <clause>" matched no note pin at all, and the
+    // article-less "add note about X" missed the about/on/for pin. The file-append forms
+    // ("add a note to notes.md", "add a note in the docs") must keep their own intent, and
+    // the pronoun deletes ("delete that note", "delete the last note") must reach the notes
+    // handler instead of file_delete.
+    name: 'NOTES-2026-10-20 (live corpus: note phrasings)',
+    items: [
+      ['add a note that the API needs a key', 'BUILTIN=system.notes.create'],
+      ['add note about the API', 'BUILTIN=system.notes.create'],
+      ['add a note about the login bug', 'BUILTIN=system.notes.create'],
+      ['add a note', 'BUILTIN=system.notes.create'],
+      ['add a note: buy milk', 'BUILTIN=system.notes.create'],
+      ['note: buy milk', 'BUILTIN=system.notes.create'],
+      ['jot down: the milk is out', 'BUILTIN=system.notes.create'],
+      ['delete that note', 'BUILTIN=system.notes.delete'],
+      ['delete the last note', 'BUILTIN=system.notes.delete'],
+      ['delete note: buy milk', 'BUILTIN=system.notes.delete'],
+      // must NOT be stolen by the note pins
+      ['add a note to notes.md', 'BUILTIN=file_append(closeSecond=system.tools.open_notes)'],
+      ['add a note in the docs', 'BUILTIN=file_append'],
+    ],
+  },
+  {
+    // 2026-10-20 live corpus (opencode): "push without asking me" landed on git_ahead_behind
+    // and answered with the ahead/behind table instead of offering the push. A leading push
+    // VERB is the push action; the state questions are phrased the other way round, so the
+    // anchored pin cannot steal them (and "how do i push" keeps its catalog answer).
+    name: 'PUSH-2026-10-20 (live corpus: push verb vs push state question)',
+    items: [
+      ['push without asking me', 'BUILTIN=system.chit_chat.deploy'],
+      ['push it', 'BUILTIN=system.chit_chat.deploy'],
+      ['push my changes', 'BUILTIN=system.chit_chat.deploy'],
+      ['please push', 'BUILTIN=system.chit_chat.deploy'],
+      // must stay state questions / catalog answers
+      ['did i push yet', 'BUILTIN=system.chit_chat.git_status'],
+      ['do i need to push', 'BUILTIN=git_ahead_behind'],
+      ['how do i push', 'BUILTIN=system.chit_chat.how_do_i'],
+    ],
+  },
+  {
+    // 2026-10-20 live corpus (opencode): "show me the contents of package.json" listed the
+    // whole directory tree instead of reading the file. A read verb + a file with a stem and
+    // an extension is unambiguous; a dotfile must NOT be read raw (it holds secrets), so ".env"
+    // goes to the config intent instead.
+    name: 'FILE-READ-2026-10-20 (live corpus: read verb + file name)',
+    items: [
+      ['show me the contents of package.json', 'BUILTIN=file_read'],
+      ['read README.md', 'BUILTIN=file_read'],
+      ['show me the file notes.md', 'BUILTIN=file_read'],
+      ['show me the contents of .env', 'BUILTIN=project.context.config'],
+      // must NOT be stolen by the read pin
+      ['open the calculator', 'BUILTIN=system.tools.open_calculator'],
+      ['show me the notes', 'BUILTIN=system.notes.list'],
+      ['show me the project structure', 'BUILTIN=project.context.structure'],
+    ],
+  },
 ];
 export { project, fmt, BATTERIES };

@@ -269,25 +269,41 @@ function varyUserStyle(msg, withTypos) {
 
 // --- response variation audit ---
 
+/**
+ * Finds CANNED answers that would echo identically every time.
+ *
+ * Only a CONSTANT answer string is a candidate: an answer built from a template with
+ * interpolation (a computed result, a catalog excerpt, a project path) is different on every
+ * run by construction, and varying it would be wrong. The earlier version of this audit
+ * flagged whole FILES, which reported five files whose answers were all computed reference
+ * text (the calculator's results, the how-do-i catalog answers, the logs/doctor output) — a
+ * false positive that sends the reader off to "fix" answers that must stay deterministic.
+ */
 async function auditResponseVariation() {
-  // Check which chit-chat handlers use pools vs single-string
   const issues = [];
-  // Heuristic: read builtin chitChat files for pickRandom vs single string
   const chitDir = path.join(rootDir, 'server', 'wsHandlers', 'chitChat');
+  const files = [];
   try {
-    const files = fs.readdirSync(chitDir);
-    for (const f of files) {
-      const txt = fs.readFileSync(path.join(chitDir,f),'utf8');
-      const hasPool = txt.includes('pickRandom') || txt.includes('chatReplyPool');
-      const hasSingle = /data:\s*`[^`]*`/.test(txt) && !hasPool;
-      if (hasSingle) issues.push(`${f}: single-string response (no variation)`);
+    for (const f of fs.readdirSync(chitDir)) files.push(path.join(chitDir, f));
+  } catch { /* directory missing — nothing to audit */ }
+  // `data: '...'` / `data: "..."` with NO template interpolation = a constant answer.
+  const constantAnswer = /data:\s*(['"])((?:(?!\1).)*)\1/g;
+  for (const file of files) {
+    let txt = '';
+    try { txt = fs.readFileSync(file, 'utf8'); } catch { continue; }
+    if (txt.includes('pickRandom') || txt.includes('chatReplyPool')) continue; // already varies
+    const found = [];
+    let m;
+    while ((m = constantAnswer.exec(txt)) !== null) {
+      const text = m[2].trim();
+      if (text.length < 12) continue;      // short labels are not replies
+      if (!/[.!?)]$/.test(text)) continue;  // not a sentence
+      found.push(text.slice(0, 70));
     }
-  } catch {}
-  // Also check tool openers
-  try {
-    const t = fs.readFileSync(path.join(rootDir,'server/wsHandlers/builtinTools.js'),'utf8');
-    if (!t.includes('pickRandom')) issues.push('builtinTools.js: openers use single-string answers');
-  } catch {}
+    if (found.length) {
+      issues.push(`${path.basename(file)}: constant answer(s) — ${found.length} (e.g. "${found[0]}…")`);
+    }
+  }
   return issues;
 }
 

@@ -9,7 +9,13 @@ import { getSchedules, removeScheduleById } from '../schedules/scheduleStore.js'
 import { readProfile } from '../routes/profileRoutes.js';
 import { answer } from '../wsReply.js';
 
-const CREATE_PREFIX_RE = /^(?:note|add\s+a\s+note|write\s+a\s+note|jot\s+down)\s*:\s*(.+)$/is;
+// The note CONTENT is taken from the prefix the user typed, not asked for again:
+//   "note: buy milk"                 -> "buy milk"
+//   "add a note: buy milk"           -> "buy milk"
+//   "add a note that the API needs a key" -> "the API needs a key"
+//   "add a note about the login bug" -> "the login bug"
+// A bare "add a note" (no content at all) still asks, because there is nothing to store.
+const CREATE_PREFIX_RE = /^(?:note|add\s+(?:a\s+)?note|write\s+(?:a\s+)?note|make\s+(?:a\s+)?note|create\s+(?:a\s+)?note|jot\s+down)\s*(?::|\s(?:that|about|on|for|re)\s+)\s*(.+)$/is;
 
 export const noteHandlers = {
   'system.notes.create': async (ws, action, input, project, sessionContext) => {
@@ -74,8 +80,10 @@ export const noteHandlers = {
 
   'system.notes.delete': async (ws, action, input, project, sessionContext) => {
     // Support both "delete the note: <text>" and bare "delete <text>" after the command prefix.
+    // The pronoun forms ("delete that note", "delete the last note") carry no text, so the
+    // prefix strip leaves nothing and the handler asks WHICH note instead of guessing.
     const text = input
-      .replace(/^(?:delete|remove|clear)\s+(?:the\s+)?(?:note|notes?)\s*(?::|about|for|with)?\s*/i, '')
+      .replace(/^(?:delete|remove|clear)\s+(?:(?:that|the|my|last|this)\s+)?(?:note|notes?)\s*(?::|about|for|with)?\s*/i, '')
       .trim()
       .replace(/[.?!]+$/, '');
     if (!text) {
