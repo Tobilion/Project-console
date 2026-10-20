@@ -7,6 +7,9 @@ import fs from 'fs';
 import readline from 'readline';
 import { BASE_PORT, MAX_PORT_ATTEMPTS } from '../server/portConfig.js';
 import { findRunningConsole } from '../server/portProbe.js';
+import { traceBoot } from '../server/bootTrace.js';
+
+traceBoot('launcher:module-loaded');
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -22,14 +25,68 @@ process.on('unhandledRejection', (reason) => {
   process.exit(1);
 });
 
+/**
+ * Newest modification time (ms) across the server sources. Used to decide whether the
+ * prebuilt bundle is stale: the bundle is only preferred when it is at least as new as the
+ * sources it was built from.
+ */
+function newestSourceMtime(dir) {
+  let newest = 0;
+  const stack = [dir];
+  while (stack.length) {
+    const current = stack.pop();
+    let entries;
+    try {
+      entries = fs.readdirSync(current, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+    for (const entry of entries) {
+      if (entry.name === 'node_modules' || entry.name.startsWith('.')) continue;
+      const full = path.join(current, entry.name);
+      if (entry.isDirectory()) {
+        stack.push(full);
+      } else if (/\.(js|ts|mjs|cjs)$/.test(entry.name)) {
+        try {
+          const st = fs.statSync(full);
+          if (st.mtimeMs > newest) newest = st.mtimeMs;
+        } catch { /* unreadable file — ignore */ }
+      }
+    }
+  }
+  return newest;
+}
+
 async function startServer() {
   // Default mode: launch the server in production
   process.env.NODE_ENV = 'production';
 
-  // Prefer the esbuild bundle (dist/server.js), fall back to the source entry
+  // Prefer the esbuild bundle (dist/server.js), fall back to the source entry.
+  //
+  // Staleness guard (2026-10-20): the bundle used to win whenever it merely EXISTED, so a
+  // bundle built before a source edit silently shadowed every later source change (this
+  // repo's own docs record that bite twice). The bundle is now only used when it is at
+  // least as new as the sources it was built from; otherwise the source entry runs and the
+  // user is told to rebuild. A published package ships the bundle next to the same sources
+  // it was built from, so it stays newer-or-equal and keeps winning there.
   const bundlePath = path.join(rootDir, 'dist', 'server.js');
   const serverPath = path.join(rootDir, 'server', 'index.js');
-  const entry = fs.existsSync(bundlePath) ? bundlePath : serverPath;
+  let entry = serverPath;
+  if (fs.existsSync(bundlePath)) {
+    let bundleMtime = 0;
+    try {
+      bundleMtime = fs.statSync(bundlePath).mtimeMs;
+    } catch { /* fall through to source */ }
+    if (bundleMtime && bundleMtime >= newestSourceMtime(path.join(rootDir, 'server'))) {
+      entry = bundlePath;
+    } else {
+      console.log('  Note: dist/server.js is older than the server sources — starting from source.');
+      console.log('        Run "npm run build:server" to rebuild the bundle (source mode costs ~8s more at startup).');
+    }
+  } else {
+    console.log('  Note: no dist/server.js bundle — starting from source.');
+    console.log('        Run "npm run build:server" to build one (source mode costs ~8s more at startup).');
+  }
 
   // Source mode: server modules can be TypeScript (the 7 safety leaves converted 2026-08-26),
   // so plain Node needs the tsx loader registered before the import. The bundle path never
@@ -42,7 +99,9 @@ async function startServer() {
 
   // Importing the server module triggers init() as a side effect (line 221 of index.js).
   // The server will set globalThis.__consoleServerPort once the port fallback loop binds.
+  traceBoot('launcher:importing-server');
   await import(pathToFileURL(entry).href);
+  traceBoot('launcher:server-imported');
 
   // Poll for the global signal set in index.js's onListening handler. D-5 (2026-09-08):
   // was 30s, but a cold boot (embedding-model download/batch-embed + NLP training +
@@ -187,7 +246,21 @@ async function main() {
   // [C] option reaches. The client scans ports 3000-3019 and finds the in-process server;
   // when it exits, the server exits with it (no orphan).
   if (process.argv[2] === 'cli' || process.argv[2] === '--cli') {
-    const port = await startServer();
+    // Probe BEFORE booting. This path used to always boot a server in-process, even when a
+    // console was already running: the new server did the full cold start (project
+    // discovery, embedding model, NLP training — ~40s measured on this machine) and bound a
+    // FALLBACK port, while the CLI client then attached to the older console on the base
+    // port. Net effect: a minute of waiting and a duplicate server for the whole session.
+    // Attaching to the running console is what the launcher's [C] option already did.
+    const runningPort = await probeRunningPort();
+    let port;
+    if (runningPort) {
+      console.log(`\n  Console already running on port ${runningPort} - attaching to it.`);
+      port = runningPort;
+    } else {
+      console.log('\n  Starting the console server (first start loads the matcher model and can take up to a minute)...');
+      port = await startServer();
+    }
     const url = `http://127.0.0.1:${port}`;
     console.log(`\n  Local Project Console ready at ${url}`);
     console.log('  CLI chat mode — type "exit" or Ctrl+C to quit.\n');
@@ -281,7 +354,17 @@ async function main() {
     process.exit(0);
   }
 
-  const port = await startServer();
+  // Default mode: web UI. Same probe-before-boot rule as the CLI chat mode above — booting
+  // a second server next to a running console wasted a full cold start and left a duplicate
+  // bound to a fallback port.
+  const runningPort = await probeRunningPort();
+  let port;
+  if (runningPort) {
+    console.log(`\n  Console already running on port ${runningPort} - opening it.`);
+    port = runningPort;
+  } else {
+    port = await startServer();
+  }
 
   const url = `http://127.0.0.1:${port}`;
   console.log(`\n  Local Project Console ready at ${url}\n`);
