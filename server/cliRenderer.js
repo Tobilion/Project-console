@@ -109,13 +109,25 @@ export function createCliRenderer({ ws, sessionId, state }) {
 
   function setupReadline() {
     if (rl) rl.close();
-    rl = readline.createInterface({ input: process.stdin, output: process.stdout, crlfDelay: Infinity });
+    const current = readline.createInterface({ input: process.stdin, output: process.stdout, crlfDelay: Infinity });
+    rl = current;
     // Piped/redirected stdin (echo foo | cli-client, CI) hits EOF, which closes the interface
     // under us — a server 'end' arriving afterwards used to crash with ERR_USE_AFTER_CLOSE
     // (reproduced 2026-08-10). Track liveness via a close listener so the 'end' handler's
     // existing `&& rl` guard actually works; real TTY sessions never EOF, so this only affects
     // scripted runs.
-    rl.on('close', () => { rl = null; });
+    current.on('close', () => {
+      // A superseded interface (setupReadline replaces it) must not be mistaken for EOF.
+      if (rl !== current) return;
+      rl = null;
+      // stdin reached EOF: the piped input is exhausted, or the parent closed the handle.
+      // Without this the process stayed alive on the open WebSocket forever — the CLI looked
+      // hung with no prompt and never exited (reproduced live: `"2" | node server/cli-client.js`
+      // hung for five minutes after the project picker consumed its input).
+      if (!confirmPending && !pendingConfirm) {
+        try { ws.close(); } catch { /* already closing */ }
+      }
+    });
     rl.setPrompt(`${C.cyan}${C.bold}chat>${C.reset} `);
     waitingForInput = true;
     rl.prompt();

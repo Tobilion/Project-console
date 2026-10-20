@@ -1,3 +1,7 @@
+// The crash guard is imported FIRST on purpose: ESM evaluates every import before the
+// module body, so a failure while loading @clack/prompts, chalk, figlet or any server
+// module used to kill the process with no message and no log entry. See cliCrashGuard.js.
+import './cliCrashGuard.js';
 import WebSocket from 'ws';
 import readline from 'readline';
 import * as p from '@clack/prompts';
@@ -25,32 +29,15 @@ import { stripMarkdown, discoverServer, pickResumeSession, readBootLogTail, setC
 import { selectProject, findProjectFromArgs } from './cliProjectPicker.js';
 import { renderMascot } from './cliMascot.js';
 import { createCliRenderer } from './cliRenderer.js';
-import { appendLogFile } from './fileLogger.js';
 import { traceBoot } from './bootTrace.js';
 
 traceBoot('cli:module-loaded');
 
-// Global crash guard — the Start Menu launches via cli.cmd which closes on exit, so an
-// uncaught throw after "Connected" (e.g. clack raw-mode failure under ELECTRON_RUN_AS_NODE)
-// vanished with no message. Log verbosely and keep the window open via the cmd PAUSE branch.
-process.on('uncaughtException', (err) => {
-  const stack = err && err.stack ? err.stack : String(err);
-  try { appendLogFile('cli.log', `${new Date().toISOString()} uncaughtException: ${stack}`); } catch {}
-  console.error(`\n${C.red}CLI crashed:${C.reset} ${stack}`);
-  console.error(`${C.dim}Tip: run with --project "<name>" to skip the picker, or launch via PowerShell to see full logs.${C.reset}`);
-  // Give cmd's `if errorlevel 1 pause` a non-zero exit; also pause here when run interactively.
-  setTimeout(() => process.exit(1), 100);
-});
-process.on('unhandledRejection', (reason) => {
-  const stack = reason && reason.stack ? reason.stack : String(reason);
-  try { appendLogFile('cli.log', `${new Date().toISOString()} unhandledRejection: ${stack}`); } catch {}
-  console.error(`\n${C.red}CLI unhandled rejection:${C.reset} ${stack}`);
-  setTimeout(() => process.exit(1), 100);
-});
+// The crash guard (cliCrashGuard.js, imported first) owns the uncaughtException and
+// unhandledRejection handling: it writes the stack to logs/cli.log, prints a short message
+// and exits non-zero. The local handlers this block used to carry were registered only
+// AFTER every import had been evaluated, so they never saw an import-time crash.
 
-// Real-shell Ctrl+C (2026-08-24): send the server's `cancel` (which stops only the current AI
-// turn's own processes) instead of Node's default abrupt kill, then exit 130 like a shell. A
-// second Ctrl+C force-exits without waiting. `activeWs` is set by main() once connected.
 let activeWs = null;
 let sigintCount = 0;
 
@@ -416,16 +403,25 @@ async function main() {
         console.error(`\n${C.red}Project picker failed:${C.reset} ${err.message}`);
         console.error(`${C.dim}Falling back to numbered list. Re-run with --project "<name>" to skip the picker.${C.reset}\n`);
         // Re-enter via legacy path directly — don't re-throw and crash the window.
-        const { selectProject: legacyPick } = await import('./cliProjectPicker.js');
-        // legacyPick will detect isTTY but we force the legacy readline path by calling it explicitly
-        // via a direct import of the internal function fallback: just re-call selectProject which now
-        // itself falls back, or if that also fails, pick first project.
         try { project = await selectProject(projects); } catch { project = projects[0] || generalPseudoProject(); }
+      }
+      // The picker can resolve with null when stdin ended before an answer (piped input
+      // exhausted, or the parent closed the handle). Reporting that is the difference between
+      // "the CLI closed on me" and a message that says what to do next.
+      if (!project) {
+        console.error(`\n${C.red}No project selected — the input ended before you picked one.${C.reset}`);
+        console.error(`${C.dim}Re-run with --project "<name>" (or --dir "<full path>") to skip the picker.${C.reset}\n`);
+        process.exit(1);
       }
     }
   }
 
-  console.log(`\n${C.dim}─── Project: ${C.green}${project.name}${C.dim} ───────${C.reset}`);
+  // Scripted runs keep stdout clean for piping (--json emits one JSON object per line, so a
+  // banner line in front of them breaks every consumer). The banner block above already
+  // respects that; this line was the one that leaked.
+  if (!SCRIPTED) {
+    console.log(`\n${C.dim}─── Project: ${C.green}${project.name}${C.dim} ───────${C.reset}`);
+  }
   traceBoot('cli:project-resolved', project.name);
   if (resumed) {
     console.log(`${C.dim}Resuming session ${sessionId}${C.reset}`);

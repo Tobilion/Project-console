@@ -60,6 +60,17 @@ function selectProjectLegacy(projects) {
     // (ConPTY in particular) are exactly the case docs call out as prone to this. Applied to all
     // three readline.createInterface() calls in this file for the same reason.
     const rl = readline.createInterface({ input: process.stdin, output: process.stdout, crlfDelay: Infinity });
+    // stdin reached EOF before an answer (piped input exhausted, or the parent closed the
+    // handle). Without this the promise never settles: the CLI sits on the prompt forever in
+    // a terminal, or - when nothing else keeps the event loop alive - exits SILENTLY with no
+    // message at all (reproduced live: the project list printed and the process was gone).
+    // Resolving with null lets the caller report the situation instead.
+    //
+    // The `answered` flag matters: readline emits 'close' SYNCHRONOUSLY from close(), so the
+    // close handler below would otherwise resolve with null before the answer's own
+    // resolve(project) call ran - the pick would be discarded every time.
+    let answered = false;
+    rl.on('close', () => { if (!answered) resolve(null); });
     console.log(`\n${C.bold}${C.cyan}Available Projects:${C.reset}\n`);
     console.log(`  ${C.bold}0${C.reset}. ${C.green}General workspace${C.reset}\n     ${C.dim}chat + tools, no project selected${C.reset}`);
     projects.forEach((p, i) => {
@@ -69,6 +80,7 @@ function selectProjectLegacy(projects) {
       rl.question(`\n${C.bold}Select project (0 = General, 1-${projects.length}):${C.reset} `, (answer) => {
         const idx = parseInt(answer.trim(), 10);
         if (Number.isInteger(idx) && idx >= 0 && idx <= projects.length) {
+          answered = true;
           rl.close();
           resolve(idx === 0 ? generalPseudoProject() : projects[idx - 1]);
         } else {
