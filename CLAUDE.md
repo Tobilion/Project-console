@@ -1180,6 +1180,60 @@ exhausted — the matcher-level harness covers them, the live WS sweep stopped e
 intents were created in this pass — the gaps found were routing/guesser bugs, not missing
 intents.
 
+## Hardening pass 2 (2026-10-20, opencode) — concurrent launches, then release
+
+Ten commits on top of `fdfc1be`: `f248c5a` (boot claim + probe fixes), `2a51965` (untrack
+the rotated runtime logs), plus the docs/verification commits.
+
+**The concurrent-launch race, measured.** Three `node bin/cli.js cli` launches started at the
+same instant with no console running produced **three servers — ports 3000, 3001 and 3002** —
+three copies of the embedding model, and the losing clients' terminals flooded with the
+server's own boot logs instead of their answer. The fix is an **atomic boot claim**
+(`server/bootClaim.js`): the claim file is created with `O_EXCL`, so exactly one launcher may
+boot; the others wait for that console and attach to it. A claim whose owner died (or that
+aged past `CLAIM_TTL_MS`) is stale and can be taken over, so a crashed launcher never blocks
+the next one. The claim is a **lock, not a registry** — the running-console check stays the
+`/api/projects` probe, because a claim cannot tell a live console from a dead one.
+
+**Four more defects surfaced while fixing it** (each reproduced, not reasoned about):
+
+- The port was bound **before** the WebSocket upgrade handler was attached, so a client
+  connecting in that window got its handshake reset (`read ECONNRESET`). The handlers are
+  now attached before the first `listen()` attempt (`server/boot/portBind.js`).
+- The launcher boots the server **in-process**, so the server's log lines landed on the
+  terminal's stdout — in the middle of the chat answer and in the middle of the `--json`
+  stream. `server/cliEnv.js` is imported FIRST by `bin/cli.js` and sets
+  `CONSOLE_LOG_TO_STDERR` before `server/logger.js` is evaluated (ESM runs every import
+  before the module body, so setting the flag in the launcher's body was too late).
+- The CLI's discovery used the **~2MB `/api/projects` document as a liveness probe**. With
+  several clients attaching at once, the server's event loop was saturated by those
+  serializations and the clients timed out with "Could not connect" while the console was
+  serving the others. There is now a cheap `GET /api/ping`, a light
+  `GET /api/projects?summary=1` for clients, and the discovery polls the ping first.
+- A console that is **bound is not necessarily ready** — the matcher, the project scan and
+  the classifier still load after the bind, and a client that attaches during that window
+  can time out. `/api/ping` now reports `ready` (`state.bootReady`), and a launcher waits
+  for a *ready* console.
+
+The launcher also hands the port it found to the client (`--port`), so the client does not
+re-scan the range for a console it was just given; and when the console it waited for exits
+with its launcher, the launcher **takes the boot over** instead of pointing the client at a
+dead port. The client now says what to do when the console disappears mid-connect.
+
+**Race results after the fix** — 5 clients against a running console: **5/5 attach and
+answer, one console, no orphans, 7.6s total**. 2/3/5 simultaneous launches with no console:
+**exactly ONE server is bound every time** (was three), no fallback-port binds, no orphan
+listeners, and every failed attach prints an explanation (**0 silent failures**). New
+coverage: 19 rows in `check-tools` (BOOT-CLAIM and PORT-PROBE batteries) and the end-to-end
+`npm run check-launch-race`, which asserts one console, no orphans and no silent failures.
+
+**The one inherent limitation**, stated plainly: the CLI boots its console **in-process**, so
+the console stops when that CLI session ends. A client whose console exits before it
+connects cannot succeed — that is why the short-lived scripted clients in the race test fail
+while the console is serving the one that is still alive. The fix is a persistent console
+(`npm run dev` or the desktop app), where every client attaches instantly; the client says
+so when it happens.
+
 ## Run it
 
 ```powershell

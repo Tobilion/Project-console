@@ -91,6 +91,27 @@ Startup cost, measured with `CONSOLE_BOOT_TRACE=1` (one line per boot phase, off
 The bundle is used only when it is at least as new as the sources it was built from, so a
 stale `dist/server.js` can no longer shadow source edits.
 
+### Simultaneous launches start ONE console (2026-10-20)
+
+Several launchers started at the same instant used to each boot their own console — measured:
+three launches bound ports 3000, 3001 **and** 3002 at once, with three copies of the
+embedding model and the losing terminals flooded with server boot logs.
+
+Now the first launcher to create the boot claim (`data/console-boot-claim.json`, created
+atomically) owns the boot; the others wait for that console and attach to it. A claim whose
+owner died or that aged out is taken over, so a crashed launcher never blocks the next one.
+
+- 5 clients against a running console: **5/5 attach and answer, one console, no orphans**.
+- 2, 3 or 5 simultaneous launches with no console: **exactly one server is bound**, no
+  fallback-port binds, no orphan listeners, and every failed attach explains itself.
+- `npm run check-launch-race` runs the real launchers and asserts exactly that (it is slow —
+  a cold boot is 13–45s — so it is not part of the pre-commit gate; the fast unit coverage of
+  the same contract lives in `check-tools`).
+
+The console itself is reachable through two cheap endpoints that keep the discovery light:
+`GET /api/ping` (alive? ready?) and `GET /api/projects?summary=1` (the project list without
+the ~2MB of config and index data).
+
 ### The launcher (`npm run launcher`)
 
 A terminal-native replica of `start.bat` (added 2026-08-24). It:
