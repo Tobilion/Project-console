@@ -132,6 +132,27 @@ export function registerProjectRoutes(app, dirname) {
       semanticMatcher.clearProjectIntents().catch(() => {});
       semanticMatcher.addProjectIntents(known).catch(() => {});
     }
+    // Summary mode (2026-10-20): `?summary=1` returns only what a CLIENT needs to pick a
+    // project (id, name, path, folder name, workspace type) instead of the full project
+    // objects with their config, context files and codebase index. The full response is a
+    // ~2MB document that the server builds and serializes on every request; the CLI's
+    // discovery probe used it, and with several clients attaching at once the server's event
+    // loop was saturated by those 2MB serializations — the clients then timed out and
+    // reported "Could not connect" while the console was running (measured 2026-10-20
+    // during the concurrent-launch hardening pass). The summary is a few KB.
+    if (req.query.summary === '1') {
+      res.json({
+        scanPath: scanDir,
+        projects: projects.map((p) => ({
+          id: p.id,
+          name: p.name,
+          path: p.path,
+          folderName: p.folderName,
+          workspaceType: p.workspaceType,
+        })),
+      });
+      return;
+    }
     res.json({
       scanPath: scanDir,
       projects

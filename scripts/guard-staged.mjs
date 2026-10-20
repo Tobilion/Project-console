@@ -78,7 +78,10 @@ const has = {
     f.endsWith('paramCommand.js') || f.endsWith('commandRisk.ts') || f.endsWith('commandRisk.js') ||
     f.endsWith('dangerousPatterns.ts') || f.endsWith('dangerousPatterns.js') ||
     f.endsWith('urlSafety.ts') || f.endsWith('urlSafety.js') ||
-    f.includes('typedCommand.js') || f.includes('pluginTools.js') || f.includes('toolDefs.js'),
+    f.includes('typedCommand.js') || f.includes('pluginTools.js') || f.includes('toolDefs.js') ||
+    // The launcher's boot claim and the port probes are covered by check-tools (BOOT-CLAIM
+    // and PORT-PROBE batteries) — 2026-10-20 hardening pass.
+    f.includes('bootClaim.js') || f.includes('portProbe.js') || f.includes('cliEnv.js'),
   docs: (f) =>
     f.includes('consoleCommandDocs.js') || f.includes('commandCatalog.js') ||
     f === 'README.md' || f === 'features.md',

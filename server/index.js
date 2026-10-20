@@ -201,6 +201,12 @@ async function init() {
   // so the model is ready for similarity checks; never writes, only reads.
   initReplayScheduler();
 
+  // The console is usable from here on: projects discovered, matcher and classifier ready,
+  // port bound, ML work done. /api/ping reports this as `ready` so a launcher waiting for a
+  // console another launcher is booting attaches to a console that can actually answer.
+  state.bootReady = true;
+  traceBoot('boot:ready');
+
   if (server) {
     // A rejection inside init() (discoverProjects, NLP training, watcher setup) used to be
     // absorbed by the unhandledRejection handler, leaving a live process with NO HTTP listener

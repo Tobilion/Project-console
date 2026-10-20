@@ -18,6 +18,7 @@ import {
   SCRIPTED,
   JSON_MODE,
   QUERY_INPUT,
+  PORT_OVERRIDE,
   DRY_RUN_INPUT,
   EXPORT_ID,
   EXPORT_FORMAT,
@@ -229,11 +230,26 @@ async function main() {
   }
   traceBoot('cli:discovery-start');
 
-  const discovered = await discoverServer(
-    spinner
-      ? (elapsed) => { try { spinner.message(`Still connecting (${elapsed}s elapsed, checking ports ${BASE_PORT}-${BASE_PORT + MAX_PORT_ATTEMPTS - 1})...`); } catch {} }
-      : (SCRIPTED ? () => {} : null)
-  );
+  // A KNOWN port (--port, handed over by the launcher) short-circuits the range scan: the
+  // launcher already found this console, and re-scanning can fail while the console is busy
+  // with another turn. If the known port does not answer, fall back to the full scan.
+  let discovered = null;
+  if (PORT_OVERRIDE) {
+    const known = await tryFetchProjects(PORT_OVERRIDE);
+    if (known) {
+      discovered = known;
+      traceBoot('cli:known-port', `port ${PORT_OVERRIDE}`);
+    } else {
+      traceBoot('cli:known-port-dead', `port ${PORT_OVERRIDE}`);
+    }
+  }
+  if (!discovered) {
+    discovered = await discoverServer(
+      spinner
+        ? (elapsed) => { try { spinner.message(`Still connecting (${elapsed}s elapsed, checking ports ${BASE_PORT}-${BASE_PORT + MAX_PORT_ATTEMPTS - 1})...`); } catch {} }
+        : (SCRIPTED ? () => {} : null)
+    );
+  }
   // A console that answers /api/projects IS a running console — including one that has
   // discovered zero projects (a fresh install, or a scan root with nothing in it yet). The
   // old check also required a non-empty project list, so a perfectly healthy empty console
@@ -242,6 +258,11 @@ async function main() {
   if (!discovered) {
     if (spinner) try { spinner.stop(chalk.red(`✖ Could not connect to a server on ports ${BASE_PORT}-${BASE_PORT + MAX_PORT_ATTEMPTS - 1}`)); } catch {}
     else process.stderr.write(`${C.red}✖ Could not connect to a server on ports ${BASE_PORT}-${BASE_PORT + MAX_PORT_ATTEMPTS - 1}${C.reset}\n`);
+    // The most common cause of a console disappearing mid-connect: the launcher boots the
+    // server IN-PROCESS, so the console stops when that launcher exits. Say so instead of
+    // leaving the user with a bare "could not connect".
+    process.stderr.write(`${C.yellow}  The console may have stopped while starting (it runs inside the launcher and stops with it).${C.reset}\n`);
+    process.stderr.write(`${C.yellow}  Start a console that stays up - "npm run dev" or the desktop app - and run the CLI again.${C.reset}\n`);
     process.stderr.write(`${C.yellow}  Make sure the console is running (start the Project Console app, or "npm run dev"), then try again.${C.reset}\n`);
     // 2026-09-03: a hidden start.bat server that died during boot leaves its evidence only in
     // the boot logs (its stderr never reaches this terminal) — surface the tail so the failure

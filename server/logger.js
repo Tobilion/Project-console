@@ -26,15 +26,28 @@ function prettyResolvable() {
 }
 
 const usePretty =
-  !process.env.CONSOLE_DESKTOP && !!process.stdout.isTTY && prettyResolvable() && !process.env.PINO_PLAIN;
+  !process.env.CONSOLE_DESKTOP && !!process.stdout.isTTY && prettyResolvable() && !process.env.PINO_PLAIN
+  // The CLI launcher runs the server in-process: pretty output would interleave with the
+  // terminal chat, so it stays plain there (and goes to stderr, see fileDestination).
+  && process.env.CONSOLE_LOG_TO_STDERR !== '1';
 
 // File tee: every pino line also goes to logs/server.log (capped/rotated). Desktop's main.cjs
 // has its own desktop-crash.log tee; this covers the dev/daemon/npm case where stdout is not
 // captured. Never throws — a full disk or missing logs/ must not take the server down.
+//
+// CONSOLE_LOG_TO_STDERR=1 sends the console output to stderr instead of stdout. The CLI
+// launcher boots the server IN-PROCESS, so the server's log lines used to land in the
+// terminal's stdout — in the middle of the chat answer, and in the middle of the --json
+// stream, where a JSON consumer would choke on a log line. stderr keeps stdout clean for
+// both.
 function fileDestination() {
+  const toStderr = process.env.CONSOLE_LOG_TO_STDERR === '1';
   return {
     write(str) {
-      try { process.stdout.write(str); } catch {}
+      try {
+        if (toStderr) process.stderr.write(str);
+        else process.stdout.write(str);
+      } catch {}
       const line = str.endsWith('\n') ? str.slice(0, -1) : str;
       // Fire-and-forget file write — never block the event loop for a log line.
       try { appendLogFile('server.log', line); } catch {}

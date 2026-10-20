@@ -33,6 +33,7 @@
  *    (failing hunk writes nothing).
  */
 import fs from 'node:fs/promises';
+import fsSync from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { exec } from 'node:child_process';
@@ -58,6 +59,8 @@ const dangerous = await import(pathToFileURL(base + 'dangerousPatterns.js').href
 const typed = await import(pathToFileURL(base + 'typedCommand.js').href);
 const cmdDir = await import(pathToFileURL(base + 'commandDir.js').href);
 const guesser = await import(pathToFileURL(base + 'commandGuesser.js').href);
+const bootClaim = await import(pathToFileURL(base + 'bootClaim.js').href);
+const portProbe = await import(pathToFileURL(base + 'portProbe.js').href);
 const guardMod = await import(pathToFileURL(base + 'aiGuardrails.js').href);
 const verify = await import(pathToFileURL(base + 'verifyHarness.js').href);
 const distillation = await import(pathToFileURL(base + 'distillation.js').href);
@@ -222,6 +225,66 @@ try {
   eq('guesser refuses a git add escape', guesser.guessCommand('git add ../secrets'), null);
   eq('guesser refuses an absolute path', guesser.guessCommand('read C:/Windows/System32/config'), null);
   eq('guesser still reads a project-relative file', guesser.guessCommand('read data/users.json')?.command, 'type "data/users.json"');
+
+  console.log('\n=== BOOT-CLAIM (one launcher boots, the rest wait) ===');
+  // The concurrent-launch race (2026-10-20): several launchers started at the same instant
+  // all probed, all found nothing, and all booted their own server (measured: 3 launches ->
+  // ports 3000, 3001 AND 3002 at once). The claim file makes the boot exclusive.
+  const claimRoot = fsSync.mkdtempSync(path.join(os.tmpdir(), 'console-boot-claim-'));
+  const claimPath = path.join(claimRoot, 'claim.json');
+  const claim1 = bootClaim.acquireBootClaim({ path: claimPath });
+  eq('boot claim: first acquire wins', claim1.claimed, true);
+  eq('boot claim: the claim records this pid', bootClaim.readBootClaim(claimPath)?.pid, process.pid);
+  const claim2 = bootClaim.acquireBootClaim({ path: claimPath });
+  eq('boot claim: a second acquire does not win', claim2.claimed, false);
+  eq('boot claim: the loser sees the winner’s claim', claim2.claim?.pid, process.pid);
+  bootClaim.setClaimPort(claimPath, 3007);
+  eq('boot claim: the port is recorded', bootClaim.readBootClaim(claimPath)?.port, 3007);
+  // A claim whose owner is gone must not block the next launcher forever.
+  fsSync.writeFileSync(claimPath, JSON.stringify({ pid: 999999, startedAt: Date.now(), port: 3000 }));
+  eq('boot claim: a dead owner is stale', bootClaim.isStaleClaim(bootClaim.readBootClaim(claimPath)), true);
+  const claim3 = bootClaim.acquireBootClaim({ path: claimPath });
+  eq('boot claim: a stale claim is taken over', claim3.claimed, true);
+  // An aged-out claim is stale too (the owner may be alive but wedged).
+  fsSync.writeFileSync(claimPath, JSON.stringify({ pid: process.pid, startedAt: Date.now() - (bootClaim.CLAIM_TTL_MS + 1000), port: 3000 }));
+  eq('boot claim: an aged claim is stale', bootClaim.isStaleClaim(bootClaim.readBootClaim(claimPath)), true);
+  // Only the owner may release the claim.
+  const claim4 = bootClaim.acquireBootClaim({ path: claimPath });
+  eq('boot claim: taken-over claim belongs to this process', claim4.claimed, true);
+  eq('boot claim: release removes the file', bootClaim.releaseBootClaim(claimPath), true);
+  eq('boot claim: the file is gone', fsSync.existsSync(claimPath), false);
+  eq('boot claim: releasing a missing claim is harmless', bootClaim.releaseBootClaim(claimPath), false);
+  fsSync.rmSync(claimRoot, { recursive: true, force: true });
+
+  console.log('\n=== PORT-PROBE (ping / ready) ===');
+  // The cheap ping is what the launcher's wait loop polls; "ready" separates a console that
+  // is bound from one that finished booting (a booting console can answer the ping and then
+  // fail the client's first real request).
+  const http = await import('node:http');
+  const startProbeServer = (handler) => new Promise((resolve) => {
+    const srv = http.createServer(handler);
+    srv.listen(0, '127.0.0.1', () => resolve({ srv, port: srv.address().port }));
+  });
+  const readyServer = await startProbeServer((req, res) => {
+    res.setHeader('content-type', 'application/json');
+    res.end(JSON.stringify({ ok: true, port: 1, ready: true, uptimeMs: 5 }));
+  });
+  eq('port probe: ping finds a live console', await portProbe.probeConsolePing(readyServer.port), readyServer.port);
+  eq('port probe: ready probe finds a ready console', await portProbe.probeConsoleReady(readyServer.port), readyServer.port);
+  const bootingServer = await startProbeServer((req, res) => {
+    res.setHeader('content-type', 'application/json');
+    res.end(JSON.stringify({ ok: true, port: 1, ready: false, uptimeMs: 5 }));
+  });
+  eq('port probe: ping finds a booting console', await portProbe.probeConsolePing(bootingServer.port), bootingServer.port);
+  eq('port probe: ready probe skips a booting console', await portProbe.probeConsoleReady(bootingServer.port), null);
+  const armedServer = await startProbeServer((req, res) => {
+    res.writeHead(401, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ ok: false, error: 'Login required.' }));
+  });
+  eq('port probe: an armed console counts as alive', await portProbe.probeConsolePing(armedServer.port), armedServer.port);
+  eq('port probe: an armed console counts as ready', await portProbe.probeConsoleReady(armedServer.port), armedServer.port);
+  for (const s of [readyServer, bootingServer, armedServer]) s.srv.close();
+  eq('port probe: a closed port answers nothing', await portProbe.probeConsolePing(65500), null);
 
   console.log('\n=== COMMAND-DIR (wrapper sub-package rule) ===');  const wrapperRoot = path.join(FIXTURE_ROOT, 'wrapper');
   await fs.mkdir(path.join(wrapperRoot, 'app'), { recursive: true });

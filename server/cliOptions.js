@@ -67,6 +67,18 @@ export const RESUME_ID = flagVal('--resume', '-r');
 export const WANT_LAST = ARGS.includes('--last') || ARGS.includes('-l');
 export const JSON_MODE = ARGS.includes('--json');
 export const QUERY_INPUT = flagVal('--query', '-q');
+// --port <n>: connect to a KNOWN console port instead of scanning the range.
+//
+// The launcher already knows the port (it either found a running console or waited for one
+// to come up). Handing it to the client removes a whole failure class: the client used to
+// re-scan the range on its own, and a scan can fail while the console is busy with another
+// turn — measured 2026-10-20: two of three concurrent CLI launches lost the console they
+// had just been handed and died with "Could not connect".
+export const PORT_OVERRIDE = (() => {
+  const raw = flagVal('--port', '-P');
+  const parsed = parseInt(raw, 10);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+})();
 // Dry-run / explain (2026-08-24, differentiation item): --dry-run and --explain are the
 // same no-execute request — the server resolves what WOULD happen (stage/intent/command)
 // and reports it. Additive payload flag on the normal execute message; nothing executes.

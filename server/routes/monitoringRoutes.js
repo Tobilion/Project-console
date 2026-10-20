@@ -19,6 +19,24 @@ function runGit(cwd, args, timeoutMs = 5000) {
 }
 
 export function registerMonitoringRoutes(app) {
+  // Cheap liveness probe (2026-10-20, hardening pass 2). The CLI's "wait for the console
+  // that another launcher is booting" loop polls every 500ms, and the natural probe
+  // (/api/projects) is a ~2MB JSON document that the server has to build and serialize on
+  // every request — polling it saturated the console's event loop and the waiting clients
+  // then timed out with "Could not connect" while the console was right there. This
+  // endpoint answers in a byte or two and touches no project state.
+  app.get('/api/ping', (req, res) => {
+    res.json({
+      ok: true,
+      port: state.serverPort || null,
+      // ready=false means the port is bound but the console is still booting (the matcher,
+      // the project scan and the classifier are still loading). A client that attaches to a
+      // booting console can time out on its first request, so waiters wait for ready=true.
+      ready: state.bootReady === true,
+      uptimeMs: Math.round(process.uptime() * 1000),
+    });
+  });
+
   app.get('/api/metrics', (req, res) => {
     res.json(metrics.snapshot());
   });

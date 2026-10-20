@@ -13,6 +13,41 @@ import { log } from '../logger.js';
  */
 export async function bindPort(httpServer, emitBootState) {
   let server = null;
+
+  // The upgrade handler and the permanent error handler are attached BEFORE the first
+  // listen() attempt, not after it succeeds. The port becomes reachable the moment
+  // listen() binds it, so a client that connects in that window used to reach a server
+  // with no 'upgrade' listener: the WebSocket handshake was never answered and the client
+  // saw "read ECONNRESET" (reproduced live 2026-10-20 — two of three concurrent CLI
+  // launches lost their socket exactly this way while the console was booting).
+  httpServer.on('error', (err) => {
+    log.error('HTTP server error (non-fatal, connection dropped):', err.message);
+  });
+
+  httpServer.on('upgrade', (request, socket, head) => {
+    socket.on('error', () => {});
+    const origin = request.headers.origin;
+    if (origin && !origin.startsWith('http://127.0.0.1') && !origin.startsWith('http://localhost')) {
+      socket.destroy();
+      return;
+    }
+    const pathname = new URL(request.url, `http://${request.headers.host}`).pathname;
+    if (pathname === '/stream' || pathname === '/stream/') {
+      // Phase I: armed servers reject unauthenticated sockets with a 401 status line
+      // (instead of a bare destroy) so CLI clients can report "login required".
+      if (!checkWsAuth(request)) {
+        try {
+          socket.write('HTTP/1.1 401 Unauthorized\r\nContent-Type: application/json\r\n\r\n{"ok":false,"error":"Login required."}');
+        } catch { /* best-effort */ }
+        socket.destroy();
+        return;
+      }
+      wss.handleUpgrade(request, socket, head, (ws) => {
+        wss.emit('connection', ws, request);
+      });
+    }
+  });
+
   for (let attempt = 0; attempt < MAX_PORT_ATTEMPTS; attempt++) {
     const tryPort = PORT + attempt;
     try {
@@ -62,37 +97,9 @@ export async function bindPort(httpServer, emitBootState) {
   }
 
   if (server) {
-    // Non-fatal socket error handler: a client that connected then vanished mid-upgrade
-    // surfaces as 'error' on the httpServer itself — without a permanent listener this
-    // crashes the whole server (observed live twice).
-    server.on('error', (err) => {
-      log.error('HTTP server error (non-fatal, connection dropped):', err.message);
-    });
-
-    // Upgrade handler: WebSocket connections on /stream, leave Vite's HMR socket alone.
-    server.on('upgrade', (request, socket, head) => {
-      socket.on('error', () => {});
-      const origin = request.headers.origin;
-      if (origin && !origin.startsWith('http://127.0.0.1') && !origin.startsWith('http://localhost')) {
-        socket.destroy();
-        return;
-      }
-      const pathname = new URL(request.url, `http://${request.headers.host}`).pathname;
-      if (pathname === '/stream' || pathname === '/stream/') {
-        // Phase I: armed servers reject unauthenticated sockets with a 401 status line
-        // (instead of a bare destroy) so CLI clients can report "login required".
-        if (!checkWsAuth(request)) {
-          try {
-            socket.write('HTTP/1.1 401 Unauthorized\r\nContent-Type: application/json\r\n\r\n{"ok":false,"error":"Login required."}');
-          } catch { /* best-effort */ }
-          socket.destroy();
-          return;
-        }
-        wss.handleUpgrade(request, socket, head, (ws) => {
-          wss.emit('connection', ws, request);
-        });
-      }
-    });
+    // The upgrade and error handlers are already attached above (before the first listen),
+    // so there is no window in which the port is reachable but the WebSocket handshake is
+    // unanswered.
   }
 
   return server;

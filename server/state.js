@@ -20,6 +20,14 @@ export const state = {
   // indistinguishable from the console app the user is already looking at (confirmed live
   // 2026-07-29: SportSim Pro's `vite --port=3000` collided with the console's own default port).
   serverPort: null,
+  // True once init() has finished everything that makes the console USABLE (projects
+  // discovered, matcher ready, port bound). The port is bound before the last few boot
+  // steps, so "the port answers" and "the console is ready" are two different things — and
+  // a client that attaches to a console that is still booting can time out on its first
+  // request while the console finishes its CPU-heavy boot work (measured 2026-10-20: 4 of 5
+  // concurrent CLI launches reported "Could not connect" to a console that was up and
+  // serving the fifth).
+  bootReady: false,
 };
 
 // Reserved pseudo-project id for the General workspace when NO real project is selected

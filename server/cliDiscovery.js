@@ -4,6 +4,7 @@
 
 import fs from 'fs';
 import { BASE_PORT, HOST, MAX_PORT_ATTEMPTS, CONNECT_TIMEOUT_MS, RETRY_INTERVAL_MS, WANT_LAST, RESUME_ID } from './cliOptions.js';
+import { findConsolePingPort } from './portProbe.js';
 
 export function stripMarkdown(text) {
   return text.replace(/\*\*(.+?)\*\*/g, '$1').replace(/`(.+?)`/g, '$1').replace(/### /g, '');
@@ -26,11 +27,14 @@ function authHeaders() {
 
 export async function tryFetchProjects(port) {
   try {
-    // 5s, not 2s: measured live 2026-08-10 — this machine's /api/projects takes ~1.7s on a
-    // freshly booted server (project discovery rescans 15 folders), so a 2s abort fired on
-    // most retry cycles and the CLI reported "could not connect" against a healthy server.
-    const res = await fetch(`http://${HOST}:${port}/api/projects`, {
-      signal: AbortSignal.timeout(5000),
+    // The SUMMARY form of the project list (id/name/path per project) — a few KB instead of
+    // the ~2MB full document. The full response is built and serialized synchronously per
+    // request, so using it as a discovery probe saturated the server's event loop when
+    // several clients attached at once, and the clients then timed out and reported "Could
+    // not connect" while the console was running (measured 2026-10-20).
+    // 30s: the summary is fast, but the console may be busy with another turn.
+    const res = await fetch(`http://${HOST}:${port}/api/projects?summary=1`, {
+      signal: AbortSignal.timeout(30000),
       headers: authHeaders(),
     });
     // Phase I: an armed server answers 401 + { ok:false, error:'Login required.' } — that
@@ -53,19 +57,45 @@ export async function tryFetchProjects(port) {
 
 /**
  * Probes every port in the range CONCURRENTLY and returns the result for the LOWEST port
- * that answered, or null when none did. The serial scan this replaces cost one full
- * 5-second timeout per unresponsive port — with 20 ports a single hung port could stall a
+ * that answered, or null when none did. The serial version this replaces cost one full
+ * timeout per unresponsive port — with 20 ports a single hung port could stall a
  * discovery cycle for 100 seconds. Probing in parallel bounds a cycle by one timeout, and a
  * machine with every port closed still resolves in milliseconds because a closed localhost
  * port refuses the connection immediately.
+ *
+ * The heavy /api/projects document is only fetched for the ports that answered the cheap
+ * /api/ping probe: fetching 2MB from every candidate would load the console for nothing.
  */
+/**
+ * Discovery trace (CONSOLE_CLI_TRACE=1): one line per discovery cycle on stderr, so a
+ * "Could not connect" can be attributed to a step (no port answered / the project list did
+ * not answer / the console answered) instead of guessed at.
+ */
+function traceDiscovery(message) {
+  if (process.env.CONSOLE_CLI_TRACE !== '1') return;
+  try { process.stderr.write(`[cli-trace] ${message}\n`); } catch { /* stderr closed */ }
+}
+
 async function findServerOnAnyPort() {
-  const ports = [];
-  for (let i = 0; i < MAX_PORT_ATTEMPTS; i++) ports.push(BASE_PORT + i);
-  const results = await Promise.all(ports.map((port) => tryFetchProjects(port)));
-  for (let i = 0; i < ports.length; i++) {
-    if (results[i]) return results[i];
+  const candidates = await findConsolePingPort(BASE_PORT, MAX_PORT_ATTEMPTS);
+  if (candidates === null) {
+    traceDiscovery(`no port answered the ping (${BASE_PORT}-${BASE_PORT + MAX_PORT_ATTEMPTS - 1})`);
+    return null;
   }
+  // The ping found a live console; fetch its project list from THAT port only.
+  //
+  // There is deliberately no "fetch from every port" fallback any more: the full project
+  // list is a heavy request (it can trigger a rescan of every project), and with several
+  // clients discovering at once the fallback turned into a rescan storm — the console's
+  // event loop was saturated by those scans, so even the cheap ping could not get a window
+  // and the clients never attached (measured 2026-10-20: 2 of 5 concurrent launches died
+  // with "Could not connect" while the console was serving the others).
+  const result = await tryFetchProjects(candidates);
+  if (result) {
+    traceDiscovery(`attached to port ${candidates} (${result.projects.length} project(s))`);
+    return result;
+  }
+  traceDiscovery(`ping answered on port ${candidates} but the project list did not — retrying`);
   return null;
 }
 

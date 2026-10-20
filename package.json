@@ -36,6 +36,7 @@
     "check-oos": "node --import tsx server/scripts/evalOos.js",
     "check-indexer": "node --import tsx server/scripts/checkIndexerCoverage.js",
     "check-tools": "node --import tsx server/scripts/checkToolsCoverage.js",
+    "check-launch-race": "node --import tsx server/scripts/checkLaunchRace.js",
     "check-handlers": "node --import tsx server/scripts/checkHandlerCoverage.js",
     "check-ws-cases": "node --import tsx --test scripts/checkWsMessageCases.ts",
     "check-docs": "node --import tsx server/scripts/checkDocsSync.js",

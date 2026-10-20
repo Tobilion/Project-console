@@ -5,8 +5,12 @@ import { spawn } from 'child_process';
 import { fileURLToPath, pathToFileURL } from 'url';
 import fs from 'fs';
 import readline from 'readline';
+// MUST be the first import: it sets CONSOLE_LOG_TO_STDERR before the server graph (and
+// therefore server/logger.js) is evaluated - see server/cliEnv.js for why the order matters.
+import '../server/cliEnv.js';
 import { BASE_PORT, MAX_PORT_ATTEMPTS } from '../server/portConfig.js';
-import { findRunningConsole } from '../server/portProbe.js';
+import { findRunningConsole, findConsoleReadyPort } from '../server/portProbe.js';
+import { acquireBootClaim, setClaimPort, releaseBootClaim } from '../server/bootClaim.js';
 import { traceBoot } from '../server/bootTrace.js';
 
 traceBoot('launcher:module-loaded');
@@ -141,6 +145,109 @@ async function probeRunningPort() {
   return findRunningConsole(BASE_PORT, MAX_PORT_ATTEMPTS);
 }
 
+/**
+ * Gets a console for this launcher, booting one only when nobody else is.
+ *
+ * The order matters. A live console is always preferred (attach). When there is none, the
+ * launcher takes an ATOMIC boot claim (server/bootClaim.js): exactly one launcher may boot,
+ * the others wait for that console to answer and attach to it.
+ *
+ * Without the claim, launchers that start at the same instant all probe, all find nothing,
+ * and all boot: measured on this machine, three concurrent launches bound ports 3000, 3001
+ * AND 3002 at once - three copies of the embedding model, and the losing clients' terminals
+ * filled with server boot logs instead of their answer.
+ *
+ * Returns { port, attached, claimPath } - `attached` is true when the console was already
+ * running (or was booted by another launcher), false when this process booted it.
+ */
+async function acquireConsole(options = {}) {
+  // Bounded on purpose: a launcher must not wait forever for a console that keeps appearing
+  // and dying. Two rounds of a 60s wait is enough for a cold boot (13-45s measured), and the
+  // total stays under ~2 minutes even in the pathological case.
+  const maxRounds = options.maxRounds || 2;
+  const waitMs = options.waitMs || 60000;
+  for (let round = 0; round < maxRounds; round++) {
+    // 1. A live console is always preferred (attach).
+    //
+    // The cheap /api/ping probe comes FIRST: the authoritative /api/projects check builds a
+    // document the console has to serialize per request, and when the console is busy serving
+    // several clients that request can exceed the probe's timeout — the launcher then missed a
+    // console that was right there and booted a second one (measured 2026-10-20: 5 clients
+    // against a running console, one of them started a duplicate on port 3001). The ping is
+    // our own endpoint with our own shape, so it is the better first check; the heavy probe
+    // still runs second, to catch a console that predates the ping endpoint.
+    const ready = await findConsoleReadyPort(BASE_PORT, MAX_PORT_ATTEMPTS);
+    if (ready) return { port: ready, attached: true, claimPath: null };
+    const running = await probeRunningPort();
+    if (running) return { port: running, attached: true, claimPath: null };
+
+    // 2. Take an ATOMIC boot claim: exactly one launcher may boot.
+    const claim = acquireBootClaim();
+    if (claim.unusable) {
+      // The claim file cannot be created (read-only data dir, permissions). Booting is still
+      // better than refusing to start.
+      const port = await startServer();
+      return { port, attached: false, claimPath: null };
+    }
+    if (claim.claimed) {
+      try {
+        const port = await startServer();
+        setClaimPort(claim.path, port);
+        return { port, attached: false, claimPath: claim.path };
+      } catch (err) {
+        releaseBootClaim(claim.path);
+        throw err;
+      }
+    }
+
+    // 3. Another launcher is booting right now - wait for its console instead of starting
+    // a second one. The wait is bounded by the same ceiling the boot itself gets.
+    const waited = await waitForConsole(waitMs);
+    if (!waited) continue; // the other boot never produced a console: loop and take over
+
+    // 4. The console we waited for may have EXITED again in the meantime: the launcher that
+    // booted it runs the server IN-PROCESS, so the console dies with that launcher. Measured
+    // 2026-10-20: five simultaneous launches - the first launcher answered its query in ~3s
+    // and exited, taking the console with it, and the four waiters were left pointing at a
+    // dead port. Re-check before handing the port over; if it is gone, loop round and take
+    // the boot over ourselves.
+    const stillAlive = await findConsoleReadyPort(BASE_PORT, MAX_PORT_ATTEMPTS);
+    if (stillAlive) return { port: stillAlive, attached: true, claimPath: null };
+    console.log('  The console that was starting exited - taking over the boot.');
+  }
+  throw new Error('Could not reach a console: another launcher kept starting one that exited before it was ready.');
+}
+
+/** Polls for a READY console until it answers or the deadline passes.
+ *  Uses the cheap /api/ping probe: the wait loop runs every 500ms, and the authoritative
+ *  /api/projects probe is a document the console has to build and serialize on every
+ *  request - polling it here saturated the server and the waiting clients timed out with
+ *  "Could not connect" while the console was running (measured 2026-10-20). */
+async function waitForConsole(waitMs) {
+  const deadline = Date.now() + waitMs;
+  while (Date.now() < deadline) {
+    // Wait for a READY console, not merely a bound port: a console that is still booting
+    // can answer the ping and then fail the client's first real request.
+    const port = await findConsoleReadyPort(BASE_PORT, MAX_PORT_ATTEMPTS);
+    if (port) {
+      // Confirm it really is a console before handing the port over.
+      const confirmed = await findRunningConsole(BASE_PORT, MAX_PORT_ATTEMPTS);
+      if (confirmed) return confirmed;
+      return port;
+    }
+    await new Promise((r) => setTimeout(r, 500));
+  }
+  return null;
+}
+
+/** Releases the boot claim when this launcher exits, so the next launch is not blocked. */
+function releaseClaimOnExit(claimPath) {
+  const release = () => { try { releaseBootClaim(claimPath); } catch { /* best effort */ } };
+  process.on('exit', release);
+  process.on('SIGINT', () => { release(); process.exit(130); });
+  process.on('SIGTERM', () => { release(); process.exit(143); });
+}
+
 function askChoice() {
   // crlfDelay: Infinity - Windows ConPTY can otherwise emit two 'line' events per Enter.
   const rl = readline.createInterface({
@@ -190,30 +297,31 @@ async function runLauncher() {
 
   const __probeBase = parseInt(process.env.PORT, 10) || 3000;
   console.log(`\n  [+] Checking for a running server on ports ${__probeBase}-${__probeBase + 19}...`);
-  const runningPort = await probeRunningPort();
 
   if (choice === 'w') {
-    if (runningPort) {
-      console.log(`\x1b[32m  [+] Server already running on port ${runningPort} - opening browser.\x1b[0m`);
-      openBrowser(`http://localhost:${runningPort}`);
-      process.exit(0);
+    const { port, attached, claimPath } = await acquireConsole();
+    if (attached) {
+      console.log(`\x1b[32m  [+] Server already running on port ${port} - opening browser.\x1b[0m`);
+    } else {
+      console.log(`\x1b[32m  [+] Server started on port ${port} - opening browser.\x1b[0m`);
     }
-    console.log('\x1b[32m  [+] Starting server and opening the browser...\x1b[0m');
-    const port = await startServer();
+    if (claimPath) releaseClaimOnExit(claimPath);
     openBrowser(`http://localhost:${port}`);
     console.log(`\n  Local Project Console ready at http://127.0.0.1:${port}\n`);
     return;
   }
 
-  // CLI chat mode - same as bin/cli.js's `cli` mode, but respects an already-running server.
-  if (runningPort) {
-    console.log(`\x1b[32m  [+] Server already running on port ${runningPort} - skipping start.\x1b[0m`);
+  // CLI chat mode - same as bin/cli.js's `cli` mode, but respects an already-running server
+  // and shares the atomic boot claim, so simultaneous launches still start only one console.
+  const { port, attached, claimPath } = await acquireConsole();
+  if (attached) {
+    console.log(`\x1b[32m  [+] Server already running on port ${port} - skipping start.\x1b[0m`);
   } else {
-    console.log('\x1b[33m  [+] Starting server...\x1b[0m');
-    await startServer();
+    console.log(`\x1b[33m  [+] Server started on port ${port}.\x1b[0m`);
   }
+  if (claimPath) releaseClaimOnExit(claimPath);
   const cliClientPath = path.join(rootDir, 'server', 'cli-client.js');
-  const child = spawn(process.execPath, [cliClientPath, ...process.argv.slice(3)], {
+  const child = spawn(process.execPath, [cliClientPath, ...process.argv.slice(3), '--port', String(port)], {
     stdio: 'inherit',
   });
   child.on('exit', (code) => process.exit(code ?? 0));
@@ -248,24 +356,25 @@ async function main() {
   if (process.argv[2] === 'cli' || process.argv[2] === '--cli') {
     // Probe BEFORE booting. This path used to always boot a server in-process, even when a
     // console was already running: the new server did the full cold start (project
-    // discovery, embedding model, NLP training — ~40s measured on this machine) and bound a
+    // discovery, embedding model, NLP training - ~40s measured on this machine) and bound a
     // FALLBACK port, while the CLI client then attached to the older console on the base
     // port. Net effect: a minute of waiting and a duplicate server for the whole session.
     // Attaching to the running console is what the launcher's [C] option already did.
-    const runningPort = await probeRunningPort();
-    let port;
-    if (runningPort) {
-      console.log(`\n  Console already running on port ${runningPort} - attaching to it.`);
-      port = runningPort;
+    //
+    // acquireConsole() adds the atomic boot claim on top: launchers that start at the same
+    // instant no longer each boot their own server.
+    const { port, attached, claimPath } = await acquireConsole();
+    if (attached) {
+      console.log(`\n  Console already running on port ${port} - attaching to it.`);
     } else {
-      console.log('\n  Starting the console server (first start loads the matcher model and can take up to a minute)...');
-      port = await startServer();
+      console.log(`\n  Console started on port ${port}.`);
     }
+    if (claimPath) releaseClaimOnExit(claimPath);
     const url = `http://127.0.0.1:${port}`;
     console.log(`\n  Local Project Console ready at ${url}`);
     console.log('  CLI chat mode — type "exit" or Ctrl+C to quit.\n');
     const cliClientPath = path.join(rootDir, 'server', 'cli-client.js');
-    const child = spawn(process.execPath, [cliClientPath, ...process.argv.slice(3)], {
+    const child = spawn(process.execPath, [cliClientPath, ...process.argv.slice(3), '--port', String(port)], {
       stdio: 'inherit',
     });
     child.on('exit', (code) => process.exit(code ?? 0));
@@ -356,15 +465,14 @@ async function main() {
 
   // Default mode: web UI. Same probe-before-boot rule as the CLI chat mode above — booting
   // a second server next to a running console wasted a full cold start and left a duplicate
-  // bound to a fallback port.
-  const runningPort = await probeRunningPort();
-  let port;
-  if (runningPort) {
-    console.log(`\n  Console already running on port ${runningPort} - opening it.`);
-    port = runningPort;
+  // bound to a fallback port. The atomic boot claim keeps simultaneous launches to one server.
+  const { port, attached, claimPath } = await acquireConsole();
+  if (attached) {
+    console.log(`\n  Console already running on port ${port} - opening it.`);
   } else {
-    port = await startServer();
+    console.log(`\n  Console started on port ${port}.`);
   }
+  if (claimPath) releaseClaimOnExit(claimPath);
 
   const url = `http://127.0.0.1:${port}`;
   console.log(`\n  Local Project Console ready at ${url}\n`);
