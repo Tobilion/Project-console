@@ -9,6 +9,10 @@ coverage/
 .DS_Store
 Thumbs.db
 *.log
+# Rotated runtime logs (the .prev rotation files). They are runtime state written by every
+# server start, so they were never meant to be versioned - `*.log` did not cover the .prev
+# suffix and they ended up tracked (2026-10-20).
+*.log.prev
 npm-debug.log*
 .env*
 !.env.example
