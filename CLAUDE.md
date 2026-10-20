@@ -1067,6 +1067,90 @@ natively in Windows PowerShell before fully trusting further commits.
 that may not be present in every environment this runs from — if push fails, keep committing
 locally and let the user push, or configure credentials for that environment specifically.
 
+## CLI reliability + conversational tuning pass (2026-10-20, opencode)
+
+Spec: `docs/CLI_RELIABILITY_AND_CHAT_TUNING_PROMPT.md` (the prompt this session executed).
+Six commits: `ab9de71` (parallel port probe), `b95c396` (attach instead of double-boot),
+`b641bfe` (zero-project console), `a70b128` (intent-vector cache), `63fed61` (boot order +
+trace), `014e8eb` (stdin EOF / crash guard), `1ec1153` (guesser + scripted-mode answers).
+
+**Root causes found and fixed (all live-verified on this machine):**
+
+- **The CLI booted a SECOND server even when one was already running** — `bin/cli.js`'s
+  `cli` mode always called `startServer()`, so a cold boot (discovery + embedding model +
+  NLP training) ran, bound a FALLBACK port, and then the client attached to the OLD console
+  on the base port. Measured **52.7s to reach the prompt**; the same launch now attaches in
+  **1.2s**. The web mode had the identical bug and got the same fix.
+- **A live console with ZERO projects was rejected** as "could not connect"
+  (`server/cli-client.js`, the `projects.length === 0` check). An empty console is a usable
+  console — the General workspace is always available.
+- **The intent-vector cache was keyed on the LIVE corpus**, so every learned phrase
+  invalidated it and the next boot re-embedded all ~3100 phrases (**25s of a 40s boot**). The
+  cache is now keyed on `BASE_INTENTS` (a snapshot of the shipped corpus, `intentsData.js`);
+  learned phrases are embedded on top (2 phrases = a fraction of a second). Vectors are
+  matched back to phrases by IDENTITY, not position — an eviction removes a phrase from the
+  middle of an example list, and a positional zip would shift every vector after it.
+- **The port range was probed one port at a time** with a 5s timeout each — one hung port
+  could stall a launcher for 100s. Probing is now concurrent (one timeout for the whole
+  range); "lowest answering port wins" is unchanged. Same for the CLI's own discovery loop.
+- **`dist/server.js` shadowed source changes** whenever it merely existed. The bundle is now
+  used only when it is at least as new as the sources it was built from; otherwise the source
+  entry runs and the user is told to `npm run build:server` (esbuild only, ~170ms).
+- **The stage-1 ML sweep blocked the port bind.** It is CPU-bound, so running it before the
+  bind delayed the 'listening' callback by the sweep's full duration (3–13s). The port now
+  binds first; the sweep runs immediately after and the replay scheduler still waits for it.
+- **The CLI lost the answer of every turn slower than ~800ms in `--query` mode.** The server
+  pushes `ai_status` on connect and the quiet window counted that push as turn activity, so
+  the socket closed before the answer was produced — the command printed NOTHING and exited 0
+  (a live "is the server running", a 3s port probe, produced no output at all). The window is
+  now anchored to the turn's first answer; the no-response cap went 30s → 120s.
+- **The CLI hung or died silently on a closed stdin**: the project picker never settled when
+  stdin ended before an answer (the process vanished with no message), and the interactive
+  readline's EOF left the process alive on the open WebSocket forever. Both are fixed, and
+  `--json`/`--query` no longer print a banner line in front of their JSON stream.
+- **Import-time crashes produced no message and no log** (the crash handlers lived in the
+  module body, which ESM runs after every import). New `server/cliCrashGuard.js` is imported
+  FIRST; it writes the stack to `logs/cli.log` and treats EPIPE on stdout as a normal end of
+  output.
+- **The command guesser turned prose into real commands**: "add a note that the API needs a
+  key" became `git add "a note that the API needs a key"`, "remove the old component" became
+  `npm uninstall "the old component"`, "delete everything" became `del /f /q "everything"`.
+  A captured argument must now look like a command target (single token or explicitly
+  quoted); the file rules additionally require a path, a dotfile or an extension. Two more
+  guesser bugs fell out: the create-file capture stopped at the FIRST character (it would
+  have created a file named "n") and the unanchored install pattern matched the tail of
+  "uninstall express" (producing `npm install express`). 16 new rows in check-tools.
+- **`continuousChatHarness.js --live` was parsed and never used.** Implemented as
+  `server/scripts/liveChatProbe.js` (drives the real WS protocol; reports answered /
+  no-response / errors / latency per turn). The prompt doc's tuning guidance was corrected to
+  the classify-then-fix protocol — it used to tell the reader to paste failing phrases
+  straight into an intent's examples.
+
+**Startup budget after this pass** (measured with `CONSOLE_BOOT_TRACE=1`, which prints one
+line per phase): attach to a running console **1.2s**; own boot, source mode, warm cache
+**12.7s to a bound port**; own boot, bundle mode **5.8s**. The source-mode tax is the tsx
+transform of the ~100-module server graph (~6–10s) — `npm run build:server` removes it.
+Boot trace phases: `modules:loaded`, `init:start`, `static:ready`, `scan+matcher:start`,
+`matcher:ready`, `scan:done`, `project-intents:ready`, `nlp:ready`, `port:bound`,
+`ml-startup:ready` (server) and `cli:module-loaded`, `cli:discovery-start`,
+`cli:discovery-done`, `cli:project-resolved`, `cli:ws-setup`, `cli:prompt-ready` (client).
+
+**Chat behaviour verified live** (fixture project + real projects, confirm flows driven
+through the real WS protocol): notes/reminders/tools/knowledge answers are specific and
+project-scoped; "add a note" without content ASKS ("What should the note say?") instead of
+guessing; "how do i push" ASKS for the target (npm/git/app build); a declined confirm
+answers "Cancelled: …" and runs nothing; an approved confirm runs the command and reports
+its exit code. A dev server started by a test run was killed afterwards and the Oja repo was
+restored (`git checkout package-lock.json` — a stray `npm install` had touched it).
+
+**Not verified / still open:** no interactive TTY click-through (the picker's arrow-key mode,
+raw-mode fallback under Electron, Ctrl+C during a turn); the remaining Phase-3 corpus
+categories (pronoun follow-ups, compound requests, safety/adversarial inputs) were not
+exhausted — the matcher-level harness covers them, the live WS sweep stopped early; the
+response-variation audit (single-string chit-chat replies) is still reporting five files
+(`calculate.js`, `howDoI.js`, `support.js`, `tools.js`, `builtinTools.js`); no new intents
+were created in this pass — the gaps found were routing/guesser bugs, not missing intents.
+
 ## Run it
 
 ```powershell

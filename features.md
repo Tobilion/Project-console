@@ -59,20 +59,44 @@ discover whichever port it actually bound to.
 | `npm run dev` | Start the server with **current source** (`tsx server/index.js`), web UI at `http://127.0.0.1:3000`. Prefer over the batch file while iterating. |
 | `npm run launcher` | **start.bat-equivalent W/C/Q menu** (terminal-native, no batch file). Probes ports 3000–3019 for a running server and hands off instead of starting a duplicate. |
 | `npm start` | Start from the esbuild bundle (`node dist/server.js`) — only if `dist/` is up to date |
-| `node bin/cli.js` | Start server in-process + auto-open the browser |
-| `node bin/cli.js cli` | Start server in-process + hand the terminal to the CLI chat |
+| `npm run build:server` | Rebuild only the server bundle (esbuild, ~170ms). Source mode costs ~8s more at startup because the server graph is transformed by tsx on every launch. |
+| `node bin/cli.js` | Attach to a running console (or start one) + auto-open the browser |
+| `node bin/cli.js cli` | Attach to a running console (or start one) + hand the terminal to the CLI chat |
 | `node server/cli-client.js [--dir <path>] [--project <name>]` | CLI chat against an already-running server |
 | `npx local-project-console` / `local-project-console` | Run from npm without a clone |
 | `npx local-project-console init [dir]` | Generate a `console.config.json` for a project |
 | `scripts/daemon.mjs start\|stop\|status` (or `npm run daemon:*`) | Cross-platform background daemon (Node; also `scripts/*.ps1` on Windows) |
 | `cd desktop; npm install; npm start` / `npm run dist` | Electron desktop shell / Windows installer |
 
+### Attaching instead of booting a second server (2026-10-20)
+
+Every CLI entry point probes the port range **before** it boots anything. A console that is
+already running is attached to; only a genuinely missing console starts a new server (in the
+same process, so it dies with the CLI). Before this, `node bin/cli.js cli` always booted a
+full second server — a cold start that bound a fallback port while the client attached to the
+older one — which cost **52.7s to reach the prompt**; attaching now takes **1.2s**.
+
+The port range is probed concurrently, so one unresponsive port can no longer stall a
+launcher for 100 seconds. A console that answers with an EMPTY project list is a live console
+(the General workspace is always available) and is no longer rejected as "could not connect".
+
+Startup cost, measured with `CONSOLE_BOOT_TRACE=1` (one line per boot phase, off by default):
+
+| Scenario | Time to a usable console |
+|---|---|
+| Attach to a running console | 1.2s |
+| Own boot, source mode, warm cache | 12.7s to a bound port |
+| Own boot, bundle mode (`npm run build:server`) | 5.8s to a bound port |
+
+The bundle is used only when it is at least as new as the sources it was built from, so a
+stale `dist/server.js` can no longer shadow source edits.
+
 ### The launcher (`npm run launcher`)
 
 A terminal-native replica of `start.bat` (added 2026-08-24). It:
 
 1. Renders the same ANSI-styled W/C/Q menu (Web UI / CLI Chat / Quit).
-2. Probes ports 3000–3019 via `GET /api/projects` (5s per port) for an already-running server.
+2. Probes ports 3000–3019 via `GET /api/projects` (concurrently, 5s timeout for the whole range) for an already-running server.
 3. **[W]** — opens the browser against the running port, or starts the server in-process (loading
    all models: embeddings + NLP classifier) and opens the browser.
 4. **[C]** — hands to `server/cli-client.js` (which waits out cold boot, up to 90s) against the
@@ -82,6 +106,27 @@ A terminal-native replica of `start.bat` (added 2026-08-24). It:
 
 Implementation lives in `bin/cli.js` (`probeRunningPort`, `runLauncher`, `askChoice` with
 `crlfDelay: Infinity` for the Windows ConPTY quirk, `openBrowser` shared with the default/cli modes).
+
+### The CLI chat client
+
+`server/cli-client.js` is the terminal renderer of the same WebSocket protocol the web UI
+uses. Its current contract (2026-10-20):
+
+- **Attach first.** It attaches to a running console if there is one; it never boots a server
+  itself.
+- **A closed stdin ends the session.** Piped input that runs out (or a parent that closes the
+  handle) closes the socket and exits cleanly instead of hanging on an open WebSocket; if the
+  input ends before a project is picked, the CLI says so and exits non-zero rather than
+  vanishing without a message.
+- **Scripted mode keeps stdout clean.** `--json` emits one JSON object per line and
+  `--query` prints the answer — no banner in front of them, so a JSON consumer can parse the
+  stream.
+- **`--query` waits for the answer.** The quiet window is anchored to the turn's first answer
+  (the server's `ai_status` push is not turn activity), so a turn that takes longer than a
+  second still returns its answer; the no-response cap is 120s.
+- **Crashes are diagnosable.** `server/cliCrashGuard.js` is imported first, so a failure while
+  loading a module is caught too; the stack is written to `logs/cli.log` and the CLI exits
+  non-zero. A closed output pipe (piping into `head`) is treated as a normal end of output.
 
 ---
 
@@ -172,6 +217,26 @@ A well-formed command line typed in chat runs directly, bypassing the matcher:
   catalog entries, keeps the conversation open ("Any other questions?"), and closes politely on
   "no thank you". "how do i push to production" answers the git entry directly. An unrelated
   message while the question is open backtracks to normal matching — it is never swallowed.
+
+### The command guesser (last tier before the fallback suggestions)
+
+When no intent matched, the guesser infers a shell command and offers it in a confirm card.
+A captured argument must look like a **command target** — a single token, or an explicitly
+quoted string — and the file rules additionally require a path, a dotfile or an extension:
+
+| Input | Guess |
+|---|---|
+| `git add src/index.js` | `git add "src/index.js"` |
+| `uninstall express` | `npm uninstall express` |
+| `delete notes.txt` | `del /f /q "notes.txt"` (POSIX: `rm -f`) |
+| `add a note that the API needs a key` | **no guess** — a multi-word phrase is a request, not an argument |
+| `remove the old component` | **no guess** |
+| `delete everything` | **no guess** |
+
+Before this guard (2026-10-20) the same inputs produced `git add "a note that the API needs a
+key"`, `npm uninstall "the old component"` and `del /f /q "everything"` — a confirm card for a
+command the user never asked for. Phrases that earn no guess fall through to the fallback
+suggestions, which is the honest outcome. 16 regression rows live in `check-tools`.
 
 ---
 
