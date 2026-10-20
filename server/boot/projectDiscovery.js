@@ -5,6 +5,7 @@ import { state, projectsMutex, dedupeProjectIds } from '../state.js';
 import { setCachedScan } from '../scanCache.js';
 import { readProfile } from '../routes/profileRoutes.js';
 import { log } from '../logger.js';
+import { traceBoot } from '../bootTrace.js';
 
 /**
  * Phase 6 (2026-08-17): the project scan and the embedding-model load are the two slowest
@@ -17,16 +18,24 @@ import { log } from '../logger.js';
  */
 export async function discoverAndInitializeProjects(dirToScan, emitBootState) {
   emitBootState('scanning');
+  traceBoot('scan+matcher:start');
   await Promise.all([
     projectsMutex.runExclusive(async () => {
       state.activeProjectsCache = dedupeProjectIds(
         await discoverProjects(dirToScan, { includeAll: readProfile().scanAllFolders }),
       );
+      traceBoot('scan:done', `${state.activeProjectsCache.length} project(s)`);
     }),
     semanticMatcher
       .initialize()
-      .then(() => emitBootState('matcher-init'))
-      .catch((err) => log.error('SemanticMatcher init failed:', err.message)),
+      .then(() => {
+        emitBootState('matcher-init');
+        traceBoot('matcher:ready');
+      })
+      .catch((err) => {
+        log.error('SemanticMatcher init failed:', err.message);
+        traceBoot('matcher:failed', err.message);
+      }),
   ]);
   // Prime the whole-scan cache with the boot scan so the first GET /api/projects (web
   // load) hits instead of re-walking the container (scanCache.js, Phase 6).
@@ -34,10 +43,10 @@ export async function discoverAndInitializeProjects(dirToScan, emitBootState) {
 
   emitBootState('nlp-training');
   await Promise.all([
-    nlpEngine.train(state.activeProjectsCache),
+    nlpEngine.train(state.activeProjectsCache).then(() => traceBoot('nlp:ready')),
     semanticMatcher.addProjectIntents(state.activeProjectsCache).catch((err) =>
       log.warn('Project-intent injection failed at boot (matching/AI context degraded):', err?.message || err),
-    ),
+    ).then(() => traceBoot('project-intents:ready')),
   ]);
   log.info(`NLP training complete. ${state.activeProjectsCache.length} project(s) loaded.`);
 }

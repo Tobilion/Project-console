@@ -50,6 +50,7 @@ import { loadTuning } from './tuningStore.js';
 import { loadEditors } from './editorsStore.js';
 import { log } from './logger.js';
 import { initReplayScheduler } from './replayScheduler.js';
+import { traceBoot } from './bootTrace.js';
 
 // Boot leaves — each is a self-contained module for one startup phase.
 import { setupDevServer, setupProdStatic } from './boot/viteSetup.js';
@@ -62,6 +63,9 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
+// Import cost is part of the boot budget (the ESM graph pulls in ~100 modules), so it gets
+// its own trace marker when CONSOLE_BOOT_TRACE=1.
+traceBoot('modules:loaded');
 // HOST binds to localhost only by default — this server can execute shell commands
 // and (with AI mode on) read/write files, so it should not be reachable from the LAN
 // unless you explicitly opt in via HOST=0.0.0.0. BASE_PORT/HOST are from portConfig.js.
@@ -127,11 +131,13 @@ initWebSocketServer();
 const httpServer = http.createServer(app);
 
 async function init() {
+  traceBoot('init:start');
   if (process.env.NODE_ENV !== 'production') {
     await setupDevServer(app, httpServer);
   } else {
     setupProdStatic(app, __dirname);
   }
+  traceBoot('static:ready');
 
   // Discover projects and train NLP once, before accepting connections
   const dirToScan = setupMockProjectsIfMissing(state.currentScanDirectory, __dirname);
@@ -174,15 +180,26 @@ async function init() {
   // Start file watcher for console.config.json changes
   startConfigWatcher(dirToScan);
 
+  // Port fallback + server event wiring.
+  //
+  // The port is bound BEFORE the stage-1 ML work starts. That work (confidence retrain +
+  // threshold auto-apply + near-miss promotion) is CPU-bound and blocks the event loop, so
+  // running it first delayed the 'listening' callback — and with it the moment the console
+  // became reachable — by the full duration of the sweep. Binding first lets the CLI and the
+  // web UI connect while the sweep runs.
+  const server = await bindPort(httpServer, emitBootState);
+  traceBoot('port:bound');
+
   // Stage 1 ML work: confidence retrain + threshold adjustments + near-miss learning.
+  // The sweep only tunes per-intent confidence floors and promotes confirmed near-miss
+  // phrases, so a message arriving in the first seconds uses the same floors the console
+  // used before this change — the sweep lands a few seconds later.
   await runMlStartupWork();
+  traceBoot('ml-startup:ready');
 
   // Batch replay scheduler (nightly + N-new trigger, digest-only notify) — only after ML work
   // so the model is ready for similarity checks; never writes, only reads.
   initReplayScheduler();
-
-  // Port fallback + server event wiring.
-  const server = await bindPort(httpServer, emitBootState);
 
   if (server) {
     // A rejection inside init() (discoverProjects, NLP training, watcher setup) used to be
