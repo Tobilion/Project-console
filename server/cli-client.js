@@ -149,8 +149,14 @@ function runScriptedMode(ws, project, sessionId) {
         let m;
         try { m = JSON.parse(raw); } catch { return; }
         if (m.type === 'end') {
-          clearInterval(quietTimer);
-          try { ws.close(); } catch {}
+          // An 'end' with no turn content in front of it is NOT the end of this turn: the
+          // server sends a bare 'end' on paths that produce no answer (a busy rejection, a
+          // redirect, a no-op). Closing the socket there silently threw away the answer of a
+          // turn that was still on its way — the exact "the CLI printed nothing" failure.
+          if (received) {
+            clearInterval(quietTimer);
+            try { ws.close(); } catch {}
+          }
           return;
         }
         // Unsolicited server pushes (ai_status, update_available, semantic_matcher_progress)

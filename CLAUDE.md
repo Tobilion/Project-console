@@ -1143,13 +1143,42 @@ answers "Cancelled: …" and runs nothing; an approved confirm runs the command 
 its exit code. A dev server started by a test run was killed afterwards and the Oja repo was
 restored (`git checkout package-lock.json` — a stray `npm install` had touched it).
 
+**Corpus sweep (second pass, commit `ce4f349`)** — the same protocol, a wider input set
+(realistic phrasings, follow-ups, confirm replies, adversarial inputs). Six more defects,
+all fixed with a narrow pin + a battery row (never a phrase pasted into an intent's
+examples):
+
+- "add a note that the API needs a key" / "add note about the API" → drifted onto
+  `project.context.routes` → the generic "I don't have a command configured for that". Now
+  pinned to `system.notes.create`, and the create handler takes the content from the phrase
+  it was given ("that the API needs a key" → "the API needs a key") instead of asking again.
+  "add a note to notes.md" keeps the file-append intent; a bare "add a note" still asks.
+- "delete that note" / "delete the last note" → fell to `file_delete` ("turn AI mode ON") →
+  now the notes handler, which asks WHICH note.
+- "push without asking me" → landed on `git_ahead_behind` and answered with the ahead/behind
+  table → now the push flow (a leading push VERB is the action; the state questions are
+  phrased the other way round). The push still confirms: asking to skip the confirmation
+  does not skip it.
+- "show me the contents of package.json" → listed the whole directory tree → now reads the
+  file. "open index.html" / "open main.py" keep their open actions ("open" is not a read
+  verb in the pin), and ".env" is excluded from the read pin on purpose — it holds secrets,
+  so it goes to the config intent, which summarizes instead of dumping.
+- **Safety**: the guesser offered a path that LEAVES the project — "open
+  ../../Windows/System32" produced `type ../../Windows/System32`. The file tools sandbox every
+  path, so the guesser must not offer a raw shell command that escapes either: a ".."
+  segment or an absolute path now earns no guess.
+- The response-variation audit reported five files, but four were FALSE POSITIVES — it
+  flagged whole files whose answers are computed reference text (the calculator's results,
+  the how-do-i catalog answers, the logs/doctor output) that must stay deterministic. The
+  audit now only reports a CONSTANT answer string; the two genuine cases (the doctor's
+  all-clear, the empty log export) and the calculator's error hints got 3–4 variants each.
+
 **Not verified / still open:** no interactive TTY click-through (the picker's arrow-key mode,
 raw-mode fallback under Electron, Ctrl+C during a turn); the remaining Phase-3 corpus
 categories (pronoun follow-ups, compound requests, safety/adversarial inputs) were not
-exhausted — the matcher-level harness covers them, the live WS sweep stopped early; the
-response-variation audit (single-string chit-chat replies) is still reporting five files
-(`calculate.js`, `howDoI.js`, `support.js`, `tools.js`, `builtinTools.js`); no new intents
-were created in this pass — the gaps found were routing/guesser bugs, not missing intents.
+exhausted — the matcher-level harness covers them, the live WS sweep stopped early; no new
+intents were created in this pass — the gaps found were routing/guesser bugs, not missing
+intents.
 
 ## Run it
 
