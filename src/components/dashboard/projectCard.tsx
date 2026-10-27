@@ -102,8 +102,7 @@ export function DashboardProjectCard(props: DashboardProjectCardProps) {
 
       {isGeneral ? (
         <div className="text-xs text-fg-dim border border-dashed border-border-soft rounded-lg px-3 py-4">
-          <span className="text-fg-muted">General workspace</span> — file tools, notes, and
-          reminders arrive in later phases. Open it in chat to browse or edit files.
+          <span className="text-fg-muted">General workspace</span> — file tools, notes, reminders, PDF tools, and more. Open it in chat to browse or edit files.
         </div>
       ) : (
       <div className="grid grid-cols-12 gap-3 text-xs">

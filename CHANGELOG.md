@@ -6,8 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 Versioning policy: minor for new features, patch for fixes, major for breaking
-changes. The npm package (`local-project-console`, currently `1.0.8`) and the
-desktop app (`local-project-console-desktop`, currently `1.0.0`) are versioned
+changes. The npm package (`local-project-console`, currently `1.0.13`) and the
+desktop app (`local-project-console-desktop`, currently `1.0.3`) are versioned
 independently; desktop releases are tagged against the desktop package.
 
 ## [1.0.13] — 2026-09-12

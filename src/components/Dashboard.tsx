@@ -56,9 +56,9 @@ export const Dashboard = ({ onClose, refreshSignal = 0, projects, workspaceMode 
   const [users, setUsers] = useState<{ name: string }[]>([]);
 
   // Phase 1: a card in general mode hides git/npm/dev-server panels and actions behind a
-  // placeholder — file tools/notes/reminders cards arrive in later phases (the roadmap
-  // explicitly says not to invent fake data for them yet). Fallback to the dashboard-level
-  // mode only when the server hasn't classified the entry (stale cache from before Phase 1).
+  // placeholder — file tools, notes, reminders, PDF tools, and more are available in chat.
+  // Fallback to the dashboard-level mode only when the server hasn't classified the entry
+  // (stale cache from before Phase 1).
   const entryMode = (e: DashboardEntry) => e.workspaceType ?? workspaceMode;
 
   const fetchDashboard = useCallback(async () => {

@@ -9,11 +9,11 @@ to a section to understand one part.
 local AI via Ollama. Offline-first: zero external API calls by default (an opt-in Ollama Cloud model
 still proxies through the local daemon), zero data leaves your machine unless you opt in.
 
-**Numbers at a glance** (re-measured 2026-08-24, round-6 audit):
-- 148 built-in intents / 2,907 example phrases across `server/intents/*`
-- 23 REST route modules, 59 WebSocket-handler files, 13 interactive tool panels
+**Numbers at a glance** (re-measured 2026-10-27, Phase L close):
+- 157 built-in intents / 3,125 example phrases across `server/intents/*`
+- 23 REST route modules, 59 WebSocket-handler files, 14 interactive tool panels
 - 6 matching stages (pre-semantic literal → embedding → fuzzy → NLP → local router → fallback)
-- 482 node:test cases (349 matcher + 133 WS case tables) plus 7 `check-*` regression harnesses
+- 663 node:test cases (485 matcher + 138 WS case tables) plus 7 `check-*` regression harnesses
 - 1 background daemon (cross-platform `scripts/daemon.mjs`), 1 desktop (Electron) shell, 1 terminal launcher
 
 ---

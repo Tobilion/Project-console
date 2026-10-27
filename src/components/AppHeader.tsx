@@ -51,7 +51,7 @@ export function AppHeader(props: AppHeaderProps) {
         <h1 className="text-[18px] leading-6 font-semibold italic text-fg-strong whitespace-nowrap">
           <TextScramble text="Project Console" />
         </h1>
-        <p className="text-caption tracking-[0.2em] uppercase text-fg-dim font-bold hidden sm:inline">
+        <p className="text-caption tracking-[0.2em] uppercase text-fg-dim font-bold hidden lg:inline">
           Local Project Engine
         </p>
         {indexingProjectId && (
