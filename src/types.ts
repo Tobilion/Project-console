@@ -148,7 +148,10 @@ export interface StoredSession {
   title: string;
   projectId?: string;
   projectName?: string;
-  messages: { id: string; role: string; content: string; timestamp: number; isMarkdown?: boolean; source?: 'chat' | 'panel'; tool?: string }[];
+  // `meta` carries the matching transcript (on user records) and the suggestion chips the
+  // console offered under an answer (on bot records) — persisted since 2026-11-12 so a
+  // reloaded chat keeps its chips and an export shows what was on offer.
+  messages: { id: string; role: string; content: string; timestamp: number; isMarkdown?: boolean; source?: 'chat' | 'panel'; tool?: string; meta?: { match?: unknown; suggestions?: string[] } }[];
   createdAt: number;
   updatedAt: number;
 }

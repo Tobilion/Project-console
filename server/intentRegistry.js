@@ -169,6 +169,16 @@ export const BUILTIN_INTENTS = new Set([
   'system.screensaver.open',
   // Stop server/site — canonical stop (site/app/website + close synonym, typo-tolerant via preSemantic pin)
   'system.server.stop',
+  // 2026-11-12 live-corpus additions. Each one existed in the exported chats as a bad
+  // answer and had no intent of its own:
+  //   correction — "that's wrong" / "that is not what I asked": the user is correcting the
+  //               console, and it used to answer "No pending confirmation to respond to."
+  //   clarify    — a bare "why" / "what now" with no object: it used to answer with the
+  //               whole project overview instead of asking what the user meant.
+  //   readme     — "give me the readme" used to answer with the directory structure.
+  //   tools menu — "open tools" used to open the Calculator panel.
+  'system.chit_chat.correction', 'system.chit_chat.clarify',
+  'project.knowledge.readme', 'system.tools.open_tools_menu',
 ]);
 
 // Phase 1 workspaceType filtering (UPGRADE-ROADMAP.md, 2026-08-11): builtin intents that make

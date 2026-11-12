@@ -1,6 +1,7 @@
 import { formatMemoryForPrompt } from './memoryStore.js';
 import { BUILTIN_TOOL_DEFS } from './toolDefs.js';
 import { MODE_INSTRUCTIONS } from './aiModePrompts.js';
+import { buildNaturalVoicePrompt } from './aiNaturalVoicePrompt.js';
 import { formatIndex, formatProjectDoc, formatMinimalProject } from './promptRenderers.js';
 
 // Static/dynamic prompt sectioning (Phase 1, Part 1.3): buildSystemPrompt produces the
@@ -66,7 +67,9 @@ export async function buildSystemPrompt(project, mode = 'default', workspaceProj
     }
   }
 
-  return `${modeInstruction}
+  return `${buildNaturalVoicePrompt(project, mode, { toolCapable: true })}
+
+${modeInstruction}
 
 ## Current Project Context
 ${projectInfo}

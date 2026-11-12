@@ -92,6 +92,54 @@ const WRAP_QUOTES_RE = /^(['"`])([\s\S]*)\1$/;
 const NATURAL_LANG_FIRST_TOKENS = new Set(['find', 'sort', 'where', 'convert', 'help']);
 const PLAIN_WORD_RE = /^[a-z']+$/i;
 
+// Natural-language REQUEST guard (2026-11-12, live NetPulse corpus).
+//
+// `git push with comment "micheal is the goat"` was typed into the chat, and the typed-command
+// bypass handed the WHOLE line to the shell verbatim — git parsed "with", "comment",
+// "micheal", "is", "the" and "goat" as refspecs and died with:
+//     error: src refspec comment does not match any
+//     error: failed to push some refs to 'with'
+// The user then had to guess that "push the site with comment X" (a DIFFERENT phrasing, which
+// the matcher does handle) was the working form.
+//
+// Root cause: the bypass decided "this is a command" purely from the FIRST TOKEN resolving on
+// PATH. "git" resolves, so anything starting with "git" was treated as a shell line — even when
+// the rest of the line was plainly English. The matcher never got a chance to see it.
+//
+// The rule: a real command line carries flags, paths and values, not English function words.
+// Any bare (UNQUOTED) token that is a plain English connective or request-noun means the line
+// is a sentence addressed to the console, so the matcher owns it. Quoted spans are excluded —
+// `git commit -m "fix and ship"` is a command, and its "and" lives inside quotes.
+//
+// The token list is deliberately short and only contains words that never appear as bare
+// positional arguments in the commands this console runs (git/npm/node/python/tsx/etc.).
+// Multi-word flags ("--force-with-lease") never equal a listed token, so they are unaffected.
+const NL_REQUEST_TOKENS = new Set([
+  'with', 'and', 'then', 'but', 'so', 'please', 'instead',
+  'comment', 'message', 'note', 'saying', 'reason',
+]);
+
+// Strips quoted spans so only the bare (unquoted) tokens are inspected.
+function bareTokens(line) {
+  return line
+    .replace(/"[^"]*"/g, ' ')
+    .replace(/'[^']*'/g, ' ')
+    .split(/\s+/)
+    .filter(Boolean);
+}
+
+/**
+ * True when the line reads as a chat request rather than a shell command line.
+ * Exported for the test harness.
+ */
+export function looksLikeNaturalLanguageRequest(line) {
+  for (const token of bareTokens(line)) {
+    const clean = token.replace(/[.,!?;:]+$/, '').toLowerCase();
+    if (NL_REQUEST_TOKENS.has(clean)) return true;
+  }
+  return false;
+}
+
 /**
  * Extracts a command line from typed chat input, or null when the input is not a command.
  *
@@ -103,6 +151,8 @@ const PLAIN_WORD_RE = /^[a-z']+$/i;
  *    pass the allowlist check (covers `PORT=3001 npm run dev` env-prefix forms)
  *  - exact form with 1 token: must be allowlisted (never execute "help"/"status")
  *  - natural-language sentences (see NATURAL_LANG_FIRST_TOKENS) never bypass the matcher
+ *  - lines whose bare tokens contain plain English request words (see NL_REQUEST_TOKENS)
+ *    never bypass the matcher, even when the first token resolves on PATH
  */
 export function extractCommandLine(input, projectRoot) {
   if (!input || typeof input !== 'string') return null;
@@ -143,6 +193,13 @@ export function extractCommandLine(input, projectRoot) {
        tokens.slice(1).every((t) => PLAIN_WORD_RE.test(t) || /^[\d.]+$/.test(t)))) {
     return null;
   }
+
+  // 2026-11-12: a line whose bare tokens include plain English request words is a sentence
+  // addressed to the console, not a command line — even when the first token resolves on PATH
+  // ("git push with comment "x"" used to be executed verbatim and failed as a git refspec
+  // error). The matcher handles these shapes properly (the commit/push comment flow extracts
+  // the quoted message itself), so hand them over instead of guessing at a shell line.
+  if (looksLikeNaturalLanguageRequest(line)) return null;
 
   if (fromPrefix) {
     if (DETERMINER_RE.test(first)) return null;

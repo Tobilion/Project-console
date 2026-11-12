@@ -1,5 +1,5 @@
 import { injectContext } from '../../contextInjector.js';
-import { pickRandom, chatReplyPool, smartChitchatReply, paraphrasePoolReply, enrichWithIndex } from '../builtinHelpers.js';
+import { pickRandom, chatReplyPool, smartChitchatReply, paraphrasePoolReply } from '../builtinHelpers.js';
 import { buildLiveStateLine, buildMemoryBlock } from '../builtinLiveState.js';
 import { aiDockInstruction } from '../../aiDockHints.js';
 import { state } from '../../state.js';
@@ -13,25 +13,26 @@ export const basicHandlers = {
     const ctx = injectContext(input, action, project.codebaseIndex);
     const hour = new Date().getHours();
     const timeOfDay = hour < 5 ? 'night' : hour < 12 ? 'morning' : hour < 17 ? 'afternoon' : 'evening';
+    // 2026-11-12 (live corpus): the greeting used to answer with a five-bullet cheat-sheet —
+    // the project path plus three "Type X" tips plus a live-state line. Nobody greets a
+    // colleague with a tooltip list, and the natural-voice rules say a greeting gets a
+    // greeting plus ONE line about what the console can do. The tips are still one click
+    // away ("help" lists all of them), so nothing is lost.
     const opener = pickRandom(chatReplyPool('greeting', project, [
-      `Good ${timeOfDay}! Local Console is active for [${project.name}].`,
+      `Good ${timeOfDay}! [${project.name}] is loaded and ready.`,
       `Hey there — [${project.name}] is loaded and ready.`,
       `Hi! Ready to help with [${project.name}].`,
-      `Hey! [${project.name}] is up. What are we working on?`,
+      `Hey — [${project.name}] is up.`,
       `Good to see you — [${project.name}] is live.`,
-      `Welcome back to [${project.name}] — ${timeOfDay} edition.`,
+      `Welcome back to [${project.name}].`,
       `${timeOfDay.charAt(0).toUpperCase() + timeOfDay.slice(1)}! [${project.name}] is standing by.`,
       `Hi again — [${project.name}] is still here.`,
       `Yo — [${project.name}] is awake and listening.`,
       `Morning! [${project.name}] is ready when you are.`,
       `Hey hey — [${project.name}] is good to go.`,
-      `Back at it — [${project.name}] is loaded. What’s next?`,
+      `Back at it — [${project.name}] is loaded.`,
     ]));
-    let responseText = `${opener}\n\n` +
-      `• Location: ${project.path}\n` +
-      `• Type "help" to list all commands & topics.\n` +
-      `• Type "overview" for architecture overview.\n` +
-      `• Type "explain more" for deep details.`;
+    let responseText = `${opener} I can run its commands, read the files, and answer questions about it — say "help" for the full list.`;
     responseText += await buildMemoryBlock(project);
     responseText += await buildLiveStateLine(project);
     if (ctx) responseText += `\n\n${ctx}`;
@@ -52,7 +53,10 @@ export const basicHandlers = {
       `Here and healthy on **[${project.name}]** — what are we doing?`,
       `Standing by on **[${project.name}]** — ready when you are.`,
     ]));
-    let statusMsg = enrichWithIndex(opener, project.codebaseIndex);
+    // 2026-11-12: the project-stats block used to be appended to "how are you" — a file
+    // count in answer to a greeting. The live-state line below already says the useful
+    // part (is anything running, is the tree dirty).
+    let statusMsg = opener;
     statusMsg += await buildLiveStateLine(project);
     if (ctx) statusMsg += `\n\n${ctx}`;
     const smartStatus = await smartChitchatReply(project, sessionContext, input);
@@ -72,6 +76,54 @@ export const basicHandlers = {
       `Don't mention it. Ready for the next one on [${project.name}].`,
       `Always happy to help out on [${project.name}].`,
       `You got it. What else do you need?`,
+      // 2026-11-12: affection lines ("i love you") route here now — "You're welcome!" is the
+      // wrong register for "I love you", so these read as a person would.
+      `Appreciate that — glad it's useful. What's next on [${project.name}]?`,
+      `That's nice to hear. What else can I do for you?`,
+      `Thanks — I'm here whenever you need something on [${project.name}].`,
+    ]));
+    ws.send(JSON.stringify({
+      type: 'answer',
+      data: await paraphrasePoolReply(project, sessionContext, template) || template,
+    }));
+  },
+
+  // New intent (2026-11-12, live NetPulse corpus): the user is telling the console its
+  // last answer was wrong. There was no route for this at all — "That is wrong" matched
+  // system.chit_chat.yes_no and was answered with "No pending confirmation to respond to.
+  // Type "help" for available commands.", which reads as a bug report about the console's
+  // state machine rather than an answer to the person.
+  'system.chit_chat.correction': async (ws, action, input, project, sessionContext) => {
+    const template = pickRandom(chatReplyPool('correction', project, [
+      `Fair enough — that wasn't right. Tell me what you were actually after and I'll redo it.`,
+      `Understood. What did you expect instead? I'll take another run at it.`,
+      `You're right, my mistake. Say the word and I'll do it differently.`,
+      `Got it. What's the right answer for you, so I can match it next time?`,
+    ]));
+    const reply = await paraphrasePoolReply(project, sessionContext, template) || template;
+    // Point at the two ways forward, without a wall of text: name the last thing the console
+    // did (so the correction has something to attach to) and offer AI mode for the open-ended
+    // cases trigger mode genuinely cannot answer.
+    const last = sessionContext?.lastAnswer?.text;
+    const tail = last
+      ? `\n\nLast thing I said: _${last.split('\n')[0].slice(0, 140)}_`
+      : '';
+    const aiNote = sessionContext?.aiEnabled
+      ? ''
+      : `\n\nIf it's an open-ended request, turn AI mode on and I'll handle it properly.`;
+    ws.send(JSON.stringify({ type: 'answer', data: `${reply}${tail}${aiNote}` }));
+  },
+
+  // New intent (2026-11-12, live Matchday Exchange corpus): a bare question word with no
+  // object. "Why" used to be answered with the entire project overview — 166 files, 18
+  // directories, three languages — which buried whatever the user was actually asking
+  // about. The console cannot know what "why" refers to, so it asks.
+  'system.chit_chat.clarify': async (ws, action, input, project, sessionContext) => {
+    const template = pickRandom(chatReplyPool('clarify', project, [
+      `What do you mean? Point me at the file, command or topic and I'll dig in.`,
+      `Say more — what should I be looking at?`,
+      `Could you be more specific? Name the file, command or topic and I'll answer it.`,
+      `Which part do you mean?`,
     ]));
     ws.send(JSON.stringify({
       type: 'answer',
@@ -211,7 +263,13 @@ export const basicHandlers = {
   'system.chit_chat.yes_no': async (ws, action, input, project, sessionContext) => {
     // Inline yes/no handled at the confirmation prompt level — this is a fallback
     // in case someone types "yes" or "no" when no confirmation is pending.
-    ws.send(JSON.stringify({ type: 'answer', data: 'No pending confirmation to respond to. Type "help" for available commands.' }));
+    // 2026-11-12: the reply used to be "No pending confirmation to respond to. Type "help"
+    // for available commands." — which reads like a system error and sends the user to a
+    // command list they did not ask for. Say the same thing as a person would.
+    ws.send(JSON.stringify({
+      type: 'answer',
+      data: `Nothing's waiting on a yes or no right now. What would you like to do on [${project.name}]?`,
+    }));
   },
 
   'system.chit_chat.port': async (ws, action, input, project, sessionContext) => {

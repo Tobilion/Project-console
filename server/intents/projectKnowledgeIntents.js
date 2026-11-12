@@ -171,6 +171,22 @@ export const PROJECT_KNOWLEDGE_INTENTS = {
       'how to serve the site', 'how do i serve the app',
     ],
   },
+  // New intent (2026-11-12, live Matchday Exchange corpus): "Give me the read me" was
+  // answered with the project's DIRECTORY STRUCTURE — 18 directories and 50 filenames, not
+  // the README. There was no intent for "show me the README's contents": file_read needs a
+  // file with an extension ("README.md" works), project.knowledge.commands answers "how do
+  // I run this", and project.context.structure answers "show me the structure". This one
+  // answers the spoken-word shapes and returns the README itself.
+  'project.knowledge.readme': {
+    examples: [
+      'give me the readme', 'give me the read me', 'show me the readme',
+      'show me the read me', 'read the readme', 'read the read me',
+      'what does the readme say', 'what does the read me say',
+      'summarise the readme', 'summarize the readme', 'the readme',
+      'readme contents', 'read me the readme', 'get me the readme',
+      'whats in the readme', 'what is in the readme',
+    ],
+  },
   // Phase 7 (2026-08-11): semantic code search — "where do we handle X" answered from the
   // persisted code-content index with real file:line citations (see codeIndexSearch.js).
   // Deliberately uses open "where is/find" phrasings rather than command shapes so it never

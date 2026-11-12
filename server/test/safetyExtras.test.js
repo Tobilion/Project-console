@@ -7,6 +7,7 @@ import { execSync } from 'child_process';
 import { isGatedToolCall, isAskModeBlocked, resolveToolGate, toolGrantKey, GATED_TOOLS, ALWAYS_CONFIRM_TOOLS, getToolPermission } from '../toolGate';
 import { isDestructiveCommand } from '../commandRisk';
 import { createCheckpoint, pushCommandWithUpstream, performUndo } from '../gitSafety';
+import { extractCommandLine, looksLikeNaturalLanguageRequest } from '../typedCommand';
 
 // Helper to create temp git repo
 function makeRepo(){
@@ -233,6 +234,29 @@ test('regression: CLI picker under ELECTRON_RUN_AS_NODE falls back instead of th
   assert.match(probe.stdout || '', /cliProjectPicker imported ok/);
   if (prevElectron === undefined) delete process.env.ELECTRON_RUN_AS_NODE;
   else process.env.ELECTRON_RUN_AS_NODE = prevElectron;
+});
+
+test('typedCommand: a chat request that starts with a real executable is NOT run as a command line', async ()=>{
+  // Confirmed live 2026-11-09 (NetPulse export): "git push with comment "micheal is the
+  // goat"" was handed to the shell verbatim — git parsed "with", "comment", "micheal", "is",
+  // "the" and "goat" as refspecs and died with "src refspec comment does not match any".
+  // The first token ("git") resolves on PATH, so the bypass used to claim it.
+  assert.equal(extractCommandLine('git push with comment "micheal is the goat"', undefined), null);
+  assert.equal(extractCommandLine('git push with the message "fix it"', undefined), null);
+  assert.equal(extractCommandLine('push the site with comment "fix it"', undefined), null);
+  assert.equal(extractCommandLine('git commit and push', undefined), null);
+  assert.ok(looksLikeNaturalLanguageRequest('git push with comment "x"'));
+  assert.ok(!looksLikeNaturalLanguageRequest('git push origin main'));
+});
+
+test('typedCommand: real command lines still bypass the matcher', async ()=>{
+  // The guard must not cost the console its typed-command path: a genuine command line
+  // (flags, paths, quoted values) is still claimed by the bypass.
+  assert.equal(extractCommandLine('git status', undefined), 'git status');
+  assert.equal(extractCommandLine('npm run dev', undefined), 'npm run dev');
+  assert.equal(extractCommandLine('python main.py serve', undefined), 'python main.py serve');
+  assert.equal(extractCommandLine('git commit -m "fix and ship"', undefined), 'git commit -m "fix and ship"');
+  assert.equal(extractCommandLine('git push --force-with-lease', undefined), 'git push --force-with-lease');
 });
 
 test('fileLogger: append + rotate + read + whereAreLogs', async ()=>{

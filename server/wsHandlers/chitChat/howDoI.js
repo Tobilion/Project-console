@@ -4,6 +4,57 @@ import { fileURLToPath } from 'url';
 import { buildHelpMessage } from '../builtinHelp.js';
 import { injectContext } from '../../contextInjector.js';
 import { lookupCommandDocs, resolveShell } from '../../consoleCommandDocs.js';
+import { firstDocParagraph } from '../builtinHelpers.js';
+
+/**
+ * The trigger-mode "deep dive": the project's real detail, assembled cleanly from the index
+ * instead of a raw markdown dump. Replaces the old behaviour of echoing the last dispatched
+ * config entry ("Last triggered action was "run server"") or the first 1500 characters of
+ * CLAUDE.md.
+ */
+function buildDeepDive(project) {
+  const idx = project.codebaseIndex;
+  const parts = [];
+
+  // 1. What the project IS — the project's own description, preferring the main doc's
+  //    opening paragraph over a config entry that may only describe the stack.
+  const descEntry = (project.config?.entries || []).find(
+    (e) => e.type === 'answer' && e.triggers?.some((t) => /describe|overview|what is|about/i.test(t)),
+  );
+  const mainDoc = (project.contextFiles || [])[0];
+  const description = firstDocParagraph(mainDoc?.content) || descEntry?.response || '';
+  parts.push(`### ${project.name} — in more detail\n\n${description || `A project at \`${project.path}\`.`}`);
+
+  // 2. The shape of it.
+  const facts = [];
+  if (project.parsedKnowledge?.stack) facts.push(`**Stack:** ${project.parsedKnowledge.stack}`);
+  if (idx?.languages?.length) facts.push(`**Languages:** ${idx.languages.slice(0, 4).join(', ')}`);
+  if (idx?.entryPoints?.length) facts.push(`**Entry point:** ${idx.entryPoints.slice(0, 3).map((e) => `\`${e}\``).join(', ')}`);
+  if (idx?.totalFiles) facts.push(`**Size:** ${idx.totalFiles} files across ${idx.totalDirs || '?'} directories`);
+  if (idx?.hasTests) facts.push('**Tests:** present');
+  if (facts.length) parts.push(facts.join('\n'));
+
+  // 3. The key files.
+  if (idx?.fileSample?.length) {
+    const sample = idx.fileSample.slice(0, 8).map((f) => `- \`${f}\``).join('\n');
+    parts.push(`**Key files**\n${sample}`);
+  }
+
+  // 4. How to run it.
+  const runEntry = (project.config?.entries || []).find((e) => e.type === 'command' && e.action);
+  if (runEntry) {
+    parts.push(`**Run it**\n\`\`\`\n${runEntry.action}\n\`\`\``);
+  }
+
+  // 5. Where to go next — an honest pointer rather than a menu.
+  parts.push('Ask "overview" for the short version, "what are the commands" for the full command list, or turn AI mode on for a walk-through.');
+  return parts.join('\n\n');
+}
+
+/**
+ * AI-mode expansion of the previous answer. Returns null on any failure so the caller falls
+ * back to the deterministic deep dive.
+ */
 
 /**
  * system.chit_chat.* guidance/knowledge handlers (extracted verbatim from builtinChitChat.js) —
@@ -17,36 +68,23 @@ export const docHandlers = {
   },
 
   'system.chit_chat.explain_followup': async (ws, action, input, project, sessionContext) => {
-    if (sessionContext.lastTriggeredEntry) {
-      const last = sessionContext.lastTriggeredEntry;
-      const detailText = last.response || last.details || `Last triggered action was "${last.triggers?.[0] || 'command'}" (\`${last.action || 'answer'}\`).`;
-      const ctx = injectContext(input, action, project.codebaseIndex);
-      let msg = `### Detailed Follow-up regarding "${last.triggers?.[0]}":\n\n${detailText}`;
-      if (ctx) msg += `\n\n${ctx}`;
-      ws.send(JSON.stringify({ type: 'answer', data: msg }));
-    } else {
-      const detailEntry = project.config.entries?.find((e) => e.type === 'answer' && e.triggers?.some((t) => t.includes('explain') || t.includes('detail') || t.includes('architecture')));
-      let detailText = `### Deep Dive [${project.name}]\n\n**Location:** \`${project.path}\``;
-      if (detailEntry) {
-        detailText = detailEntry.response;
-      } else if (project.contextFiles && project.contextFiles.length > 0) {
-        const mainDoc = project.contextFiles[0];
-        detailText = `### Deep Dive from ${mainDoc.filename}\n\n${mainDoc.content.substring(0, 1500)}...`;
-      }
-      const idx = project.codebaseIndex;
-      if (idx?.directoryTree?.length) {
-        const treeLines = idx.directoryTree.slice(0, 20).map((d) => `  ▸ ${d}`).join('\n');
-        detailText += `\n\n**Directory Structure:**\n${treeLines}`;
-        if (idx.directoryTree.length > 20) detailText += `\n  ... and ${idx.directoryTree.length - 20} more`;
-      }
-      if (idx?.fileSample?.length) {
-        const sample = idx.fileSample.slice(0, 10).map((f) => `  ▸ ${f}`).join('\n');
-        detailText += `\n\n**Key Files:**\n${sample}`;
-      }
-      const ctx = injectContext(input, action, project.codebaseIndex);
-      if (ctx) detailText += `\n\n${ctx}`;
-      ws.send(JSON.stringify({ type: 'answer', data: detailText }));
-    }
+    // 2026-11-12 rewrite. The old handler deepened `sessionContext.lastTriggeredEntry` —
+    // the last PROJECT CONFIG ENTRY that fired — and answered with its own response text or
+    // a fallback reading 'Last triggered action was "run server" (`npm run server`)'. In the
+    // live Matchday Exchange export that meant: the user asked "What is this project",
+    // then "Explain more", and got the console narrating its own dispatch internals back at
+    // them. Three "Explain more"s in a row produced the identical line.
+    //
+    // What "explain more" should do is deepen the LAST ANSWER. With AI mode ON the model
+    // handles the whole turn (the chat pipeline is not reached in AI mode), so this handler
+    // only ever runs in trigger mode — where the console cannot generate prose. It gives
+    // the project's real detail, cleanly assembled from the index instead of a
+    // 1500-character raw markdown dump of CLAUDE.md.
+    const detailText = buildDeepDive(project);
+    const ctx = injectContext(input, action, project.codebaseIndex);
+    let msg = detailText;
+    if (ctx) msg += `\n\n${ctx}`;
+    ws.send(JSON.stringify({ type: 'answer', data: msg }));
   },
 
   'system.chit_chat.how_do_i': async (ws, action, input, project, sessionContext) => {

@@ -62,6 +62,14 @@ export function formatExportMarkdown(entries, meta) {
     // Bot answers are markdown content and export as-is; everything else (output/system
     // traces, raw errors) is fenced so it can't be interpreted as formatting.
     lines.push(entry.role === 'bot' ? entry.content : '```\n' + entry.content + '\n```');
+    // 2026-11-12: the suggestion chips the console offered under an answer are part of what
+    // happened in the conversation. Without them an export showed "Found a run command in
+    // [NetPulse]'s own config:" with nothing after it — the chip that followed existed only
+    // in the live socket, so the export read as a dead end.
+    const chips = entry.meta?.suggestions;
+    if (Array.isArray(chips) && chips.length) {
+      lines.push('', `_Suggestions offered:_ ${chips.map((c) => `\`${c}\``).join(' · ')}`);
+    }
     lines.push('');
   }
   return lines.join('\n');
@@ -79,6 +87,14 @@ export function formatExportJson(entries, meta) {
       content: e.content,
       timestamp: e.timestamp ?? null,
       ...(e.isMarkdown !== undefined ? { isMarkdown: e.isMarkdown } : {}),
+      // 2026-11-12: the chips the console offered under this answer (persisted by
+      // connectionLifecycle.js). Without them the exported JSON cannot show what the user
+      // could have clicked next — the exact reason the "Found a run command ..." answers
+      // looked like dead ends in the exported chats.
+      ...(Array.isArray(e.meta?.suggestions) ? { suggestions: e.meta.suggestions } : {}),
+      // The matching transcript (which stage resolved the input, at what confidence) — the
+      // same information the live chat records on the user message.
+      ...(e.meta?.match ? { match: e.meta.match } : {}),
     })),
   };
 }

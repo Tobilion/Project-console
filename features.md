@@ -9,11 +9,11 @@ to a section to understand one part.
 local AI via Ollama. Offline-first: zero external API calls by default (an opt-in Ollama Cloud model
 still proxies through the local daemon), zero data leaves your machine unless you opt in.
 
-**Numbers at a glance** (re-measured 2026-10-27, Phase L close):
-- 157 built-in intents / 3,125 example phrases across `server/intents/*`
+**Numbers at a glance** (re-measured 2026-11-12, natural-voice pass):
+- 161 built-in intents / 3,190 example phrases across `server/intents/*`
 - 23 REST route modules, 59 WebSocket-handler files, 14 interactive tool panels
 - 6 matching stages (pre-semantic literal → embedding → fuzzy → NLP → local router → fallback)
-- 663 node:test cases (485 matcher + 138 WS case tables) plus 7 `check-*` regression harnesses
+- 696 node:test cases (485 matcher + 138 WS case tables) plus 7 `check-*` regression harnesses
 - 1 background daemon (cross-platform `scripts/daemon.mjs`), 1 desktop (Electron) shell, 1 terminal launcher
 
 ---
@@ -156,7 +156,7 @@ uses. Its current contract (2026-10-20):
 The console works fully without AI: every message is routed through a matching pipeline and
 dispatched to a handler that runs real commands, reads real files, or answers from real state.
 
-### Intent catalog (148 intents)
+### Intent catalog (161 intents)
 
 **git** — push, commit, commit+push (comment-parsed), pull, fetch, remote add/info, init, add,
 ignore-add, rm-cached, log, branch, branch-create, branch-cleanup, checkout (answer-only), diff,
@@ -169,14 +169,17 @@ delete file, how-to-run, open-* family. File creates/edits are regex-parsed, quo
 confirm-before-write.
 
 **project.knowledge / project.context** — overview, stack, commands, gotchas, architecture,
-how-to-run, code.search, file relations, routes, monorepo, todos, biggest files, recent activity,
-dev-server status, scan servers, running processes (global), session info, needs-AI-mode.
+how-to-run, readme (the project's README contents), code.search, file relations, routes,
+monorepo, todos, biggest files, recent activity, dev-server status, scan servers, running
+processes (global), session info, needs-AI-mode.
 
 **chit-chat** — greeting (time-of-day aware, live-state + memory enriched), status, gratitude,
-farewell, identity (incl. privacy answers), ack, joke, clear, help, list-commands, explain-followup,
-yes-no, port, time/date (server-local clock, never a model call), calculate (safe arithmetic,
-offline unit conversion, percentage/tip/tax), git-status, undo alias, how-do-I (catalog-backed),
-needs-ai-mode, monitoring metrics.
+affection ("i love you" — warmth, not a missing command), farewell, identity (incl. privacy
+answers), ack, joke, clear, help, list-commands, explain-followup, yes-no, correction ("that's
+wrong" — feedback about the last answer), clarify (a bare "why"/"what" with no object asks
+instead of answering at large), port, time/date (server-local clock, never a model call),
+calculate (safe arithmetic, offline unit conversion, percentage/tip/tax), git-status, undo
+alias, how-do-I (catalog-backed), needs-ai-mode, monitoring metrics.
 
 **actions** — metrics, open-in-vscode (code CLI → `vscode://` fallback), open-in-cursor,
 open-in-explorer, open-in-terminal, open-github-page, open-site, open-file, open-html, open-with
@@ -184,7 +187,8 @@ open-in-explorer, open-in-terminal, open-github-page, open-site, open-file, open
 
 **tools openers** — open calculator / pdf-tools / reminders / file-tools / notes / spreadsheet /
 clipboard / backup / notifications / documents / marketplace / repo-map (all send an additive
-`openPanel` field on the answer; the CLI ignores it and prints the chat-equivalent phrasing).
+`openPanel` field on the answer; the CLI ignores it and prints the chat-equivalent phrasing),
+plus a **tools menu** opener ("open tools") that lists every panel instead of guessing one.
 
 **general.files** — find (name+content), tidy (type/date folder moves), duplicates (hash groups),
 duplicates-delete (keep newest), rename (in-place, same-dir), move (into an existing subfolder).
@@ -224,6 +228,12 @@ A well-formed command line typed in chat runs directly, bypassing the matcher:
   (so a project-local CLI like `ng serve` works even when not globally installed).
 - Natural-language guard: `find`/`sort`/`where`/`convert` followed only by plain words is treated
   as a request ("find duplicate files") and reaches the matcher, not the Windows binary.
+- **English-request guard (2026-11-12)**: a line whose bare (unquoted) tokens contain plain
+  English request words (`with`, `and`, `then`, `comment`, `message`, `note`, …) is a sentence
+  addressed to the console, not a command line — even when the first token resolves on PATH.
+  Without it, `git push with comment "micheal is the goat"` was handed to the shell verbatim and
+  git died with `error: src refspec comment does not match any`. Quoted spans are excluded, so
+  `git commit -m "fix and ship"` still bypasses the matcher.
 
 ### "how do I run this" / "how do I <anything>"
 
@@ -299,6 +309,18 @@ suggestions, which is the honest outcome. 16 regression rows live in `check-tool
 the input names a specific file. Both prevent a weak classifier defaulting to safe-sounding canned
 replies on out-of-distribution input.
 
+**Question guards** (2026-11-12) — a question must never cause something to run:
+- `questionBlocksExecuting()` drops an EXECUTING builtin when the input is question-shaped.
+- **Config entries are covered too.** A project's own `console.config.json` command entry used
+  to be dispatched with no question guard at all, so "Is the site running" could start the
+  project's server (live Dream Kick export: `python -m http.server 8000` launched by a yes/no
+  question). Read-only `answer` entries are still served from a question; `command` entries are
+  not.
+- The **local router tier** is guarded the same way — a weak local model asked to classify
+  "is the site running?" can legitimately answer `run_project`.
+- Negated status statements ("the site isn't running", "the app is not up") count as
+  question-shaped: they are status asks, and are routed to the read-only status probe.
+
 **Key invariants**:
 - `BUILTIN_INTENTS` membership (intentRegistry.js) is the dispatch gate — an intent missing from
   it is unreachable from any stage. It has silently killed intents 6+ times; `check-handlers`
@@ -348,6 +370,28 @@ replies on out-of-distribution input.
 - **File-edit diff previews**: confirm cards show a before/after line diff.
 - **AI-dock hints**: an open-ended request typed while AI is off answers with a concrete
   rephrasing to use in the AI dock, instead of "flip the toggle".
+
+### Voice & reply shape (2026-11-12)
+
+Every AI-mode answer is shaped by one shared prompt (`server/aiNaturalVoicePrompt.js`, documented
+in `docs/NATURAL_VOICE_PROMPT.md`): lead with the answer, one or two sentences for small talk,
+no menus of commands, no narration of the console's own internals, and never a claim of success
+over output that shows otherwise. It is prepended to the mode instruction, so all six modes
+obey the same rules.
+
+- **The model is never load-bearing.** `smartChitchatReply` / `paraphrasePoolReply` return `null`
+  on any failure and the canned pool is used instead, so a broken or unauthenticated cloud model
+  produces a plain reply rather than an error in the chat.
+- **Pure conversational shapes bypass the model entirely.** In AI mode, greetings, thanks,
+  farewells, acks, affection, corrections and a bare "why" are answered by the local chit-chat
+  handlers (which still ask the model for one natural line when it is reachable). A "Hi" could
+  previously fail with a raw `Ollama error (410) … make sure you're signed in`.
+- **"Explain more" no longer narrates the console's own dispatch.** It used to deepen the last
+  dispatched config entry and answer "### Detailed Follow-up regarding "run server": Last
+  triggered action was "run server"". In trigger mode it now assembles the project's real
+  detail (description, stack, entry point, key files, how to run) instead of pasting 1500
+  characters of raw CLAUDE.md. In AI mode the model handles the turn with the full
+  conversation, which is the better answer.
 
 ---
 

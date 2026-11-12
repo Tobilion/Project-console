@@ -47,6 +47,10 @@ export const PURE_CHITCHAT_INTENTS = new Set([
   // it's a canned "could you tell me more" reply, and its follow-up phrasing would be exactly
   // what a garbled continuation sounds like.
   'system.chit_chat.port', 'system.chit_chat.explain_followup',
+  // 2026-11-12: correction ("that's wrong") and clarify (a bare "why") — same
+  // zero-argument, always-safe-sounding canned-reply shape as the rest of this set. A garbled
+  // real request must not land on "What do you mean? Point me at the file, command or topic".
+  'system.chit_chat.correction', 'system.chit_chat.clarify',
 ]);
 
 export function looksLikeRealRequest(input) {

@@ -112,6 +112,19 @@ export const PRE_SEMANTIC_OVERRIDES = [
   // The dotfile is the one file shape that must NOT be read raw: ".env" holds secrets. The
   // config intent answers it with the project's configuration summary instead of a dump.
   { intent: 'project.context.config', pattern: /^(?:show|read|display|view)\s+(?:me\s+)?(?:the\s+)?(?:contents?\s+of\s+)?["']?\.env(?:\.example)?["']?\s*$/i },
+  // 2026-11-12 live Matchday Exchange corpus: "Give me the read me" was answered with the
+  // project's DIRECTORY STRUCTURE — 18 directories and 50 filenames — because the only
+  // README-adjacent routes need a file with an extension ("README.md" -> file_read) or
+  // answer a different question ("how do i run this" -> how_to_run). The spoken-word forms
+  // ("the readme", "the read me") are what people actually type, and they are unambiguous.
+  // "open the readme" is deliberately NOT in this list — that is an OPEN action (editor),
+  // and the project.action.open_file pin below already owns it.
+  { intent: 'project.knowledge.readme', pattern: /^(?:give|show|read|get|summari[sz]e)\s+(?:me\s+)?(?:the\s+)?read\s?me\b/i },
+  // 2026-11-12 live NetPulse corpus: "open tools" opened the CALCULATOR panel and answered
+  // with a paragraph about the calculator. "Tools" is the whole menu. Pinned ahead of the
+  // open_* family (whose patterns already exclude the word "tools") so the generic phrase
+  // lands on the menu instead of on one panel.
+  { intent: 'system.tools.open_tools_menu', pattern: /^(?:open|show|list)\s+(?:me\s+)?(?:the\s+)?tools(?:\s+menu)?\s*\??$/i },
   // 2026-10-20 live corpus: "push without asking me" landed on git_ahead_behind (a state
   // query) and answered with the ahead/behind table instead of offering the push. A leading
   // "push" VERB is the push action — the state questions are phrased the other way round
@@ -543,4 +556,24 @@ export const PRE_SEMANTIC_OVERRIDES = [
   // These are unambiguous imperative stop requests, pinned like the run_project launch pin above.
   { intent: 'system.server.stop', pattern: /^(?:stop|close|kill|shutdown|end)\s+(?:the\s+)?(?:server|site|app|website|service|backend|api|process|dev)\b/i },
   { intent: 'system.server.stop', pattern: /^(?:sop|stp|stap|stpo|sotp)\s+(?:the\s+)?(?:server|site|app|website)\b/i },
+  // 2026-11-12 live corpus pins (the last block on purpose — every specific pin above gets
+  // first refusal, and these only claim input nothing else wanted).
+  //
+  // A negated status statement: "the site isn't running" / "the app is not up" is a STATUS
+  // ASK, not a command. It used to land on project.knowledge.commands ("how do I use this
+  // project") and answer with a list of npm scripts. Both the positive and the negated
+  // shape route to the read-only status probe, which is the only thing that can actually
+  // answer them.
+  { intent: 'project.context.dev_server_status', pattern: /^(?:the\s+|this\s+)?(?:dev\s+)?(?:server|site|app|website|api|backend)\s+(?:(?:is|are|was|were)\s+(?:not\s+)?|(?:isn'?t|aren'?t|wasn'?t|weren'?t|isnt|arent|wasnt|werent)\s+)(?:running|up|live|started)\b/i },
+  // The user is correcting the console's last answer. This used to answer "No pending
+  // confirmation to respond to." — a system-state reply to a human complaint.
+  { intent: 'system.chit_chat.correction', pattern: /^(?:that(?:'s|s| is)\s+(?:wrong|incorrect|not\s+(?:right|correct|what\s+i\s+(?:asked|wanted|meant|said))|not\s+it)|no\s+that(?:'s|s| is)\s+(?:wrong|incorrect|right)|wrong\s+answer|incorrect\s+answer|you\s+got\s+it\s+wrong)\b/i },
+  // A bare question word with no object. "Why" was answered with the whole project
+  // overview (166 files, 18 directories) — a non-sequitur. The console cannot know what
+  // "why" refers to, so it asks. Anchored to the single word so real questions
+  // ("why is the server down", "what is the stack") are untouched.
+  { intent: 'system.chit_chat.clarify', pattern: /^(?:why|what|how|when|where|who)\s*\??$/i },
+  // Affection ("i love you") fell through to the generic fallback — a cold error where a
+  // person would just be warm. Gratitude already owns the appreciative register.
+  { intent: 'system.chit_chat.gratitude', pattern: /^(?:i\s+)?love\s+you\b/i },
 ];

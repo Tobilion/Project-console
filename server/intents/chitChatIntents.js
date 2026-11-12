@@ -70,6 +70,43 @@ export const CHIT_CHAT_INTENTS = {
       'good looking out thanks', 'you rock', 'legend thanks',
       'this was helpful thanks', 'great stuff', 'perfect thanks a lot',
       'good job', 'nice work', 'great job', 'well done',
+      // 2026-11-12 live corpus: "I love you" fell through to the generic "I don't have a
+      // command configured for that in [Project]" fallback — a cold error where a person
+      // would just be warm. Affection is the same shape as gratitude (an appreciative
+      // aside, no request attached), so it belongs here.
+      'i love you', 'love you', 'i love this app',
+      'you are lovely', 'you are amazing', 'you are great', 'you are the best ever',
+      'i really appreciate you', 'you are awesome',
+    ],
+  },
+  // New intent (2026-11-12, live corpus): the user is telling the console its last answer
+  // was wrong. There was no route for this at all — "That is wrong" matched
+  // system.chit_chat.yes_no and was answered with "No pending confirmation to respond to.
+  // Type "help" for available commands.", which is both wrong and cold: the user was
+  // giving feedback, not answering a prompt. This intent acknowledges the correction and
+  // offers the next step instead of explaining the console's own state machine.
+  'system.chit_chat.correction': {
+    examples: [
+      'that is wrong', "that's wrong", 'that was wrong', 'that is not right',
+      "that's not right", 'that is incorrect', "that's incorrect",
+      'wrong answer', 'that answer is wrong', 'incorrect answer',
+      'that is not what i asked', "that's not what i asked",
+      'that is not what i meant', "that's not what i meant",
+      'that is not what i wanted', 'no that is wrong', 'that is not correct',
+      'you got it wrong', 'that is not it', 'wrong',
+    ],
+  },
+  // New intent (2026-11-12, live corpus): a bare question word with no object. "Why" used
+  // to be answered with the entire project overview — a non-sequitur that buried the
+  // user's actual problem under a file count. The console cannot know what "why" refers
+  // to, so it asks. Deliberately narrow: the bare interrogatives are pinned literally
+  // (see preSemanticOverridePins.js) so this never competes with real questions like
+  // "why is the server down".
+  'system.chit_chat.clarify': {
+    examples: [
+      'why then', 'why not', 'huh', 'what now', 'so what',
+      'you lost me', 'i dont follow', 'i do not follow', 'go on then',
+      'continue from there', 'say more about that',
     ],
   },
   'system.chit_chat.farewell': {

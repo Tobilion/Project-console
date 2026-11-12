@@ -7,6 +7,7 @@ import { spawnSync } from 'child_process';
 import { forgetDevUrl } from './devUrlStore.js';
 import { state } from './state.js';
 import { probeDevServerCandidate } from './livenessProbe.js';
+import { resolveProcessOnPort } from './untrackedProcess.js';
 import { isSiteCommand } from './executorDevServer.js';
 import { broadcast } from './wsServer.js';
 
@@ -129,6 +130,15 @@ function win32SurvivorsByCommandLine(commands) {
  *  left believing the site is down while a process survived). Reports only — never re-kills:
  *  a same-command-line process may be the user's own manually started instance. Returns a
  *  warning string or null.
+ *
+ *  2026-11-12 (live Matchday Exchange export): the URL probe only ran when the whole
+ *  project's process slot had emptied, so stopping ONE of two tracked processes never
+ *  checked whether the site was still up. "Stop the site" answered "Stopped `npm run dev`"
+ *  while the site kept serving on 3001 — and the next question ("Is anything running")
+ *  answered "it was started outside the console ... so I can't stop it from here", which is
+ *  not what happened. The dev URL is now always probed when it is known, and the survivor
+ *  is identified by the PID actually listening on its port, so the warning can say which
+ *  process is still running and that "stop it anyway" will kill it.
  */
 async function verifyProcessStopped(procs, devUrl) {
   await sleep(500);
@@ -150,7 +160,13 @@ async function verifyProcessStopped(procs, devUrl) {
         // probeDevServerCandidate, not a bare probe: a *second* console instance on a candidate
         // port would otherwise answer and produce a false "the site is still responding" heads-up.
         const probe = await probeDevServerCandidate(devUrl, 1500);
-        if (probe.alive) warnings.push(`the site at **${devUrl}** is still responding`);
+        if (probe.alive) {
+          // The tracked child was usually the short-lived shell wrapper; the real server
+          // keeps the port. Name it so the user knows WHAT is still running.
+          const owner = resolveProcessOnPort(Number(port));
+          const who = owner?.pid ? ` (pid ${owner.pid})` : '';
+          warnings.push(`the site at **${devUrl}** is still responding${who} — say "stop it anyway" and I'll kill it`);
+        }
       }
     } catch {}
   }
@@ -215,12 +231,18 @@ export async function stopTrackedProcess(projectId, { turnKey, target } = {}) {
     removeTrackedProcess(projectId, pid);
   }
   const slotNowEmpty = !runningProcesses.has(projectId);
-  const devUrl = slotNowEmpty ? (state.lastDevUrls.get(projectId) || null) : null;
+  // 2026-11-12: the dev URL is now passed on whenever a SITE command was stopped, not only
+  // when the project's whole process slot emptied. Stopping one of two tracked processes
+  // ("stop the site" while a backend server also ran) used to skip the post-stop URL probe
+  // entirely, so the console reported "Stopped `npm run dev`" without ever checking whether
+  // the site was still serving.
+  const stoppedSite = toStop.some(([, p]) => isSiteCommand(p.command));
+  const devUrl = (slotNowEmpty || stoppedSite) ? (state.lastDevUrls.get(projectId) || null) : null;
   if (slotNowEmpty) forgetDevUrl(projectId);
   broadcast({ type: 'dashboard_update' });
   broadcast({ type: 'processes_update' });
   const warning = await verifyProcessStopped(toStop.map(([, p]) => p), devUrl);
-  return { ok: true, command: commands.join('` and `'), warning, stopped: toStop.length, total: entries.length };
+  return { ok: true, command: commands.join('` and `'), warning, devUrl, stopped: toStop.length, total: entries.length };
 }
 
 // Clean up on exit — kills tracked children before Node shuts down

@@ -34,6 +34,9 @@ export function storedToTerminalMessages(messages: StoredSession['messages']): T
       timestamp: m.timestamp,
       ...(m.source ? { source: m.source } : {}),
       ...(m.tool ? { tool: m.tool } : {}),
+      // 2026-11-12: the suggestion chips offered under an answer are persisted now, so a
+      // reloaded chat shows them again instead of a bare answer with nothing to click.
+      ...(Array.isArray(m.meta?.suggestions) ? { suggestions: m.meta.suggestions } : {}),
     };
   });
 }

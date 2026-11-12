@@ -5,10 +5,20 @@
 // `openPanel` (Phase 1.5's permanent CLI/web capability gap) — the answer text stays self-
 // sufficient, naming the chat equivalent the CLI user can type instead.
 export const TOOL_PANEL_INTENTS = {
+  // New intent (2026-11-12, live NetPulse corpus): "open tools" opened the CALCULATOR
+  // panel and answered with a paragraph about it. "Tools" is the whole menu, not one
+  // panel, so it gets its own intent that lists the panels and how to open each.
+  'system.tools.open_tools_menu': {
+    examples: [
+      'open tools', 'open the tools', 'show me the tools', 'show the tools',
+      'open the tools menu', 'tools menu', 'list the tools', 'what tools are there',
+      'open tool menu', 'show tool menu', 'what can i open',
+    ],
+  },
   'system.tools.open_calculator': {
     opensPanel: 'calculator',
     examples: [
-      'open calculator', 'open the calculator', 'open tools', 'open the tools',
+      'open calculator', 'open the calculator', 'let me calculate',
     ],
   },
   'system.tools.open_pdf_tools': {

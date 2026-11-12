@@ -389,7 +389,8 @@ const BATTERIES = [
     items: [
       ['open calculator', 'BUILTIN=system.tools.open_calculator'],
       ['open the calculator', 'BUILTIN=system.tools.open_calculator'],
-      ['open the tools', 'BUILTIN=system.tools.open_calculator'],
+      ['open the tools', 'BUILTIN=system.tools.open_tools_menu'],
+      ['open tools', 'BUILTIN=system.tools.open_tools_menu'],
       ['open pdf tools', 'BUILTIN=system.tools.open_pdf_tools'],
       ['open the pdf tools', 'BUILTIN=system.tools.open_pdf_tools'],
       ['open file tools', 'BUILTIN=system.tools.open_file_tools'],
@@ -1003,6 +1004,58 @@ const BATTERIES = [
       ['open the calculator', 'BUILTIN=system.tools.open_calculator'],
       ['show me the notes', 'BUILTIN=system.notes.list'],
       ['show me the project structure', 'BUILTIN=project.context.structure'],
+    ],
+  },
+  {
+    // 2026-11-12 live corpus (exported chats from NetPulse, Matchday Exchange and Dream
+    // Kick). Every row here was a BAD ANSWER in the live app before this pass:
+    //   - "the site isn't running" answered with the project's npm scripts (knowledge.commands)
+    //   - "that is wrong" answered "No pending confirmation to respond to." (yes_no)
+    //   - a bare "why" answered with the whole project overview
+    //   - "i love you" answered with "I don't have a command configured for that"
+    //   - "give me the readme" answered with the directory structure
+    //   - "open tools" opened the CALCULATOR panel
+    // The typed-command bypass ("git push with comment X" was executed verbatim by the shell)
+    // is not exercised by this harness — it lives in typedCommand.js, not matchInput.
+    name: 'CHAT-2026-11-12 (live corpus: bad-answer regression set)',
+    items: [
+      // Negated / affirmative status statements are read-only STATUS asks.
+      ["the site isn't running", 'BUILTIN=project.context.dev_server_status'],
+      ['the site is not running', 'BUILTIN=project.context.dev_server_status'],
+      ['the app is not running', 'BUILTIN=project.context.dev_server_status'],
+      ['the server is not running', 'BUILTIN=project.context.dev_server_status'],
+      ['the site is running', 'BUILTIN=project.context.dev_server_status'],
+      // Feedback about the last answer is its own intent, not a yes/no answer.
+      ['that is wrong', 'BUILTIN=system.chit_chat.correction'],
+      ["that's wrong", 'BUILTIN=system.chit_chat.correction'],
+      ['that is not right', 'BUILTIN=system.chit_chat.correction'],
+      ['that is not what i asked', 'BUILTIN=system.chit_chat.correction'],
+      // A bare question word has no object, so it asks instead of answering at large.
+      ['why', 'BUILTIN=system.chit_chat.clarify'],
+      ['why?', 'BUILTIN=system.chit_chat.clarify'],
+      ['what', 'BUILTIN=system.chit_chat.clarify'],
+      ['how', 'BUILTIN=system.chit_chat.clarify'],
+      // Affection is warmth, not a missing command.
+      ['i love you', 'BUILTIN=system.chit_chat.gratitude'],
+      ['love you', 'BUILTIN=system.chit_chat.gratitude'],
+      // The README's CONTENTS, not the directory structure.
+      ['give me the readme', 'BUILTIN=project.knowledge.readme'],
+      ['give me the read me', 'BUILTIN=project.knowledge.readme'],
+      ['show me the readme', 'BUILTIN=project.knowledge.readme'],
+      ['read the readme', 'BUILTIN=project.knowledge.readme'],
+      ['what does the readme say', 'BUILTIN=project.knowledge.readme'],
+      // "Tools" is the menu, not the calculator.
+      ['open tools', 'BUILTIN=system.tools.open_tools_menu'],
+      ['show me the tools', 'BUILTIN=system.tools.open_tools_menu'],
+      // Guards: the specific owners keep their shapes.
+      ['is the site running', 'BUILTIN=project.context.dev_server_status'],
+      ['when did it start running', 'BUILTIN=project.context.dev_server_status'],
+      ['why is the server down', 'BUILTIN=project.context.dev_server_status'],
+      ['what is this project', 'BUILTIN=project.knowledge.overview'],
+      ['open package-lock.json', 'BUILTIN=project.action.open_file'],
+      ['open file explorer', 'BUILTIN=system.tools.open_folder_explorer'],
+      ['open calculator', 'BUILTIN=system.tools.open_calculator'],
+      ['reminders', 'BUILTIN=system.tools.open_reminders'],
     ],
   },
 ];

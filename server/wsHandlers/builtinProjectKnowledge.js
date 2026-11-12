@@ -1,7 +1,9 @@
+import fs from 'fs';
+import path from 'path';
 import { createCheckpoint } from '../gitSafety.js';
 import { state } from '../state.js';
 import { findDocumentedRunCommands } from '../readmeRunParser.js';
-import { enrichWithIndex } from './builtinHelpers.js';
+import { enrichWithIndex, firstDocParagraph } from './builtinHelpers.js';
 import { injectContext } from '../contextInjector.js';
 import { searchProjectCode, performSearch } from '../codeIndex/codeIndexSearch.js';
 import { buildProjectIndex } from '../codeIndex/codeIndexBuilder.js';
@@ -13,14 +15,26 @@ import { enqueueTask } from '../taskQueue.js';
  */
 export const projectKnowledgeHandlers = {
   async 'project.knowledge.overview'(ws, action, input, project) {
+    // 2026-11-12 (live Matchday Exchange export): "what is this project" was answered with
+    // "React 19, TypeScript, Vite and Tailwind. Production deployment is triggered by GitHub
+    // pushes to Vercel." — the project's config 'stack' answer entry, because the handler
+    // looked for ANY answer entry whose triggers contained "describe"/"overview"/"what" and
+    // Matchday's stack entry has the trigger "describe project". The user asked what the
+    // project IS and got its tech stack.
+    //
+    // The project's own main doc (CLAUDE.md / README) is the better source for a description
+    // — it opens with a one-line summary of what the project is — so it now wins, and the
+    // config answer entry is the fallback for projects that have no doc.
     const descEntry = project.config.entries?.find((e) => e.type === 'answer' && e.triggers?.some((t) => t.includes('describe') || t.includes('overview') || t.includes('what')));
-    let responseText = `### ${project.name}\n\n**Path:** \`${project.path}\`\n**Config Entries:** ${project.config.entries?.length || 0} actions/answers.`;
-    if (descEntry) {
+    const mainDoc = (project.contextFiles || [])[0];
+    const mainDocSummary = firstDocParagraph(mainDoc?.content);
+    let responseText;
+    if (mainDocSummary) {
+      responseText = `### ${project.name}\n\n${mainDocSummary}`;
+    } else if (descEntry) {
       responseText = descEntry.response;
-    } else if (project.contextFiles && project.contextFiles.length > 0) {
-      const mainDoc = project.contextFiles[0];
-      const snippet = mainDoc.content.substring(0, 500) + '...';
-      responseText = `### Overview from ${mainDoc.filename}\n\n${snippet}`;
+    } else {
+      responseText = `### ${project.name}\n\n**Path:** \`${project.path}\`\n**Config Entries:** ${project.config.entries?.length || 0} actions/answers.`;
     }
     responseText = enrichWithIndex(responseText, project.codebaseIndex);
     const ctx = injectContext(input, action, project.codebaseIndex);
@@ -96,6 +110,55 @@ export const projectKnowledgeHandlers = {
     if (bestChip) {
       ws.send(JSON.stringify({ type: 'suggestions', data: [bestChip] }));
     }
+  },
+
+  async 'project.knowledge.readme'(ws, _action, _input, project) {
+    // New intent (2026-11-12, live Matchday Exchange corpus): "Give me the read me" was
+    // answered with the project's DIRECTORY STRUCTURE — 18 directories and 50 filenames.
+    // The user asked for the README's contents. Read the file from disk (the scanned
+    // contextFiles copy is only a truncated summary) and show it.
+    const names = ['README.md', 'readme.md', 'Readme.md', 'README.MD', 'README.txt', 'README'];
+    let filePath = null;
+    for (const name of names) {
+      const candidate = path.join(project.path, name);
+      try {
+        if (fs.existsSync(candidate)) { filePath = candidate; break; }
+      } catch { /* unreadable path — try the next candidate */ }
+    }
+    if (!filePath) {
+      // The project may have a README the scanner picked up under a different name.
+      const scanned = (project.contextFiles || []).find((c) => /^readme/i.test(c.filename || ''));
+      if (scanned?.content) {
+        ws.send(JSON.stringify({
+          type: 'answer',
+          data: `### ${scanned.filename}\n\n${scanned.content.slice(0, 3500)}${scanned.content.length > 3500 ? '\n\n_(truncated — say "open the readme" to open the full file)_' : ''}`,
+        }));
+        return true;
+      }
+      ws.send(JSON.stringify({
+        type: 'answer',
+        data: `**${project.name}** has no README file. Say "overview" for what the project is, or "what are the commands" for how to run it.`,
+      }));
+      return true;
+    }
+    let content = '';
+    try {
+      content = fs.readFileSync(filePath, 'utf-8');
+    } catch (err) {
+      ws.send(JSON.stringify({
+        type: 'answer',
+        data: `Couldn't read the README (${err.message}). Try "open the readme" to open it in your editor.`,
+      }));
+      return true;
+    }
+    const LIMIT = 3500;
+    const shown = content.slice(0, LIMIT);
+    const truncated = content.length > LIMIT;
+    ws.send(JSON.stringify({
+      type: 'answer',
+      data: `### ${path.basename(filePath)}\n\n${shown}${truncated ? `\n\n_(showing the first ${LIMIT} of ${content.length} characters — say "open the readme" to open the full file)_` : ''}`,
+    }));
+    return true;
   },
 
   'project_scan'(ws) {

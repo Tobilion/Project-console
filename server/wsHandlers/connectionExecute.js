@@ -33,6 +33,25 @@ import { log as logger } from '../logger.js';
 // Deliberately excludes "yes"/"no"/"sure"/"done" — those can be answers to a pending question.
 const AI_ACK_RE = /^(ok|okay|k|kk|ok thanks|thanks|thank you|thx|ty|got it|gotcha|nice|cool|alright|sounds good|perfect|awesome)\b[.!]*$/i;
 
+// Pure conversational shapes the console answers better ITSELF than the model (2026-11-12).
+//
+// Confirmed live 2026-11-09 (NetPulse export): "Hi" with AI mode ON was handed straight to
+// Ollama and came back as a raw error — "AI error: Ollama error (410): Gone This is an
+// Ollama Cloud model - make sure you're signed in (`ollama signin`) and have an internet
+// connection, then try again." A greeting should never be able to fail.
+//
+// These shapes route to the LOCAL chit-chat handlers instead. Those handlers still ask the
+// model for one natural line when AI mode is on (smartChitchatReply) and fall back to the
+// canned pool when the model is unreachable or broken — so this is model-written where that
+// works, and a real answer instead of an error where it does not. "That's wrong" and a bare
+// "why" belong here too: the first is feedback the model cannot act on, the second needs a
+// question asked back rather than an answer guessed at.
+//
+// The pure-ack words AI_ACK_RE already handles ("ok", "thanks", "nice", …) are deliberately
+// NOT here: that path answers them without a model round-trip, and a real NetPulse chat
+// burned ~14 model streams on bare acks. Keep the two lists disjoint.
+const LOCAL_CHAT_RE = /^(?:hi|hey|hello|yo|hiya|heyya|howdy|greetings|sup|morning|good\s+(?:morning|afternoon|evening|night)|cheers|kudos|bye|goodbye|see\s+you(?:\s+later)?|later|good\s+night|lol|haha|hehe|sweet|i\s+see|i\s+love\s+you|love\s+you|that(?:'s|\s+is)\s+(?:wrong|incorrect|not\s+(?:right|correct|what\s+i\s+(?:asked|wanted|meant)))|you\s+got\s+it\s+wrong|wrong\s+answer|why|what|how|when|where|who)\s*[.!?]*$/i;
+
 /**
  * Trigger-mode message execution (routeMessage 'execute'). Orchestrator only — the blocks are
  * dispatched to sibling leaf modules in exactly the order they ran in the pre-split
@@ -261,10 +280,16 @@ async function handleExecuteBody(ws, parsed, sessionContext) {
   // AI mode: the AI ON/OFF toggle is the only opt-in gesture needed — once on, every
   // message in this session goes straight to Ollama, no per-query re-confirmation.
   if (sessionContext.aiEnabled) {
+    // 2026-11-12: pure conversational shapes are answered by the LOCAL handlers first — a
+    // greeting must not be able to fail with a raw model error (see LOCAL_CHAT_RE).
+    const trimmed = input.trim();
+    if (LOCAL_CHAT_RE.test(trimmed)) {
+      await handleMatchingPipeline(ws, project, projectId, input, sessionContext);
+      return;
+    }
     // Pure acknowledgments ("ok", "thanks", "got it") don't need a model round-trip — a real
     // NetPulse chat burned ~14 model streams on a bare "ok". Narrow allowlist + length cap so
     // nothing that could be an answer to a question ("yes", "no", "sure") ever short-circuits.
-    const trimmed = input.trim();
     if (trimmed.length <= 20 && AI_ACK_RE.test(trimmed)) {
       ws.send(JSON.stringify({ type: 'answer', data: 'Got it — anything else?' }));
       if (sessionContext.currentSessionId) {

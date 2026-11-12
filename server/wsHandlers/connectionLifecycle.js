@@ -1,6 +1,6 @@
 import { wss } from '../wsServer.js';
 import { sweepExpiredConfirmations, pendingConfirmations, pendingToolConfirmations, connectionRegistry } from '../state.js';
-import { appendMessage } from '../conversationStore.js';
+import { appendMessage, patchMessageMeta } from '../conversationStore.js';
 import { metrics } from '../metrics.js';
 import { routeMessage, sendAiStatus } from './connectionRoutes.js';
 import { takeUpdateNotice } from '../updateChecker.js';
@@ -72,7 +72,37 @@ function onConnection(ws, request) {
     let parsed = null;
     try {
       parsed = JSON.parse(typeof data === 'string' ? data : data.toString());
-      if (sessionContext.currentSessionId && (parsed.type === 'answer' || parsed.type === 'error_output' || parsed.type === 'warning') && parsed.data) {
+      // 2026-11-12: remember the last ANSWER the console gave on this connection. The
+      // correction handler ("that's wrong") quotes it back so the user can see which answer
+      // is being corrected, and "explain more" has a real answer to deepen instead of the
+      // console narrating its own dispatch internals.
+      if (parsed.type === 'answer' && typeof parsed.data === 'string' && parsed.data.trim()) {
+        sessionContext.lastAnswer = { text: parsed.data, at: Date.now() };
+      }
+      // 2026-11-12: suggestion chips were never persisted, so an exported chat showed
+      // "Found a run command in [NetPulse]'s own config:" with nothing after it — the chip
+      // that followed existed only in the live socket. The export read as a dead end.
+      // The chips arrive as their own WS message right after the answer they belong to, so
+      // the answer record is patched once the chip list is known (the write promise is
+      // chained first, so the patch can never race the append).
+      if (parsed.type === 'answer' && typeof parsed.data === 'string' && parsed.data && sessionContext.currentSessionId) {
+        flushCommandBuffer();
+        const recId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+        sessionContext.lastAnswerRecordId = recId;
+        sessionContext.lastAnswerWrite = appendMessage(sessionContext.currentSessionId, {
+          id: recId,
+          role: 'bot',
+          content: parsed.data,
+          isMarkdown: true,
+        }).catch((err) => logger.error('[connectionLifecycle] failed to persist answer:', err?.message));
+      } else if (parsed.type === 'suggestions' && Array.isArray(parsed.data) && sessionContext.lastAnswerRecordId) {
+        const recId = sessionContext.lastAnswerRecordId;
+        const chips = parsed.data.filter((c) => typeof c === 'string').slice(0, 8);
+        Promise.resolve(sessionContext.lastAnswerWrite)
+          .then(() => patchMessageMeta(sessionContext.currentSessionId, recId, { suggestions: chips }))
+          .catch(() => {});
+        sessionContext.lastAnswerRecordId = null;
+      } else if (sessionContext.currentSessionId && (parsed.type === 'answer' || parsed.type === 'error_output' || parsed.type === 'warning') && parsed.data) {
         // Flush any pending command output BEFORE the answer: executor.js streams output,
         // then sends the summary answer, then 'end' — persisting the answer first put the
         // summary before the output it summarizes on reload (audit 2026-08-06, Phase 2).
@@ -131,6 +161,14 @@ function onConnection(ws, request) {
 
   const sessionContext = {
     lastTriggeredEntry: null,
+    // 2026-11-12: the text of the last answer given on this connection, captured by the
+    // ws.send interceptor above. The correction handler quotes it back so "that's wrong"
+    // has something concrete to attach to.
+    lastAnswer: null,
+    // The id of the persisted record for that last answer, plus its write promise — the
+    // suggestion chips that follow are patched onto it once the append has landed.
+    lastAnswerRecordId: null,
+    lastAnswerWrite: null,
     activeProjectId: null,
     // Phase 19 (2026-08-12): per-connection attribution label — "local" for the single-user
     // default (bound to 127.0.0.1 only: never prompted, always "local", zero behavior change).

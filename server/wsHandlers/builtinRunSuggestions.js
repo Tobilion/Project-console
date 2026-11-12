@@ -132,7 +132,14 @@ export async function projectTypeSuggestions(ws, project, input, scripts) {
     const best = await semanticMatcher.bestProjectCommandEntry(input, projectIndex);
     const bestEntry = best ? cfgEntries[best.entryIndex] : null;
     if (bestEntry && bestEntry.type === 'command' && !bestEntry.params && best.score >= CONFIG_SUGGESTION_FLOOR) {
-      ws.send(JSON.stringify({ type: 'answer', data: `Found a run command in **[${project.name}]**'s own config:` }));
+      // 2026-11-12: the answer used to end on a dangling colon ("Found a run command in
+      // **[NetPulse]**'s own config:") with the command itself only ever arriving as a
+      // suggestion chip. In the exported NetPulse chat the user could not see what the
+      // console had found and retyped the command by hand. Name the command in the text.
+      ws.send(JSON.stringify({
+        type: 'answer',
+        data: `Found a run command in **[${project.name}]**'s own config:\n\n\`\`\`\n${bestEntry.action}\n\`\`\`\n\nClick the suggestion below to run it, or say "run the site" and I'll run it for you.`,
+      }));
       ws.send(JSON.stringify({ type: 'suggestions', data: [bestEntry.action] }));
       return;
     }

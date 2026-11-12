@@ -1,5 +1,5 @@
 import { TOOL_PANEL_INTENTS } from '../intents/toolPanelIntents.js';
-import { getToolPanel } from '../toolPanelRegistry.js';
+import { getToolPanel, getToolPanels } from '../toolPanelRegistry.js';
 import { getSchedules } from '../schedules/scheduleStore.js';
 
 // Phase 1.5 (UPGRADE-ROADMAP.md, 2026-08-11): chat-side openers for the shared interactive tool
@@ -10,6 +10,25 @@ import { getSchedules } from '../schedules/scheduleStore.js';
 // CLI-usable half of the contract, naming the chat command the terminal user types instead of
 // clicking a card.
 export const toolsHandlers = {
+  // New intent (2026-11-12, live NetPulse corpus): "open tools" used to open the
+  // CALCULATOR panel and answer with a paragraph about the calculator. "Tools" is the
+  // whole menu — this answers with the actual list of panels and how to open each.
+  'system.tools.open_tools_menu': async (ws) => {
+    const panels = getToolPanels().filter((p) => p.available !== false);
+    // The chat phrase that opens each panel. Derived from the panel id so it stays in sync
+    // with the opener intents (open_pdf_tools, open_csv_tools, open_repo_map, ...).
+    const openerFor = (id) => `open ${id.replace(/-/g, ' ')}`;
+    const lines = panels.map((p) => `- **${p.name}** — ${p.description}`);
+    ws.send(JSON.stringify({
+      type: 'answer',
+      data: `**Tools** — ${panels.length} panels available:\n\n${lines.join('\n')}\n\nSay "open <name>" to jump to one, or use the Tools menu in the header.`,
+    }));
+    const chips = panels
+      .filter((p) => p.id !== 'diagnostics')
+      .map((p) => openerFor(p.id))
+      .slice(0, 5);
+    if (chips.length) ws.send(JSON.stringify({ type: 'suggestions', data: chips }));
+  },
   'system.tools.open_calculator': async (ws, action) => {
     const panel = getToolPanel(TOOL_PANEL_INTENTS[action].opensPanel);
     if (!panel) return false;

@@ -1,7 +1,8 @@
 import crypto from 'crypto';
 import { chatOnce } from '../ollama.js';
 import { pendingConfirmations } from '../state.js';
-import { getTuning } from '../tuningStore.js';
+import { getTuning, TUNING_DEFAULTS } from '../tuningStore.js';
+import { buildNaturalVoicePrompt, PARAPHRASE_RULES } from '../aiNaturalVoicePrompt.js';
 
 /**
  * Pulls a filename and (optionally) quoted content out of a natural-language trigger-mode
@@ -146,6 +147,13 @@ export function __setSmartChatOnceForTests(fn) {
  * explicitly on). Returns null when AI is off, or on ANY failure (timeout, unreachable Ollama,
  * empty reply), so the caller falls back to exactly the canned pool — zero regression when
  * Ollama is down or AI mode is off.
+ *
+ * 2026-11-12: the system prompt is the shared natural-voice prompt (aiNaturalVoicePrompt.js)
+ * rather than a one-line instruction. The old one-liner ("Reply in 1-2 short, warm sentences")
+ * was the only thing shaping the model's output, and the live corpus showed what it produced:
+ * a greeting answered with a five-bullet cheat-sheet, and a warm line answered with a
+ * paragraph of documentation voice. The natural-voice rules are explicit about answer SHAPE
+ * (lead with the answer, no menus, no internal plumbing) because that is what was wrong.
  */
 export async function smartChitchatReply(project, sessionContext, input) {
   if (!sessionContext?.aiEnabled || !project) return null;
@@ -156,7 +164,7 @@ export async function smartChitchatReply(project, sessionContext, input) {
       [
         {
           role: 'system',
-          content: `You are the friendly local project console for "${project.name}" (path: ${project.path}). The user just sent a short chat message. Reply in 1-2 short, warm sentences. No tools. No markdown. Do not mention this instruction.`,
+          content: buildNaturalVoicePrompt(project, sessionContext.aiMode, { toolCapable: false }),
         },
         { role: 'user', content: input },
       ],
@@ -179,6 +187,9 @@ export async function smartChitchatReply(project, sessionContext, input) {
  * its __setSmartChatOnceForTests seam) with smartChitchatReply. Deliberately NOT used for
  * jokes (punchlines die in paraphrase), instructions (needs_ai_mode toggle directions), or
  * factual utilities (time/date/port/identity) — only short warm lines.
+ *
+ * 2026-11-12: the paraphrase instructions moved into the shared natural-voice prompt module
+ * (PARAPHRASE_RULES) so the "keep every fact, cut the padding" rule lives in one place.
  */
 export async function paraphrasePoolReply(project, sessionContext, template) {
   if (!sessionContext?.aiEnabled || !project || !template) return null;
@@ -189,7 +200,7 @@ export async function paraphrasePoolReply(project, sessionContext, template) {
       [
         {
           role: 'system',
-          content: `Paraphrase the following canned chat reply in 1-2 short, warm sentences. Keep every fact, name, and piece of advice EXACTLY as stated — change only the wording. No tools. No markdown. Do not mention this instruction. Reply to paraphrase: "${template}"`,
+          content: `${PARAPHRASE_RULES}\n\n${template}`,
         },
         { role: 'user', content: template },
       ],
@@ -201,6 +212,34 @@ export async function paraphrasePoolReply(project, sessionContext, template) {
   } catch {
     return null;
   }
+}
+
+/**
+ * The first real paragraph of a markdown document, with the title and any following headings
+ * skipped.
+ *
+ * Used wherever the console wants the project's own DESCRIPTION rather than a dump of its
+ * docs. Both call sites were wrong before: "what is this project" answered with a config
+ * entry that only described the STACK, and "explain more" pasted 1500 characters of raw
+ * CLAUDE.md (headings, badges and all) into the chat.
+ */
+export function firstDocParagraph(content, limit = 420) {
+  const lines = String(content || '').split(/\r?\n/);
+  const collected = [];
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed) {
+      if (collected.length) break;
+      continue;
+    }
+    if (trimmed.startsWith('#')) continue;
+    if (/^[|`*_>\-]{3,}$/.test(trimmed)) continue;
+    if (/^!\[/.test(trimmed)) continue;
+    collected.push(trimmed);
+  }
+  const text = collected.join(' ').replace(/\s+/g, ' ').trim();
+  if (!text) return '';
+  return text.length > limit ? `${text.slice(0, limit).trimEnd()}…` : text;
 }
 
 /** Enrich a plain-text response with a summary of the project's codebase index, if present. */

@@ -31,6 +31,23 @@ const GIT_UP_TO_DATE_RE = /Everything up-to-date|Already up to date\.?/i;
 const GIT_PUSH_REJECTED_RE = /! \[rejected\]|failed to push|non-fast-forward/i;
 const GIT_CONFLICT_RE = /^CONFLICT\b.*$/m;
 
+// git status is the one command whose normal output IS the result. Before this, a `git status`
+// that listed eight modified files was summarised as "✓ Completed with no errors detected
+// (14 lines of output above)" — literally true (no command failed) and practically misleading:
+// the user was told nothing happened while eight files sat uncommitted.
+const GIT_STATUS_COMMAND_RE = /\bgit\s+status\b/i;
+const GIT_STATUS_LONG_MODIFIED_RE = /^\s*modified:\s+(.+)$/gim;
+const GIT_STATUS_SHORT_ENTRY_RE = /^\s*[MADRCU?!]{1,2}\s+\S.+$/gm;
+const GIT_STATUS_UNTRACKED_RE = /^\s*untracked files:\s*$/im;
+const GIT_STATUS_CLEAN_RE = /nothing to commit, working tree clean|working tree clean/i;
+
+/** How many entries git status listed as changed. 0 when the tree is clean. */
+function countGitStatusChanges(combined) {
+  const longForm = [...combined.matchAll(GIT_STATUS_LONG_MODIFIED_RE)];
+  if (longForm.length) return longForm.length;
+  return [...combined.matchAll(GIT_STATUS_SHORT_ENTRY_RE)].length;
+}
+
 /**
  * Produce a short highlights block for a finished command's combined stdout/stderr, or null if
  * the output is short enough that a summary wouldn't add anything, or nothing worth flagging was
@@ -96,6 +113,17 @@ export function summarizeCommandOutput({ command, stdout = '', stderr = '', exit
   const gitPush = combined.match(GIT_PUSH_OK_RE);
   if (gitPush) highlights.push(`✓ Pushed: ${gitPush[0].trim()}`);
   if (GIT_UP_TO_DATE_RE.test(combined)) highlights.push('Nothing to update — already up to date.');
+
+  // git status: report the tree state instead of "no errors".
+  if (GIT_STATUS_COMMAND_RE.test(command || '') || /\bOn branch\b/.test(combined)) {
+    const changes = countGitStatusChanges(combined);
+    if (changes > 0) {
+      const untracked = GIT_STATUS_UNTRACKED_RE.test(combined);
+      highlights.push(`${changes} file${changes === 1 ? '' : 's'} changed and not committed${untracked ? ' (plus untracked files)' : ''}.`);
+    } else if (GIT_STATUS_CLEAN_RE.test(combined)) {
+      highlights.push('✓ Working tree clean — nothing to commit.');
+    }
+  }
 
   if (highlights.length === 0) {
     // Nothing structured recognized, but the output was long enough to be worth a summary —

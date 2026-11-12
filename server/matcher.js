@@ -96,6 +96,47 @@ function questionBlocksExecuting(input, intent) {
   return QUESTION_MARKER_RE.test(input.trim());
 }
 
+/**
+ * True when the input is shaped like a question or a statement about state, rather than a
+ * command. Used in TWO places:
+ *
+ *  1. questionBlocksExecuting() above — a question must not reach an EXECUTING builtin.
+ *  2. The project-config-entry path (stage 1a / stage 0) — see configEntryBlockedByQuestion.
+ *
+ * Note this is deliberately broader than the question marker regex: a NAKED state statement
+ * ("the site isn't running", "the server is down") is not a question grammatically, but it is
+ * exactly as much a status ask, and it must never launch a server.
+ */
+export function isQuestionShaped(input) {
+  const text = (input || '').trim();
+  if (!text) return false;
+  if (QUESTION_MARKER_RE.test(text)) return true;
+  // Negated status statements: "the site isn't running", "the app is not up", "the server
+  // isn't live". These read as state reports, not commands — "isn't running" must never be
+  // read as "run it".
+  return /\b(?:is|are|was|were)\s+not\s+(?:running|up|live|started|up\s+running)\b/i.test(text)
+    || /\b(?:isn't|aren't|wasn't|weren't)\s+(?:running|up|live|started)\b/i.test(text)
+    || /\b(?:isn't|aren't)\s+running\b/i.test(text);
+}
+
+/**
+ * A project config entry of type 'command' must never fire on a question-shaped or
+ * state-shaped input.
+ *
+ * Confirmed live 2026-11-09 (Dream Kick export): "Is the site running" executed
+ * `python -m http.server 8000` — Dream Kick's own console.config.json entry. The question
+ * matched the project's embedded entry trigger ("run locally" / "start dream kick") through
+ * the embedding race, and stage 1a dispatched the config entry with NO question guard —
+ * questionBlocksExecuting() only ever guarded BUILTIN intents, never a project's own
+ * command entry. A read-only "answer" entry is safe to serve from a question, so only
+ * 'command' entries are blocked.
+ */
+function configEntryBlockedByQuestion(entry, input) {
+  if (!entry) return false;
+  if (entry.type !== 'command') return false;
+  return isQuestionShaped(input);
+}
+
 /** Unified matching pipeline (stage numbers are the historical dispatch order — there is
  *  no stage 3; the tiers below run in this exact sequence):
  *  0. Multi-intent split (conjunctions → per-clause matches)
@@ -179,7 +220,9 @@ export async function matchInput(input, project, projectIndex, options = {}) {
       }
       if (r.meta) {
         const entryResult = tryLookupEntry([project], r.meta.projectIndex, r.meta.entryIndex, r.originalPhrase);
-        if (entryResult) {
+        // 2026-11-12: a question/state statement never dispatches a project command entry
+        // (see configEntryBlockedByQuestion) — the same guard stage 1a applies.
+        if (entryResult && !configEntryBlockedByQuestion(entryResult.match, r.originalPhrase)) {
           items.push({ ...entryResult, source: r.source, confidence: r.confidence });
           continue;
         }
@@ -228,7 +271,12 @@ export async function matchInput(input, project, projectIndex, options = {}) {
           semanticResult.meta.entryIndex,
           input
         );
-        if (entryResult) {
+        // 2026-11-12: a question/state statement must never dispatch a project's own COMMAND
+        // entry. Live Dream Kick export (2026-11-09): "Is the site running" ran
+        // `python -m http.server 8000` because this path had no question guard — the guard
+        // that existed (questionBlocksExecuting) only ever covered BUILTIN intents. The
+        // entry is skipped so the read-only status intents get their chance instead.
+        if (entryResult && !configEntryBlockedByQuestion(entryResult.match, input)) {
           metrics.event({ type: 'match_result', input: input.slice(0, 80), outcome: 'semantic_entry', duration: Date.now() - t0 });
           return { ...entryResult, telemetryId };
         }
@@ -251,7 +299,9 @@ export async function matchInput(input, project, projectIndex, options = {}) {
           const projEntry = await semanticMatcher.bestProjectCommandEntry(input, projectIndex);
           if (projEntry && projEntry.score >= CONFIG_RUN_ENTRY_FLOOR) {
             const entryResult = tryLookupEntry([project], 0, projEntry.entryIndex, input);
-            if (entryResult) {
+            // Same question guard as stage 1a (2026-11-12) — this redirect can reach a
+            // project's COMMAND entry too, so it must not fire on a question either.
+            if (entryResult && !configEntryBlockedByQuestion(entryResult.match, input)) {
               metrics.event({ type: 'match_result', input: input.slice(0, 80), outcome: 'config_run_entry', duration: Date.now() - t0 });
               return { ...entryResult, telemetryId };
             }
@@ -361,6 +411,17 @@ export async function matchInput(input, project, projectIndex, options = {}) {
   metrics.observe('matching.stage.router', Date.now() - tRouter);
   if (routerResult) {
     metrics.event({ type: 'match_result', input: input.slice(0, 80), outcome: 'router', duration: Date.now() - t0 });
+    // 2026-11-12: the router tier had NO question guard — a local model asked to classify
+    // "is the site running?" can legitimately answer "run_project", and the console would
+    // then start a server to answer a yes/no question. The same QUESTION_BLOCKED_INTENTS
+    // set the semantic stage uses applies here; a question-shaped input drops the router's
+    // claim and falls through to the fallback instead of executing anything.
+    if (questionBlocksExecuting(input, routerResult.intent)) {
+      metrics.event({ type: 'match_result', input: input.slice(0, 80), outcome: 'router_blocked_question', duration: Date.now() - t0 });
+      routerResult = null;
+    }
+  }
+  if (routerResult) {
     // Step 5: the model's own entities win when present (it saw the full message); the local
     // Step-4 extraction is the safety net when it omitted them. Either way the result rides
     // the same entities plumbing as every other stage (dispatch param + transcript).

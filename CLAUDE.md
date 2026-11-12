@@ -3600,6 +3600,88 @@ phrasings to the frozen held-out eval set. Per-failure category + actual fix typ
   now sets `process.exitCode` and lets the loop drain (verified: exit 0, ~25s, no assertion). Node's
   natural exit must stay possible here — do not reintroduce `process.exit()` in this harness.
 
+## Natural-voice + bad-answer pass (2026-11-12) — the exported-chat corpus
+
+Read every exported live chat (NetPulse ×3, Matchday Exchange ×2, Dream Kick) end to end, listed
+every reply that read like a form instead of a person, and fixed the causes. Two things came out
+of it: a shared **natural-voice prompt** for every model-written reply, and a set of concrete
+answer-shape fixes for the replies that never reached a model.
+
+**The prompt** — `server/aiNaturalVoicePrompt.js` (new), documented in
+`docs/NATURAL_VOICE_PROMPT.md`. `NATURAL_VOICE_RULES` + `buildNaturalVoicePrompt()` are
+prepended to the mode instruction in `ollamaContext.js` (so all six AI modes obey one shape) and
+used by `smartChitchatReply` / `paraphrasePoolReply` in `builtinHelpers.js`. The rules are about
+answer SHAPE, because shape was the failure: lead with the answer, no command menus on a
+greeting, no narration of the console's internals, never a claim of success over output that
+shows otherwise. The model is never load-bearing — both helpers return `null` on any failure and
+the canned pool is used instead.
+
+**The bad answers, by category** (the Tuning Template's protocol: classify, then fix the actual
+cause — no failing phrase was pasted into an intent's examples):
+
+- **A question executed a command (stage-1a gap).** "Is the site running" ran
+  `python -m http.server 8000` (Dream Kick's own `console.config.json` entry). The question guard
+  (`questionBlocksExecuting`) only ever covered BUILTIN intents — a project's own command entry
+  was dispatched with no guard at all, and the local-router tier had none either. Fix:
+  `configEntryBlockedByQuestion()` in `matcher.js` now blocks a question-shaped or state-shaped
+  input from dispatching a config `command` entry (read-only `answer` entries are still served),
+  the same guard now runs on the router tier, and negated status statements ("the site isn't
+  running") count as question-shaped. Root cause recorded, not just patched.
+- **A typed-command request was executed verbatim.** `git push with comment "micheal is the goat"`
+  reached the shell because the bypass decided "this is a command" from the FIRST TOKEN resolving
+  on PATH; git parsed "with"/"comment"/"micheal" as refspecs. Fix: `looksLikeNaturalLanguageRequest()`
+  in `typedCommand.js` — a line whose bare (unquoted) tokens contain English request words is a
+  sentence, not a command line. Quoted spans are excluded, so `git commit -m "fix and ship"` still
+  bypasses.
+- **"the site isn't running" → the project's npm scripts.** Now pinned to the read-only status
+  probe (`project.context.dev_server_status`).
+- **"Give me the read me" → the directory structure.** New intent `project.knowledge.readme`
+  (reads the file from disk), plus a narrow pin for the spoken-word forms.
+- **"what is this project" → the project's STACK.** `project.knowledge.overview` used any config
+  answer entry whose triggers contained "describe", and Matchday's stack entry has the trigger
+  "describe project". The project's own main doc now wins (`firstDocParagraph()` in
+  `builtinHelpers.js`), with the config entry as the fallback.
+- **"Explain more" → the console narrating its own dispatch.** It deepened
+  `sessionContext.lastTriggeredEntry` (the last CONFIG ENTRY) and answered 'Last triggered action
+  was "run server"'. In trigger mode it now assembles the project's real detail (description,
+  stack, entry point, key files, how to run) instead of pasting 1500 characters of raw CLAUDE.md;
+  in AI mode the model handles the turn with the full conversation, which is the better answer.
+- **"That's wrong" → "No pending confirmation to respond to."** New intent
+  `system.chit_chat.correction` (acknowledges the correction, quotes the last answer, offers AI
+  mode for open-ended work). Bare "yes"/"no" now says "Nothing's waiting on a yes or no right now."
+- **A bare "why" → the whole project overview.** New intent `system.chit_chat.clarify` (a bare
+  question word has no object, so the console asks), pinned to the single word so real questions
+  ("why is the server down") are untouched.
+- **"I love you" → "I don't have a command configured for that."** Affection phrases moved into
+  `system.chit_chat.gratitude` (with register-appropriate replies) + a narrow pin.
+- **"Open tools" → the CALCULATOR panel.** "Tools" was in the calculator's example list. New intent
+  `system.tools.open_tools_menu` lists every panel and how to open it.
+- **"Found a run command in [X]'s own config:" → a dangling colon.** The command itself was only
+  ever a suggestion chip, so an exported chat read as a dead end. The answer now names the command.
+- **"Stopped `npm run dev`" while the site kept serving.** `stopTrackedProcess` only probed the
+  dev URL when the project's whole process slot emptied, so stopping one of two tracked processes
+  never checked. The URL is now probed whenever a SITE command was stopped, the survivor is
+  identified by the PID actually listening on the port, and the untracked-stop flow is armed so
+  "stop it anyway" resolves and kills it.
+- **`git status` with 8 modified files → "✓ Completed with no errors detected".** `outputSummarizer.js`
+  now reports the tree state ("8 files changed and not committed" / "Working tree clean").
+- **A "Hi" in AI mode → `Ollama error (410) … make sure you're signed in`.** Pure conversational
+  shapes now bypass the model and are answered by the local chit-chat handlers (which still ask
+  the model for one natural line when it is reachable). **Root cause found underneath it:**
+  `builtinHelpers.js` referenced `TUNING_DEFAULTS` without importing it, so every
+  `smartChitchatReply`/`paraphrasePoolReply` call threw a `ReferenceError` that the surrounding
+  `catch` swallowed — the AI-mode chit-chat features had been silently dead.
+- **Exports lost the suggestion chips.** They are now persisted onto the answer record and
+  included in the JSON and Markdown exports (and restored on reload), so an exported chat shows
+  what the console offered.
+
+**Harness / eval**: new `CHAT-2026-11-12` matcher battery (31 rows, every bad answer above with
+its specific-owner guards); 2 new node:test rows in `safetyExtras.test.js` for the typed-command
+guard (the request is not executed, real command lines still bypass); check-matcher 547/547,
+check-handlers 399/399, npm test 696/696, lint clean, check-docs 83 entries / 0 unmapped,
+check-oos unchanged from baseline (116/179 train, 13/19 boundary — verified by stashing the
+change and re-running).
+
 ## Conventions
 
 - No file over ~400 lines; target ~150 for logic files (data registries may reach 150;

@@ -97,12 +97,18 @@ export function classifyStopTarget(lowerInput) {
 // A dev URL that answers but is NOT tracked by the console (started outside it, or before a
 // restart) — the case the "can't stop it from here" message used to dead-end on. Probes the
 // recorded URL first, then the project's own candidate ports. Returns the live URL or null.
-async function findUntrackedDevUrl(project) {
+//
+// 2026-11-12: `probeCandidatePorts` can be turned off. The intent handler (system.server.stop)
+// only checks the RECORDED url — the candidate-port sweep is the pre-check's job, and running
+// it from the intent path made a plain "stop the site" on a project with no server take
+// several seconds of port probing before it could answer.
+async function findUntrackedDevUrl(project, { probeCandidatePorts = true } = {}) {
   const recorded = state.lastDevUrls.get(project.id);
   if (recorded) {
     const probe = await probeDevServerCandidate(recorded, 2000);
     if (probe.alive) return recorded;
   }
+  if (!probeCandidatePorts) return null;
   for (const candidate of candidateDevUrls(project)) {
     const probe = await probeDevServerCandidate(candidate, 1200);
     if (probe.alive) {
@@ -113,7 +119,12 @@ async function findUntrackedDevUrl(project) {
   return null;
 }
 
-export async function handleStopServer(ws, project, lowerInput, sessionContext) {
+export async function handleStopServer(ws, project, lowerInput, sessionContext, options = {}) {
+  // 2026-11-12: `sendEnd` lets a caller that already owns the turn's lifecycle (the
+  // system.server.stop intent handler) suppress the trailing 'end' message, so the answer
+  // is not followed by a second one.
+  const sendEnd = options.sendEnd !== false;
+  const endTurn = () => { if (sendEnd) ws.send(JSON.stringify({ type: 'end' })); };
   const entries = getTrackedProcesses(project.id);
   const hasTrackedProcess = entries.length > 0;
   const isStopPhrase =
@@ -126,16 +137,22 @@ export async function handleStopServer(ws, project, lowerInput, sessionContext) 
   if (!isStopPhrase) return false;
 
   // Nothing tracked: if a dev URL still answers, offer to stop it (started outside the console).
+  // `checkUntracked` can be turned off: the intent handler (system.server.stop) turns it off so
+  // a plain "stop the site" on a project with nothing running answers instantly instead of
+  // spending seconds probing a port that may or may not be alive. The pre-check (the path that
+  // handles virtually every stop phrase) keeps the full untracked flow.
   if (!hasTrackedProcess) {
-    const untracked = await findUntrackedDevUrl(project);
+    const untracked = options.checkUntracked === false
+      ? null
+      : await findUntrackedDevUrl(project, { probeCandidatePorts: options.probeCandidatePorts !== false });
     if (untracked) {
       sessionContext.pendingUntrackedStop = { projectId: project.id, url: untracked };
       ws.send(JSON.stringify({ type: 'answer', data: `**${project.name}** is still responding at **${untracked}**, but it was started outside the console so I can't track it. Say "stop it anyway" and I'll find and stop the process for you.\n` }));
-      ws.send(JSON.stringify({ type: 'end' }));
+      endTurn();
       return true;
     }
     ws.send(JSON.stringify({ type: 'answer', data: `No running server for **${project.name}**.\n` }));
-    ws.send(JSON.stringify({ type: 'end' }));
+    endTurn();
     return true;
   }
 
@@ -149,12 +166,19 @@ export async function handleStopServer(ws, project, lowerInput, sessionContext) 
   if (candidates.length === 1) {
     const stopped = await stopTrackedProcess(project.id, { target: { pids: [candidates[0].child.pid] } });
     if (stopped.ok) {
+      // 2026-11-12: when the kill left the site answering (the tracked child was the shell
+      // wrapper; the real server kept the port), the console must not just report success.
+      // Arm the untracked-stop flow so "stop it anyway" resolves the real PID and kills it.
+      const survivor = stopped.warning && stopped.devUrl && /still responding/.test(stopped.warning);
+      if (survivor) {
+        sessionContext.pendingUntrackedStop = { projectId: project.id, url: stopped.devUrl };
+      }
       const headsup = stopped.warning ? `\n\nHeads-up: ${stopped.warning}.` : '';
       ws.send(JSON.stringify({ type: 'answer', data: `Stopped \`${stopped.command}\`.${headsup}\n` }));
     } else {
       ws.send(JSON.stringify({ type: 'answer', data: `No running server for **${project.name}**.\n` }));
     }
-    ws.send(JSON.stringify({ type: 'end' }));
+    endTurn();
     return true;
   }
 
@@ -164,7 +188,7 @@ export async function handleStopServer(ws, project, lowerInput, sessionContext) 
     entries: candidates.map((p) => ({ pid: p.child.pid, command: p.command })),
   };
   ws.send(JSON.stringify({ type: 'answer', data: `**${project.name}** has ${candidates.length} processes running. Which should I stop?\n\n${list}\n\nReply with a number, "both", or "cancel".\n` }));
-  ws.send(JSON.stringify({ type: 'end' }));
+  endTurn();
   return true;
 }
 
